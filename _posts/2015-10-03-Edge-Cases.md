@@ -14,64 +14,6 @@ which fixes many of the issues with conflicts with the Kramdown parser. Some exa
 
 This code:
 
-```latex
-{{ "{% math " }} %}
-  D = \left(\begin{matrix}
-  1 & -1 & & & & \\
-  &    & \cdots &   & \\
-  &    &        & 1 & -1
- \end{matrix}
- \right)
-{{ "{% endmath " }}%}
-```
-yields this:
-
-{% math %}
-D = \left(\begin{matrix}
-  1 & -1 & & & & \\
-  &    & \cdots &   & \\
-  &    &        & 1 & -1
-\end{matrix}
-\right)
-{% endmath %}
-
-Other examples from the [wikia Tex reference](http://latex.wikia.com/wiki/Matrix_environments):
-
-{% math %}
-\begin{matrix}
-\alpha& \beta^{*}\\
-\gamma^{*}& \delta
-\end{matrix}
-{% endmath %}
-
-
-{% math %}
-\begin{bmatrix}
-\alpha& \beta^{*}\\
-\gamma^{*}& \delta
-\end{bmatrix}
-{% endmath %}
-
-{% math %}
-\begin{Bmatrix}
-\alpha& \beta^{*}\\
-\gamma^{*}& \delta
-\end{Bmatrix}
-{% endmath %}
-
-{% math %}
-\begin{vmatrix}
-\alpha& \beta^{*}\\
-\gamma^{*}& \delta
-\end{vmatrix}
-{% endmath %}
-
-{% math %}
-\begin{Vmatrix}
-\alpha& \beta^{*}\\
-\gamma^{*}& \delta
-\end{Vmatrix}
-{% endmath %}
 
 However, a problem still exists for inline matrix notation, from an example [here](https://en.wikibooks.org/wiki/LaTeX/Mathematics#Matrices_in_running_text):
 
