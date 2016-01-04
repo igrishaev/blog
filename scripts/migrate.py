@@ -21,6 +21,7 @@ date:   "{{ datetime }}"
 permalink: {{ url }}
 categories: {{ tags|join(' ') }}
 ---
+
 {{ content }}
 
 
