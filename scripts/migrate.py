@@ -10,7 +10,7 @@ from jinja2 import Template
 db = MySQLdb.connect(
     host='localhost',
     user='root',
-    # passwd='test',
+    # passwd='dunno',
     db='blog'
 )
 
@@ -118,8 +118,15 @@ where nk.NoteID = %s;
         # title.decode('utf-8').encode('trans'),
         id,
     )
-    with open(os.path.join('_posts', filename), 'w') as f:
+    filepath = os.path.join(
+        os.path.dirname(__file__),
+        os.pardir,
+        '_posts',
+        filename
+    )
+    with open(filepath, 'w') as f:
         f.write(content.encode('utf-8').replace('\r\n', '\n'))
+    print filepath
 
 cur = db.cursor()
 
