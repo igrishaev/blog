@@ -17,8 +17,6 @@ This code:
 
 However, a problem still exists for inline matrix notation, from an example [here](https://en.wikibooks.org/wiki/LaTeX/Mathematics#Matrices_in_running_text):
 
-A matrix in text must be set smaller: {% m %}\bigl(\begin{smallmatrix}a & b \\ c & d\end{smallmatrix} \bigr){% em %} to not increase leading in a portion of text
-
 ## Edge Case 1 from Quxiaofeng:
 
 ### No blank lines between Markdown list items
