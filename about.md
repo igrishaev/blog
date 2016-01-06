@@ -1,15 +1,27 @@
 ---
 layout: page
-title: About
+title:  "Обо мне"
 permalink: /about/
+redirect_from: /2012/08/06/1/
+date: "2012-08-06 04:25:53"
 ---
 
-This is the base Jekyll theme. You can find out more info about customizing your Jekyll theme, as well as basic Jekyll usage documentation at [jekyllrb.com](http://jekyllrb.com/)
+<img src="/assets/static/avatar.png" alt="avatar" align="left" hspace="20">
 
-You can find the source code for the Jekyll new theme at:
-{% include icon-github.html username="jglovier" %} /
-[jekyll-new](https://github.com/jglovier/jekyll-new)
+Меня зовут Иван Гришаев, я программист, работаю удаленно в
+[SwiftServe](http://www.swiftserve.com/en/).
 
-You can find the source code for Jekyll at
-{% include icon-github.html username="jekyll" %} /
-[jekyll](https://github.com/jekyll/jekyll)
+В блоге делюсь мыслями о программировании и книгах. Интересуюсь
+функциональным программированием, образованием, переговорами,
+редактурой. Провожу тематические встречи с докладами.
+
+Люблю бег, плавание и зимние виды спорта. Ращу сына и дочь.
+
+Мои страницы в интернете:
+
+- [CV](https://github.com/igrishaev/CV)
+- [LinkedIn](https://www.linkedin.com/in/igrishaev)
+- [GitHub](https://github.com/igrishaev)
+- [Вконтакте](https://vk.com/igrishaev)
+
+Пишите на почту ivan@grishaev.me
