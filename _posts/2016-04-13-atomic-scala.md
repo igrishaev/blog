@@ -55,6 +55,18 @@ categories: scala books
   я понял, в экосистеме Скалы не поощрается процедурно-модульное
   программирование. Получается `yet another oop language`.
 
+![picture](http://41.media.tumblr.com/393d852bf9be9b339e76e4bc393aad34/tumblr_o56sc7ASY31ugyavxo1_1280.jpg)
+
+~~~
+
+Hieronymus Bosch “A visual guide to the Scala language” oil on oak
+panels, 1490-1510.
+
+The left panel shows the functional features, the main one describes
+the type system, and the right the object oriented parts.
+
+~~~
+
 Все же, интерес к языку у меня возник, и при случае был бы рад принять
 участие в проекте на нем.
 
