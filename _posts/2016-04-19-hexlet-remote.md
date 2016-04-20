@@ -5,6 +5,11 @@ permalink: /hexlet-remote
 categories: remote work hexlet slack
 ---
 
+**UPD** [Ссылка на дамп чата][wiki-remote]. Через несколько дней
+размещу в блоге структурированный текст.
+
+[wiki-remote]: https://github.com/Hexlet/hexlet-slack-archive/wiki/%D1%81%D0%BB%D0%B0%D0%BA%D0%BE%D0%BD%D0%B0%D1%80:-%D0%9F%D1%80%D0%BE-%D1%83%D0%B4%D0%B0%D0%BB%D0%B5%D0%BD%D0%BD%D1%83%D1%8E-%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D1%83
+
 Сегодня во вторник в 18:00 по Москве состоиться слаконар на тему
 удаленной работы. Слаконар -- это конференция в Слаке в текстовом
 режиме. Общаться будем на канале [#general][general]
