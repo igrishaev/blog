@@ -8,3 +8,5 @@ WORKDIR /blog
 COPY Gemfile* ./
 RUN bundle install
 RUN rm Gemfile*
+
+CMD ["jekyll", "serve"]
