@@ -3,6 +3,7 @@ layout: post
 title:  "Книга ClojureScript Unraveled"
 permalink: /cljs-unraveled
 categories: programming book clojurescript
+lang: ru
 ---
 
 ![cover](/assets/static/cljs-book.png)
