@@ -1,6 +1,6 @@
 ---
 layout: page
-title:  "Обо мне"
+title:  "About me"
 permalink: /about/
 redirect_from: /2012/08/06/1/
 date: "2012-08-06 04:25:53"
