@@ -1,41 +1,41 @@
 ---
 layout: post
-title:  "My interview to Indie Hackers"
-permalink: /en/indiehackers
-categories: indiehackers queryfeed
-lang: en
+title:  "Благотворительность"
+permalink: /charity
+categories: charity
 ---
 
-Today, Indie Hackers have [published my interview][url-ih] about
-[Queryfeed][url-qf]. It's my pet project written with Clojure that I've beed
-maintaining for five years.
+Тема урока -- благотворительность. Из разговора Мэтью, учителем английского:
 
-It took about a week to answer all the questions and 3 weeks to wait for the
-article is being published. The idea to submit an application to Indie Hackers
-originally belongs to my English teacher who asked me to do that as a part of my
-home work.
+-- М: Предположим, ты перевел Википедии 10 долларов. На что потратят эти деньги?
 
-I used to write it by late nights so maybe that's why there is so lots of
-melancholy. I remebered these days when I could not pragram and did silly
-mistakes. This interview is rather advise to myself in the past and to everybody
-who just started doing something for themselves, not for their daily work.
+-- Я: Ну, хостинг, разработка движка, то, се...
 
-So, you are welcome to read that =) Feel free to ask your questions in comments
-if you have some.
+-- М: Вовсе нет. Википедия не заинтересована в твоей десятке. Для них это ничто,
+пыль. Разговоры в духе "если бы каждый дал по доллару" -- популизм.
 
-> Hi, my name is Ivan Grishaev. I'm a programmer from the small tech-hub
-> Voronezh in Russia. I work remotely with European customers. I'm a fan of
-> functional programming, I enjoy coding in Lisp and Haskell, and I use Clojure
-> every day for business purposes.
+-- Я: И на что же тогда?
 
-> I'd like to introduce [Queryfeed][url-qf]. It's my pet project that I've been
-> running for five years. Queryfeed is a web application that lets people search
-> for something in Twitter, Facebook, Google, and Instagram whilst maintaining
-> their anonymity (i.e. not having to create an account and log in). Users
-> receive their results in an RSS format, which allows them to easily process
-> the data or subscribe to it using an RSS client.
+-- М: Их заплатят оператору, чтобы он написал еще 20 писем и сделал 20
+звонков. Понимаешь, им нужны только крупные суммы. Они получают их от богачей и
+меценатов, но до них сложно достучаться.
 
-[Read more...][url-ih]
+-- Я: Как это?
 
-[url-ih]: https://www.indiehackers.com/businesses/queryfeed
-[url-qf]: https://queryfeed.net
+-- М: Есть люди, которые... ну, немного социопаты, но при этом очень
+богаты. Сотрудники Википедии пытаются донести до них мысль, что пожертвование
+возвысит их в глазах общества, сделает чище и добрее, даст смысл жизни и все
+такое. Даже отпустит грехи, как бы дико не звучало. На это уходит масса сил:
+нужно изучить психологический портрет богача, правильно составить текст, нажать
+на больные точки... И это работает. На раскрутку может понадобиться год, но
+бабла придет до отвала. А весь этот год нужно платить оператору, чтобы он не
+ушел. Так что твои 5, 10 или даже 100 долларов спустят на почтовые рассылки и
+телефонные звонки. И так везде, не только в Википедии.
+
+---
+
+Учитывая, что Мэтт занимался благотворительностью со студенческих лет, ни минуты
+не сомневаюсь в его правоте. А уж как меня задрали спамом сотрудники Википедии
+после того, как я перевел им 100 рублей!
+
+Благотворительность -- такой же бизнес, только немного с другим подходом.
