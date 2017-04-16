@@ -17,16 +17,17 @@ of successful education means to make a mistake. Even Python with all its
 benefits.
 
 You could ask me: no Python, great, so what else could you suggest? Let me keep
-an answer for a couple of paragraps. Instead, could you think just a minute on
+an answer for a couple of paragraphs. Instead, could you think just a minute on
 what's the reason of IT education in general? I mean, we attend to IT department
 for... what?
 
 To learn a modern language? Maybe. But once you finish the university, you'll
 realize there are lots of new languages and frameworks. Your possible employers
 don't need PHP + jQuery anymore, they want Ruby + React. Or substitute those
-tools with Java and Scala. In a long term, you cannot reach a train that moves
-faster day after day. Since technologies became simpler (Python, Ruby, Node.js),
-there are more and more people claim on the same workplace.
+tools with Java and Scala, it doesn't matter. In a long term, you cannot reach a
+train that moves faster day after day. Since technologies became simpler
+(Python, Ruby, Node.js), there are more and more people claim on the same
+workplace.
 
 One of your trump card might be a good knowledge of algorithms. I mean, you must
 understand how the things work rather then copying and pasting them from the
@@ -71,7 +72,7 @@ won't be growth in your career. Because developing web apps becomes easier
 nowadays regardless Ruby, Node.js and crowds of students. How would you survive?
 
 So after all, what language could make you high in algorithmic thinking?
-Suddenly, It's Lisp =) or Scheme if talking more precisely. Scheme is the best
+Suddenly, it's Lisp =) or Scheme if talking more precisely. Scheme is the best
 tool to learn programming, I think. Not C, Python, or Javascript.
 
 Scheme forces you to make everything from scratch by your own. At the end of
