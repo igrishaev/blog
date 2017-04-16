@@ -24,7 +24,7 @@ for... what?
 To learn a modern language? Maybe. But once you finish the university, you'll
 realize there are lots of new languages and frameworks. Your possible employers
 don't need PHP + jQuery anymore, they want Ruby + React. Or substitute those
-terms with Java and Scala. In a long term, you cannot reach a train that moves
+tools with Java and Scala. In a long term, you cannot reach a train that moves
 faster day after day. Since technologies became simpler (Python, Ruby, Node.js),
 there are more and more people claim on the same workplace.
 
@@ -62,7 +62,7 @@ SOLID. Python is a great choice for them. To build a chart, to train a neural
 network.
 
 But that easiness could even kill willness to learn. For a newbie, neither a
-good syntax and rich standard library could help to become a a good
+good syntax and rich standard library could help to become a good
 programmer. Maybe to write a web app, to find the first job, but not to teach
 you how to solve problems other than putting a JSON into DB.
 
