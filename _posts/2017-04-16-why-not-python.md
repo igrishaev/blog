@@ -86,7 +86,7 @@ it. And nobody couldn't develop a new curriculum. But I know what did
 [Dijkstra say][url-letter] about that and I cannot agree more with his opinion.
 
 Long story short: try Lisp. It's not a silver bullet. Perhaps you would never
-work with in in the future. There a quite a few jobs, I know. But even bits of
-its knowledge will make you a better programmer than you are now.
+work with it in the future. There a quite a few jobs, I know. But even bits of
+its knowledge will make you a better programmer than now you are.
 
 [url-letter]:http://www.cs.utexas.edu/users/EWD/OtherDocs/To%20the%20Budget%20Council%20concerning%20Haskell.pdf
