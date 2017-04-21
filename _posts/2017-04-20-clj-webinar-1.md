@@ -29,4 +29,4 @@ Links from the video:
 
 - [nREPL](https://github.com/clojure/tools.nrepl)
 
-  Clojure package that provides advances features in REPL.
+  Clojure package that provides advanced features in REPL.
