@@ -6,18 +6,15 @@ redirect_from: /2012/08/06/1/
 date: "2012-08-06 04:25:53"
 ---
 
-Увлеченный программист, работаю удаленно с западными заказчиками. Интересуюсь
-функциональной парадигмой, диалектами Лиспа, собеседованиями, наймом,
-переговорами и образованием.
+I'm an IT-engineer working remotely witn European customers. A fan of functinal
+programing and Lisp-family languages. Enjoy swimming and winter sports. A father
+of two. Interested in books, negotiation and education. A speaker in our local
+community.
 
-Провожу тематические встречи с докладами. Люблю бег, плавание и зимние виды
-спорта. Ращу сына и дочь.
+My pages on the Internet:
 
-Мои страницы:
-
-- [Резюме](https://github.com/igrishaev/CV)
-- [LinkedIn](https://www.linkedin.com/in/igrishaev)
 - [GitHub](https://github.com/igrishaev)
-- [Вконтакте](https://vk.com/igrishaev)
+- [LinkedIn](https://www.linkedin.com/in/igrishaev)
+- [CV](https://github.com/igrishaev/CV)
 
-Пишите на почту [ivan@grishaev.me](mailto:ivan@grishaev.me)
+Mail me on [ivan@grishaev.me](mailto:ivan@grishaev.me)
