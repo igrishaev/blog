@@ -15,6 +15,5 @@ My pages on the Internet:
 
 - [GitHub](https://github.com/igrishaev)
 - [LinkedIn](https://www.linkedin.com/in/igrishaev)
-- [CV](https://github.com/igrishaev/CV)
 
 Mail me on [ivan@grishaev.me](mailto:ivan@grishaev.me)
