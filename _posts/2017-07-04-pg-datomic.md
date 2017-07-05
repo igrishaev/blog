@@ -123,6 +123,8 @@ minute and I read it.
 Once you've finished with the docs, feel free to the next step: dumping your
 PostgreSQL data.
 
+## Dump Postgres database
+
 Exporting you data into a set of files won't be so difficult I believe. I may
 guess your project has `projectname.db` module that handles the most of database
 stuff. It should have `clojure.java.jdbc` module imported and `*db*` or
