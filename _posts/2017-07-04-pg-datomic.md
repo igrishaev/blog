@@ -662,7 +662,7 @@ underlying logic. A good example might be to add `get-user-by-id`,
 
 If you use [HugSQL][hugsql] or [YeSQL][yesql] Clojure libraries than you already
 have such functions created dynamically from `*.sql` files. That is quite better
-then having naked SQL everywhere. Porting such a project to Datomic will be much
+than having naked SQL everywhere. Porting such a project to Datomic will be much
 easier.
 
 
