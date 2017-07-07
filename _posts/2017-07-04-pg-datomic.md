@@ -445,9 +445,9 @@ of threading macro.
 ### Shrink your tables
 
 Migrating to the new datastore backend is a good chance to refactor your
-schema. For those who has spend years working with relational database it is not
+schema. For those who has spent years working with relational database it is not
 a secret that typical SQL applications suffer from lots of tables. In SQL, it is
-not enough to have just "entities" tables: users, orders, etc. Often, you need
+not enough to keep just "entities" tables: users, orders, etc. Often, you need
 to associate a product with colors, a blog post with tags or a user with
 permissions. That leads to `product_colors`, `post_tags` and other bridge
 tables. You join them in a query to "go through" from a user to their orders,
@@ -484,8 +484,8 @@ rather declare the following schema:
 ~~~
 
 In Postgres, you will need `post_tags` bridge table with `post_id` and `tag_id`
-foreign keys. In datomic, you simply pass a vector if IDs when in `:post/tags`
-field when creating a post.
+foreign keys. In datomic, you simply pass a vector of IDs in `:post/tags` field
+when creating a post.
 
 Migrating to Datomic is a great chance to get rid of those tables.
 
@@ -495,8 +495,8 @@ Both Postgres and Datomic provide support of enum types. A enum type is a set of
 values. An instance of enum type may have only one of those values.
 
 In Postgres, I use enum types a lot. They are fast, reliable and provide strong
-consistency of you data. For example, if you have an order with possible states
-"new", "pending" and "paid", please don't use `varchar` type for that. Somehow
+consistency of you data. For example, if you have an order with possible "new",
+"pending" and "paid" states, please don't use `varchar` type for that. Somehow
 you may write something wrong there, for example mix up the register or make a
 misprint. So you'd better to declare the schema as follows:
 
@@ -564,7 +564,7 @@ consistent.
 
 Personally, I try to avoid using JSON in Postgres as long as it is
 possible. Adding JSON fields everywhere turns your Postgres installation into
-MongoDB. It becomes quite easy to make a mistake and corrupt the data and fall
+MongoDB. It becomes quite easy to make a mistake or corrupt the data and fall
 into a situation when one half or your JSON data has a particular key and the
 rest half does not.
 
@@ -592,7 +592,7 @@ where
 In Datomic, there is no JSON type for attributes. I'm not sure I made a proper
 decision, but I just put those JSON data into a text attribute. Sure, where is
 no a way to access separate fields in a datalog query or apply roles to
-them. But at least I can restore the data then selecting a single entity:
+them. But at least I can restore the data when selecting a single entity:
 
 ~~~clojure
 ;; local handler to parse JSON with keywords in keys
@@ -615,12 +615,12 @@ them. But at least I can restore the data then selecting a single entity:
 ### Foreign keys
 
 In RDBS, a typical table has auto-incremental `id` field that marks a unique
-number of that row. When you need to refer to another table, say an order or a
-column, you declare a foreign key that just keeps a value for those id. Since
-they are auto-generated, you should never bother if their real values, but only
-consistency.
+number of that row. When you need to refer to another table, an order or a
+user's profile, you declare a foreign key that just keeps a value for those
+id. Since they are auto-generated, you should never bother on their real values,
+but only consistency.
 
-In Datomic, you do not have a possibility to have auto-incremented values. When
+In Datomic, you do not have possibility to have auto-incremented values. When
 you import your data, it's important to handle foreign keys (or references in
 terms of Datomic) properly. During the import, we populate `:<entity>/pg-id`
 field that holds the legacy Postgres value. Once you import a table with foreign
@@ -632,7 +632,7 @@ keys, you may resolve a reference as follows:
 ~~~
 
 A reference attribute may be represented as vector of two where the first value
-is an attribute name and the second its value.
+is an attribute name and the second is its value.
 
 For new entities created in production after migration to Datomic, you do not
 need to submit `.../pg-id` value. You may either delete it (retract) once the
@@ -642,10 +642,10 @@ indicator that marks legacy data.
 ## Update the code
 
 This step would be the most boring, I believe. You need to scan the whole
-project and fix those fragments where access the data from the database.
+project and fix those fragments where you access the data from the database.
 
 Since it is a good practice to prepend attributes with a namespace, the most
-common change would be an attribute renaming I believe:
+common change would be attribute renaming I believe:
 
 ~~~clojure
 ;; before
@@ -908,8 +908,7 @@ dashboard.
 
 Some security issues may be mentioned here. The console does not support any
 login/password authentication, so it is quite unsafe to run the console on
-production server as-is. It's quite important at least some of the following
-steps:
+production server as-is. Implement at least some of the following steps:
 
 1. Proxy the console with Nginx. It must not be reachable by itself.
 2. Limit access by a list of IPs. These may be your office or your home only.
@@ -917,10 +916,10 @@ steps:
    encrypt would be a great choice (see my [recent post](/en/letsencrypt)).
 4. Add basic/digest authentication to your Nginx config.
 
-To run a console as a service, create another `console.conf` file in `/etc/init.d/`
-directory. Use the `datomic.conf` file as template. Substitute the primary
-command with those one to run a console. Now you can run the console only when
-you really need it:
+To run a console as a service, create another `console.conf` file in
+`/etc/init.d/` directory. Use the `datomic.conf` file as template. Substitute
+the primary command with those one shown above. Now you can run the console only
+when you really need it:
 
 ~~~bash
 sudo start console
@@ -936,7 +935,7 @@ by running `pgdump` against Postgres backend. Datomic provides a high-level
 backing up algorithm that performs in several threads. In addition, it
 supports [AWS S3][aws-s3] service as a destination point.
 
-A typical backup command looks like as follows:
+A typical backup command looks as follows:
 
 ~~~shell
 /path/to/datomic/bin/datomic -Xmx4g -Xms4g backup-db <datomic-url> <destination>
@@ -950,7 +949,7 @@ full command looks something like:
 AWS_ACCESS_KEY_ID=xxxxxx AWS_SECRET_KEY=xxxxxxx \
 /path/to/datomic/bin/datomic -Xmx4g -Xms4g backup-db \
 datomic:sql://xxxxxxxx?jdbc:postgresql://localhost:5432/datomic?user=xxxxxx&password=xxxxxxx" \
-s3://secret-backet/datomic/2017/07/04
+s3://secret-bucket/datomic/2017/07/04
 ~~~
 
 The date part in the end is substituted automatically using `$(shell date
@@ -965,9 +964,9 @@ Add that command into your crontab file to make backups regularly.
 ### Backups as a way to deploy the data
 
 The good news are backup's structure does not depend on the backend type. No
-matter you dump in-memory storage or Postgres cluster, the backup can be restored
-everywhere as well. It gives us a possibility to migrate the data on our local
-machine, make a backup and then restore it into production database.
+matter you dump in-memory storage or Postgres cluster, the backup can be
+restored everywhere as well. It gives us possibility to migrate the data on our
+local machine, make a backup and then restore it into production database.
 
 Once you finished migrating you data, launch the backup command described
 above. The backup should go to S3. On the server, run the `restore` command:
@@ -975,7 +974,7 @@ above. The backup should go to S3. On the server, run the `restore` command:
 ~~~bash
 AWS_ACCESS_KEY_ID=xxxxx AWS_SECRET_KEY=xxxxx
 /path/to/datomic/bin/datomic -Xmx4g -Xms4g restore-db \
-s3://secret-backet/datomic/2017/07/04 \
+s3://secret-bucket/datomic/2017/07/04 \
 "datomic:sql://xxxxxxx?jdbc:postgresql://localhost:5432/datomic?user=xxxx&password=xxxxx"
 ~~~
 
