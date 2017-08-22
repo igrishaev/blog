@@ -173,12 +173,4 @@ application, we do:
 > ...gives a seq of maps...
 ~~~
 
-A list of dependencies used in that example:
-
-~~~clojure
-[org.xerial/sqlite-jdbc "3.20.0"]
-[org.clojure/java.jdbc "0.7.0"]
-[mount "0.1.11"]
-~~~
-
 Hope this article will help those who've got stuck with SQLite.
