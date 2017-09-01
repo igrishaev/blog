@@ -115,8 +115,10 @@ Than it compiles into a Clojure function:
   (get-oreders db {:department-name dep-name}))
 ~~~
 
-You may go further and include Selmer, the templating library inspired by
-Jinja2. It's aimed at HTML rendering first but still may be used for any kind of
+[selmer]: https://github.com/yogthos/Selmer
+
+You may go further and include [Selmer][selmer], a template library inspired by
+Django. It's aimed at HTML rendering first but still may be used for any kind of
 documents including SQL.
 
 As I see it, a good templating system would be enough to generate SQL that fits
