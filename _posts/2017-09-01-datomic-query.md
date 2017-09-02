@@ -54,7 +54,7 @@ People who work with such non-wide spreaded languages as Clojure usually do not
 use ORMs. But still, we need to build complicated queries. The community offers
 a handful of libraries ([YeSQL][yesql], [HoneySQL][honeysql], [Korma][korma])
 where a query is being constructed within data structures: vectors, maps. I've
-been always agents that approach. Before getting more experienced with Clojure,
+been always against that approach. Before getting more experienced with Clojure,
 I felt uncomfortable constructing nested vectors like this one:
 
 ~~~
