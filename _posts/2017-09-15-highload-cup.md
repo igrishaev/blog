@@ -151,6 +151,12 @@ just partials on them.
 
 Having that, I could quickly switch from SQLite-powered backed to Datomic.
 
+[datomic-query]: http://grishaev.me/en/datomic-query
+
+The only think I've got stuck on was applying optional filters to a query. That
+became a reason to write ["Conditional Queries in Datomic"][datomic-query]
+article.
+
 [db-master]: https://github.com/igrishaev/highloadcup/blob/master/src/highloadcup/db.clj
 [db-sqlite]: https://github.com/igrishaev/highloadcup/blob/sqlte/src/highloadcup/db.clj
 
