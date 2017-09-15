@@ -304,3 +304,6 @@ chat, fixing the infrastructure, solving bugs, writing wiki and adapting the
 official website.
 
 Thank you guys, your are real professionals!
+
+**PS** to my Russian readers: you are welcome to share that post with your
+foreign colleagues. Next time, let them join Highload Cup too!
