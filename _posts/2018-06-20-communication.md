@@ -2,7 +2,7 @@
 layout: post
 title:  "Общение. Факты и оценки"
 permalink: /communication
-categories: reading books kindle
+categories: communication life
 lang: ru
 ---
 
