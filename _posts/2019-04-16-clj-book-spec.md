@@ -189,8 +189,8 @@ true
 ~~~clojure
 (s/def ::ne-string
   (fn [val]
-	(and (string? val)
-     	 (not (empty? val)))))
+    (and (string? val)
+         (not (empty? val)))))
 ~~~
 
 Быстрая проверка:
@@ -498,10 +498,10 @@ Spec предлагает такие возможности. Это функци
 (s/def ::->int
   (s/conformer
    (fn [value]
- 	(try
-   	(Integer/parseInt value)
-   	(catch Exception e
-     	::s/invalid)))))
+   (try
+     (Integer/parseInt value)
+     (catch Exception e
+       ::s/invalid)))))
 ~~~
 
 Такую спеку передают в `s/conform` вместе с данными:
@@ -527,7 +527,7 @@ Spec предлагает такие возможности. Это функци
 ~~~clojure
 (s/def ::->int+
   (s/and ::ne-string
-     	::->int))
+       ::->int))
 
 (s/conform ::->int+ nil)
 :clojure.spec.alpha/invalid
@@ -544,7 +544,7 @@ JSON не поддерживает даты, поэтому их передаю�
 
 ~~~clojure
 (require '[clojure.instant
-       	:refer [read-instant-date]])
+         :refer [read-instant-date]])
 
 (read-instant-date "2019")
 #inst "2019-01-01T00:00:00.000-00:00"
@@ -557,11 +557,11 @@ JSON не поддерживает даты, поэтому их передаю�
   (s/and
    ::ne-string
    (s/conformer
-	(fn [value]
-  	(try
-    	(read-instant-date value)
-    	(catch Exception e
-      	::s/invalid))))))
+  (fn [value]
+    (try
+      (read-instant-date value)
+      (catch Exception e
+        ::s/invalid))))))
 ~~~
 
 Как и в случае с числом, перед разбором значения мы делаем минимальные
@@ -597,10 +597,10 @@ JSON не поддерживает даты, поэтому их передаю�
 (s/def ::->bits
   (s/conformer
    (fn [value]
- 	(case value
-   	"32" 32
-   	"64" 64
-   	::s/invalid))))
+   (case value
+     "32" 32
+     "64" 64
+     ::s/invalid))))
 
 (s/conform ::->bits "32")
 32
@@ -618,7 +618,7 @@ JSON не поддерживает даты, поэтому их передаю�
 (s/def ::->bits
   (s/conformer
    (fn [value]
- 	(get bits-map value ::s/invalid))))
+     (get bits-map value ::s/invalid))))
 ~~~
 
 Вариант выше хорош еще тем, что его опорная точка – словарь соответствий –
@@ -627,9 +627,9 @@ JSON не поддерживает даты, поэтому их передаю�
 
 Подобным способом восстанавливают логические значения из строк. Нет единого
 соглашения о том, как передавать истину и ложь в тексте. Это может быть
-`"True"`, `"TRUE"`, `"1"`, `"on"`, `"yes"` для истины и их противоположности:
-`"FALSE"`, `"no"`, `"off"`... При разборе таких значений важно приводить их к
-одному регистру. В Clojure `"FALSE"` и `"false"` – это разные строки, хотя
+`True`, `TRUE`, `1`, `on`, `yes` для истины и их противоположности:
+`FALSE`, `no`, `off`... При разборе таких значений важно приводить их к
+одному регистру. В Clojure `FALSE` и `false` – это разные строки, хотя
 отправитель имел в виду одно и то же.
 
 Сценарий вывода выглядит так:
@@ -643,13 +643,13 @@ JSON не поддерживает даты, поэтому их передаю�
 ~~~clojure
 (s/def ::->bool
   (s/and ::ne-string
-     	(s/conformer clojure.string/lower-case)
-     	(s/conformer
-      	(fn [value]
-        	(case value
-              ("true" "1" "on" "yes") true
-  	        ("false" "0" "off" "no") false
-              ::s/invalid)))))
+        (s/conformer clojure.string/lower-case)
+     (s/conformer
+        (fn [value]
+          (case value
+            ("true" "1" "on" "yes") true
+            ("false" "0" "off" "no") false
+            ::s/invalid)))))
 ~~~
 
 Примеры его работы:
@@ -699,8 +699,8 @@ true
 ~~~clojure
 (defn enum [& args]
   (let [arg-set (set args)]
-	(fn [value]
-  	(contains? arg-set value))))
+    (fn [value]
+      (contains? arg-set value))))
 ~~~
 
 Внутренняя функция замкнута на переменной `arg-set`. Это множество, полученное
@@ -727,11 +727,11 @@ true
 (defmacro with-conformer
   [bind & body]
   `(s/conformer
-	(fn [~bind]
-  	  (try
-        ~@body
-        (catch Exception e#
-      	  ::s/invalid)))))
+  (fn [~bind]
+    (try
+      ~@body
+      (catch Exception e#
+        ::s/invalid)))))
 ~~~
 
 Примеры из реального проекта. Вывод числа:
@@ -741,7 +741,7 @@ true
   (s/and
    ::ne-string
    (with-conformer val
- 	(Integer/parseInt val))))
+   (Integer/parseInt val))))
 ~~~
 
 Вывод логического значения:
@@ -751,9 +751,9 @@ true
   (s/and
    ->lower
    (with-conformer val
- 	(case val
-      ("true"  "1" "on"  "yes") true
-   	  ("false" "0" "off" "no" ) false))))
+   (case val
+     ("true"  "1" "on"  "yes") true
+     ("false" "0" "off" "no" ) false))))
 ~~~
 
 , где `->lower` это тоже обертка для приведения регистра:
@@ -761,8 +761,8 @@ true
 ~~~clojure
 (def ->lower
   (s/and
-   string?
-   (s/conformer clojure.string/lower-case)))
+    string?
+    (s/conformer clojure.string/lower-case)))
 ~~~
 
 в примере выше не обязательно указывать `invalid` для значения по
@@ -1852,7 +1852,7 @@ Instrument не подходит для боевого режима, потом�
 (time
  (dotimes [n 10000]
    (date-range-sec-orig
-    #inst "2019" #inst "2020")))
+     #inst "2019" #inst "2020")))
 ~~~
 
 ~~~
@@ -1971,16 +1971,11 @@ Spec входит в поставку Clojure и потому не меняет�
 (expound/expound string? 1)
 ~~~
 
-~~~clojure
-nil
+~~~
 -- Spec failed --------------------
-
   1
-
 should satisfy
-
   string?
-
 -------------------------
 Detected 1 error
 ~~~
