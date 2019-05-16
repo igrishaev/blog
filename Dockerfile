@@ -9,4 +9,4 @@ COPY Gemfile* ./
 RUN bundle install
 RUN rm Gemfile*
 
-CMD jekyll serve --watch --limit_posts 5
+CMD jekyll serve --watch
