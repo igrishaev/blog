@@ -2,7 +2,7 @@
 layout: post
 title:  "Перенесли чат в Телеграм"
 permalink: /deep-ref-chat
-categories: deep-refactoring chat
+tags: deep-refactoring chat
 ---
 
 На прошлой неделе провели с коллегами оптимизацию. Вынесли общение, связанное с

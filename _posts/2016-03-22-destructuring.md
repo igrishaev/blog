@@ -2,7 +2,7 @@
 layout: post
 title:  "Деструктивный синтаксис в функциях"
 permalink: /destructuring
-categories: python fp destructuring syntax
+tags: python fp destructuring syntax
 ---
 
 С удивлением обнаружил, что в Питоне редко пользуются деструктивным

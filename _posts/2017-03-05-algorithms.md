@@ -2,7 +2,7 @@
 layout: post
 title:  "Алгоритмы"
 permalink: /algorithms
-categories: algorithms idiots google twitter ruby
+tags: algorithms idiots google twitter ruby
 ---
 
 В интернете новый мем: оказывается, алгоритмы не нужны. Все началось с того, что

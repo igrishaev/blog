@@ -2,7 +2,7 @@
 layout: post
 title:  "Исключения в Clojure"
 permalink: /clj-book-exceptions
-categories: clojure book exceptions programming
+tags: clojure book exceptions programming
 lang: ru
 ---
 

@@ -2,7 +2,7 @@
 layout: post
 title:  "Twitter Feed закрывается"
 permalink: /twitter-feed
-categories: twitter feed rss
+tags: twitter feed rss
 lang: ru
 ---
 

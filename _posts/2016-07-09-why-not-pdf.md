@@ -2,7 +2,7 @@
 layout: post
 title:  "Причины отказа от ПДФ"
 permalink: /why-not-pdf
-categories: pdf
+tags: pdf
 ---
 
 Еще год назад я был твердо уверен, что лучший формат для книг и статей --

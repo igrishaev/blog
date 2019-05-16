@@ -2,7 +2,7 @@
 layout: post
 title:  "Кложа. Причины успеха"
 permalink: /clojure-win
-categories: clojure win
+tags: clojure win
 ---
 
 Я вижу три причины, по которым Кложа стала успешной технологией.

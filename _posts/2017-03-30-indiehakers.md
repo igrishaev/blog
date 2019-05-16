@@ -2,7 +2,7 @@
 layout: post
 title:  "Благотворительность"
 permalink: /charity
-categories: charity
+tags: charity
 ---
 
 Тема урока -- благотворительность. Из разговора Мэтью, учителем английского:

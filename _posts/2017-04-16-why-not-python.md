@@ -2,7 +2,7 @@
 layout: post
 title:  "Why not Python"
 permalink: /en/why-not-python
-categories: python education
+tags: python education
 lang: en
 ---
 

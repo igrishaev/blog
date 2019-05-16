@@ -2,7 +2,7 @@
 layout: post
 title:  "Емакс и парное программирование"
 permalink: /emacs-pair
-categories: work programming emacs
+tags: work programming emacs
 lang: ru
 ---
 

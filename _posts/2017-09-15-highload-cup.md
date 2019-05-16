@@ -2,7 +2,7 @@
 layout: post
 title:  "Clojure in Highload Cup"
 permalink: /en/highload-cup
-categories: highload mail.ru clojure
+tags: highload mail.ru clojure
 lang: en
 ---
 

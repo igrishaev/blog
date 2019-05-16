@@ -2,7 +2,7 @@
 layout: post
 title:  "A hidden message in Cognicast podcasts"
 permalink: /en/cognicast
-categories: cognicast cognitest clojure gauntlet
+tags: cognicast cognitest clojure gauntlet
 lang: en
 ---
 

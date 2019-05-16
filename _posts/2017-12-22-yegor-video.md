@@ -2,7 +2,7 @@
 layout: post
 title:  "Встреча с Егором. Видео"
 permalink: /yegor-video
-categories: deef-refactoring yegor
+tags: deef-refactoring yegor
 lang: ru
 ---
 

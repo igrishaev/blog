@@ -2,7 +2,7 @@
 layout: post
 title:  "Введение в веб-разработку на Clojure. Часть I"
 permalink: /clj-book-web-1
-categories: clojure book web programming
+tags: clojure book web programming
 lang: ru
 ---
 

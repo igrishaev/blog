@@ -2,7 +2,7 @@
 layout: post
 title:  "Мобильное приложение"
 permalink: /mobile-app
-categories: mobile app
+tags: mobile app
 lang: ru
 ---
 

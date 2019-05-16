@@ -2,7 +2,7 @@
 layout: post
 title:  "Бизнес как игра"
 permalink: /business-game
-categories: books business game
+tags: books business game
 ---
 
 ![cover](/assets/static/business-game.png)

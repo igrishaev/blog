@@ -2,7 +2,7 @@
 layout: post
 title:  "Об авторском праве"
 permalink: /copyright
-categories: copyright
+tags: copyright
 lang: ru
 ---
 

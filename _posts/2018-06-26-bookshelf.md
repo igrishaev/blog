@@ -2,7 +2,7 @@
 layout: post
 title:  "Новый раздел: книжная полка"
 permalink: /new-bookshelf
-categories: reading books
+tags: reading books
 lang: ru
 ---
 

@@ -2,7 +2,7 @@
 layout: post
 title:  "Полезный сервис Requestb.in"
 permalink: /requestbin
-categories: http webdev
+tags: http webdev
 ---
 
 Наткнулся на полезный сервис [Request Bin](http://requestb.in/).

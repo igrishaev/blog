@@ -2,7 +2,7 @@
 layout: post
 title:  "Мракобесие в школах"
 permalink: /obscurantism
-categories: life
+tags: life
 lang: ru
 ---
 

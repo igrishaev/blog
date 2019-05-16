@@ -2,7 +2,7 @@
 layout: post
 title:  "Этаоин Шрдлу"
 permalink: /etaoin-shrdlu-novel
-categories:
+tags: books
 lang: ru
 ---
 

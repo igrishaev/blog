@@ -2,7 +2,7 @@
 layout: post
 title:  "Питонячьи хитрости"
 permalink: /python-tricks
-categories: python tricks
+tags: python tricks
 ---
 
 Расскажу о всяких хитростях Питона, с которыми сталкивался в работе. Долгое

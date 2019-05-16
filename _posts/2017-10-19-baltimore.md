@@ -2,7 +2,7 @@
 layout: post
 title:  "Съездил в Балтимор"
 permalink: /baltimore
-categories: baltimore clojure travel
+tags: baltimore clojure travel
 lang: ru
 ---
 

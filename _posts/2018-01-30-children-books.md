@@ -2,7 +2,7 @@
 layout: post
 title:  "Что читать детям"
 permalink: /children-books
-categories: books children life
+tags: books children life
 lang: ru
 ---
 

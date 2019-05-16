@@ -2,7 +2,7 @@
 layout: post
 title:  "Медицинская страховка"
 permalink: /insurance
-categories: life
+tags: life
 lang: ru
 ---
 

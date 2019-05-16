@@ -2,7 +2,7 @@
 layout: post
 title:  "Clojure.spec"
 permalink: /clj-book-spec
-categories: clojure book web programming
+tags: clojure book web programming
 lang: ru
 ---
 

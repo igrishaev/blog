@@ -2,7 +2,7 @@
 layout: post
 title:  "Сегодня рассказываю про удаленную работу"
 permalink: /hexlet-remote
-categories: remote work hexlet slack
+tags: remote work hexlet slack
 ---
 
 **UPD** [Ссылка на дамп чата][wiki-remote]. Через несколько дней

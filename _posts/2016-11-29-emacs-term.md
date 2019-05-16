@@ -2,7 +2,7 @@
 layout: post
 title:  "Емакс в терминале"
 permalink: /emacs-term
-categories: emacs terminal
+tags: emacs terminal
 ---
 
 Долгое время я пользовался Емаксом с графическим интерфейсом. Для Мака такой

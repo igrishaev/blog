@@ -2,7 +2,7 @@
 layout: post
 title:  "Кредная карта"
 permalink: /credit-card
-categories: no credit
+tags: no credit
 ---
 
 Знакомый говорит -- возьми кредитную карту Тинькова. Высокой процент

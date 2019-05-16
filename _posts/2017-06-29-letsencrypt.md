@@ -2,7 +2,7 @@
 layout: post
 title:  "Let's encrypt"
 permalink: /en/letsencrypt
-categories: ssl letsencrypt security
+tags: ssl letsencrypt security
 lang: en
 ---
 

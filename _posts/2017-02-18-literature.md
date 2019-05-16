@@ -2,7 +2,7 @@
 layout: post
 title:  "Русская литература"
 permalink: /literature
-categories: books literature
+tags: books literature
 ---
 
 Я вдруг понял, отчего прохладно отношусь к русской классической

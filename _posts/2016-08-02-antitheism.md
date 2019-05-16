@@ -2,7 +2,7 @@
 layout: post
 title:  "Антитеизм"
 permalink: /antitheism
-categories: antitheism religion
+tags: antitheism religion
 ---
 
 Оказывается, мое отношение к религии называется "Антитеизм". Вот и хорошо,

@@ -2,7 +2,7 @@
 layout: post
 title:  "Стоп-спор"
 permalink: /no-disputes
-categories: life
+tags: life
 ---
 
 Сравнительно недавно я прошел какую-то черту (возможно, возрастную), после

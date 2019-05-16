@@ -2,7 +2,7 @@
 layout: post
 title:  "Питон и ненависть"
 permalink: /py-hate
-categories: python programming
+tags: python programming
 lang: ru
 ---
 

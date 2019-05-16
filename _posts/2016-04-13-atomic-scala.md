@@ -2,7 +2,7 @@
 layout: post
 title:  "Книга Atomic Scala и наивные впечатления от языка"
 permalink: /atomic-scala
-categories: scala books
+tags: scala books
 ---
 
 ![cover](/assets/static/atomic-scala.jpg)

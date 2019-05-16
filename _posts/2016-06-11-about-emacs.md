@@ -2,7 +2,7 @@
 layout: post
 title:  "Рассказ о Емаксе"
 permalink: /emacs-story
-categories: emacs
+tags: emacs
 ---
 
 В прошлый четверг [я рассказывал](/hexlet-emacs) аудитории Хекслета про

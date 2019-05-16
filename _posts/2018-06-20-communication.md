@@ -2,7 +2,7 @@
 layout: post
 title:  "Общение. Факты и оценки"
 permalink: /communication
-categories: communication life
+tags: communication life
 lang: ru
 ---
 

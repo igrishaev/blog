@@ -2,7 +2,7 @@
 layout: post
 title:  "First Clojure stream in English"
 permalink: /en/clj-stream
-categories: clojure stream etaoin
+tags: clojure stream etaoin
 lang: en
 ---
 

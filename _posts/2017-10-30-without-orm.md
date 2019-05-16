@@ -2,7 +2,7 @@
 layout: post
 title:  "Без ORM. Доклад в Глубоком Рефакторинге"
 permalink: /orm-video
-categories: orm video
+tags: orm video
 lang: ru
 ---
 

@@ -2,7 +2,7 @@
 layout: post
 title:  "Настольный Линукс"
 permalink: /linux-desktop
-categories: linux ubuntu desktop
+tags: linux ubuntu desktop
 ---
 
 Пока Макбук на ремонте, вынужденно работаю в Убунте. Достал с антресолей

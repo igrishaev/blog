@@ -3,7 +3,7 @@ layout: post
 title:  "Conditional Queries in Datomic"
 date: 2017-09-01T20:49:00Z
 permalink: /en/datomic-query
-categories: clojure datomic sql
+tags: clojure datomic sql
 lang: en
 ---
 

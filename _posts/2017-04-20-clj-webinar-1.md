@@ -2,7 +2,7 @@
 layout: post
 title:  "Clojure Webinar #1"
 permalink: /en/clj-webinar-1
-categories: clojure emacs
+tags: clojure emacs
 lang: en
 ---
 

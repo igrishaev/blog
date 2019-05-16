@@ -2,7 +2,7 @@
 layout: post
 title:  "Читаю интернет в Киндле"
 permalink: /kindle-inet
-categories: kindle book reading inet
+tags: kindle book reading inet
 ---
 
 Нет, это не про встроенный в [Киндл](/kindle) браузер. Я продолжаю эксперименты

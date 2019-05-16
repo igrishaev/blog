@@ -2,7 +2,7 @@
 layout: post
 title:  "Проект \"Собеседование\""
 permalink: /project-interview
-categories: education interview
+tags: education interview
 ---
 
 Прерываю череду постов о собеседованиях практической вещью. Рад

@@ -2,7 +2,7 @@
 layout: post
 title:  "Сегодня рассказываю про Емакс"
 permalink: /hexlet-emacs
-categories: hexlet slack emacs
+tags: hexlet slack emacs
 ---
 
 Сегодня, в четверг 9 июня, в 17:00 по Москве я расскажу про Емакс в
