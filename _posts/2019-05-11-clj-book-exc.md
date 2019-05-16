@@ -1258,7 +1258,7 @@ class AccountHandler(RequestHandler):
     if not self.check_that(request):
       return NotFound("No such an account")
 
- 	if not self.check_quotas(request):
+    if not self.check_quotas(request):
       return QuotasReached("Request rate is limited")
 
     return JSONResponse(self.get_data_from_db())
@@ -1725,7 +1725,7 @@ recur from tail position":
 (error! "Some error!" {:type ::error})
 ~~~
 
-Чтобы кинуть исключение с нужными данными.
+, чтобы кинуть исключение с нужными данными.
 
 **Форматированное сообщение.** Иногда нам нужен не контекст, а подробное
 сообщение об ошибке. В этом случае `ex-info` избыточен, поскольку без контекста
