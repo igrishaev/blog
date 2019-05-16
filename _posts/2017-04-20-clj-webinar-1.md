@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Clojure Webinar #1"
-permalink: /en/clj-webinar-1
+permalink: /en/clj-webinar-1/
 tags: clojure emacs
 lang: en
 ---

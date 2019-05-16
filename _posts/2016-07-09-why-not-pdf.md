@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Причины отказа от ПДФ"
-permalink: /why-not-pdf
+permalink: /why-not-pdf/
 tags: pdf
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Емакс в терминале"
-permalink: /emacs-term
+permalink: /emacs-term/
 tags: emacs terminal
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Let's encrypt"
-permalink: /en/letsencrypt
+permalink: /en/letsencrypt/
 tags: ssl letsencrypt security
 lang: en
 ---

@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Clojure in Highload Cup"
-permalink: /en/highload-cup
+permalink: /en/highload-cup/
 tags: highload mail.ru clojure
 lang: en
 ---

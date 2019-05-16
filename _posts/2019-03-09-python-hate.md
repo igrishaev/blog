@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Питон и ненависть"
-permalink: /py-hate
+permalink: /py-hate/
 tags: python programming
 lang: ru
 ---

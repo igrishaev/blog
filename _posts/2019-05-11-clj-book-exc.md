@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Исключения в Clojure"
-permalink: /clj-book-exceptions
+permalink: /clj-book-exceptions/
 tags: clojure book exceptions programming
 lang: ru
 ---

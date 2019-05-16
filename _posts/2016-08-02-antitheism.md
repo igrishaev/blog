@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Антитеизм"
-permalink: /antitheism
+permalink: /antitheism/
 tags: antitheism religion
 ---
 

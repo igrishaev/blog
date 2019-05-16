@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Настольный Линукс"
-permalink: /linux-desktop
+permalink: /linux-desktop/
 tags: linux ubuntu desktop
 ---
 

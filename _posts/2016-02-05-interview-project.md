@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Проект \"Собеседование\""
-permalink: /project-interview
+permalink: /project-interview/
 tags: education interview
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "A hidden message in Cognicast podcasts"
-permalink: /en/cognicast
+permalink: /en/cognicast/
 tags: cognicast cognitest clojure gauntlet
 lang: en
 ---

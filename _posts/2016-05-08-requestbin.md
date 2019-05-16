@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Полезный сервис Requestb.in"
-permalink: /requestbin
+permalink: /requestbin/
 tags: http webdev
 ---
 

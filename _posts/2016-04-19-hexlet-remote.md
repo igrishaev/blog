@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Сегодня рассказываю про удаленную работу"
-permalink: /hexlet-remote
+permalink: /hexlet-remote/
 tags: remote work hexlet slack
 ---
 

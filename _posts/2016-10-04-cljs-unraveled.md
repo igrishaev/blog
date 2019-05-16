@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Книга ClojureScript Unraveled"
-permalink: /cljs-unraveled
+permalink: /cljs-unraveled/
 tags: programming book clojurescript
 lang: ru
 ---

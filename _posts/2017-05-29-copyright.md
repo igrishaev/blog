@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Об авторском праве"
-permalink: /copyright
+permalink: /copyright/
 tags: copyright
 lang: ru
 ---

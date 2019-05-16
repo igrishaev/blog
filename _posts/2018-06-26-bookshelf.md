@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Новый раздел: книжная полка"
-permalink: /new-bookshelf
+permalink: /new-bookshelf/
 tags: reading books
 lang: ru
 ---

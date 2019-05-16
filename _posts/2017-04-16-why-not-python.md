@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Why not Python"
-permalink: /en/why-not-python
+permalink: /en/why-not-python/
 tags: python education
 lang: en
 ---

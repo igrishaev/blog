@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Благотворительность"
-permalink: /charity
+permalink: /charity/
 tags: charity
 ---
 

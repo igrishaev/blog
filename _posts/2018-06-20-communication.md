@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Общение. Факты и оценки"
-permalink: /communication
+permalink: /communication/
 tags: communication life
 lang: ru
 ---

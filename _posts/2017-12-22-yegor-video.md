@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Встреча с Егором. Видео"
-permalink: /yegor-video
+permalink: /yegor-video/
 tags: deef-refactoring yegor
 lang: ru
 ---

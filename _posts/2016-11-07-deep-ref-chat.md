@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Перенесли чат в Телеграм"
-permalink: /deep-ref-chat
+permalink: /deep-ref-chat/
 tags: deep-refactoring chat
 ---
 

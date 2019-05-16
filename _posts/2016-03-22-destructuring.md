@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Деструктивный синтаксис в функциях"
-permalink: /destructuring
+permalink: /destructuring/
 tags: python fp destructuring syntax
 ---
 

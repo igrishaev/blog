@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "First Clojure stream in English"
-permalink: /en/clj-stream
+permalink: /en/clj-stream/
 tags: clojure stream etaoin
 lang: en
 ---

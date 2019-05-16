@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Книга Atomic Scala и наивные впечатления от языка"
-permalink: /atomic-scala
+permalink: /atomic-scala/
 tags: scala books
 ---
 

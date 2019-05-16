@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Медицинская страховка"
-permalink: /insurance
+permalink: /insurance/
 tags: life
 lang: ru
 ---

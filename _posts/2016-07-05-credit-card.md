@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Кредная карта"
-permalink: /credit-card
+permalink: /credit-card/
 tags: no credit
 ---
 

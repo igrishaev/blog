@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Рассказ о Емаксе"
-permalink: /emacs-story
+permalink: /emacs-story/
 tags: emacs
 ---
 

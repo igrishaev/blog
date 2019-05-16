@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Clojure.spec"
-permalink: /clj-book-spec
+permalink: /clj-book-spec/
 tags: clojure book web programming
 lang: ru
 ---

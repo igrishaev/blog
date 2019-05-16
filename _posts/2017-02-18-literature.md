@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Русская литература"
-permalink: /literature
+permalink: /literature/
 tags: books literature
 ---
 

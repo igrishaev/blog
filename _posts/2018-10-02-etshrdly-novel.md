@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Этаоин Шрдлу"
-permalink: /etaoin-shrdlu-novel
+permalink: /etaoin-shrdlu-novel/
 tags: books
 lang: ru
 ---

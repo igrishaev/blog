@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Питонячьи хитрости"
-permalink: /python-tricks
+permalink: /python-tricks/
 tags: python tricks
 ---
 

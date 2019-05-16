@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Что читать детям"
-permalink: /children-books
+permalink: /children-books/
 tags: books children life
 lang: ru
 ---

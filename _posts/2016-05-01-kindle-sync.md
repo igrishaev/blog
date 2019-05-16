@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Читаю интернет в Киндле"
-permalink: /kindle-inet
+permalink: /kindle-inet/
 tags: kindle book reading inet
 ---
 

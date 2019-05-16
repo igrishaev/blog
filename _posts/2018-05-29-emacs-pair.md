@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Емакс и парное программирование"
-permalink: /emacs-pair
+permalink: /emacs-pair/
 tags: work programming emacs
 lang: ru
 ---

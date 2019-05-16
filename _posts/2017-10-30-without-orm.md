@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Без ORM. Доклад в Глубоком Рефакторинге"
-permalink: /orm-video
+permalink: /orm-video/
 tags: orm video
 lang: ru
 ---

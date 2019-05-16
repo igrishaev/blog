@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Мобильное приложение"
-permalink: /mobile-app
+permalink: /mobile-app/
 tags: mobile app
 lang: ru
 ---

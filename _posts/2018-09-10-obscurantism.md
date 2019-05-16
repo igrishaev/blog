@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Мракобесие в школах"
-permalink: /obscurantism
+permalink: /obscurantism/
 tags: life
 lang: ru
 ---

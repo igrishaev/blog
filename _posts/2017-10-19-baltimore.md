@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Съездил в Балтимор"
-permalink: /baltimore
+permalink: /baltimore/
 tags: baltimore clojure travel
 lang: ru
 ---

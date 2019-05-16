@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Бизнес как игра"
-permalink: /business-game
+permalink: /business-game/
 tags: books business game
 ---
 

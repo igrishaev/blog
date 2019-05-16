@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Алгоритмы"
-permalink: /algorithms
+permalink: /algorithms/
 tags: algorithms idiots google twitter ruby
 ---
 

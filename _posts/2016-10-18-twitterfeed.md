@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Twitter Feed закрывается"
-permalink: /twitter-feed
+permalink: /twitter-feed/
 tags: twitter feed rss
 lang: ru
 ---

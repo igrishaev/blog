@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Кложа. Причины успеха"
-permalink: /clojure-win
+permalink: /clojure-win/
 tags: clojure win
 ---
 

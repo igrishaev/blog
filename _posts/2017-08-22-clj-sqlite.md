@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "In-Memory SQLite Database In Clojure"
-permalink: /en/clj-sqlite
+permalink: /en/clj-sqlite/
 tags: clojure sqlite jdbc
 lang: en
 ---

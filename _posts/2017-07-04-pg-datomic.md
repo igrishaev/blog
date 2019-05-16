@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Migration from Postgres to Datomic"
-permalink: /en/pg-to-datomic
+permalink: /en/pg-to-datomic/
 tags: clojure migration postgres datomic database
 lang: en
 ---

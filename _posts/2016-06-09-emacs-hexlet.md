@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Сегодня рассказываю про Емакс"
-permalink: /hexlet-emacs
+permalink: /hexlet-emacs/
 tags: hexlet slack emacs
 ---
 

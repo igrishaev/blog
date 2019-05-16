@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "А всего-то о порно написал"
-permalink: /porn-spike
+permalink: /porn-spike/
 tags: porn spike
 ---
 

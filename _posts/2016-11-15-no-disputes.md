@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Стоп-спор"
-permalink: /no-disputes
+permalink: /no-disputes/
 tags: life
 ---
 
