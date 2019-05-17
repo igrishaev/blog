@@ -7,5 +7,8 @@ serve:
 docker-build:
 	docker build -t blog .
 
-docker-run:
+blog-run:
 	docker run -it --rm -p 4000:4000 -v $(CURDIR):/blog blog
+
+blog-build:
+	docker run -it --rm -p 4000:4000 -v $(CURDIR):/blog blog jekyll build
