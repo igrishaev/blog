@@ -1,8 +1,6 @@
-posts:
-	/usr/local/bin/python scripts/migrate.py
 
-serve:
-	jekyll serve
+git-prepare:
+	git clone -b gh-pages --single-branch git@github.com:igrishaev/interview.git gh-pages
 
 docker-build:
 	docker build -t blog .
@@ -15,4 +13,5 @@ blog-build:
 
 .PHONY: deploy
 deploy: blog-build
+	cp -r _site/* gh-pages
 	cd _site && git add -A && git commit -m "updated" && git push
