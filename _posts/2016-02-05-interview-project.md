@@ -2,7 +2,7 @@
 layout: post
 title:  "Проект \"Собеседование\""
 permalink: /project-interview/
-tags: education interview
+tags: education interview python
 ---
 
 Прерываю череду постов о собеседованиях практической вещью. Рад
