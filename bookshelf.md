@@ -34,7 +34,7 @@ permalink: /bookshelf/
 
     <div class="books-item">
         <div class="thumb">
-            <img src="assets/static/bookshelf/republic.jpg">
+            <img src="/assets/static/bookshelf/republic.jpg">
         </div>
         <div>
             <p>
