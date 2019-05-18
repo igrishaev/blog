@@ -1,7 +1,7 @@
 ---
 layout: page
 title:  "Bookshelf"
-permalink: /bookshelf
+permalink: /bookshelf/
 ---
 
 <style>
