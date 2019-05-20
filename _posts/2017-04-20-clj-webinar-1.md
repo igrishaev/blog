@@ -4,6 +4,7 @@ title:  "Clojure Webinar #1"
 permalink: /en/clj-webinar-1/
 tags: clojure emacs
 lang: en
+youtube: UNMRdi0j6HY
 ---
 
 <iframe width="640" height="360" src="https://www.youtube.com/embed/UNMRdi0j6HY"

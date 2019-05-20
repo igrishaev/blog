@@ -4,6 +4,7 @@ title:  "Съездил в Балтимор"
 permalink: /baltimore/
 tags: baltimore clojure travel
 lang: ru
+youtube: rl8NRFZ2Sbw
 ---
 
 На прошлой неделе съездил в Балтимор на конференцию по Кложе. Впервые посетил

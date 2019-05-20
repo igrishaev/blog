@@ -4,6 +4,7 @@ title:  "Без ORM. Доклад в Глубоком Рефакторинге"
 permalink: /orm-video/
 tags: orm video
 lang: ru
+youtube: qEfNez0Ht7s
 ---
 
 Выступил на последнем митапе с докладом про ORM. Редкий случай, когда самому
