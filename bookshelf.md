@@ -5,39 +5,50 @@ permalink: /bookshelf/
 ---
 
 <style>
-  .books-container {
+  .book-list {
     display: flex;
     flex-direction: column;
-    flex-wrap: wrap;
   }
 
-  .books-item {
+  .book-item {
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     margin-bottom: 45px;
   }
 
-  .thumb {
+  .book-text {}
+
+  .book-thumb {
     width: 150px;
     min-width: 150px;
     height: auto;
     margin: 0 15px 5px 0;
   }
+
+  @media only screen and (max-width: 450px) {
+
+    .book-item {
+      flex-wrap: wrap;
+    }
+
+  }
+
+}
+
+
 </style>
 
 Читаю и складываю здесь.
 
-<div class="books-container">
+<div class="book-list">
 
 
-<div class="books-container">
-
-
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/republic.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Последняя республика</b>
                 <br>
@@ -87,11 +98,11 @@ permalink: /bookshelf/
 
 
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/quests.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Шифры и квесты</b>
                 <br>
@@ -134,11 +145,11 @@ permalink: /bookshelf/
 
 
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/collective.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Программируем коллективный разум</b>
                 <br>
@@ -194,11 +205,11 @@ permalink: /bookshelf/
 
 
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/shulman.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Практическая политология. Пособие по контакту с реальностью</b>
                 <br>
@@ -230,11 +241,11 @@ permalink: /bookshelf/
 
 
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/kama.png">
         </div>
-        <div>
+        <div class="book-text">
 
             <p>
                 <b>Камасутра для оратора</b>
@@ -285,11 +296,11 @@ permalink: /bookshelf/
 
 
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/dp.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Новые правила деловой переписки</b>
                 <br>
@@ -315,11 +326,11 @@ permalink: /bookshelf/
 
 
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/pishi.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Пиши, сокращай</b>
                 <br>
@@ -338,8 +349,8 @@ permalink: /bookshelf/
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/iskusstvo.jpg">
         </div>
         <div>
@@ -357,11 +368,11 @@ permalink: /bookshelf/
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/woman.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Как хочет женщина</b>
                 <br>
@@ -381,11 +392,11 @@ permalink: /bookshelf/
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/kak.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Как жить. Лучшие карточки Медузы</b>
                 <br>
@@ -400,8 +411,8 @@ permalink: /bookshelf/
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/wd-clojure.jpg">
         </div>
         <div>
@@ -418,11 +429,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/ansi-lisp.jpeg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>ANSI common Lisp</b>
                 <br>
@@ -437,8 +448,8 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/sicp.jpg">
         </div>
         <div>
@@ -456,11 +467,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/obj.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Elegant Objects (Volume 1)</b>
                 <br>
@@ -473,11 +484,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/get-clojure.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Getting Clojure</b>
                 <br>
@@ -492,11 +503,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/kthulhu.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Зов Ктулху</b>
                 <br>
@@ -511,11 +522,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/clojure-true.jpeg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Clojure for Brave and True</b>
                 <br>
@@ -530,11 +541,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/atomic-scala.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Atomic Scala</b>
                 <br>
@@ -553,11 +564,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/1984.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>1984</b>
                 <br>
@@ -572,11 +583,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/business-game.png">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Бизнес как игра</b>
                 <br>
@@ -590,11 +601,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/ci.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Язык программирования Си</b>
                 <br>
@@ -609,11 +620,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/dragon.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>The Eyes of the Dragon</b>
                 <br>
@@ -628,11 +639,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/erlang.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Программирование в Erlang</b>
                 <br>
@@ -645,11 +656,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/goal.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Цель</b>
                 <br>
@@ -669,11 +680,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/haskell.png">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Learn you a Haskell for Great Good!</b>
                 <br>
@@ -687,11 +698,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/joyofx.png">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Удовольствие от Х</b>
                 <br>
@@ -707,11 +718,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/kovodstvo.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Ководство</b>
                 <br>
@@ -725,11 +736,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/money.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Пес по имени Мани</b>
                 <br>
@@ -748,11 +759,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/pcl.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Practical Common Lisp</b>
                 <br>
@@ -768,11 +779,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/upgrade.jpeg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Апгрейд обезьяны</b>
                 <br>
@@ -786,11 +797,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/uprav.jpeg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Управление выбором</b>
                 <br>
@@ -803,11 +814,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/fem.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Конец феминизма</b>
                 <br>
@@ -821,11 +832,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/yandex.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Яндекс.Книга</b>
                 <br>
@@ -844,11 +855,11 @@ Luminus. В книге рассмотрены основные шаги по с�
     </div>
 
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/adobe.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Adobe. Уроки мастерства</b>
                 <br>
@@ -864,11 +875,11 @@ Luminus. В книге рассмотрены основные шаги по с�
     </div>
 
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/civil.png">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Судьба цивилизатора</b>
                 <br>
@@ -882,11 +893,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/coders.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Кодеры за работой</b>
                 <br>
@@ -901,11 +912,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/friends.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Как завоевывать друзей</b>
                 <br>
@@ -919,11 +930,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/omar.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Как чуден милой лик</b>
                 <br>
@@ -936,11 +947,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/start-no.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Сначала скажите нет</b>
                 <br>
@@ -955,11 +966,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/startup.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Стартап</b>
                 <br>
@@ -972,11 +983,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/ishod.jpeg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Исход (Противостояние)</b>
                 <br>
@@ -991,11 +1002,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/misery.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Мизери</b>
                 <br>
@@ -1009,11 +1020,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/rye.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Над пропастью во ржи</b>
                 <br>
@@ -1027,11 +1038,11 @@ Luminus. В книге рассмотрены основные шаги по с�
         </div>
     </div>
 
-    <div class="books-item">
-        <div class="thumb">
+    <div class="book-item">
+        <div class="book-thumb">
             <img src="/assets/static/bookshelf/max.jpg">
         </div>
-        <div>
+        <div class="book-text">
             <p>
                 <b>Анимация в 3D Studio Max 6</b>
                 <br>
