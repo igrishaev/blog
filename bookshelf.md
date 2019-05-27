@@ -8,6 +8,7 @@ permalink: /bookshelf/
   .books-container {
     display: flex;
     flex-direction: column;
+    flex-wrap: wrap;
   }
 
   .books-item {
