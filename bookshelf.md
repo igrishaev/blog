@@ -13,7 +13,6 @@ permalink: /bookshelf/
   .book-item {
     display: flex;
     flex-direction: row;
-    flex-wrap: wrap;
     margin-bottom: 45px;
   }
 
