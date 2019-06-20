@@ -1334,6 +1334,8 @@ nil
   [["1" "test@test.com" "active"]
    ["Blocked" "2" "joe@doe.com" "pending"]])
 
+(s/conform ::users user-data)
+
 [{:id 1 :email "test@test.com" :status :USER_ACTIVE}
  {:blocked true :id 2 :email "joe@doe.com" :status :USER_PENDING}]
 ~~~
