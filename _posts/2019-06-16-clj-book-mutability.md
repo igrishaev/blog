@@ -29,6 +29,8 @@ lang: ru
 противоположную позицию: рассмотрим, какими способом хранить и управлять
 состоянием в программах.
 
+<!-- more -->
+
 ## Общие проблемы изменяемых данных
 
 Clojure устроена так, что на ней трудно писать императивный код. В императивном
@@ -76,7 +78,7 @@ DEFAULT_PARAMS = {
 }
 
 def api_call(**params):
-    params.update(DEFAULT_PARAMS) ;; pay attention
+    params.update(DEFAULT_PARAMS) # !
     resp = requests.post("https://api.host.com", **params)
     return resp.json()
 ~~~
