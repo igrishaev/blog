@@ -119,6 +119,149 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/env/">Environ variables are not for configuring software</a>
+            </h2>
+
+            <span class="post-meta">30.05.2018 &emsp; <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/env/" rel="tag">env</a></span>
+
+            <div class="entry">
+                
+                    
+<p>The recent project I’ve finished and deployed gave me a strong understanding why
+using environment variables for configuring is a bad idea. Briefly, I’m going to
+not use them anymore for setting up my software and maybe clean them out from my
+previous projects. There is a pile of reasons for that.</p>
+
+<p>Generally speaking, env vars aren’t bad in general. I’d just like to highlight
+that they come from the ancient Unix time when people didn’t have suitable
+development tools. But nowadays we have some. For example, thanks to JSON or
+YAML, we do not need to parse integers or floats manually. The same about arrays
+or maps. Some better formats like EDN even provide built-in date support or even
+custom tags to parse special values. With these great tools, there is no need to
+roll back for 20 years ago and parse text chunks once again. That’s the routine
+we’ve successfully passed.</p>
+
+<p>In short words, a config is usually a structured data. And we’ve got stuff to
+read data from text without any problems. Why use env vars then?</p>
+
+<p>You might be a bit wondered reading this since it conflicts with the third
+section of <a href="https://12factor.net/config">12 Factor App</a> Development Manifest. This section clearly
+says:</p>
+
+<blockquote>
+  <p>The twelve-factor app stores config in environment variables (often shortened
+to env vars or env). Env vars are easy to change between deploys without
+changing any code; unlike config files, there is little chance of them being
+checked into the code repo accidentally; and unlike custom config files, or
+other config mechanisms such as Java System Properties, they are a language-
+and OS-agnostic standard.</p>
+</blockquote>
+
+<p>Well, I read this paragraph a number of times but still guessing is there any
+sense out here. Easy to change? Well, you’ll need to edit some file or config
+anyway. Little chance to commit them into a repository, really? If you have an
+<code class="highlighter-rouge">ENV</code> file with 30 variables, there is no any difference between it and any
+other file in your repository, say “config.json”, “settings.prop” or
+“params.conf”. ENV file is just yet another file without any special
+properties. You still need to control by your own whether it should be ignored
+or tracked by your repo.</p>
+
+<p>The whole #3 section says nothing about what benefits the env vars bring into a
+project. From my prospective, since the 12 Factor App was initially written by
+Ruby programmers, there is nothing else then just a cargo cult.</p>
+
+<p>The idea of getting rid of a regular JSON, YAML, Java .props config file is
+totally wrong. Of cause, if a program requires one or two arguments, there is no
+a reason to distribute a separate config file. Especially when those parameters
+have default values and might be overridden by command line arguments. But the
+problem is, our modern web apps require up to 30 parameters at once and even
+more.</p>
+
+<p>Definitely, you’ll keep them in a text file, say “ENV” or “vars”. So what’s the
+difference here to have a JSON file?</p>
+
+<p>If you take <a href="https://github.com/tolitius/cprop">cprop</a>, a Clojure library that turns env vars into a map,
+you’ll see that it provides a bunch of tricky rules for types coercion and
+splitting nested values. For example, “true” and “false” strings will be
+converted to a boolean value. A variable with a double underscore will be read
+as a nested map:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">export </span><span class="nv">FOO__BAR</span><span class="o">=</span>42
+</code></pre></div></div>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="mi">42</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>That tricky logic may let you down sometimes. Imagine you’ve got a secret API
+key for some service that it a string but consists only of numbers:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">export </span><span class="nv">API_KEY</span><span class="o">=</span>123123123
+</code></pre></div></div>
+
+<p>In Clojure, the result would be a number, not a string:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:api-key</span><span class="w"> </span><span class="mi">123123123</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>There won’t be any error during parsing, but suddenly, in the middle of running
+an app, you’ll get an exception that says something like “the Long type cannot
+be cast to a Char Sequence”. It’s because the code tries to act on that API key
+like it’s a string, but it’s an integer.</p>
+
+<p>You should have marked that key with double quotes instead:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">export </span><span class="nv">API_KEY</span><span class="o">=</span><span class="s1">'"123123123"'</span>
+</code></pre></div></div>
+
+<p>Well, that’s a known issue and it’s even mentioned in the official readme, but
+still. I can never remember the proper order: single-double or vice versa. I
+don’t want to fight with those damned quotes again. It has been enough in shell
+scripting: single quotes, double quotes, back-ticks. Now again in my Clojure? No
+way.</p>
+
+<p>In terms of <code class="highlighter-rouge">cprop</code>, there is nothing weird here because it doesn’t know
+anything about the variable’s semantics. They are all just text and nothing else.</p>
+
+<p>I’d like to stress that we’ve just invented our own system of rules and wrote
+plenty of code just for one purpose: to turn env vars into a map. It’s plain to
+see the code behaves a bit strange and forces us to keep that ugly scenario with
+quotes in mind.</p>
+
+<p>Even a dull JSON file that supports a limited number of hard-coded types seems
+to be a salvation after been using env vars for a long time, really. A string
+will always be a string and won’t turn into a number. There is no need to add a
+double underscore in the middle of a name to simulate nested data.</p>
+
+<p>But the main reason for getting rid of env vars is they tie us to all that
+legacy that our systems still need to carry. Let’s say honestly, env vars are
+just another part of Unix shell and related stuff. I do not have anything
+against them when they are used in the right way. For system administration, for
+example, but not for web development.</p>
+
+<p>I mentioned before that a program should never rely on shell commands. Never
+call <code class="highlighter-rouge">mkdir</code>, <code class="highlighter-rouge">curl</code> or any other commands. You may think it reduces the code,
+but in fact, it’s a deal with the devil. Java code that creates a folder will
+work on any OS or device as expected. But a shell command won’t.</p>
+
+<p>The same I may say about env vars. They are part of a shell system and that’s
+why are great for OS environment, but not a web application. They should never
+affect an app running in production. The codebase should rely only on its own
+resources. From the app’s prospective, a JSON/EDN config file is something that
+an app may control. But the env vars are not.</p>
+
+<p>I think that’s enough said on the subject. Provide your own config based on any
+structured file format, no matter if it is a JSON, YAML or EDN file. But leave
+the env vars alone. They are from Unix legacy and have nothing common with
+modern development.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/emacs-pair/">Емакс и парное программирование</a>
             </h2>
 
@@ -1809,112 +1952,6 @@ strike?”. А слово will употребляется только в зна
 <p>Пусть все, что меня отвлекает, будет рядом и в больших количествах.</p>
 
 <p><img src="https://user-images.githubusercontent.com/1059232/36245425-17a44e18-123c-11e8-8b44-b32891f235e1.jpg" alt="" /></p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/come/">Как хочет женщина. Конспект</a>
-            </h2>
-
-            <span class="post-meta">12.02.2018 &emsp; <a href="/tag/books/" rel="tag">books</a></span>
-
-            <div class="entry">
-                
-                    
-<p><img src="https://user-images.githubusercontent.com/1059232/36092910-14dd9de0-0ffa-11e8-8a70-50d2263f6c4e.png" alt="" /></p>
-
-<p>Читаю занятную книгу <a href="https://www.mann-ivanov-ferber.ru/books/kak-hochet-zhenshina/">“Как хочет женщина”</a>. По ссылке – страница на сайте
-издательства: описание, об авторе, отзывы. А я тезисно изложу суть первой
-трети. Остальное – как дочитаю.</p>
-
-<hr />
-
-<p>Мужчины и женщины похожи гораздо больше, чем кажется. Внутри групп мужчин и
-женщин вариативность всех признаков велика, но среднестатистический мужчина мало
-чем отличается от среднестатистической женщины.</p>
-
-<p>Если кажется, что в вашем теле что-то не так (почти всем так и кажется),
-например, что-то слишком большое или маленькое, несимметричное и пр., то, скорее
-всего, вы нормальны. Ненормальность почти всегда связана с болью или
-дискомфортом. Только профессиональный врач может диагностировать отклонение. Но
-не вы или ваши друзья.</p>
-
-<p>В психике человека есть две педали: газ (возбуждение) и тормоз
-(подавление). Чувствительность педалей всегда индивидуальна.</p>
-
-<p>Одна из главный мыслей, которую можно вынести из книги: оказывается, я нормальна
-(я нормален).</p>
-
-<p>Два основных чувства в человеке это любовь и стресс.</p>
-
-<p>Любовь основана на привязанности.</p>
-
-<p>Стресс важен для человека. Краткосрочный стресс и благополучный выход из него –
-нормальная работа мозга.</p>
-
-<p>В современном обществе человек может пребывать под стрессом месяцы и
-годы. Нервная система на это не рассчитана. Наша культура не поощряет снижение
-стресса: мужчинам нельзя плакать, женщины должны быть сильными. У современного
-городского жителя остается все меньше пространства, где можно вести себя
-естественно и выпускать пар.</p>
-
-<p>В борьбе со стрессом важно научиться его переживать. Полный цикл можно описать
-по этапам: угроза – стресс – действия – победа.</p>
-
-<p>Незавершенный стресс переходит в хронические вредные привычки: алкоголизм,
-сериалы или видеоигры сверх меры, навязчивое сексуальное поведение. Если
-мужчинам свойственно первые два (алкоголь и телевизор), то у женщин встречается
-обострение либидо. Удовольствия подобный секс не приносит.</p>
-
-<p>В период стресса обостряется нужда во внешней заботе о нас. Поминутная проверка
-почты и социальных сетей – это прямая реакция на хронический стресс. Мы ждем,
-что нам ответят, залайкают и перепостят, то есть проявят заботу.</p>
-
-<p>Переживание стресса сводится к отпусканию обеих педалей газа и тормоза. Стрессу
-позволяют быть, не пытаясь подавить веществами, эмоциями или новыми партнерами.</p>
-
-<p>Лучше всего завершить стресс физической нагрузкой: фитнес, пробежка,
-бассейн. Подойдет любая забота о собственном теле: новая прическа,
-маникюр. Ежедневная <a href="/workout">зарядка</a> равномерно снижает стресс.</p>
-
-<p>Одна из сильнейших причин для стресса – уверенность, что мы должны заниматься
-сексом при любых условиях. Не захотел – импотент. Не захотела –
-фригидная. Мысль о том, что тебе не хочется, но ты должен, сводит на нет любое
-желание и делает пары несчастными.</p>
-
-<p>Лучший способ решить проблему выше – договориться с партнером не заниматься
-сексом какое-то время. Вот так: чтобы улучшить секс, нужно на время перестать им
-заниматься.</p>
-
-<p>Женщины сильнее подвержены стрессу из-за сложившейся культуры. Считается, что
-именно на женщине лежит ответственность за отношения. Мужчинам не зазорно
-выпускать пар асоциальными способами: напиваться, провоцировать драку, ломать
-мебель. Женщина не может себе такого позволить.</p>
-
-<p>Эффективно бороться с хроническим стрессом или душевной травмой можно при помощи
-сеансов осознанности. Нужно лечь на две минуты, прогнать из головы все мысли и
-концентрироваться на дыхании. Это помогает вытеснять негативные мысли из головы
-осознанно.</p>
-
-<p>Существует три типа привязанности к партнеру: с уверенностью, с тревогой и с
-избеганием. Психотип закладывается в детстве исходя из того, как ребенок
-привязан к родителям: доверяет ли он им, не доверяет или боится
-довериться. Полноценное удовольствие от секса получают те, кто привязывается с
-уверенностью. Вторые два типа либо используют секс для укрепления отношений
-(т.н. “утешительный секс”), либо для демонстрации себя, либо занимают полярные
-места в нездоровых отношениях (насильник, жертва).</p>
-
-<p>Чтобы справиться с негативными эмоциями, нужно 1) проговаривать их; 2) брать за
-них ответственность; 3) ждать, пока они пройдут сами и 4) устранить причины их
-возникновения.</p>
-
-<p>Бог и собака – вот кто не станет осуждать нас. Но и не смогут заняться с нами
-сексом.</p>
 
                 
             </div>
