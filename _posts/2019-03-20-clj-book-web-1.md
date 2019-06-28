@@ -1341,7 +1341,7 @@ wrap-json-response облегчает возврат JSON-данных. Это m
 
 (def app
   (-> page-body
-      wrap-json-body {:keywords? true}))
+      (wrap-json-body {:keywords? true})))
 ~~~
 
 Чтобы отправить JSON-запрос к серверу, понадобится специальная программа. Это
@@ -1431,9 +1431,9 @@ curl \
 (defn wrap-headers-kw
   [handler]
   (fn [request]
-	(-> request
-    	(update :headers keywordize-keys)
-    	handler)))
+    (-> request
+      (update :headers keywordize-keys)
+      handler)))
 ~~~
 
 #### wrap-request-id
@@ -1456,8 +1456,8 @@ curl \
 (defn wrap-request-id
   [handler]
   (fn [request]
-	(let [uuid (or (get-in request [:headers :x-request-id])
-               	(str (UUID/randomUUID)))]
+    (let [uuid (or (get-in request [:headers :x-request-id])
+                   (str (UUID/randomUUID)))]
       (-> request
           (assoc-in [:headers :x-request-id] uuid)
           (assoc :request-id uuid)
@@ -1473,7 +1473,7 @@ curl \
 (defn some-handler
   [request]
   (let [{:keys [params request-id]} request]
-	(log/info "Request id: %s" request-id)))
+    (log/info "Request id: %s" request-id)))
 ~~~
 
 #### wrap-current-user
@@ -1488,12 +1488,12 @@ curl \
 (defn wrap-current-user
   [handler]
   (fn [request]
-	(let [user-id (-> request :session :user-id)
-      	user (when user-id
-             	(get-user-by-id user-id))]
-  	(-> request
-      	(assoc :user user)
-      	handler))))
+    (let [user-id (-> request :session :user-id)
+          user (when user-id
+                 (get-user-by-id user-id))]
+      (-> request
+          (assoc :user user)
+          handler))))
 ~~~
 
 Условно говоря, хранить `user-id` в сессии безопасно. Сессия подписана секретным
