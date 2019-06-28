@@ -20,7 +20,7 @@ blog-dev:
 .PHONY: deploy
 deploy: blog-build
 	cp -r _site/* gh-pages
-	cd _site && git add -A && git commit -m "updated" && git push
+	cd gh-pages && git add -A && git commit -m "updated" && git push
 
 
 static:
