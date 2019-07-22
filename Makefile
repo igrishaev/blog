@@ -15,8 +15,8 @@ run:
 build:
 	$(DOCKER_BASE) jekyll build
 
-dev:
-	$(DOCKER_BASE) jekyll serve --watch --limit_posts 10
+serve:
+	$(DOCKER_BASE) jekyll serve --watch
 
 
 .PHONY: deploy
