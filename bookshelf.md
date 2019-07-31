@@ -4,40 +4,6 @@ title:  "Bookshelf"
 permalink: /bookshelf/
 ---
 
-<style>
-  .book-list {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .book-item {
-    display: flex;
-    flex-direction: row;
-    margin-bottom: 45px;
-  }
-
-  .book-text {}
-
-  .book-thumb {
-    width: 150px;
-    min-width: 150px;
-    height: auto;
-    margin: 0 15px 5px 0;
-  }
-
-  @media only screen and (max-width: 450px) {
-
-    .book-item {
-      flex-wrap: wrap;
-    }
-
-  }
-
-}
-
-
-</style>
-
 Читаю и складываю здесь.
 
 <div class="book-list">
@@ -65,7 +31,7 @@ permalink: /bookshelf/
         </div>
     </div>
 
-<!-- -- -->
+
 
     <div class="book-item">
         <div class="book-thumb">
@@ -91,7 +57,7 @@ Time было праздником. Конечно, я не следую все�
         </div>
     </div>
 
-<!-- -- -->
+
 
     <div class="book-item">
         <div class="book-thumb">
@@ -117,7 +83,7 @@ Time было праздником. Конечно, я не следую все�
         </div>
     </div>
 
-<!-- -- -->
+
 
     <div class="book-item">
         <div class="book-thumb">
