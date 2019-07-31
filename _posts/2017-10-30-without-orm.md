@@ -11,7 +11,7 @@ youtube: qEfNez0Ht7s
 понравилось. По этой причине решил поделиться с вами.
 
 <iframe width="854" height="480" src="https://www.youtube.com/embed/qEfNez0Ht7s"
-frameborder="0" gesture="media" allowfullscreen></iframe>
+gesture="media" allowfullscreen></iframe>
 
 [Слайды](https://speakerdeck.com/deeprefactoring/biez-orm)
 

@@ -13,7 +13,7 @@ youtube: ISANJ69EdvE
 с чистым звуком:
 
 <iframe width="743" height="418" src="https://www.youtube.com/embed/ISANJ69EdvE"
-frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope;
+allow="accelerometer; autoplay; encrypted-media; gyroscope;
 picture-in-picture" allowfullscreen></iframe>
 
 [Слайды][slides]

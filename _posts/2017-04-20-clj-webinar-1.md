@@ -8,7 +8,7 @@ youtube: UNMRdi0j6HY
 ---
 
 <iframe width="640" height="360" src="https://www.youtube.com/embed/UNMRdi0j6HY"
-frameborder="0" allowfullscreen></iframe>
+allowfullscreen></iframe>
 
 In this video, I'm speaking on Emacs advantages when using Clojure.
 

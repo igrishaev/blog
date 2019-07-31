@@ -44,4 +44,4 @@ primitive 8-bit midi-driver.
 
 <iframe width="640" height="360"
 src="https://www.youtube.com/embed/videoseries?list=PL532E466C1847FF92&index=9"
-frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+allow="autoplay; encrypted-media" allowfullscreen></iframe>

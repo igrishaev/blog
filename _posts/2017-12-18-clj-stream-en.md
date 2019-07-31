@@ -12,5 +12,5 @@ English. Although I was nervous a bit and thus sounded weird, I think the result
 worth publishing it here:
 
 <iframe width="640" height="360" src="https://www.youtube.com/embed/cLL_5rETLWY"
-frameborder="0" gesture="media" allow="encrypted-media"
+gesture="media" allow="encrypted-media"
 allowfullscreen></iframe>

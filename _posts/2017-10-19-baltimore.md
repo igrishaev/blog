@@ -67,7 +67,7 @@ youtube: rl8NRFZ2Sbw
 даже сфотаться, но я что-то тупанул. Зато стал свидетелем этих кадров:
 
 <iframe width="854" height="480" src="https://www.youtube.com/embed/rl8NRFZ2Sbw"
-frameborder="0" allowfullscreen></iframe>
+allowfullscreen></iframe>
 
 Кложе 10 лет, Рич режет юбилейный торт. Шок, смотреть до конца.
 
