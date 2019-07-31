@@ -6,11 +6,7 @@ tags: clojure book programming
 lang: ru
 ---
 
-{:.no_toc}
-## Содержание
-
-* dummy
-{:toc toc_levels="1..2"}
+{% include toc.html id="clj-book-mutability" %}
 
 В этой главе мы поговорим про изменяемость данных. Тем, кто программирует на
 классических языках, покажется странным, что теме уделено так много

@@ -11,11 +11,7 @@ web development section to see how far I could go. It's in Russian because here
 Clojure isn't popular and its popularity across developers is low. I hope I'll
 translate this in English one day.)*
 
-## Содержание
-{:.no_toc}
-
-* dummy
-{:toc}
+{% include toc.html id="clj-book-web" %}
 
 В этой главе мы рассмотрим азы разработки на Clojure под
 веб-платформу. Поговорим о том, как устроен протокол HTTP и как передавать по

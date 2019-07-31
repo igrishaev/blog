@@ -47,11 +47,7 @@ requirements as well. Each database is different, so it's impossible to develop
 a final tool that could handle all the cases. But at least you may borrow some
 of those.
 
-## Table of Contents
-{:.no_toc}
-
-* dummy
-{:toc}
+{% include toc.html id="pg-to-datomic" %}
 
 ## Introduction
 

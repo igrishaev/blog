@@ -6,11 +6,7 @@ tags: clojure book programming config
 lang: ru
 ---
 
-{:.no_toc}
-## Содержание
-
-* dummy
-{:toc toc_levels="1..2"}
+{% include toc.html id="clj-book-config" %}
 
 В этой главе мы рассмотрим, как сделать Clojure-проект удобным в плане
 настроек. Мы разберем основные приемы конфигурирования: форматы файлов,
