@@ -16,7 +16,7 @@ build:
 	$(DOCKER_BASE) jekyll build
 
 serve:
-	$(DOCKER_BASE) jekyll serve --watch
+	$(DOCKER_BASE) jekyll serve --watch --incremental
 
 
 .PHONY: deploy
