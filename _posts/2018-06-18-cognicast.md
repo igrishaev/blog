@@ -22,13 +22,13 @@ Drive (Sega Genesis in the US) for a long time being a kid.
 This is the first sound. It appears when a hero picks up a key:
 
 <iframe width="640" height="360"
-src="https://www.youtube.com/embed/fLnkCAFihqA?start=64" frameborder="0"
+src="https://www.youtube.com/embed/fLnkCAFihqA?start=64"
 allow="autoplay; encrypted-media" allowfullscreen></iframe>
 
 And this is the second when a hero goes through a portal:
 
 <iframe width="640" height="360"
-src="https://www.youtube.com/embed/fLnkCAFihqA?start=93" frameborder="0"
+src="https://www.youtube.com/embed/fLnkCAFihqA?start=93"
 allow="autoplay; encrypted-media" allowfullscreen></iframe>
 
 I may guess there is a hidden message here: before entering a podcast, you pick
