@@ -15,9 +15,9 @@ local community.
 [cv]: https://github.com/igrishaev/CV
 [cv-pdf]: https://github.com/igrishaev/CV/raw/master/Ivan_Grishaev_CV.pdf
 
-At the moment, I'm a backend engineer at [Exoscale][exo] which is a European cloud
-hosting provider. I do Clojure a lot on daily basis. If you interested in more,
-check out my [CV on GitHub][cv] or download a [PDF version][cv-pdf].
+At the moment, I'm a backend engineer at [Exoscale][exo] which is a European
+cloud hosting provider. I do Clojure a lot on a daily basis. If you interested
+in more, check out my [CV on GitHub][cv] or download a [PDF version][cv-pdf].
 
 My pages on the Internet:
 
