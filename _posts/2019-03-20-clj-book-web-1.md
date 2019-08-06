@@ -343,7 +343,7 @@ Clojure обязаны принимать и отдавать одинаковы
 
 ~~~clojure
 [ring/ring-core "1.7.1"]
-[ring-jetty-adapter "1.7.1"]
+[ring/ring-jetty-adapter "1.7.1"]
 ~~~
 
 Пример запуска сервера:
