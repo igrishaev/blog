@@ -2,7 +2,7 @@
 layout: post
 title:  "Книга ClojureScript Unraveled"
 permalink: /cljs-unraveled/
-tags: programming book clojurescript
+tags: programming book clojure
 lang: ru
 ---
 
