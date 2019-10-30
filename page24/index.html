@@ -105,6 +105,209 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/python-tricks/">Питонячьи хитрости</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2016-07-26T00:00:00+00:00">
+        Jul 26, 2016
+    </time>
+
+    <a href="/tag/python/" rel="tag">python</a>, <a href="/tag/tricks/" rel="tag">tricks</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Расскажу о всяких хитростях Питона, с которыми сталкивался в работе. Долгое
+время записывал их на бумажку, а теперь решил скомпоновать. Думаю, будет
+любопытно опытным питонщикам. Сказанное ниже носит познавательный характер. Не
+призываю использовать в проде.</p>
+
+<h3 id="Многоточие">Многоточие</h3>
+
+<p>Неожиданно, при определенных условиях многоточие <code class="highlighter-rouge">...</code> становится правильной
+лексемой! Внутри оператора <code class="highlighter-rouge">[]</code> многоточие вырождается в объект <code class="highlighter-rouge">Ellipsis</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;&gt;&gt;</span> <span class="n">d</span> <span class="o">=</span> <span class="p">{(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">Ellipsis</span><span class="p">,</span> <span class="mi">2</span><span class="p">):</span> <span class="mi">42</span><span class="p">}</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">d</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="mi">42</span>
+</code></pre></div></div>
+
+<p>Если переопределить метод <code class="highlighter-rouge">__getitem__</code> и проверять аргументы на многоточие,
+можно добиться интересных результатов. Так работает библиотека
+<a href="https://github.com/billpmurphy/hask">hask</a>. В ней с помощью многоточия
+определяются бесконечные списки:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># бесконечный ленивый список от единицы
+</span><span class="n">List</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+
+<span class="c1"># ленивый список от 1 до 100
+</span><span class="n">List</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="mi">100</span><span class="p">]</span>
+
+<span class="c1"># аналогично, но с шагом в 2
+</span><span class="n">List</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+</code></pre></div></div>
+
+<p>В другом месте многоточие вызовет ошибку синтаксиса.</p>
+
+<h3 id="Срезы-в-аргументах">Срезы в аргументах</h3>
+
+<p>В оператор индекса <code class="highlighter-rouge">[]</code> можно передать синтаксис словаря: <code class="highlighter-rouge">key: value,
+...</code>. Тогда в методе <code class="highlighter-rouge">__getitem__</code> мы получим кортеж объектов <code class="highlighter-rouge">slice</code>. Ключ и
+значение хранятся в полях <code class="highlighter-rouge">.start</code> и <code class="highlighter-rouge">.stop</code>. Выглядит так:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">slices</span><span class="p">):</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">slices</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="n">slice_tuple</span> <span class="o">=</span> <span class="n">slices</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">slice_tuple</span> <span class="o">=</span> <span class="p">(</span><span class="n">slices</span><span class="p">,</span> <span class="p">)</span>
+
+        <span class="n">keys</span> <span class="o">=</span> <span class="p">(</span><span class="n">sl</span><span class="o">.</span><span class="n">start</span> <span class="k">for</span> <span class="n">sl</span> <span class="ow">in</span> <span class="n">slice_tuple</span><span class="p">)</span>
+        <span class="n">vals</span> <span class="o">=</span> <span class="p">(</span><span class="n">sl</span><span class="o">.</span><span class="n">stop</span> <span class="k">for</span> <span class="n">sl</span> <span class="ow">in</span> <span class="n">slice_tuple</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span> <span class="n">vals</span><span class="p">))</span>
+
+<span class="n">YourClass</span><span class="p">[</span><span class="s">"foo"</span><span class="p">:</span> <span class="mi">42</span><span class="p">,</span> <span class="s">"bar"</span><span class="p">:</span> <span class="s">"test"</span><span class="p">]</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="p">{</span><span class="s">"foo"</span><span class="p">:</span> <span class="mi">42</span><span class="p">,</span> <span class="s">"bar"</span><span class="p">:</span> <span class="s">"test"</span><span class="p">}</span>
+</code></pre></div></div>
+
+<h3 id="Деструктивный-синтаксис">Деструктивный синтаксис</h3>
+
+<p>Внезапно, деструктивный синтаксис, о котором я <a href="/destructuring">уже писал</a>,
+выпилен в тройке: не проходит проверку синтаксиса. Печаль моя не знает границ.</p>
+
+<p>Это объективный минус третьего Питона. Зачем лишать разработчиков удобной
+возможности? Я постоянно работаю с парами. Синтаксиса <code class="highlighter-rouge">def action((key, val)):</code>
+теперь будет не хватать.</p>
+
+<h3 id="Погружение-в-словарь">Погружение в словарь</h3>
+
+<p>Предположим, есть вложенные словари, ответ какого-то микросервиса. Нужно взять
+поле из глубины. Структура ответа меняется. Часто разработчики пишут следующее:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">'result'</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">'user'</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">'name'</span><span class="p">,</span> <span class="s">'unknown'</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Минусы в том, что код плохо читается и созданы 2 лишних словаря. Аргументы
+вычисляются до шага в функцию, поэтому словари будут созданы даже когда ключи
+есть.</p>
+
+<p>Неочевидный минус, из-за которого придется чинить прод в пятницу, кроется в
+методе <code class="highlighter-rouge">.get</code>. Он возвращает дефолт только если ключа нет. А если ключ есть и
+равен <code class="highlighter-rouge">None</code>, то вернется <code class="highlighter-rouge">None</code> вне зависимости от того, что передано в дефолт.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="s">"result"</span><span class="p">:</span> <span class="p">{</span><span class="s">"user"</span><span class="p">:</span> <span class="bp">None</span><span class="p">}}</span>
+<span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">'result'</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">'user'</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">'name'</span><span class="p">,</span> <span class="s">'unknown'</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="nb">AttributeError</span><span class="p">:</span> <span class="s">'NoneType'</span> <span class="nb">object</span> <span class="n">has</span> <span class="n">no</span> <span class="n">attribute</span> <span class="s">'get'</span>
+</code></pre></div></div>
+
+<p>В <a href="https://github.com/igrishaev/f">библиотеке f</a> я предложил нормальный способ
+работы со вложенными словарями:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">f</span><span class="o">.</span><span class="n">ichain</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="s">'result'</span><span class="p">,</span> <span class="s">'user'</span><span class="p">,</span> <span class="s">'name'</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="bp">None</span>
+</code></pre></div></div>
+
+<h3 id="Конечное-приведение-типов">Конечное приведение типов</h3>
+
+<p>Приводить типы в конце каждой операции – здравая мысль. Идея в том, чтобы
+добавлять к концу вычислений кусочек <code class="highlighter-rouge">... or &lt;default&gt;</code>, например:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">get_users_count</span><span class="p">()</span> <span class="ow">or</span> <span class="mi">0</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">0</span>
+
+<span class="n">get_account_list</span><span class="p">(</span><span class="nb">id</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="p">[]</span>
+
+<span class="n">f</span><span class="o">.</span><span class="n">ichain</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="s">'result'</span><span class="p">,</span> <span class="s">'user'</span><span class="p">,</span> <span class="s">'name'</span><span class="p">)</span> <span class="ow">or</span> <span class="s">'dunno'</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">dunno</span>
+</code></pre></div></div>
+
+<p>Этот прием спасает злополучного <code class="highlighter-rouge">None</code>, который лезет изо всех щелей. Беда в
+том, что в скриптовых языках нет четких правил для пустых значений. Например,
+функция может отдать или пустой список, или <code class="highlighter-rouge">None</code>. Запомнить невозможно. Рано
+или поздно <code class="highlighter-rouge">None</code> провалится туда, где ожидают список или число.</p>
+
+<p>Решение – выводить типы самостоятельно. Поскольку оператор <code class="highlighter-rouge">or</code> ленив во всех
+языках, выражение справа не будет вычислено без необходимости. Следующий код:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="s">"user"</span><span class="p">:</span> <span class="bp">None</span><span class="p">}</span>
+<span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">"user"</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">"name"</span><span class="p">)</span> <span class="ow">or</span> <span class="s">"dunno"</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="s">"dunno"</span>
+</code></pre></div></div>
+
+<p>вернет ожидаемый дефолт, даже когда ключ есть и равен <code class="highlighter-rouge">None</code>. При этом если в
+юзере лежат актуальные данные, пустой словарь не будет создан.</p>
+
+<h3 id="Правые-методы">Правые методы</h3>
+
+<p>Еще одна особенность классов в Питоне – правые волшебные методы. Они начинаются
+с префикса <code class="highlighter-rouge">r</code>:<code class="highlighter-rouge"> __radd__</code>, <code class="highlighter-rouge">__rsub__</code> и т.д. Как следует из названия, эти
+методы вызываются для правого операнда в тех случаях, когда для левого операнда
+метод не определен.</p>
+
+<p>Другими словами, рассмотрим выражение <code class="highlighter-rouge">a + b</code>. Сперва Питон попытается сделать
+так: <code class="highlighter-rouge">a.__add__(b)</code>. Если для <code class="highlighter-rouge">a</code> метод <code class="highlighter-rouge">__add__</code> неопределен, будет предпринята
+другая попытка: <code class="highlighter-rouge">b.__radd__(a)</code>. И если <code class="highlighter-rouge">__radd__</code> тоже не определен для <code class="highlighter-rouge">b</code>,
+вылезет ошибка.</p>
+
+<p>Правые методы появились в третьей версии Питона. Попробуем реализовать следующее
+поведение: к списку добавляем число. Если прибавляем слева, число становится в
+начало списка. Если справа – в конец.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">List</span><span class="p">(</span><span class="nb">list</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="nf">__add__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">List</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__add__</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span> <span class="o">+</span> <span class="p">[</span><span class="n">other</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">__radd__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">other</span><span class="o">.</span><span class="n">__add__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">other</span><span class="p">]</span><span class="o">.</span><span class="n">__add__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">99</span> <span class="o">+</span> <span class="n">List</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+<span class="p">[</span><span class="mi">99</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+
+<span class="o">&gt;&gt;&gt;</span> <span class="n">List</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span> <span class="o">+</span> <span class="mi">99</span>
+<span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">99</span><span class="p">]</span>
+</code></pre></div></div>
+
+<h3 id="Особенности-среза-в-тройке">Особенности среза в тройке</h3>
+
+<p>Во втором Питоне у классов был особый метод <code class="highlighter-rouge">__getslice__</code> для получения
+среза. В тройке его объединили с <code class="highlighter-rouge">__getitem__</code>. Теперь интерпретатор проверяет,
+что передано в <code class="highlighter-rouge">__getitem__</code>. Если написать <code class="highlighter-rouge">foo[1:2]</code>, будет передан экземпляр
+класса <code class="highlighter-rouge">slice</code>, а если <code class="highlighter-rouge">foo[1, 2]</code> – кортеж.</p>
+
+<p>Этот пункт я привожу к тому, что переопределив метод <code class="highlighter-rouge">__getitem__</code>, мы по запаре
+можем сломать операцию среза. Приходится добавлять условие: если передан срез –
+вызывать предка, если нет – своя логика:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">MyClass</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__getitem__</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="o">...</span>
+</code></pre></div></div>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/linux-desktop/">Настольный Линукс</a>
             </h2>
 
@@ -986,132 +1189,6 @@ case-оператор в зависимости от версии.</p>
 <p>Напомню, сообщество тусит в <a href="https://www.facebook.com/groups/deeprefactoring/">группе Фейсбука</a>. Скоро анонс
 восьмой встречи. Хотите выступить? Пишите в группу.</p>
 
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/credit-card/">Кредная карта</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2016-07-05T00:00:00+00:00">
-        Jul 5, 2016
-    </time>
-
-    <a href="/tag/no/" rel="tag">no</a>, <a href="/tag/credit/" rel="tag">credit</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Знакомый говорит – возьми кредитную карту Тинькова. Высокой процент
-кешбека. Долгий срок гашения задолженности. Всякие акции, бонусы. Удобно. И не
-только Тиньков, еще РокетБанк и другие конкуренты.</p>
-
-<p>Не буду. Вот пост-ответ.</p>
-
-<p>Для обозначения кешбека я буду использовать термин “вознаграждение”. Перый
-вариант уродский, и не ясно, как писать – через е или э.</p>
-
-<p>Большое вознаграждение, говорите? Давайте посчитаем.</p>
-
-<p>Если исключить покупку авиа- и жд-билетов, дорогой техники и прочих дорогих
-штук, на содержание моей семьи уходит 50 тыс. рубей в месяц. Я оценил эту сумму
-эмпирически. Когда все по плану, хватает названной суммы, не нужно идти в банк
-за добавкой. Иногда даже остается излишек.</p>
-
-<p>Представим, что все 50.000 рублей я буду тратить с кредитной карты какого-нибудь
-Тинькова. Первым ограничением станет то, что не смогу оплатить коммуналку,
-потому что лучше Сбербанка ее никто не принимает. Поднес штрих-код, ввел
-показания, готово. Тиньков работает только с МосГорСветом. Так что
-мимо. Коммуналка – это значительная статья расходов, особенно зимой. Вычитаю из
-общей суммы 7000 рублей.</p>
-
-<p>Кружки и секции. Детский тренер по борьбе принимает только налом. У него с
-тысячи сдачи нет, какие карточки. Аналогично в бассейне (взрослый и детский
-абонементы). То же на гимнастике у жены. Вычитаю еще 5 тысяч.</p>
-
-<p>Летом на улице нас преследуют мелкие, но частые траты. Мороженое,
-напитки. Аттракционы в парке, сладости, мелочи для детей. Только нал. Вычту еще
-5 тысяч.</p>
-
-<p>Отниму пару тысяч на случайные траты на себя.</p>
-
-<p>Короче, вот список того, что я могу оплачивать картой – продукты, аптека,
-бензин. Машины нет, так что остаются первые два на общую сумму около 30.000
-рублей.</p>
-
-<p>Максимальный процент возврата у Тинькова – 2 процента. Посчитаем оптимальный
-сценарий, когда все покупки попадают под максимальный процент. 2 процента с
-30.000 будет 600 рублей. Умножим на 12, получим 7200 в год.</p>
-
-<p>С ума сойти. Семь тысяч рублей в год. Сто долларов. Что мне делать с этим
-наваром?</p>
-
-<p>Ладно, предположим, что все же есть способы пользоваться кредиткой чаще, просто
-я о них не знаю. Пусть на семью уходит 60 тыс., а с кредитки оплачиваю 50
-тыс. Тогда 2 процента за год составит 12 тысяч.</p>
-
-<p>Тоже копейки. Тысяча в месяц не делает богаче. Ее вообще не заметишь. Тысяча
-тонет в статистических колебаниях доходов и расходов. Приехал приятель, пошли в
-кафе, просадили. Или приехал, а ты был в отпуске, не пришел, тысяча осталась.</p>
-
-<p>Какой интерес банку что-то выплачивать, ведь это прямые убытки? Ответ в том, что
-убытки компенсируются забывчивостью и недальновидной природой потребителя.</p>
-
-<p>В банках сидят не дураки, а наоборот, люди, которые хорошо владеют
-статистикой. И статистика эта доказывает, что единичный случай начисления
-процентов за пользование деньгами банка выгодней, чем год выплаты
-вознаграждения.</p>
-
-<p>Другими словами, целый год вы получали вознаграждение за покупку продуктов и
-регулярно гасили задолженность до начисления процентов. Но под Новый Год
-забыли. То ли из-за праздничной суеты, то ли потратили больше, чем смогли
-возместить. Начали тикать пени, и они больше вознаграждения. Вот и вся логика.</p>
-
-<p>Мне говорят – нет, у меня календарь выплат с напоминалками, веду учет расходов
-вплоть до зубочистки, со мной быть такого не может. Но вот что,
-послушайте. Когда у человека неограниченный доступ к какому-то ресурсу, не
-злоупотребить им практически невозможно.</p>
-
-<p>Наливают вам бесплатное пиво – напьетесь. Закачали на ноут миллион сериалов –
-не сможете работать над личным проектом. Человек так устроен, это еще до нашей
-эры заметили. Так вот, имея кредит с очень низким дном, загнать себя в яму проще
-простого. Это опасней бухла – поболел день, и ок. В случае с кредитом проблема
-может растянуться на несколько лет или вообще изменить жизнь.</p>
-
-<p>Скажем, кредит карты 90 тысяч, а зарплата бедолаги 40 тысяч. Как он будет себя
-ограничивать? Планировать траты и выплаты? Не смешите. Чтобы контроллировать
-себя, нужен очень серьезный потенциал. Учет, мотивация и планирование. Будет ли
-человек с такими навыками брать кредит? Нет – он просто увидит, что роет себе
-яму. Поэтому кредит и здравомыслие лежат в разных плоскостях.</p>
-
-<p>Наконец, нельзя не сказать про то чувство, когда лично накопил на нужную
-вещь. Сто раз обдумал, взвесил, отверг аналоги и принял твердое решение – да,
-покупаю. Приду домой и начну пользоваться, не отягощенный долгом. Свободный
-человек.</p>
-
-<p>Суммируя:</p>
-
-<ol>
-  <li>Вознаграждение за пользование кредитной картой не так велико, как кажется на
-первый взгляд. Учтите, что не везде вы платите картой.</li>
-  <li>Начисление процентов на непогашенную задолженность компенсирует
-вознаграждение.</li>
-  <li>Чтобы не задолжать банку, требуются самоконтроль. Будет правильней копить
-самостоятельно.</li>
-  <li>Вы получите большее удовольствие от распоряжения личными средствами, чем
-чужими. Деньги будут потрачены мудрее.</li>
-</ol>
 
                 
             </div>
