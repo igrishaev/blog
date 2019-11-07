@@ -1577,7 +1577,7 @@ true.
 lein test :integration
 ~~~
 
-Тесты в deps.edn
+### Тесты в deps.edn
 
 Не все Clojure-проекты используют lein; некоторые перешли на deps.edn. Это
 утилита, разработанная в фирме Cognitect. Основная задача утилиты — управлять
