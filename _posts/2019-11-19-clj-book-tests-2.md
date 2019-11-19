@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Тесты в Clojure (второй врагмент)"
+title:  "Тесты в Clojure (второй фрагмент)"
 permalink: /clj-book-tests-2/
 tags: clojure book programming tests
 lang: ru
