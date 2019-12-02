@@ -21,7 +21,8 @@ in more, check out my [CV on GitHub][cv] or download a [PDF version][cv-pdf].
 
 My pages on the Internet:
 
-- [GitHub](https://github.com/igrishaev)
-- [Linked-In](https://www.linkedin.com/in/igrishaev)
+- [GitHub]({{ site.url_github }})
+- [Linked-In]({{ site.url_linkedin }})
+- [Telegram]({{ site.url_telegram }})
 
 Mail me on [ivan@grishaev.me](mailto:ivan@grishaev.me)
