@@ -1,5 +1,5 @@
 
-all: build deploy
+all: clear build deploy
 
 git-prepare:
 	git clone -b gh-pages --single-branch git@github.com:igrishaev/interview.git gh-pages
