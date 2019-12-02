@@ -20,6 +20,7 @@ function sendTypo() {
     }
 
     var par = selection.anchorNode.textContent;
+    var par = par.replace(/(\r\n|\n|\r)/gm, " ");
     var url = window.location.href;
     var title = document.title;
 
