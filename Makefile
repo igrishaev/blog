@@ -27,3 +27,7 @@ deploy:
 static:
 	open "http://127.0.0.1:8000"
 	cd _site && python -m SimpleHTTPServer 8000
+
+.PHONY: clear
+clear:
+	rm -rf _site
