@@ -1,6 +1,6 @@
 
 function onCtrlEnter(e) {
-    if (event.ctrlKey && event.keyCode === 13) {
+    if ((e.ctrlKey || e.metaKey) && e.keyCode === 13) {
         sendTypo();
     }
 }
@@ -39,7 +39,6 @@ function sendTypo() {
     a.href = "mailto:" + to + "?subject=" + subject + "&body=" + content;
     document.body.appendChild(a);
     a.click();
-
 }
 
-document.onkeyup = onCtrlEnter;
+document.onkeydown = onCtrlEnter;
