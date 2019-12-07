@@ -35,7 +35,6 @@ function sendTypo() {
         + br2 + url;
 
     var a = document.createElement("a");
-    a.href = "mailto:ivan@grishaev.me?subject=Опечатка&body=У тебя в блоге опечатка";
     a.href = "mailto:" + to + "?subject=" + subject + "&body=" + content;
     document.body.appendChild(a);
     a.click();
