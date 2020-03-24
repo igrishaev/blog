@@ -107,6 +107,191 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/clj-sqlite/">In-Memory SQLite Database In Clojure</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-08-22T00:00:00+00:00">
+        Aug 22, 2017
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/sqlite/" rel="tag">sqlite</a>, <a href="/tag/jdbc/" rel="tag">jdbc</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Recently, I’ve been working with a SQLite database using Clojure. In this post,
+I’d like to share my experience that I’ve got from that challenge.</p>
+
+<p>SQLite is a great tool used almost everywhere. Browsers and mobile devices use
+it a lot. A SQLite database is represented by a single file that makes it quite
+easy to share, backup and distribute. It supports most of the production-level
+databases’ features like triggers, recursive queries and so on.</p>
+
+<p>In addition, SQLite has a killer feature to be run completely in memory. So,
+instead of keeping an atom of nested maps, why not to store some temporary data
+into well organized tables?</p>
+
+<p>JDBC has SQLite support as well, you only need to install a driver, the
+documentation says. But then, I’ve got a problem dealing with in-memory
+database:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">spec</span><span class="w">
+  </span><span class="p">{</span><span class="no">:classname</span><span class="w">   </span><span class="s">"org.sqlite.JDBC"</span><span class="w">
+   </span><span class="no">:subprotocol</span><span class="w"> </span><span class="s">"sqlite"</span><span class="w">
+   </span><span class="no">:subname</span><span class="w">     </span><span class="s">":memory:"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="s">"create table users (id integer)"</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="s">"select * from users"</span><span class="p">)</span><span class="w">
+
+</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">SQLiteException</span><span class="w"> </span><span class="p">[</span><span class="n">SQLITE_ERROR</span><span class="p">]</span><span class="w"> </span><span class="n">SQL</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="nb">or</span><span class="w"> </span><span class="n">missing</span><span class="w"> </span><span class="n">database</span><span class="w">
+</span><span class="nb">&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">no</span><span class="w"> </span><span class="n">such</span><span class="w"> </span><span class="n">table</span><span class="err">:</span><span class="w"> </span><span class="n">users</span><span class="p">)</span><span class="w">  </span><span class="n">org.sqlite.core.DB.newSQLException</span><span class="w"> </span><span class="p">(</span><span class="nf">DB.java</span><span class="no">:909</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>What the… I’ve just created a table, why cannot you find it? An interesting
+note, if I set a proper file name for the <code class="highlighter-rouge">:subname</code> field, everything works
+fine. But I needed a in-memory database, not a file.</p>
+
+<p>After some hours of googling and reading the code I’ve found the solution.</p>
+
+<p>The thing is, JDBC does not track DB connections by default. Every time you call
+for <code class="highlighter-rouge">(jdbc/*)</code> function, you create a new connection, perform an operation and
+close it. For such persistent data storages like Postgres or MySQL that’ fine
+although not effective (in our project, we use HikariCP to have a pool of open
+connections).</p>
+
+<p>But for in-memory SQLite database, closing a connection to it leads to wiping
+the data completely out form the RAM. So you need to track the connection in
+more precision way. You will create a connection by yourself and close it when
+the work is done.</p>
+
+<p>First, let’s setup your project:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="no">:dependencies</span><span class="w"> </span><span class="p">[</span><span class="n">...</span><span class="w">
+               </span><span class="p">[</span><span class="n">org.xerial/sqlite-jdbc</span><span class="w"> </span><span class="s">"3.20.0"</span><span class="p">]</span><span class="w">
+               </span><span class="p">[</span><span class="n">org.clojure/java.jdbc</span><span class="w"> </span><span class="s">"0.7.0"</span><span class="p">]</span><span class="w">
+               </span><span class="p">[</span><span class="n">com.layerware/hugsql</span><span class="w"> </span><span class="s">"0.4.7"</span><span class="p">]</span><span class="w">
+               </span><span class="p">[</span><span class="n">mount</span><span class="w"> </span><span class="s">"0.1.11"</span><span class="p">]</span><span class="w">
+               </span><span class="n">...</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>and the database module:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">project.db</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w"> </span><span class="p">[</span><span class="n">mount.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">mount</span><span class="p">]</span><span class="w">
+            </span><span class="p">[</span><span class="n">hugsql.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">hugsql</span><span class="p">]</span><span class="w">
+            </span><span class="p">[</span><span class="n">clojure.java.jdbc</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">jdbc</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Declare a database URI as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">db-uri</span><span class="w"> </span><span class="s">"jdbc:sqlite::memory:"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Our database shares two states: when it’s been set up and ready to work and when
+it has not. To keep the state, let’s use <code class="highlighter-rouge">mount</code> library:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">declare</span><span class="w"> </span><span class="n">db</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">on-start</span><span class="w"> </span><span class="p">[]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">spec</span><span class="w"> </span><span class="p">{</span><span class="no">:connection-uri</span><span class="w"> </span><span class="n">db-uri</span><span class="p">}</span><span class="w">
+        </span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">spec</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="no">:connection</span><span class="w"> </span><span class="n">conn</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">on-stop</span><span class="w"> </span><span class="p">[]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:connection</span><span class="w"> </span><span class="n">.close</span><span class="p">)</span><span class="w">
+  </span><span class="n">nil</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">mount/defstate</span><span class="w">
+  </span><span class="o">^</span><span class="p">{</span><span class="no">:on-reload</span><span class="w"> </span><span class="no">:noop</span><span class="p">}</span><span class="w">
+  </span><span class="n">db</span><span class="w">
+  </span><span class="no">:start</span><span class="w"> </span><span class="p">(</span><span class="nf">on-start</span><span class="p">)</span><span class="w">
+  </span><span class="no">:stop</span><span class="w"> </span><span class="p">(</span><span class="nf">on-stop</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Once you call <code class="highlighter-rouge">(mount/start #'db)</code>, it becomes a map with the following fields:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:connection-uri</span><span class="w"> </span><span class="s">"jdbc:sqlite::memory:"</span><span class="w">
+ </span><span class="no">:connection</span><span class="w"> </span><span class="n">&lt;SomeJavaConnectionObject</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="mi">0</span><span class="n">x0...&gt;</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When any JDBC function or a method accepts that map, it checks for the
+<code class="highlighter-rouge">:connection</code> field. If it’s filled, JDBC uses that connection as well. If it’s
+not, a new connection is issued. In my case, every execute/query call created a
+new in-memory database and stopped it right after the call ends. That’s why the
+second query could not to find <code class="highlighter-rouge">users</code> table: because it was performed within
+another database.</p>
+
+<p>Now with the <code class="highlighter-rouge">db</code> started, you are welcome to perform all the standard <code class="highlighter-rouge">jdbc</code>
+operations:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="s">"create table users (id integer, name text))"</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">jdbc/insert!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">})</span><span class="w">
+</span><span class="p">(</span><span class="nf">jdbc/get-by-id</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="c1">;; {:id 1 :name "Ivan"}</span><span class="w">
+</span><span class="p">(</span><span class="nf">jdbc/find-by-keys</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">})</span><span class="w"> </span><span class="c1">;; ({:id 1 :name "Ivan"})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Finally, you stop the db calling <code class="highlighter-rouge">(mount/stop #'db)</code>. The connection stops, the
+data disappears completely.</p>
+
+<p>For more complicated queries with joins, HugSQL library would be a good
+choice. Create a file <code class="highlighter-rouge">queries.sql</code> in your <code class="highlighter-rouge">resources</code> folder. Say, you want to
+write a complex query that filters a result by some values that probably are not
+set. Here is an example of what you should put into <code class="highlighter-rouge">queries.sql</code> file:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name get-user-visits :?</span>
+<span class="k">select</span>
+    <span class="n">v</span><span class="p">.</span><span class="n">mark</span><span class="p">,</span>
+    <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span><span class="p">,</span>
+    <span class="n">l</span><span class="p">.</span><span class="n">place</span>
+<span class="k">from</span> <span class="n">visits</span> <span class="n">v</span>
+<span class="k">join</span> <span class="n">locations</span> <span class="n">l</span> <span class="k">on</span> <span class="n">v</span><span class="p">.</span><span class="k">location</span> <span class="o">=</span> <span class="n">l</span><span class="p">.</span><span class="n">id</span>
+<span class="k">where</span>
+    <span class="n">v</span><span class="p">.</span><span class="k">user</span> <span class="o">=</span> <span class="p">:</span><span class="n">user_id</span>
+    <span class="cm">/*~ (when (:fromDate params) */</span>
+    <span class="k">and</span> <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span> <span class="o">&gt;</span> <span class="p">:</span><span class="n">fromDate</span>
+    <span class="cm">/*~ ) ~*/</span>
+    <span class="cm">/*~ (when (:toDate params) */</span>
+    <span class="k">and</span> <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span> <span class="o">&lt;</span> <span class="p">:</span><span class="n">toDate</span>
+    <span class="cm">/*~ ) ~*/</span>
+    <span class="cm">/*~ (when (:toDistance params) */</span>
+    <span class="k">and</span> <span class="n">l</span><span class="p">.</span><span class="n">distance</span> <span class="o">&lt;</span> <span class="p">:</span><span class="n">toDistance</span>
+    <span class="cm">/*~ ) ~*/</span>
+    <span class="cm">/*~ (when (:country params) */</span>
+    <span class="k">and</span> <span class="n">l</span><span class="p">.</span><span class="n">country</span> <span class="o">=</span> <span class="p">:</span><span class="n">country</span>
+    <span class="cm">/*~ ) ~*/</span>
+<span class="k">order</span> <span class="k">by</span>
+    <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>In your database module, put the following on the top level:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">hugsql/def-db-fns</span><span class="w"> </span><span class="s">"queries.sql"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now, every SQL template has become a plain Clojure function that takes a
+database and a map of additional parameters. To get all the visits in our
+application, we do:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-user-visits</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:user_id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:fromDate</span><span class="w"> </span><span class="mi">123456789</span><span class="w"> </span><span class="no">:country</span><span class="w"> </span><span class="s">"SomePlace"</span><span class="p">})</span><span class="w">
+</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">...gives</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="nb">seq</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">maps...</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Hope this article will help those who’ve got stuck with SQLite.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/5years/">Пять лет блогу</a>
             </h2>
 
@@ -1867,72 +2052,6 @@ libraries.</p>
 this yet. Nowadays, there cannot be an excuse for sending your client’s data
 as-is without encryption. Please respect your visitors. Setting up SSL has never
 been so easy as it is with Let’s encrypt nowadays.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/read-25/">Weekly links #25</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-06-25T00:00:00+00:00">
-        Jun 25, 2017
-    </time>
-
-    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Пишу вам из Турции. Держитесь, всего одно платье осталось!</p>
-
-<ul>
-  <li>
-    <p><a href="http://www.yegor256.com/2017/06/22/object-oriented-input-output-in-cactoos.html">Object-Oriented Declarative Input/Output in Cactoos</a></p>
-
-    <blockquote>
-      <p>Instead of calling static procedures we want to use objects, the way they
-are supposed to be used.</p>
-    </blockquote>
-  </li>
-  <li>
-    <p><a href="http://tonsky.livejournal.com/312123.html">Принципиальный недостаток Git CLI</a></p>
-
-    <p>Эмоциональный обзор недостатоков Гита.</p>
-  </li>
-  <li>
-    <p><a href="https://snob.ru/profile/9723/blog/126187">Мода на медленный секс</a></p>
-
-    <blockquote>
-      <p>«Медленный» секс — это как бы не горячо. Поэтому большинство людей и
-пытается оторвать своим любовникам пенис или клитор — им кажется, что это
-очень страстно, даже если их партнерам это не слишком приятно.</p>
-    </blockquote>
-  </li>
-  <li>
-    <p><a href="https://snob.ru/profile/9723/blog/125888">Ренессанс содержанки</a></p>
-
-    <blockquote>
-      <p>…ты будешь бедной лет до тридцати самое меньшее. Гарвард? Никого не
-волнует. Работы нет.</p>
-    </blockquote>
-  </li>
-  <li>
-    <p><a href="https://journal.tinkoff.ru/investing/">Инвестиции на бирже: популярные заблуждения</a></p>
-
-    <p>Азы инвестирования. Горячо рекомендую к прочтению.</p>
-  </li>
-</ul>
 
                 
             </div>
