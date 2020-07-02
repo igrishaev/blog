@@ -27,6 +27,8 @@ UPDATE users SET name=...
 ROLLBACK;
 ~~~
 
+{% include clojure-warn.md %}
+
 При выходе из транзакции мы не увидим последствий `INSERT`, `UPDATE` и других
 команд, выполненных в ее рамках.
 

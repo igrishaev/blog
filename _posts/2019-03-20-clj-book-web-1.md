@@ -18,6 +18,8 @@ translate this in English one day.)*
 нему данные. Рассмотрим, какие абстракции использует Clojure над протоколом,
 чтобы сделать разработку быстрой и удобной.
 
+{% include clojure-warn.md %}
+
 [cognitect-poll]: http://blog.cognitect.com/blog/2017/1/31/clojure-2018-results
 
 Каждый год компания Cognitect [опрашивает][cognitect-poll]
