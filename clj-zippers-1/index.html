@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>О зипперах в Clojure (часть 1)</title>
+  <meta name="description" content="В этой статье мы познакомимся с зипперами в языке Clojure. Это необычный способработы с коллекциями. С помощью зиппера можно обойти и изменить произвольныеда...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/clj-zippers-1/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <script>
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+    ga('create', 'UA-33533163-2', 'auto');
+    ga('send', 'pageview');
+
+</script>
+
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img src="/assets/static/photo-round-small.png" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">О зипперах в Clojure (часть 1)</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2020-07-17T00:00:00+00:00">
+        Jul 17, 2020
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/zippers/" rel="tag">zippers</a>
+
+</div>
+
+    <script src="https://yastatic.net/es5-shims/0.0.2/es5-shims.min.js"></script>
+<script src="https://yastatic.net/share2/share.js"></script>
+<div class="ya-share2" data-services="twitter,telegram,facebook,vkontakte,lj,evernote,linkedin,reddit" data-limit="4"></div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p><em>В этой статье мы познакомимся с зипперами в языке Clojure. Это необычный способ
+работы с коллекциями. С помощью зиппера можно обойти и изменить произвольные
+данные а также выполнить в них поиск. Зиппер — мощный инструмент для работы с
+данными. Однако он не так прост, как обычная итерация, и требует подготовки.</em></p>
+
+<p>Объясним зиппер простыми словами. Это обертка над данными, которая предлагает
+универсальные действия над ними. Перечислим основные действия:</p>
+
+<ul>
+  <li>перемещение по глубине: вниз к потомкам или вверх к родителю;</li>
+  <li>перемещение по ширине: влево или вправо среди потомков;</li>
+  <li>обход всей структуры данных;</li>
+  <li>добавление, редактирование и удаление узлов.</li>
+</ul>
+
+<!-- more -->
+
+<p>Это неполный список, и наиболее интересные решения мы раскроем по ходу
+текста. Подчеркнем, что эти возможности доступны произвольным коллекциям. Из-за
+этого зипперы становятся мощным инструментом для работы с данными. Разобраться с
+ними означает повысить свои навыки и открыть новые двери.</p>
+
+<p>Хорошая новость в том, что зипперы доступны в базовой поставке Clojure. Это не
+сторонняя библиотека, которую нужно подключать. Поэтому зипперы легко добавить в
+проект, не опасаясь проблем лицензии или новых зависимостей.</p>
+
+<p>Зипперы в Clojure используют мощь неизменяемых коллекций. Технически зиппер —
+это коллекция, которая хранит оригинал и положение указателя в нем. Все вместе
+это называется положением или <em>локацией</em> (location). Шаг в любую сторону вернет
+новую локацию подобно тому, как функции assoc или update производят новые данные
+на базе старых.</p>
+
+<p>Из текущей локации можно получить <em>узел</em> (ноду) — часть данных, на которые
+ссылается указатель. На этом моменте путаются новички, поэтому уточним
+различие. Локация — это исходные данные и положение в них. Передвижение по
+локации порождает локацию. Из локации можно извлечь узел — данные, которые
+встретились на этом участке.</p>
+
+<p>Приведем пример с вектором <code class="highlighter-rouge">[1 2 3]</code>. Чтобы переместиться на <strong>двойку</strong>, нужно
+выполнить команды <code class="highlighter-rouge">zip/down</code> и <code class="highlighter-rouge">zip/right</code>. С первым шагом мы провалимся в
+вектор и окажемся на единице. Шаг вправо сдвинет нас на двойку. Выразим это в
+коде: подключим пакет под псевдонимом <code class="highlighter-rouge">zip</code> и переместимся по вектору:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">clojure.zip</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">zip</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+    </span><span class="n">zip/vector-zip</span><span class="w">
+    </span><span class="n">zip/down</span><span class="w">
+    </span><span class="n">zip/right</span><span class="w">
+    </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="mi">2</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Цепочка из этих функций вернет двойку, как и ожидалось. Последнее действие
+<code class="highlighter-rouge">zip/node</code> выводит значение (узел) из текущей локации. Если убрать <code class="highlighter-rouge">zip/node</code>,
+получим локацию, которая соответствует двойке. Выглядит она так:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+    </span><span class="n">zip/vector-zip</span><span class="w">
+    </span><span class="n">zip/down</span><span class="w">
+    </span><span class="n">zip/right</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="p">{</span><span class="no">:l</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="n">,</span><span class="w"> </span><span class="no">:pnodes</span><span class="w"> </span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]]</span><span class="n">,</span><span class="w"> </span><span class="no">:ppath</span><span class="w"> </span><span class="n">nil,</span><span class="w"> </span><span class="no">:r</span><span class="w"> </span><span class="p">(</span><span class="nf">3</span><span class="p">)}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Наверняка у вас возникли вопросы: откуда мы знаем путь и что произойдет, если мы
+вышли за пределы коллекции? Мы ответим на них ниже. Если вам что-то непонятно,
+не впадайте в панику: мы еще не раз обсудим все, что здесь происходит.</p>
+
+<p>Итак, зиппер предлагает перемещение по данным. Несмотря на всю мощь, он не
+знает, как это делать в конкретном случае, поэтому его нужно научить. Кроме
+входных данных, зиппер требует ответы на два вопроса:</p>
+
+<ul>
+  <li>
+    <p>Как узнать, является ли текущий элемент веткой (branch)? Веткой называют
+элемент, из которого можно извлечь другие элементы.</p>
+  </li>
+  <li>
+    <p>Если это ветка, то как извлечь из нее потомков?</p>
+  </li>
+</ul>
+
+<p>Вот все, что нужно знать зипперу для навигации. Заметим, что для редактирования
+зиппера нужен ответ на еще один вопрос — как присоединить потомков к
+ветке. Однако сейчас мы рассматриваем только навигацию, и третий вопрос
+подождет.</p>
+
+<p>В техническом плане ответы это функции. Первая принимает узел и возвращает
+истину или ложь. Если была истина, зиппер вызовет вторую функцию. Она принимает
+тот же узел, но на этот раз должна вернуть последовательность дочерних узлов или
+nil, если их нет.</p>
+
+<p>Чтобы получить зиппер, нужно сообщить ему исходные данные и две функции для
+ветки и потомков. До тех пор, пока мы только читаем зиппер, третья функция может
+быть nil. Зипперы живут в пакете <code class="highlighter-rouge">clojure.zip</code>. Подключите его в пространство,
+как делали это выше:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">my.project</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w"> </span><span class="p">[</span><span class="n">clojure.zip</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">zip</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>В свободное время исследуйте <a href="https://github.com/clojure/clojure/blob/master/src/clj/clojure/zip.clj">исходный код</a> этого модуля. Он занимает
+всего 280 строк!</p>
+
+<p>Функция <code class="highlighter-rouge">zip/zipper</code> порождает зиппер из функций и исходных данных. Это
+центральная точка модуля, его строительный материал. Для частых случаев модуль
+предлагает уже готовые зипперы, которым нужно передать только данные. На роль
+примера подходит <code class="highlighter-rouge">vector-zip</code> для вложенных векторов. Приведем его код в
+сокращении:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="nb">vector-zip</span><span class="w">
+  </span><span class="p">[</span><span class="nb">root</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">zipper</span><span class="w"> </span><span class="nb">vector?</span><span class="w">
+          </span><span class="nb">seq</span><span class="w">
+          </span><span class="n">...</span><span class="w">
+          </span><span class="nb">root</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Третий параметр мы заменили на многоточие. Это функция, которая порождает ветку
+из дочерних узлов — вопрос, который пока что обходим стороной. Если передать в
+<code class="highlighter-rouge">vector-zip</code> вектор <code class="highlighter-rouge">[1 2 3]</code>, произойдет следующее.</p>
+
+<p>Зиппер обернет вектор и выставит указатель на него самого. Из начального
+положения можно проследовать только вниз, потому что у вектора нет родителя
+(вверх) и соседей (влево и вправо). При смещении <strong>вниз</strong> зиппер сначала
+проверит, что текущий узел — ветка. Сработает выражение <code class="highlighter-rouge">(vector? [1 2 3])</code>, что
+вернет истину. В этом случае зиппер выполнит <code class="highlighter-rouge">(seq [1 2 3])</code>, чтобы получить
+потомков. Ими станет последовательность <code class="highlighter-rouge">(1 2 3)</code>. Как только потомки найдены,
+зиппер установит указатель на крайний левый потомок.</p>
+
+<p>Покажем это на схеме. Начальная позиция, указатель на исходных данных:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>                ┌───────┐
+                │  nil  │
+                └───────┘
+                    ▲
+                    │
+ ┌───────┐    ┏━━━━━━━━━━━┓    ┌───────┐
+ │  nil  │◀───┃  [1 2 3]  ┃───▶│  nil  │
+ └───────┘    ┗━━━━━━━━━━━┛    └───────┘
+                    │
+                    ▼
+                ┌───────┐
+                │   1   │
+                └───────┘
+</code></pre></div></div>
+
+<p>Шаг вниз, указатель на единице:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>                ┌───────┐
+                │[1 2 3]│
+                └───────┘
+                    ▲
+                    │
+ ┌───────┐    ┏━━━━━━━━━━━┓    ┌───────┐
+ │  nil  │◀───┃     1     ┃───▶│   2   │
+ └───────┘    ┗━━━━━━━━━━━┛    └───────┘
+                    │
+                    ▼
+                ┌───────┐
+                │  nil  │
+                └───────┘
+</code></pre></div></div>
+
+<p>Шаг вправо, указатель на двойке:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>                ┌───────┐
+                │[1 2 3]│
+                └───────┘
+                    ▲
+                    │
+ ┌───────┐    ┏━━━━━━━━━━━┓    ┌───────┐
+ │   1   │◀───┃     2     ┃───▶│   3   │
+ └───────┘    ┗━━━━━━━━━━━┛    └───────┘
+                    │
+                    ▼
+                ┌───────┐
+                │  nil  │
+                └───────┘
+</code></pre></div></div>
+
+<p>Мы находимся на двойке и можем двигаться в горизонтальной плоскости, например,
+вправо. Еще один шаг вправо сдвинет нас на тройку, обратно влево – на
+единицу. Вот как это выглядит в коде:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">loc2</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+      </span><span class="n">zip/vector-zip</span><span class="w">
+      </span><span class="n">zip/down</span><span class="w">
+      </span><span class="n">zip/right</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc2</span><span class="w"> </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="mi">2</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc2</span><span class="w"> </span><span class="n">zip/right</span><span class="w"> </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="mi">3</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc2</span><span class="w"> </span><span class="n">zip/left</span><span class="w"> </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="mi">1</span><span class="w">
+</span></code></pre></div></div>
+
+<p>При попытке сдвинуться вниз зиппер выполнит предикат <code class="highlighter-rouge">(vector? 2)</code>. Результат
+будет ложью, что значит, что текущий элемент не ветка, а лист, и движение вниз
+запрещено.</p>
+
+<p>При передвижении нужно учитывать следующее. Каждый шаг порождает новую локацию,
+не изменяя старую. Если вы сохранили в переменную некоторое положение, вызовы
+<code class="highlighter-rouge">zip/right</code>, <code class="highlighter-rouge">zip/down</code> и другие никак ее не изменят. Из этого следует, что
+зипперы сочетаются со стрелочным оператором <code class="highlighter-rouge">-&gt;</code>. Следующая цепочка привет нас
+обратно в двойку:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+    </span><span class="n">zip/vector-zip</span><span class="w">
+    </span><span class="n">zip/down</span><span class="w">
+    </span><span class="n">zip/right</span><span class="w">
+    </span><span class="n">zip/right</span><span class="w">
+    </span><span class="n">zip/left</span><span class="w">
+    </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="mi">2</span><span class="w">
+</span></code></pre></div></div>
+
+<p>При ручном передвижении велики шансы выйти за пределы коллекции. Шаг вникуда
+вернет nil вместо локации:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+    </span><span class="n">zip/vector-zip</span><span class="w">
+    </span><span class="n">zip/down</span><span class="w">
+    </span><span class="n">zip/left</span><span class="p">)</span><span class="w">
+</span><span class="n">nil</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Это сигнал, что вы идете по неверному маршруту. Проблема в том, что из nil
+нельзя вернуться на прежнее место. Nil означает пустую локацию, и в ней нет
+ссылки на прежний шаг. Для пустой локации функции <code class="highlighter-rouge">zip/up</code>, <code class="highlighter-rouge">zip/right</code> и другие
+вернут nil, что означает, что вы будете топтаться на месте.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+    </span><span class="n">zip/vector-zip</span><span class="w">
+    </span><span class="n">zip/down</span><span class="w">
+    </span><span class="n">zip/left</span><span class="w">
+    </span><span class="n">zip/left</span><span class="w">
+    </span><span class="n">zip/left</span><span class="w">
+    </span><span class="n">zip/left</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Исключение составляет функция <code class="highlighter-rouge">zip/down</code>: при попытке спуститься из nil вы
+получите исключение <code class="highlighter-rouge">NullPointerException</code>. Это недочет, который забыли
+исправить в исходном коде.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+    </span><span class="n">zip/vector-zip</span><span class="w">
+    </span><span class="n">zip/down</span><span class="w">
+    </span><span class="n">zip/left</span><span class="w">
+    </span><span class="n">zip/down</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; Execution error (NullPointerException)...</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Рассмотрим случай с более сложным вектором. Один из его потомков — другой
+вектор: <code class="highlighter-rouge">[1 [2 3] 4]</code>. Чтобы переместить указатель на <strong>тройку</strong>, выполним шаги
+“вниз”, “вправо”, “вниз”, “вправо”. Сохраним локацию в переменную:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">loc3</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w">
+      </span><span class="n">zip/vector-zip</span><span class="w">
+      </span><span class="n">zip/down</span><span class="w">
+      </span><span class="n">zip/right</span><span class="w">
+      </span><span class="n">zip/down</span><span class="w">
+      </span><span class="n">zip/right</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">zip/node</span><span class="w"> </span><span class="n">loc3</span><span class="p">)</span><span class="w">
+</span><span class="mi">3</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Серия рисунков, которая показывает, что происходит на каждом шаге. Исходная
+позиция:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>                ┌───────┐
+                │  nil  │
+                └───────┘
+                    ▲
+                    │
+ ┌───────┐    ┏━━━━━━━━━━━┓    ┌───────┐
+ │  nil  │◀───┃[1 [2 3] 4]┃───▶│  nil  │
+ └───────┘    ┗━━━━━━━━━━━┛    └───────┘
+                    │
+                    ▼
+                ┌───────┐
+                │   1   │
+                └───────┘
+</code></pre></div></div>
+
+<p>Шаг вниз:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>              ┌───────────┐
+              │[1 [2 3] 4]│
+              └───────────┘
+                    ▲
+                    │
+ ┌───────┐    ┏━━━━━━━━━━━┓    ┌───────┐
+ │  nil  │◀───┃     1     ┃───▶│ [2 3] │
+ └───────┘    ┗━━━━━━━━━━━┛    └───────┘
+                    │
+                    ▼
+                ┌───────┐
+                │  nil  │
+                └───────┘
+</code></pre></div></div>
+
+<p>Вправо:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>              ┌───────────┐
+              │[1 [2 3] 4]│
+              └───────────┘
+                    ▲
+                    │
+ ┌───────┐    ┏━━━━━━━━━━━┓    ┌───────┐
+ │   1   │◀───┃   [2 3]   ┃───▶│   4   │
+ └───────┘    ┗━━━━━━━━━━━┛    └───────┘
+                    │
+                    ▼
+                ┌───────┐
+                │   2   │
+                └───────┘
+</code></pre></div></div>
+
+<p>Вниз:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>              ┌───────────┐
+              │   [2 3]   │
+              └───────────┘
+                    ▲
+                    │
+ ┌───────┐    ┏━━━━━━━━━━━┓    ┌───────┐
+ │   1   │◀───┃     2     ┃───▶│   3   │
+ └───────┘    ┗━━━━━━━━━━━┛    └───────┘
+                    │
+                    ▼
+                ┌───────┐
+                │  nil  │
+                └───────┘
+</code></pre></div></div>
+
+<p>Вправо (мы у цели):</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>              ┌───────────┐
+              │   [2 3]   │
+              └───────────┘
+                    ▲
+                    │
+ ┌───────┐    ┏━━━━━━━━━━━┓    ┌───────┐
+ │   2   │◀───┃     3     ┃───▶│  nil  │
+ └───────┘    ┗━━━━━━━━━━━┛    └───────┘
+                    │
+                    ▼
+                ┌───────┐
+                │  nil  │
+                └───────┘
+</code></pre></div></div>
+
+<p>Чтобы перейти на <strong>четверку</strong> из текущей позиции, сначала поднимемся
+вверх. Указатель сдвинется на вектор [2 3]. В этот момент мы находимся среди
+потомков исходного вектора и можем перемещаться по горизонтали. Сделаем шаг
+вправо и окажемся на цифре 4.</p>
+
+<p>Текущая локация:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>              ┌───────────┐
+              │   [2 3]   │
+              └───────────┘
+                    ▲
+                    │
+ ┌───────┐    ┏━━━━━━━━━━━┓    ┌───────┐
+ │   2   │◀───┃     3     ┃───▶│  nil  │
+ └───────┘    ┗━━━━━━━━━━━┛    └───────┘
+                    │
+                    ▼
+                ┌───────┐
+                │  nil  │
+                └───────┘
+</code></pre></div></div>
+
+<p>Шаг вверх:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>              ┌───────────┐
+              │[1 [2 3] 4]│
+              └───────────┘
+                    ▲
+                    │
+ ┌───────┐    ┏━━━━━━━━━━━┓    ┌───────┐
+ │   1   │◀───┃   [2 3]   ┃───▶│   4   │
+ └───────┘    ┗━━━━━━━━━━━┛    └───────┘
+                    │
+                    ▼
+                ┌───────┐
+                │   2   │
+                └───────┘
+</code></pre></div></div>
+
+<p>Шаг вправо:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>              ┌───────────┐
+              │[1 [2 3] 4]│
+              └───────────┘
+                    ▲
+                    │
+ ┌───────┐    ┏━━━━━━━━━━━┓    ┌───────┐
+ │ [2 3] │◀───┃     4     ┃───▶│  nil  │
+ └───────┘    ┗━━━━━━━━━━━┛    └───────┘
+                    │
+                    ▼
+                ┌───────┐
+                │  nil  │
+                └───────┘
+</code></pre></div></div>
+
+<p>Исходный вектор может быть любой вложенности. Ради интереса замените 3 на еще
+один вектор и спуститесь в него.</p>
+
+<p>Что случится, если передать в <code class="highlighter-rouge">vector-zip</code> что-то отличное от вектора?
+Предположим, nil, строку или число. Перед тем, как двигаться, зиппер проверяет,
+подходит ли узел на роль ветки и можно ли извлечь из него потомков. Для
+<code class="highlighter-rouge">vector-zip</code> проверка выполняется с помощью функции <code class="highlighter-rouge">vector?</code>, которая вернет
+nil для всех отличных от вектора значений. В результате получим локацию, из
+которой нельзя шагнуть никуда: ни вниз, ни в стороны. Это тупиковый случай, и
+его нужно избегать.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+    </span><span class="n">zip/vector-zip</span><span class="w">
+    </span><span class="n">zip/down</span><span class="p">)</span><span class="w">
+</span><span class="n">nil</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Модуль <code class="highlighter-rouge">clojure.zip</code> предлагает и другие встроенные зипперы. Особенно интересен
+xml-zip для навигации по XML-дереву. Мы обсудим его отдельно, когда читатель
+познакомится с другими свойствами зипперов.</p>
+
+<p>(Продолжение следует)</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+<div id="disqus_thread"></div>
+<script>
+    /**
+    * RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    * LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+    */
+    /*
+    var disqus_config = function () {
+    this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+    this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    };
+    */
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+
+    s.src = '//igrishaev.disqus.com/embed.js';
+
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
