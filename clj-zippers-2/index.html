@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Зипперы в Clojure (часть 2). Автонавигация</title>
+  <meta name="description" content="Оглавление  Зипперы в Clojure (часть 1). Азы навигации  Зипперы в Clojure (часть 2). Автонавигация">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/clj-zippers-2/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <script>
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+    ga('create', 'UA-33533163-2', 'auto');
+    ga('send', 'pageview');
+
+</script>
+
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img src="/assets/static/photo-round-small.png" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Зипперы в Clojure (часть 2). Автонавигация</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2020-07-19T00:00:00+00:00">
+        Jul 19, 2020
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/zippers/" rel="tag">zippers</a>
+
+</div>
+
+    <script src="https://yastatic.net/es5-shims/0.0.2/es5-shims.min.js"></script>
+<script src="https://yastatic.net/share2/share.js"></script>
+<div class="ya-share2" data-services="twitter,telegram,facebook,vkontakte,lj,evernote,linkedin,reddit" data-limit="4"></div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h2 id="Оглавление">Оглавление</h2>
+
+<ul>
+  <li><a href="/clj-zippers-1/">Зипперы в Clojure (часть 1). Азы навигации</a></li>
+  <li><a href="/clj-zippers-2/">Зипперы в Clojure (часть 2). Автонавигация</a></li>
+</ul>
+
+<p>Итак, мы разобрались с тем, как перемещаться по коллекции. Однако у читателя
+возникнет вопрос: откуда приходит путь? Как мы узнаем заранее, в каком
+направлении двигаться?</p>
+
+<p>Выскажем тезис, который по праву считается главным во всей главе. <strong>Ручная
+навигация по данным лишена всякого смысла.</strong> Если путь известен заранее, вам не
+следует использовать зиппер — это лишнее усложнение.</p>
+
+<p>Дело в том, что Clojure предлагает более эффективный способ добраться до
+вложенных данных с известной структурой. Если мы точно знаем, что на вход
+поступил вектор, второй элемент которого вектор, обратимся к get-in:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-in</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">1</span><span class="p">])</span><span class="w">
+</span><span class="mi">3</span><span class="w">
+</span></code></pre></div></div>
+
+<!-- more -->
+
+<p>То же самое касается других типов данных. Неважно, какую какую комбинацию
+образуют списки и словари: если структура известна заранее, до нужных данных
+легко добраться с помощью <code class="highlighter-rouge">get-in</code> иди стрелочного оператора. В данном случае
+зипперы совершенно не нужны.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:users</span><span class="w"> </span><span class="p">[{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">}]}</span><span class="w">
+    </span><span class="no">:users</span><span class="w">
+    </span><span class="nb">first</span><span class="w">
+    </span><span class="no">:name</span><span class="p">)</span><span class="w">
+</span><span class="s">"Ivan"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>В чем же тогда преимущество зипперов? Свои сильные стороны они проявляют там,
+где не может работать <code class="highlighter-rouge">get-in</code>. Речь о данных с неизвестной
+структурой. Представьте, что на вход поступил произвольный вектор, и нужно найти
+в нем строку. Она может быть на поверхности вектора, а может быть вложена на три
+уровня. Другой пример — XML-документ. Нужный тег может располагаться где угодно,
+и нужно как-то его найти. Другими словами, идеальный случай для зиппера —
+нечеткая структура данных, о которой у нас только предположение.</p>
+
+<p>Функции <code class="highlighter-rouge">zip/up</code>, <code class="highlighter-rouge">zip/down</code> и другие образуют универсальную <code class="highlighter-rouge">zip/next</code>. Эта
+функция передвигает указатель так, что рано или поздно мы обойдем всю
+структуру. При обходе исключены повторы: мы побываем в каждом месте только один
+раз. Пример с вектором:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">vz</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/vector-zip</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="mi">4</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">vz</span><span class="w"> </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; [1 [2 3] 4]</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">vz</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; 1</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">vz</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; [2 3]</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">vz</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; 2</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Очевидно, мы не знаем, сколько раз вызывать <code class="highlighter-rouge">zip/next</code>, поэтому пойдем на
+хитрость. Функция <code class="highlighter-rouge">iterate</code> принимает функцию <code class="highlighter-rouge">f</code> и значение <code class="highlighter-rouge">x</code>. Результатом
+станет последовательность, где первый элемент <code class="highlighter-rouge">x</code>, а каждый следующий — <code class="highlighter-rouge">f(x)</code>
+от предыдущего. Для зиппера мы получим исходную локацию, затем <code class="highlighter-rouge">zip/next</code> от
+нее, затем <code class="highlighter-rouge">zip/next</code> от прошлого сдвига и так далее.</p>
+
+<p>Ниже переменная <code class="highlighter-rouge">loc-seq</code> это цепочка локаций исходного зиппера. Чтобы получить
+узлы, мы берем шесть первых элементов (число взяли случайно) и вызываем для
+каждого <code class="highlighter-rouge">zip/node</code>.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">loc-seq</span><span class="w"> </span><span class="p">(</span><span class="nb">iterate</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">vz</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="n">loc-seq</span><span class="w">
+     </span><span class="p">(</span><span class="nb">take</span><span class="w"> </span><span class="mi">6</span><span class="p">)</span><span class="w">
+     </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="n">zip/node</span><span class="p">))</span><span class="w">
+
+</span><span class="p">([</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p><code class="highlighter-rouge">Iterate</code> порождает <em>ленивую</em> и <em>бесконечную</em> последовательность. Обе
+характеристики важны. Ленивость означает, что очередной сдвиг (вызов <code class="highlighter-rouge">zip/next</code>)
+не произойдет до тех пор, пока вы не дойдете до элемента в обработке
+последовательности. Бесконечность означает, что <code class="highlighter-rouge">zip/next</code> вызывается
+неограниченное число раз. Понадобится признак, по которому мы остановим вызов
+<code class="highlighter-rouge">zip/next</code>, иначе обработка узлов никогда не закончится.</p>
+
+<p>Пример ниже показывает, что в какой-то момент <code class="highlighter-rouge">zip/next</code> перестанет сдвигать
+указатель. Добавьте или удалите <code class="highlighter-rouge">zip/next</code>, результат будет одинаков:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">vz</span><span class="w">
+    </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w">
+    </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w">
+    </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w">
+    </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Функция <code class="highlighter-rouge">zip/next</code> устроена по принципу кольца. После последней локации она
+перейдет на корневую и цикл завершится. При этом корневая локация получит
+признак завершения, и дальнейший вызов <code class="highlighter-rouge">zip/next</code> ничего не даст. Проверить
+признак можно функцией <code class="highlighter-rouge">zip/end?</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">loc-end</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+      </span><span class="n">zip/vector-zip</span><span class="w">
+      </span><span class="n">zip/next</span><span class="w">
+      </span><span class="n">zip/next</span><span class="w">
+      </span><span class="n">zip/next</span><span class="w">
+      </span><span class="n">zip/next</span><span class="p">))</span><span class="w">
+
+</span><span class="n">loc-end</span><span class="w">
+</span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="no">:end</span><span class="p">]</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">zip/end?</span><span class="w"> </span><span class="n">loc-end</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Чтобы получить все локации, будем брать их до тех пор, пока локация не
+конечна. Все вместе дает следующую функцию:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">iter-zip</span><span class="w"> </span><span class="p">[</span><span class="n">zipper</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="n">zipper</span><span class="w">
+       </span><span class="p">(</span><span class="nb">iterate</span><span class="w"> </span><span class="n">zip/next</span><span class="p">)</span><span class="w">
+       </span><span class="p">(</span><span class="nb">take-while</span><span class="w"> </span><span class="p">(</span><span class="nb">complement</span><span class="w"> </span><span class="n">zip/end?</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Эта функция вернет все локации в структуре данных. Напомним, что локация хранит
+узел данных, который можно извлечь с помощью <code class="highlighter-rouge">zip/node</code>. Пример ниже показывает,
+как превратить локации в данные:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w">
+     </span><span class="n">zip/vector-zip</span><span class="w">
+     </span><span class="n">iter-zip</span><span class="w">
+     </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="n">zip/node</span><span class="p">))</span><span class="w">
+
+</span><span class="p">([</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w">
+ </span><span class="mi">1</span><span class="w">
+ </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+ </span><span class="mi">2</span><span class="w">
+ </span><span class="mi">3</span><span class="w">
+ </span><span class="mi">4</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Теперь когда мы получили цепочку локаций, напишем поиск. Предположим, нужно
+проверить, есть ли в векторе кейворд <code class="highlighter-rouge">:error</code>. Напишем предикат для локации:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">loc-error?</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="no">:error</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Осталось проверить, если ли среди локаций та, чей узел равен <code class="highlighter-rouge">:error</code>. Для этого
+подойдет <code class="highlighter-rouge">some</code> с нашим предикатом:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="p">[</span><span class="no">:test</span><span class="w"> </span><span class="p">[</span><span class="no">:foo</span><span class="w"> </span><span class="no">:error</span><span class="p">]]]</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w">
+     </span><span class="n">zip/vector-zip</span><span class="w">
+     </span><span class="n">iter-zip</span><span class="w">
+     </span><span class="p">(</span><span class="nb">some</span><span class="w"> </span><span class="n">loc-error?</span><span class="p">))</span><span class="w">
+</span><span class="n">true</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Заметим, что из-за ленивости мы не сканируем все дерево. Если нужный узел
+нашелся на середине, <code class="highlighter-rouge">iter-zip</code> обрывает итерацию, и дальнейшие вызовы
+<code class="highlighter-rouge">zip/next</code> не срабатывают.</p>
+
+<p>Будет полезно знать, что <code class="highlighter-rouge">zip/next</code> обходит дерево в глубину. При движении он
+стремится вниз и вправо, а наверх поднимается лишь когда шаги в эти стороны
+возвращают nil. Как мы увидим дальше, в некоторых случаях порядок обхода
+важен. Попадаются задачи, где мы должны двигаться вширь. По умолчанию в
+<code class="highlighter-rouge">clojure.zip</code> нет других вариантов обхода, но мы легко напишем
+собственный. Позже мы рассмотрим задачу, где понадобится обход вширь.</p>
+
+<p>Напишем свой зиппер для обхода вложенных словарей, например таких:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">map-data</span><span class="w">
+  </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="mi">1</span><span class="w">
+   </span><span class="no">:bar</span><span class="w"> </span><span class="mi">2</span><span class="w">
+   </span><span class="no">:baz</span><span class="w"> </span><span class="p">{</span><span class="no">:test</span><span class="w"> </span><span class="s">"hello"</span><span class="w">
+         </span><span class="no">:word</span><span class="w"> </span><span class="p">{</span><span class="no">:nested</span><span class="w"> </span><span class="n">true</span><span class="p">}}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>За основу возьмем стандартный <code class="highlighter-rouge">vector-zip</code> для векторов. Зипперы похожи, разница
+лишь в типе коллекции. Подумаем, как задать функции-ответы на вопросы. Сам по
+себе словарь — это ветка, чью потомки — элементы <code class="highlighter-rouge">MapEntry</code>. Последний тип это
+пара ключа и значения. Если значение — словарь, получим из него цепочку
+вложенных <code class="highlighter-rouge">MapEntry</code> и так далее. В Clojure нет встроенного предиката на
+проверку <code class="highlighter-rouge">MapEntry</code>, поэтому напишем его:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">entry?</span><span class="w"> </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="nb">instance?</span><span class="w"> </span><span class="n">clojure.lang.MapEntry</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Зиппер <code class="highlighter-rouge">map-zip</code> выглядит так:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">map-zip</span><span class="w"> </span><span class="p">[</span><span class="n">mapping</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">zip/zipper</span><span class="w">
+   </span><span class="p">(</span><span class="nf">some-fn</span><span class="w"> </span><span class="n">entry?</span><span class="w"> </span><span class="nb">map?</span><span class="p">)</span><span class="w">
+   </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w">
+     </span><span class="p">(</span><span class="k">cond</span><span class="w">
+       </span><span class="p">(</span><span class="nb">map?</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nb">seq</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w">
+       </span><span class="p">(</span><span class="nb">and</span><span class="w"> </span><span class="p">(</span><span class="nf">entry?</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w">
+            </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="nb">val</span><span class="w"> </span><span class="nb">map?</span><span class="p">))</span><span class="w">
+       </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="nb">val</span><span class="w"> </span><span class="nb">seq</span><span class="p">)))</span><span class="w">
+   </span><span class="n">nil</span><span class="w">
+   </span><span class="n">mapping</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>При обходе дерева вы получите все пары ключей и значений. Если значение —
+вложенный словарь, мы провалимся в него при обходе. Пример:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="mi">42</span><span class="w">
+    </span><span class="no">:bar</span><span class="w"> </span><span class="p">{</span><span class="no">:baz</span><span class="w"> </span><span class="mi">11</span><span class="w">
+          </span><span class="no">:user/name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">}}</span><span class="w">
+     </span><span class="n">map-zip</span><span class="w">
+     </span><span class="n">iter-zip</span><span class="w">
+     </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="n">zip/node</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">...</span><span class="w">
+ </span><span class="p">[</span><span class="no">:foo</span><span class="w"> </span><span class="mi">42</span><span class="p">]</span><span class="w">
+ </span><span class="p">[</span><span class="no">:bar</span><span class="w"> </span><span class="p">{</span><span class="no">:baz</span><span class="w"> </span><span class="mi">11</span><span class="n">,</span><span class="w"> </span><span class="no">:user/name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">}]</span><span class="w">
+ </span><span class="p">[</span><span class="no">:baz</span><span class="w"> </span><span class="mi">11</span><span class="p">]</span><span class="w">
+ </span><span class="p">[</span><span class="no">:user/name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Многоточие выше заменяет исходный словарь. Чаще всего мы не интересуемся
+корневым элементом, поэтому в конец стрелочного оператора можно добавить <code class="highlighter-rouge">rest</code>,
+чтобы отбросить его.</p>
+
+<p>С помощью этого зиппера можно проверить, есть ли в словаре ключ <code class="highlighter-rouge">:error</code> со
+значением <code class="highlighter-rouge">:auth</code>. Сами по себе эти кейворды могут быть где угодно — и в ключах,
+и в значениях на любом уровне. Однако нас интересует их комбинация. Для этого
+напишем предикат:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">loc-err-auth?</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">[</span><span class="no">:error</span><span class="w"> </span><span class="no">:auth</span><span class="p">])))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Убедимся, что в первом словаре нет пары, даже не смотря на то, что значения
+встречаются по отдельности:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:response</span><span class="w"> </span><span class="p">{</span><span class="no">:error</span><span class="w"> </span><span class="no">:expired</span><span class="w">
+                 </span><span class="no">:auth</span><span class="w"> </span><span class="no">:failed</span><span class="p">}}</span><span class="w">
+     </span><span class="n">map-zip</span><span class="w">
+     </span><span class="n">iter-zip</span><span class="w">
+     </span><span class="p">(</span><span class="nb">some</span><span class="w"> </span><span class="n">loc-err-auth?</span><span class="p">))</span><span class="w">
+</span><span class="n">nil</span><span class="w">
+</span></code></pre></div></div>
+
+<p>И что их пара будет найдена:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:response</span><span class="w"> </span><span class="p">{</span><span class="no">:error</span><span class="w"> </span><span class="no">:auth</span><span class="p">}}</span><span class="w">
+     </span><span class="n">map-zip</span><span class="w">
+     </span><span class="n">iter-zip</span><span class="w">
+     </span><span class="p">(</span><span class="nb">some</span><span class="w"> </span><span class="n">loc-err-auth?</span><span class="p">))</span><span class="w">
+</span><span class="n">true</span><span class="w">
+</span></code></pre></div></div>
+
+<p>На практике мы работаем с комбинацией векторов и словарей. Напишите свой зиппер,
+который при обходе учитывает и словарь, и вектор.</p>
+
+<p>(Продолжение следует)</p>
+
+<h2 id="Оглавление-1">Оглавление</h2>
+
+<ul>
+  <li><a href="/clj-zippers-1/">Зипперы в Clojure (часть 1). Азы навигации</a></li>
+  <li><a href="/clj-zippers-2/">Зипперы в Clojure (часть 2). Автонавигация</a></li>
+</ul>
+
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+<div id="disqus_thread"></div>
+<script>
+    /**
+    * RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    * LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+    */
+    /*
+    var disqus_config = function () {
+    this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+    this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    };
+    */
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+
+    s.src = '//igrishaev.disqus.com/embed.js';
+
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
