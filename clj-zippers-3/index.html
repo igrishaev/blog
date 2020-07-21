@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Зипперы в Clojure (часть 3). XML-зипперы</title>
+  <meta name="description" content="Оглавление  Зипперы в Clojure (часть 1). Азы навигации  Зипперы в Clojure (часть 2). Автонавигация  Зипперы в Clojure (часть 3). XML-зипперы">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/clj-zippers-3/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <script>
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+    ga('create', 'UA-33533163-2', 'auto');
+    ga('send', 'pageview');
+
+</script>
+
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img src="/assets/static/photo-round-small.png" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Зипперы в Clojure (часть 3). XML-зипперы</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2020-07-21T00:00:00+00:00">
+        Jul 21, 2020
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/zippers/" rel="tag">zippers</a>
+
+</div>
+
+    <script src="https://yastatic.net/es5-shims/0.0.2/es5-shims.min.js"></script>
+<script src="https://yastatic.net/share2/share.js"></script>
+<div class="ya-share2" data-services="twitter,telegram,facebook,vkontakte,lj,evernote,linkedin,reddit" data-limit="4"></div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h2 id="Оглавление">Оглавление</h2>
+
+<ul>
+  <li><a href="/clj-zippers-1/">Зипперы в Clojure (часть 1). Азы навигации</a></li>
+  <li><a href="/clj-zippers-2/">Зипперы в Clojure (часть 2). Автонавигация</a></li>
+  <li><a href="/clj-zippers-3/">Зипперы в Clojure (часть 3). XML-зипперы</a></li>
+</ul>
+
+<p>Мощь зипперов раскрывается в полной мере при работе с XML. От других форматов он
+отличается тем, что задан рекурсивно. Так, JSON, YAML и другие форматы
+предлагают типы — числа, строки, коллекции, — у которых разный синтаксис и
+структура. В XML, где бы мы ни находились, текущий узел состоит из трех
+компонентов: имени тега, атрибутов и содержимого. Содержимое может быть строкой
+и набором других узлов. На псевдокоде это можно выразить рекурсивной записью:</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>XML = [Tag, Attrs, String|[XML]]
+</code></pre></div></div>
+
+<p>Чтобы убедиться в однородности XML, рассмотрим условный файл с выгрузкой
+товаров:</p>
+
+<!-- more -->
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="nt">&lt;catalog&gt;</span>
+  <span class="nt">&lt;organization</span> <span class="na">name=</span><span class="s">"re-Store"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">type=</span><span class="s">"iphone"</span><span class="nt">&gt;</span>iPhone 11 Pro<span class="nt">&lt;/product&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">type=</span><span class="s">"iphone"</span><span class="nt">&gt;</span>iPhone SE<span class="nt">&lt;/product&gt;</span>
+  <span class="nt">&lt;/organization&gt;</span>
+  <span class="nt">&lt;organization</span> <span class="na">name=</span><span class="s">"DNS"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">type=</span><span class="s">"tablet"</span><span class="nt">&gt;</span>iPad 3<span class="nt">&lt;/product&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">type=</span><span class="s">"notebook"</span><span class="nt">&gt;</span>Macbook Pro<span class="nt">&lt;/product&gt;</span>
+  <span class="nt">&lt;/organization&gt;</span>
+<span class="nt">&lt;/catalog&gt;</span>
+</code></pre></div></div>
+
+<p>На вершине XML находится узел <code class="highlighter-rouge">catalog</code>. Это просто группировочный тег (на
+вершине не может быть несколько тегов). Потомки каталога — организации. В
+атрибуте <code class="highlighter-rouge">name</code> организации указано его имя. Его потомки — товары. Товар — это
+узел с тегом <code class="highlighter-rouge">product</code> и описанием типа товара. Вместо потомков у них текстовое
+содержимое. Ниже товара спуститься уже нельзя.</p>
+
+<p>Clojure предлагает XML-парсер, который вернет структуру, похожую на схему <code class="highlighter-rouge">[Tag,
+Attrs, Content]</code> выше. Каждый узел станет словарем с ключами <code class="highlighter-rouge">:tag</code>, <code class="highlighter-rouge">:attrs</code> и
+<code class="highlighter-rouge">:content</code>. Последний хранит вектор, где элемент либо строка, либо вложенный
+словарь.</p>
+
+<p>Поместим XML-данные выше в файл <code class="highlighter-rouge">resources/products.xml</code>. Напишем функцию, чтобы
+считать файл в XML-зиппер. Добавьте импорты модулей:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="no">:require</span><span class="w">
+ </span><span class="p">[</span><span class="n">clojure.java.io</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">io</span><span class="p">]</span><span class="w">
+ </span><span class="p">[</span><span class="n">clojure.xml</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">xml</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Оба входят в поставку Clojure и поэтому не требуют зависимостей. Чтобы получить
+зиппер, пропустим параметр <code class="highlighter-rouge">path</code> через серию функций:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">-&gt;xml-zipper</span><span class="w"> </span><span class="p">[</span><span class="nb">path</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="nb">path</span><span class="w">
+      </span><span class="n">io/resource</span><span class="w">
+      </span><span class="n">io/file</span><span class="w">
+      </span><span class="n">xml/parse</span><span class="w">
+      </span><span class="n">zip/xml-zip</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Функция <code class="highlighter-rouge">xml/parse</code> вернет вложенную структуру из словарей с ключами <code class="highlighter-rouge">:tag</code>,
+<code class="highlighter-rouge">:attrs</code> и <code class="highlighter-rouge">:content</code>. Обратите внимание, что текстовое содержимое, например,
+название товара, это тоже вектор с одной строкой. Тем самым достигается
+однородность каждого узла.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:catalog</span><span class="w">
+ </span><span class="no">:attrs</span><span class="w"> </span><span class="n">nil</span><span class="w">
+ </span><span class="no">:content</span><span class="w">
+ </span><span class="p">[{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:organization</span><span class="w">
+   </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"re-Store"</span><span class="p">}</span><span class="w">
+   </span><span class="no">:content</span><span class="w">
+   </span><span class="p">[{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:product</span><span class="w">
+     </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"iphone"</span><span class="p">}</span><span class="w">
+     </span><span class="no">:content</span><span class="w"> </span><span class="p">[</span><span class="s">"iPhone 11 Pro"</span><span class="p">]}</span><span class="w">
+    </span><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:product</span><span class="w"> </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"iphone"</span><span class="p">}</span><span class="w"> </span><span class="no">:content</span><span class="w"> </span><span class="p">[</span><span class="s">"iPhone SE"</span><span class="p">]}]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:organization</span><span class="w">
+   </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"DNS"</span><span class="p">}</span><span class="w">
+   </span><span class="no">:content</span><span class="w">
+   </span><span class="p">[{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:product</span><span class="w"> </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"tablet"</span><span class="p">}</span><span class="w"> </span><span class="no">:content</span><span class="w"> </span><span class="p">[</span><span class="s">"iPad 3"</span><span class="p">]}</span><span class="w">
+    </span><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:product</span><span class="w">
+     </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"notebook"</span><span class="p">}</span><span class="w">
+     </span><span class="no">:content</span><span class="w"> </span><span class="p">[</span><span class="s">"Macbook Pro"</span><span class="p">]}]}]}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Вызов <code class="highlighter-rouge">(-&gt;xml-zipper "products.xml")</code> порождает начальную локацию XML-зиппера из
+данных выше. Прежде чем работать с ним, заглянем в определение <code class="highlighter-rouge">xml-zip</code>, чтобы
+понять, что происходит. Приведем код из <code class="highlighter-rouge">clojure.zip</code> в сокращении:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="nb">xml-zip</span><span class="w">
+  </span><span class="p">[</span><span class="nb">root</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">zipper</span><span class="w"> </span><span class="p">(</span><span class="nb">complement</span><span class="w"> </span><span class="nb">string?</span><span class="p">)</span><span class="w">
+          </span><span class="p">(</span><span class="nb">comp</span><span class="w"> </span><span class="nb">seq</span><span class="w"> </span><span class="no">:content</span><span class="p">)</span><span class="w">
+          </span><span class="n">...</span><span class="w">
+          </span><span class="nb">root</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Очевидно, потомки узла — это его содержимое <code class="highlighter-rouge">:content</code>. У строки не может быть
+потомков, поэтому <code class="highlighter-rouge">(complement string?)</code> означает: искать потомков только в тех
+узлах, что отличны от строки.</p>
+
+<p>Рассмотрим, как бы мы нашли все товары из заданного XML. Для начала получим
+ленивую итерацию по его зипперу. Напомним, что на каждом шаге мы получим не узел
+XML, а zip-локацию с указателем на него. Останется только отфильтровать локации,
+чьи ноды содержат тег <code class="highlighter-rouge">product</code>. Для этого напишем предикат:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">loc-product?</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="no">:tag</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="no">:product</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>И выборку с преобразованием:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="s">"products.xml"</span><span class="w">
+     </span><span class="n">-&gt;xml-zipper</span><span class="w">
+     </span><span class="n">iter-zip</span><span class="w">
+     </span><span class="p">(</span><span class="nb">filter</span><span class="w"> </span><span class="n">loc-product?</span><span class="p">)</span><span class="w">
+     </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="n">loc-&gt;product</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="s">"iPhone 11 Pro"</span><span class="w"> </span><span class="s">"iPhone SE"</span><span class="w"> </span><span class="s">"iPad 3"</span><span class="w"> </span><span class="s">"Macbook Pro"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>На первый взгляд, здесь ничего особенного. Структура XML известна заранее,
+поэтому можно обойтись без зиппера. Для этого выберем потомков главного тега
+(получим организации), а из них — тоже потомков (товары). Код получится короче и
+проще:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">xml-data</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"products.xml"</span><span class="w">
+      </span><span class="n">io/resource</span><span class="w">
+      </span><span class="n">io/file</span><span class="w">
+      </span><span class="n">xml/parse</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">orgs</span><span class="w">
+  </span><span class="p">(</span><span class="no">:content</span><span class="w"> </span><span class="n">xml-data</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">products</span><span class="w">
+  </span><span class="p">(</span><span class="nb">mapcat</span><span class="w"> </span><span class="no">:content</span><span class="w"> </span><span class="n">orgs</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">product-names</span><span class="w">
+  </span><span class="p">(</span><span class="nb">mapcat</span><span class="w"> </span><span class="no">:content</span><span class="w"> </span><span class="n">products</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Для краткости можно убрать переменные и свести код к одной форме:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="s">"products.xml"</span><span class="w">
+     </span><span class="n">io/resource</span><span class="w">
+     </span><span class="n">io/file</span><span class="w">
+     </span><span class="n">xml/parse</span><span class="w">
+     </span><span class="no">:content</span><span class="w">
+     </span><span class="p">(</span><span class="nb">mapcat</span><span class="w"> </span><span class="no">:content</span><span class="p">)</span><span class="w">
+     </span><span class="p">(</span><span class="nb">mapcat</span><span class="w"> </span><span class="no">:content</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>На практике структура XML меняется. Предположим, особо крупный поставщик
+разбивает товары по филиалам. В его случае XML выглядит так (фрагмент):</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;organization</span> <span class="na">name=</span><span class="s">"DNS"</span><span class="nt">&gt;</span>
+  <span class="nt">&lt;branch</span> <span class="na">name=</span><span class="s">"Office 1"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">type=</span><span class="s">"tablet"</span><span class="nt">&gt;</span>iPad 3<span class="nt">&lt;/product&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">type=</span><span class="s">"notebook"</span><span class="nt">&gt;</span>Macbook Pro<span class="nt">&lt;/product&gt;</span>
+  <span class="nt">&lt;/branch&gt;</span>
+  <span class="nt">&lt;branch</span> <span class="na">name=</span><span class="s">"Office 2"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">type=</span><span class="s">"tablet"</span><span class="nt">&gt;</span>iPad 4<span class="nt">&lt;/product&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">type=</span><span class="s">"phone"</span><span class="nt">&gt;</span>Samsung A6+<span class="nt">&lt;/product&gt;</span>
+  <span class="nt">&lt;/branch&gt;</span>
+<span class="nt">&lt;/organization&gt;</span>
+</code></pre></div></div>
+
+<p>Код выше, где мы слепо выбираем данные по уровню, сработает неправильно. В
+списке товаров окажется филиал:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="s">"iPhone 11 Pro"</span><span class="w">
+ </span><span class="s">"iPhone SE"</span><span class="w">
+ </span><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:product,</span><span class="w"> </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"tablet"</span><span class="p">}</span><span class="n">,</span><span class="w"> </span><span class="no">:content</span><span class="w"> </span><span class="p">[</span><span class="s">"iPad 3"</span><span class="p">]}</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>В то время как зиппер вернет <strong>только</strong> товары, в том числе из филиала:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="s">"products-branch.xml"</span><span class="w">
+     </span><span class="n">-&gt;xml-zipper</span><span class="w">
+     </span><span class="n">iter-zip</span><span class="w">
+     </span><span class="p">(</span><span class="nb">filter</span><span class="w"> </span><span class="n">loc-product?</span><span class="p">)</span><span class="w">
+     </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="n">loc-&gt;product</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="s">"iPhone 11 Pro"</span><span class="w"> </span><span class="s">"iPhone SE"</span><span class="w"> </span><span class="s">"iPad 3"</span><span class="w"> </span><span class="s">"Macbook Pro"</span><span class="w"> </span><span class="s">"iPad 4"</span><span class="w"> </span><span class="s">"Samsung A6+"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Очевидно, выгодно пользоваться кодом, который работает с двумя XML, а не
+поддерживать отдельную версию для крупного поставщика. В противном случае нужно
+где-то хранить признак, какой поставщик обычный, а какой крупный, и оперативно
+обновлять его.</p>
+
+<p>Однако и этот пример не раскрывает всю мощь зипперов. Для обхода XML также
+служит функция <code class="highlighter-rouge">xml-seq</code> из корневого модуля Clojure. Она возвращает ленивую
+цепочку XML-узлов в том же виде (словарь с <code class="highlighter-rouge">:tag</code>, <code class="highlighter-rouge">:attr</code> и
+<code class="highlighter-rouge">:content</code>). <code class="highlighter-rouge">Xml-seq</code> – это частный случай более абстрактной функции
+<code class="highlighter-rouge">tree-seq</code>. Последняя похожа на зиппер тем, что принимает аналогичные функции,
+чтобы определить, подходит ли узел на роль ветки и как извлечь из него
+потомков. Как видно из кода, определение <code class="highlighter-rouge">xml-seq</code> близко к <code class="highlighter-rouge">xml-zip</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="nb">xml-seq</span><span class="w">
+  </span><span class="p">[</span><span class="nb">root</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">tree-seq</span><span class="w">
+    </span><span class="p">(</span><span class="nb">complement</span><span class="w"> </span><span class="nb">string?</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nb">comp</span><span class="w"> </span><span class="nb">seq</span><span class="w"> </span><span class="no">:content</span><span class="p">)</span><span class="w">
+    </span><span class="nb">root</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Разница между зиппером и <code class="highlighter-rouge">tree-seq</code> в том, что при итерации зиппер возвращает
+локацию — более абстрактный элемент, который несет больше сведений. Наоборот,
+<code class="highlighter-rouge">tree-seq</code> предлагает итерацию по чистым данным без оберток. Для обычного поиска
+<code class="highlighter-rouge">tree-seq</code> даже предпочтительней, поскольку не порождает лишних абстракций. Вот
+как выглядит сбор товаров с учетом филиалов:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">node-product?</span><span class="w"> </span><span class="p">[</span><span class="nb">node</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">some-&gt;</span><span class="w"> </span><span class="nb">node</span><span class="w"> </span><span class="no">:tag</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="no">:product</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="s">"products-branch.xml"</span><span class="w">
+     </span><span class="n">io/resource</span><span class="w">
+     </span><span class="n">io/file</span><span class="w">
+     </span><span class="n">xml/parse</span><span class="w">
+     </span><span class="nb">xml-seq</span><span class="w">
+     </span><span class="p">(</span><span class="nb">filter</span><span class="w"> </span><span class="n">node-product?</span><span class="p">)</span><span class="w">
+     </span><span class="p">(</span><span class="nb">mapcat</span><span class="w"> </span><span class="no">:content</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="s">"iPhone 11 Pro"</span><span class="w"> </span><span class="s">"iPhone SE"</span><span class="w"> </span><span class="s">"iPad 3"</span><span class="w"> </span><span class="s">"Macbook Pro"</span><span class="w"> </span><span class="s">"iPad 4"</span><span class="w"> </span><span class="s">"Samsung A6+"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Чтобы вернуться к зипперам, подберем такую задачу, где <code class="highlighter-rouge">tree-seq</code> теряет
+преимущество. На эту роль подойдет поиск с ручным передвижением.</p>
+
+<p>(Продолжение следует)</p>
+
+<h2 id="Оглавление-1">Оглавление</h2>
+
+<ul>
+  <li><a href="/clj-zippers-1/">Зипперы в Clojure (часть 1). Азы навигации</a></li>
+  <li><a href="/clj-zippers-2/">Зипперы в Clojure (часть 2). Автонавигация</a></li>
+  <li><a href="/clj-zippers-3/">Зипперы в Clojure (часть 3). XML-зипперы</a></li>
+</ul>
+
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+<div id="disqus_thread"></div>
+<script>
+    /**
+    * RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    * LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+    */
+    /*
+    var disqus_config = function () {
+    this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+    this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    };
+    */
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+
+    s.src = '//igrishaev.disqus.com/embed.js';
+
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
