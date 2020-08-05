@@ -31,3 +31,6 @@ static:
 .PHONY: clear
 clear:
 	rm -rf _site
+
+gh-pages-init:
+	git clone --branch gh-pages git@github.com:igrishaev/blog.git gh-pages
