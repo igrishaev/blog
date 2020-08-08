@@ -4,3 +4,4 @@
 - [Зипперы в Clojure (часть 2). Автонавигация](/clj-zippers-2/)
 - [Зипперы в Clojure (часть 3). XML-зипперы](/clj-zippers-3/)
 - [Зипперы в Clojure (часть 4). Поиск в XML](/clj-zippers-4/)
+- [Зипперы в Clojure (часть 5). Редактирование](/clj-zippers-5/)
