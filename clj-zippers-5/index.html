@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Зипперы в Clojure (часть 5). Редактирование</title>
+  <meta name="description" content="Оглавление  Зипперы в Clojure (часть 1). Азы навигации  Зипперы в Clojure (часть 2). Автонавигация  Зипперы в Clojure (часть 3). XML-зипперы  Зипперы в Cloju...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/clj-zippers-5/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <script>
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+    ga('create', 'UA-33533163-2', 'auto');
+    ga('send', 'pageview');
+
+</script>
+
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img src="/assets/static/photo-round-small.png" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Зипперы в Clojure (часть 5). Редактирование</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2020-08-08T00:00:00+00:00">
+        Aug 8, 2020
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/zippers/" rel="tag">zippers</a>
+
+</div>
+
+    <script src="https://yastatic.net/es5-shims/0.0.2/es5-shims.min.js"></script>
+<script src="https://yastatic.net/share2/share.js"></script>
+<div class="ya-share2" data-services="twitter,telegram,facebook,vkontakte,lj,evernote,linkedin,reddit" data-limit="4"></div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h2 id="Оглавление">Оглавление</h2>
+
+<ul>
+  <li><a href="/clj-zippers-1/">Зипперы в Clojure (часть 1). Азы навигации</a></li>
+  <li><a href="/clj-zippers-2/">Зипперы в Clojure (часть 2). Автонавигация</a></li>
+  <li><a href="/clj-zippers-3/">Зипперы в Clojure (часть 3). XML-зипперы</a></li>
+  <li><a href="/clj-zippers-4/">Зипперы в Clojure (часть 4). Поиск в XML</a></li>
+  <li><a href="/clj-zippers-5/">Зипперы в Clojure (часть 5). Редактирование</a></li>
+</ul>
+
+<p>До сих пор мы игнорировали другую возможность зипперов. Во время обхода можно не
+только читать, но и менять локации. В широком плане нам доступны все операции
+CRUD (Create, Read, Update, Delete), знакомые вам из веб-разработки. Ниже мы
+разберем, как они работают в зипперах.</p>
+
+<p>Напомним, зиппер принимает третью функцию <code class="highlighter-rouge">make-node</code>, в которую мы до сих пор
+передавали <code class="highlighter-rouge">nil</code>. В ней не было нужды, потому что мы только читали
+данные. Зиппер вызовет функцию в момент, когда мы просим вернуть данные с учетом
+изменений, которые внесли в локации. Функция принимает два параметра: ветку и
+потомков. Ее задача — соединить их так, как это принято в дереве.</p>
+
+<!-- more -->
+
+<p>Для простых коллекций вроде вектора функция проста — нужно только обернуть
+потомков в vec, чтобы получить из последовательности вектор. В <code class="highlighter-rouge">vector-zip</code>
+функция чуть сложнее, потому что учитывает метаданные. Новый вектор получит их
+из прошлой версии:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="nb">vector-zip</span><span class="w">
+  </span><span class="p">[</span><span class="nb">root</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">zipper</span><span class="w"> </span><span class="nb">vector?</span><span class="w">
+          </span><span class="nb">seq</span><span class="w">
+          </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="nb">node</span><span class="w"> </span><span class="nb">children</span><span class="p">]</span><span class="w">
+            </span><span class="p">(</span><span class="nb">with-meta</span><span class="w"> </span><span class="p">(</span><span class="nf">vec</span><span class="w"> </span><span class="nb">children</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nb">meta</span><span class="w"> </span><span class="nb">node</span><span class="p">)))</span><span class="w">
+          </span><span class="nb">root</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Желательно, чтобы результат <code class="highlighter-rouge">make-node</code> сохранял метаданные оригинала. Если вы
+дополняете его через <code class="highlighter-rouge">assoc</code> или <code class="highlighter-rouge">conj</code>, метаданные сохраняются. В случае с
+<code class="highlighter-rouge">vector-zip</code> мы строим новый вектор, поэтому оборачиваем его в <code class="highlighter-rouge">with-meta</code>. Если
+убрать <code class="highlighter-rouge">with-meta</code>, на выходе получим вектор без метаданных, что может повлиять
+на логику программы.</p>
+
+<p>Для XML-зиппера сборка ветки чуть сложнее:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="nb">node</span><span class="w"> </span><span class="nb">children</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="nb">node</span><span class="w"> </span><span class="no">:content</span><span class="w"> </span><span class="p">(</span><span class="nb">and</span><span class="w"> </span><span class="nb">children</span><span class="w"> </span><span class="p">(</span><span class="nb">apply</span><span class="w"> </span><span class="nb">vector</span><span class="w"> </span><span class="nb">children</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>В ключ <code class="highlighter-rouge">:content</code> попадает либо <code class="highlighter-rouge">nil</code>, либо вектор потомков. Предположим, узел
+был пуст:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:organization</span><span class="w">
+ </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"DNS"</span><span class="p">}</span><span class="w">
+ </span><span class="no">:content</span><span class="w"> </span><span class="n">nil</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>и в процессе мы добавили ему два потомка:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:product</span><span class="w">
+ </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"iphone"</span><span class="p">}</span><span class="w">
+ </span><span class="no">:content</span><span class="w"> </span><span class="p">[</span><span class="s">"iPhone 11 Pro"</span><span class="p">]}</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:product</span><span class="w">
+ </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"fiber"</span><span class="p">}</span><span class="w">
+ </span><span class="no">:content</span><span class="w"> </span><span class="p">[</span><span class="s">"Premium iFiber"</span><span class="p">]}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Тогда новый узел станет следующим:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:organization</span><span class="w">
+ </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"DNS"</span><span class="p">}</span><span class="w">
+ </span><span class="no">:content</span><span class="w"> </span><span class="p">[{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:product</span><span class="w">
+            </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"iphone"</span><span class="p">}</span><span class="w">
+            </span><span class="no">:content</span><span class="w"> </span><span class="p">[</span><span class="s">"iPhone 11 Pro"</span><span class="p">]}</span><span class="w">
+           </span><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:product</span><span class="w">
+            </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"fiber"</span><span class="p">}</span><span class="w">
+            </span><span class="no">:content</span><span class="w"> </span><span class="p">[</span><span class="s">"Premium iFiber"</span><span class="p">]}]}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Для изменения зиппера служат функции <code class="highlighter-rouge">zip/edit</code>, <code class="highlighter-rouge">zip/replace</code> и другие. Но
+перед тем, как рассматривать их, объясним, как именно протекают изменения в
+зиппере.</p>
+
+<p>Особенность в том, что изменения сказываются не на исходных данных, а на
+локациях. Если изменить текущую локацию, исходные данные зиппера не
+изменятся. Когда вы изменили локацию, она помечается флагом <code class="highlighter-rouge">:changed?</code>. Это
+сигнал к пересборке данных с помощью функции <code class="highlighter-rouge">zip/root</code>, о которой расскажем
+чуть ниже.</p>
+
+<p>Рассмотрим пример с вектором <code class="highlighter-rouge">[1 2 3]</code>. Переместимся на двойку и удвоим
+ее. Локация до изменений:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+    </span><span class="n">zip/vector-zip</span><span class="w">
+    </span><span class="n">zip/down</span><span class="w">
+    </span><span class="n">zip/right</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="p">{</span><span class="no">:l</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="no">:pnodes</span><span class="w"> </span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]]</span><span class="w"> </span><span class="no">:ppath</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="no">:r</span><span class="w"> </span><span class="p">(</span><span class="nf">3</span><span class="p">)}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>и после:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">loc-2</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+      </span><span class="n">zip/vector-zip</span><span class="w">
+      </span><span class="n">zip/down</span><span class="w">
+      </span><span class="n">zip/right</span><span class="w">
+      </span><span class="p">(</span><span class="nf">zip/edit</span><span class="w"> </span><span class="nb">*</span><span class="w"> </span><span class="mi">2</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="p">{</span><span class="no">:l</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="no">:pnodes</span><span class="w"> </span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]]</span><span class="w"> </span><span class="no">:ppath</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="no">:r</span><span class="w"> </span><span class="p">(</span><span class="nf">3</span><span class="p">)</span><span class="w">
+    </span><span class="no">:changed?</span><span class="w"> </span><span class="n">true</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Далее нам бы хотелось получить измененный вектор <code class="highlighter-rouge">[1 4 3]</code>. Сделаем это вручную:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc-2</span><span class="w">
+    </span><span class="n">zip/up</span><span class="w">
+    </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; [1 4 3]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>То же самое делает функция <code class="highlighter-rouge">zip/root</code>, которая принимает локацию с
+изменениями. Ее алгоритм следующий:</p>
+
+<ul>
+  <li>подняться до корневой локации;</li>
+  <li>вернуть ее узел.</li>
+</ul>
+
+<p>Чтобы получить результат из прошлого вектора, добавим <code class="highlighter-rouge">zip/root</code> на конец
+стрелочного оператора:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+    </span><span class="n">zip/vector-zip</span><span class="w">
+    </span><span class="n">zip/down</span><span class="w">
+    </span><span class="n">zip/right</span><span class="w">
+    </span><span class="p">(</span><span class="nf">zip/edit</span><span class="w"> </span><span class="nb">*</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w">
+    </span><span class="n">zip/root</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; [1 4 3]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Секрет кроется в функции <code class="highlighter-rouge">zip/up</code>, которую мы вызвали вручную или неявно под
+капотом <code class="highlighter-rouge">zip/root</code>. При подъеме вверх она проверяет, была ли изменена локация, и
+если да, перестраивает ее с помощью <code class="highlighter-rouge">make-node</code>. Приведем фрагмент ее кода:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="nb">up</span><span class="w">
+  </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[[</span><span class="nb">node</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="w"> </span><span class="n">changed?</span><span class="w"> </span><span class="no">:changed?</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="nb">path</span><span class="p">}]</span><span class="w"> </span><span class="n">loc</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="n">pnodes</span><span class="w">
+      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">pnode</span><span class="w"> </span><span class="p">(</span><span class="nb">peek</span><span class="w"> </span><span class="n">pnodes</span><span class="p">)]</span><span class="w">
+        </span><span class="p">(</span><span class="nb">with-meta</span><span class="w"> </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="n">changed?</span><span class="w">
+                     </span><span class="p">[(</span><span class="nb">make-node</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">pnode</span><span class="w"> </span><span class="p">(</span><span class="nb">concat</span><span class="w"> </span><span class="n">l</span><span class="w"> </span><span class="n">...</span><span class="p">))</span><span class="w">
+                      </span><span class="p">(</span><span class="nb">and</span><span class="w"> </span><span class="n">ppath</span><span class="w"> </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="n">...</span><span class="p">))]</span><span class="w">
+                     </span><span class="p">[</span><span class="n">pnode</span><span class="w"> </span><span class="n">ppath</span><span class="p">])</span><span class="w">
+                   </span><span class="p">(</span><span class="nb">meta</span><span class="w"> </span><span class="n">loc</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>При обходе зиппера мы раскладывали его в цепочку локаций с помощью <code class="highlighter-rouge">iter-zip</code>, а
+затем пропускали через серию <code class="highlighter-rouge">map</code>, <code class="highlighter-rouge">filter</code> и других функций. Для
+редактирования этот прием не подходит. Предположим, мы выбрали второй элемент из
+результата <code class="highlighter-rouge">zip-iter</code> и исправили его:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">loc-seq</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+      </span><span class="n">zip/vector-zip</span><span class="w">
+      </span><span class="n">iter-zip</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc-seq</span><span class="w"> </span><span class="p">(</span><span class="nb">nth</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/edit</span><span class="w"> </span><span class="nb">*</span><span class="w"> </span><span class="mi">2</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; [4 {:l [1] :pnodes [[1 2 3]] :ppath nil :r (3)</span><span class="w">
+</span><span class="c1">;;    :changed? true}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Однако зипперы неизменяемы, и любое действие вернет новую локацию. В то же время
+функция <code class="highlighter-rouge">zip-iter</code> устроена так, что каждая следующая локация получается из
+предыдущей. Вызов <code class="highlighter-rouge">zip/edit</code> и аналогов на одном из элементов не повлияет на
+последующие. Если подняться вверх от последней локации, получим вектор без
+изменений.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc-seq</span><span class="w"> </span><span class="nb">last</span><span class="w"> </span><span class="n">zip/up</span><span class="w"> </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; [1 2 3]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>При редактировании зипперов применяют следующие паттерны.</p>
+
+<p><strong>Изменяется один элемент.</strong> В этом случае мы итерируем зиппер до тех пор, пока не
+встретим нужную локацию в цепочке. Затем меняем ее и вызываем <code class="highlighter-rouge">zip/root</code>.</p>
+
+<p><strong>Изменяются многие элементы.</strong> С помощью <code class="highlighter-rouge">loop</code> и <code class="highlighter-rouge">zip/next</code> мы вручную
+итерируем зиппер. При этом задана функция, которая либо меняет локацию, любо
+оставляет нетронутой. В форму <code class="highlighter-rouge">recur</code> попадает <code class="highlighter-rouge">zip/next</code> от ее результата. Это
+означает, что если изменения были, <code class="highlighter-rouge">zip/next</code> оттолкнется от новой, а не
+исходной локации.</p>
+
+<p>Для изменения локаций служат функции:</p>
+
+<ul>
+  <li><code class="highlighter-rouge">replace</code> — буквальная замена текущего узла на другой;</li>
+  <li><code class="highlighter-rouge">edit</code> — более гибкая замена узла. По аналогии с <code class="highlighter-rouge">update</code> и <code class="highlighter-rouge">swap!</code>, принимает
+функцию и добавочные аргументы. Первым аргументом функция получит текущей узел
+локации. Результат заменит содержимое локации;</li>
+  <li><code class="highlighter-rouge">remove</code> — удаляет локацию и перемещает указатель на родителя.</li>
+</ul>
+
+<p>Функции для вставки соседей или потомков:</p>
+
+<ul>
+  <li><code class="highlighter-rouge">insert-left</code> — добавить соседа слева от текущей локации;</li>
+  <li><code class="highlighter-rouge">insert-right</code> — добавить соседа справа;</li>
+  <li><code class="highlighter-rouge">insert-child</code> — добавить текущей локации потомка в начало;</li>
+  <li><code class="highlighter-rouge">append-child</code> — добавить потомка в их конец.</li>
+</ul>
+
+<p>Разница между соседом и потомком в иерархии. Сосед появляется на одном уровне с
+локацией, а потомок ниже.</p>
+
+<p>Рассмотрим функции на простых примерах. Предположим, в глубине вложенных
+векторов находится ключ <code class="highlighter-rouge">:error</code>. Нужно исправить его <code class="highlighter-rouge">:ok</code>. Для этого ищем
+локацию, исправляем ее и поднимаемся к корню:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">data</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="no">:error</span><span class="p">]]])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">loc-error?</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">some-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="no">:error</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">loc-error</span><span class="w">
+  </span><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="n">data</span><span class="w">
+       </span><span class="n">zip/vector-zip</span><span class="w">
+       </span><span class="n">iter-zip</span><span class="w">
+       </span><span class="p">(</span><span class="nb">some</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+               </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="p">(</span><span class="nf">loc-error?</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
+                 </span><span class="n">loc</span><span class="p">)))))</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc-error</span><span class="w">
+    </span><span class="p">(</span><span class="nf">zip/replace</span><span class="w"> </span><span class="no">:ok</span><span class="p">)</span><span class="w">
+    </span><span class="n">zip/root</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; [1 2 [3 4 [5 :ok]]]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Другой пример — поменять во вложеном векторе все <code class="highlighter-rouge">nil</code> на 0, чтобы обезопасить
+математические расчеты. Для этого понадобится обход через <code class="highlighter-rouge">loop</code>. На каждом шаге
+мы проверяем, подходит ли локация, и если да, передаем в <code class="highlighter-rouge">recur</code> вызов
+<code class="highlighter-rouge">zip/next</code> от измененной версии:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">data</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="n">nil</span><span class="p">]]</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="mi">1</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">loop</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/vector-zip</span><span class="w"> </span><span class="n">data</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/end?</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">zip/node</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="nb">nil?</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">recur</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/next</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/replace</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="mi">0</span><span class="p">)))</span><span class="w">
+      </span><span class="p">(</span><span class="nf">recur</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/next</span><span class="w"> </span><span class="n">loc</span><span class="p">)))))</span><span class="w">
+
+</span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">0</span><span class="p">]]</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="mi">1</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>То же самое, но заменить все отрицательные числа по модулю. Для начала объявим
+функцию <code class="highlighter-rouge">abs</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">abs</span><span class="w"> </span><span class="p">[</span><span class="n">num</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nb">neg?</span><span class="w"> </span><span class="n">num</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nb">-</span><span class="w"> </span><span class="n">num</span><span class="p">)</span><span class="w">
+    </span><span class="n">num</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Обход похож на предыдущий, но теперь вместо <code class="highlighter-rouge">zip/replace</code> мы вызываем
+<code class="highlighter-rouge">zip/edit</code>, который обновляет содержимое локации, отталкиваясь от ее прежнего
+значения:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">data</span><span class="w"> </span><span class="p">[</span><span class="mi">-1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="mi">-2</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">[</span><span class="mi">-3</span><span class="w"> </span><span class="mi">2</span><span class="p">]]</span><span class="w"> </span><span class="mi">-1</span><span class="w"> </span><span class="mi">5</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">loop</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/vector-zip</span><span class="w"> </span><span class="n">data</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/end?</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">zip/node</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nb">and</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="n">number?</span><span class="p">)</span><span class="w">
+             </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="nb">neg?</span><span class="p">))</span><span class="w">
+      </span><span class="p">(</span><span class="nf">recur</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/next</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/edit</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">abs</span><span class="p">)))</span><span class="w">
+      </span><span class="p">(</span><span class="nf">recur</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/next</span><span class="w"> </span><span class="n">loc</span><span class="p">)))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>В обоих случаях логика цикла проста. Если это конечная локация, вернем ее
+узел. Напомним, конечной считается исходная локация, когда к ней вернулись после
+серии вызовов <code class="highlighter-rouge">zip/next</code>. В противном случае, если в локации отрицательное
+число, мы меняем ее содержимое с помощью <code class="highlighter-rouge">zip/edit</code>. От измененной локации мы
+переходим к следующей. Это ключевой момент: в предпоследней строке вызов
+<code class="highlighter-rouge">zip/next</code> принимает результат <code class="highlighter-rouge">zip/edit</code>, а не исходную локацию. Значит,
+изменения в ней будут переданы на следующий шаг.</p>
+
+<p>Примеры выше позволяют увидеть паттерны — повторяющиеся приемы. Вынесем их в
+отдельные функции, чтобы не тратить на них внимание в будущем.</p>
+
+<p><strong>Поиск локации по предикату.</strong> Принимает начальную локацию и предикат. Вернет
+первую же локацию, которая подошла предикату:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">find-loc</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="n">loc-pred</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w">
+       </span><span class="n">iter-zip</span><span class="w">
+       </span><span class="p">(</span><span class="nb">some</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+               </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="p">(</span><span class="nf">loc-pred</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
+                 </span><span class="n">loc</span><span class="p">)))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p><strong>Прогон локаций с изменениями.</strong> Перебирает локации с помощью <code class="highlighter-rouge">zip/next</code>, но
+перед этим оборачивает локацию в функцию. Ожидается, что функция либо изменит
+локацию, либо вернет ее без изменений. Это обобщенная версия <code class="highlighter-rouge">loop</code>, что мы
+написали выше.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">alter-loc</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="n">loc-fn</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">loop</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="n">loc</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/end?</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
+      </span><span class="n">loc</span><span class="w">
+      </span><span class="p">(</span><span class="nf">recur</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">loc-fn</span><span class="w"> </span><span class="n">zip/next</span><span class="p">)))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Перепишем примеры с новыми функциями. Найдем в векторе локацию, чей узел равен
+двойке:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">loc-2</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+      </span><span class="n">zip/vector-zip</span><span class="w">
+      </span><span class="p">(</span><span class="nf">find-loc</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+                  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="mi">2</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Удвоим ее и выйдем на конечный вектор:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc-2</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/edit</span><span class="w"> </span><span class="nb">*</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="n">zip/root</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; [1 4 2]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Изменим отрицательные числа по модулю. Для этого заведем функцию <code class="highlighter-rouge">loc-abs</code>. Если
+в ее узле отрицательное число, вернем исправленную локацию, а иначе — исходную:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">loc-abs</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nb">and</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="n">number?</span><span class="p">)</span><span class="w">
+           </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="nb">neg?</span><span class="p">))</span><span class="w">
+    </span><span class="p">(</span><span class="nf">zip/edit</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">abs</span><span class="p">)</span><span class="w">
+    </span><span class="n">loc</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Достаточно передать ее в <code class="highlighter-rouge">alter-loc</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">-1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="mi">-2</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">[</span><span class="mi">-3</span><span class="w"> </span><span class="mi">2</span><span class="p">]]</span><span class="w"> </span><span class="mi">-1</span><span class="w"> </span><span class="mi">5</span><span class="p">]</span><span class="w">
+    </span><span class="n">zip/vector-zip</span><span class="w">
+    </span><span class="p">(</span><span class="nf">alter-loc</span><span class="w"> </span><span class="n">loc-abs</span><span class="p">)</span><span class="w">
+    </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; [1 2 [5 2 2 [3 2]] 1 5]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Перейдем к промышленным примерам с XML и товарами. Подготовим следующий файл
+<code class="highlighter-rouge">products-price.xml</code>:</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="nt">&lt;catalog&gt;</span>
+  <span class="nt">&lt;organization</span> <span class="na">name=</span><span class="s">"re-Store"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">type=</span><span class="s">"fiber"</span> <span class="na">price=</span><span class="s">"8.99"</span><span class="nt">&gt;</span>VIP Fiber Plus<span class="nt">&lt;/product&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">type=</span><span class="s">"iphone"</span> <span class="na">price=</span><span class="s">"899.99"</span><span class="nt">&gt;</span>iPhone 11 Pro<span class="nt">&lt;/product&gt;</span>
+  <span class="nt">&lt;/organization&gt;</span>
+  <span class="nt">&lt;organization</span> <span class="na">name=</span><span class="s">"DNS"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;branch</span> <span class="na">name=</span><span class="s">"Office 2"</span><span class="nt">&gt;</span>
+      <span class="nt">&lt;bundle&gt;</span>
+        <span class="nt">&lt;product</span> <span class="na">type=</span><span class="s">"fiber"</span> <span class="na">price=</span><span class="s">"9.99"</span><span class="nt">&gt;</span>Premium iFiber<span class="nt">&lt;/product&gt;</span>
+        <span class="nt">&lt;product</span> <span class="na">type=</span><span class="s">"iphone"</span> <span class="na">price=</span><span class="s">"999.99"</span><span class="nt">&gt;</span>iPhone 11 Pro<span class="nt">&lt;/product&gt;</span>
+      <span class="nt">&lt;/bundle&gt;</span>
+    <span class="nt">&lt;/branch&gt;</span>
+  <span class="nt">&lt;/organization&gt;</span>
+<span class="nt">&lt;/catalog&gt;</span>
+</code></pre></div></div>
+
+<p>Обратите внимание, что теперь у товаров появились цены.</p>
+
+<p>Поскольку мы будем изменять зиппер, нам понадобится обратное действие — из
+структуры данных получить XML в виде текста. Для этого импортируем встроенный
+модуль <code class="highlighter-rouge">clojure.xml</code>. Его функция <code class="highlighter-rouge">emit</code> выводит XML на печать. Чтобы получить
+результат, <code class="highlighter-rouge">emit</code> оборачивают в <code class="highlighter-rouge">with-out-str</code> — макрос для перехвата печати в
+строку. В примерах ниже мы просто будем печатать XML.</p>
+
+<p>Еще одно уточнение — <code class="highlighter-rouge">emit</code> не поддерживает отступы тегов. Мы добавим их вручную
+для ясности.</p>
+
+<p><strong>Первая задача</strong> — сделать скидку 10% на все айфоны. У нас уже готовы
+абстракции, так что опишем решение сверху вниз:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">clojure.xml</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">xml</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"products-price.xml"</span><span class="w">
+    </span><span class="n">-&gt;xml-zipper</span><span class="w">
+    </span><span class="p">(</span><span class="nf">alter-loc</span><span class="w"> </span><span class="n">alter-iphone-price</span><span class="p">)</span><span class="w">
+    </span><span class="n">zip/node</span><span class="w">
+    </span><span class="n">xml/emit</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Этих пяти строк достаточно для нашей задачи. Под вопросом только функция
+<code class="highlighter-rouge">alter-iphone-price</code>. Мы ожидаем, что для локации-айфона функция вернет ее же,
+но с другим атрибутом <code class="highlighter-rouge">price</code>. Локация другого типа останется без
+изменений. Опишем функцию:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">alter-iphone-price</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nf">loc-iphone?</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">zip/edit</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">alter-attr-price</span><span class="w"> </span><span class="mf">0.9</span><span class="p">)</span><span class="w">
+    </span><span class="n">loc</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Предикат <code class="highlighter-rouge">loc-iphone?</code> Проверяет локацию на “айфонность”. Мы уже писали его в
+прошлых занятиях:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">loc-iphone?</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="nb">node</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/node</span><span class="w"> </span><span class="n">loc</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nb">and</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="nb">node</span><span class="w"> </span><span class="no">:tag</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="no">:product</span><span class="p">))</span><span class="w">
+         </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="nb">node</span><span class="w"> </span><span class="no">:attrs</span><span class="w"> </span><span class="no">:type</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="s">"iphone"</span><span class="p">)))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Осталась функция <code class="highlighter-rouge">alter-attr-price</code>. Она принимает узел (содержимое локации) и
+должна изменить его атрибут. Второй аргумент функции — коэффициент, на который
+нужно умножить текущую цену. Небольшая трудность в том, что атрибуты в XML —
+строки. Чтобы выполнить умножение, нужно вывести число из строки, умножить на
+коэффициент, а результат перевести обратно в строку с округлением до двух
+цифр. Все вместе дает нам функцию:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">alter-attr-price</span><span class="w"> </span><span class="p">[</span><span class="nb">node</span><span class="w"> </span><span class="n">ratio</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">update-in</span><span class="w"> </span><span class="nb">node</span><span class="w"> </span><span class="p">[</span><span class="no">:attrs</span><span class="w"> </span><span class="no">:price</span><span class="p">]</span><span class="w">
+             </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">price</span><span class="p">]</span><span class="w">
+               </span><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="n">price</span><span class="w">
+                    </span><span class="n">read-string</span><span class="w">
+                    </span><span class="p">(</span><span class="nb">*</span><span class="w"> </span><span class="n">ratio</span><span class="p">)</span><span class="w">
+                    </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"%.2f"</span><span class="p">)))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>После запуска всей цепочки мы получим XML:</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="nt">&lt;catalog&gt;</span>
+  <span class="nt">&lt;organization</span> <span class="na">name=</span><span class="s">"re-Store"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"8.99"</span> <span class="na">type=</span><span class="s">"fiber"</span><span class="nt">&gt;</span>VIP Fiber Plus<span class="nt">&lt;/product&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"809.99"</span> <span class="na">type=</span><span class="s">"iphone"</span><span class="nt">&gt;</span>iPhone 11 Pro<span class="nt">&lt;/product&gt;</span>
+  <span class="nt">&lt;/organization&gt;</span>
+  <span class="nt">&lt;organization</span> <span class="na">name=</span><span class="s">"DNS"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;branch</span> <span class="na">name=</span><span class="s">"Office 2"</span><span class="nt">&gt;</span>
+      <span class="nt">&lt;bundle&gt;</span>
+        <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"9.99"</span> <span class="na">type=</span><span class="s">"fiber"</span><span class="nt">&gt;</span>Premium iFiber<span class="nt">&lt;/product&gt;</span>
+        <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"899.99"</span> <span class="na">type=</span><span class="s">"iphone"</span><span class="nt">&gt;</span>iPhone 11 Pro<span class="nt">&lt;/product&gt;</span>
+      <span class="nt">&lt;/bundle&gt;</span>
+    <span class="nt">&lt;/branch&gt;</span>
+  <span class="nt">&lt;/organization&gt;</span>
+<span class="nt">&lt;/catalog&gt;</span>
+</code></pre></div></div>
+
+<p>Видим, что цена на айфоны изменилась на 10%, а у остальных товаров осталась
+прежней.</p>
+
+<p><strong>Более сложная задача</strong> – во все наборы (бандлы) добавить новый товар —
+гарнитуру. Опять же, опишем решение сверху вниз:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"products-price.xml"</span><span class="w">
+    </span><span class="n">-&gt;xml-zipper</span><span class="w">
+    </span><span class="p">(</span><span class="nf">alter-loc</span><span class="w"> </span><span class="n">add-to-bundle</span><span class="p">)</span><span class="w">
+    </span><span class="n">zip/node</span><span class="w">
+    </span><span class="n">xml/emit</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Решение отличается только функций <code class="highlighter-rouge">add-to-bundle</code>. Ее логика следующая: если
+текущая локация — бандл, добавить ему потомка, а если нет, просто вернуть
+локацию.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">add-to-bundle</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nf">loc-bundle?</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">zip/append-child</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">node-headset</span><span class="p">)</span><span class="w">
+    </span><span class="n">loc</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Проверка на бандл:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">loc-bundle?</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">some-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="no">:tag</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="no">:bundle</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Функция <code class="highlighter-rouge">zip/append-child</code> добавляет значение в конец потомков локации. В данном
+случае это XML-узел <code class="highlighter-rouge">node-headset</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">node-headset</span><span class="w">
+  </span><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="no">:product</span><span class="w">
+   </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"headset"</span><span class="w">
+           </span><span class="no">:price</span><span class="w"> </span><span class="s">"199.99"</span><span class="p">}</span><span class="w">
+   </span><span class="no">:content</span><span class="w"> </span><span class="p">[</span><span class="s">"AirPods Pro"</span><span class="p">]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Итоговый XML, где в наборах появился новый товар:</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="nt">&lt;catalog&gt;</span>
+  <span class="nt">&lt;organization</span> <span class="na">name=</span><span class="s">"re-Store"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"8.99"</span> <span class="na">type=</span><span class="s">"fiber"</span><span class="nt">&gt;</span>VIP Fiber Plus<span class="nt">&lt;/product&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"899.99"</span> <span class="na">type=</span><span class="s">"iphone"</span><span class="nt">&gt;</span>iPhone 11 Pro<span class="nt">&lt;/product&gt;</span>
+  <span class="nt">&lt;/organization&gt;</span>
+  <span class="nt">&lt;organization</span> <span class="na">name=</span><span class="s">"DNS"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;branch</span> <span class="na">name=</span><span class="s">"Office 2"</span><span class="nt">&gt;</span>
+      <span class="nt">&lt;bundle&gt;</span>
+        <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"9.99"</span> <span class="na">type=</span><span class="s">"fiber"</span><span class="nt">&gt;</span>Premium iFiber<span class="nt">&lt;/product&gt;</span>
+        <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"999.99"</span> <span class="na">type=</span><span class="s">"iphone"</span><span class="nt">&gt;</span>iPhone 11 Pro<span class="nt">&lt;/product&gt;</span>
+        <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"199.99"</span> <span class="na">type=</span><span class="s">"headset"</span><span class="nt">&gt;</span>AirPods Pro<span class="nt">&lt;/product&gt;</span>
+      <span class="nt">&lt;/bundle&gt;</span>
+    <span class="nt">&lt;/branch&gt;</span>
+  <span class="nt">&lt;/organization&gt;</span>
+<span class="nt">&lt;/catalog&gt;</span>
+</code></pre></div></div>
+
+<p><strong>Третья задача</strong> — упразднить все наборы. По каким-то причинам мы решили, что
+продавать товары в наборах невыгодно. Из XML должны уйти все теги <code class="highlighter-rouge">&lt;bundle&gt;</code>,
+однако их товары должны перейти в организацию.</p>
+
+<p>И в третий раз решение отличается лишь целевой функцией:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"products-price.xml"</span><span class="w">
+    </span><span class="n">-&gt;xml-zipper</span><span class="w">
+    </span><span class="p">(</span><span class="nf">alter-loc</span><span class="w"> </span><span class="n">disband-bundle</span><span class="p">)</span><span class="w">
+    </span><span class="n">zip/node</span><span class="w">
+    </span><span class="n">xml/emit</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Опишем алгоритм <code class="highlighter-rouge">disband-bundle</code>. Если текущий узел — набор, мы сохраняем его
+потомков (товары) в переменную, чтобы не потерять их. Затем удаляем
+набор. Функция удаления строена так, что вернет предыдущую локацию. В нашем XML
+это будет организация. Присоединим ей товары и вернем ее.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">disband-bundle</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nf">loc-bundle?</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">products</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/children</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
+          </span><span class="n">loc-prev</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/remove</span><span class="w"> </span><span class="n">loc</span><span class="p">)]</span><span class="w">
+      </span><span class="p">(</span><span class="nf">append-childs</span><span class="w"> </span><span class="n">loc-prev</span><span class="w"> </span><span class="n">products</span><span class="p">))</span><span class="w">
+    </span><span class="n">loc</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Функция <code class="highlighter-rouge">append-childs</code> – это наша обертка над встроенной
+<code class="highlighter-rouge">zip/append-child</code>. Последняя присоединяет только один элемент, что
+неудобно. Чтобы присоединить список, напишем свертку:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">append-childs</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="n">items</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">reduce</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="n">item</span><span class="p">]</span><span class="w">
+            </span><span class="p">(</span><span class="nf">zip/append-child</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">item</span><span class="p">))</span><span class="w">
+          </span><span class="n">loc</span><span class="w">
+          </span><span class="n">items</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Финальный XML:</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="nt">&lt;catalog&gt;</span>
+  <span class="nt">&lt;organization</span> <span class="na">name=</span><span class="s">"re-Store"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"8.99"</span> <span class="na">type=</span><span class="s">"fiber"</span><span class="nt">&gt;</span>VIP Fiber Plus<span class="nt">&lt;/product&gt;</span>
+    <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"899.99"</span> <span class="na">type=</span><span class="s">"iphone"</span><span class="nt">&gt;</span>iPhone 11 Pro<span class="nt">&lt;/product&gt;</span>
+  <span class="nt">&lt;/organization&gt;</span>
+  <span class="nt">&lt;organization</span> <span class="na">name=</span><span class="s">"DNS"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;branch</span> <span class="na">name=</span><span class="s">"Office 2"</span><span class="nt">&gt;</span>
+      <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"9.99"</span> <span class="na">type=</span><span class="s">"fiber"</span><span class="nt">&gt;</span>Premium iFiber<span class="nt">&lt;/product&gt;</span>
+      <span class="nt">&lt;product</span> <span class="na">price=</span><span class="s">"999.99"</span> <span class="na">type=</span><span class="s">"iphone"</span><span class="nt">&gt;</span>iPhone 11 Pro<span class="nt">&lt;/product&gt;</span>
+    <span class="nt">&lt;/branch&gt;</span>
+  <span class="nt">&lt;/organization&gt;</span>
+<span class="nt">&lt;/catalog&gt;</span>
+</code></pre></div></div>
+
+<p>Надеемся, этих примеров достаточно, чтобы читатель понял, как редактировать
+зипперы. Обратите внимание, что кода получается немного: для каждой задачи мы
+писали в среднем три функции. Другое преимущество в том, что нет состояния. Все
+функции чистые, и их вызов не сказывается на данных. Если где-то на середине вы
+“упадете” с исключением, дерево XML не будет наполовину испорченным.</p>
+
+<p>(Продолжение следует)</p>
+
+<h2 id="Оглавление-1">Оглавление</h2>
+
+<ul>
+  <li><a href="/clj-zippers-1/">Зипперы в Clojure (часть 1). Азы навигации</a></li>
+  <li><a href="/clj-zippers-2/">Зипперы в Clojure (часть 2). Автонавигация</a></li>
+  <li><a href="/clj-zippers-3/">Зипперы в Clojure (часть 3). XML-зипперы</a></li>
+  <li><a href="/clj-zippers-4/">Зипперы в Clojure (часть 4). Поиск в XML</a></li>
+  <li><a href="/clj-zippers-5/">Зипперы в Clojure (часть 5). Редактирование</a></li>
+</ul>
+
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+<div id="disqus_thread"></div>
+<script>
+    /**
+    * RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    * LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+    */
+    /*
+    var disqus_config = function () {
+    this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+    this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    };
+    */
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+
+    s.src = '//igrishaev.disqus.com/embed.js';
+
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
