@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Зипперы в Clojure (часть 6). Вирутальные деревья. Обмен валют</title>
+  <meta name="description" content="Оглавление  Зипперы в Clojure (часть 1). Азы навигации  Зипперы в Clojure (часть 2). Автонавигация  Зипперы в Clojure (часть 3). XML-зипперы  Зипперы в Cloju...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/clj-zippers-6/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <script>
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+    ga('create', 'UA-33533163-2', 'auto');
+    ga('send', 'pageview');
+
+</script>
+
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img src="/assets/static/photo-round-small.png" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Зипперы в Clojure (часть 6). Вирутальные деревья. Обмен валют</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2020-08-12T00:00:00+00:00">
+        Aug 12, 2020
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/zippers/" rel="tag">zippers</a>
+
+</div>
+
+    <script src="https://yastatic.net/es5-shims/0.0.2/es5-shims.min.js"></script>
+<script src="https://yastatic.net/share2/share.js"></script>
+<div class="ya-share2" data-services="twitter,telegram,facebook,vkontakte,lj,evernote,linkedin,reddit" data-limit="4"></div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h2 id="Оглавление">Оглавление</h2>
+
+<ul>
+  <li><a href="/clj-zippers-1/">Зипперы в Clojure (часть 1). Азы навигации</a></li>
+  <li><a href="/clj-zippers-2/">Зипперы в Clojure (часть 2). Автонавигация</a></li>
+  <li><a href="/clj-zippers-3/">Зипперы в Clojure (часть 3). XML-зипперы</a></li>
+  <li><a href="/clj-zippers-4/">Зипперы в Clojure (часть 4). Поиск в XML</a></li>
+  <li><a href="/clj-zippers-5/">Зипперы в Clojure (часть 5). Редактирование</a></li>
+  <li><a href="/clj-zippers-6/">Зипперы в Clojure (часть 6). Вирутальные деревья. Обмен валют</a></li>
+</ul>
+
+<p>Предыдущих занятий было достаточно, чтобы перейти к экспериментам над
+зипперами. Предлагаем читателю подумать над необычным примером.</p>
+
+<p>До сих пор вторая функция, которую мы передавали в зиппер, возвращала потомков
+из ветки. Для вектора это была просто <code class="highlighter-rouge">seq</code>, для XML — более сложная комбинация
+<code class="highlighter-rouge">(comp seq :content)</code>. Оба варианта отталкиваются от родительского узла, и если
+потомков нет, функция вернет <code class="highlighter-rouge">nil</code>.</p>
+
+<p>Но что если функция потомков вернет постоянный набор, например:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">_</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">seq</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Как поведет себя такой зиппер? Напишем его:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">zip-123</span><span class="w">
+  </span><span class="p">(</span><span class="nf">zip/zipper</span><span class="w"> </span><span class="n">any?</span><span class="w">
+              </span><span class="p">(</span><span class="nb">constantly</span><span class="w"> </span><span class="p">(</span><span class="nb">seq</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]))</span><span class="w">
+              </span><span class="n">nil</span><span class="w">
+              </span><span class="mi">1</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<!-- more -->
+
+<p>Из-за того, что у любого элемента три потомка, зиппер станет бесконечным. Обойти
+его с помощью <code class="highlighter-rouge">iter-zip</code> не получится — <code class="highlighter-rouge">zip/next</code> будет все глубже погружаться
+в зиппер, и достигнет не его конца, а лимитов на память.</p>
+
+<p>Ради интереса сделаем несколько шагов по новому зипперу. Спустимся вниз и
+вправо. Мы окажемся в двойке на середине вектора <code class="highlighter-rouge">[1 2 3]</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">loc-2</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">zip-123</span><span class="w">
+      </span><span class="n">zip/down</span><span class="w">
+      </span><span class="n">zip/right</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">zip/node</span><span class="w"> </span><span class="n">loc-2</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; 2</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Покажем наше положение не схеме. Шаги влево и право сдвинут нас на единицу и
+тройку:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>              ┌───────────┐
+              │     1     │
+              └───────────┘
+                    ▲
+                    │
+ ┌───────┐    ┏━━━━━━━━━━━┓    ┌───────┐
+ │   1   │◀───┃     2     ┃───▶│   3   │
+ └───────┘    ┗━━━━━━━━━━━┛    └───────┘
+                    │
+                    ▼
+                ┌───────┐
+                │[1 2 3]│
+                └───────┘
+</code></pre></div></div>
+
+<p>С шагом вниз мы провалимся в очередной вектор <code class="highlighter-rouge">[1 2 3]</code> и так далее. Ради
+интереса спустимся вниз и вправо пять раз, и все равно окажемся в двойке:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">down-right</span><span class="w"> </span><span class="p">(</span><span class="nb">comp</span><span class="w"> </span><span class="n">zip/right</span><span class="w"> </span><span class="n">zip/down</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc-2</span><span class="w">
+    </span><span class="n">down-right</span><span class="w">
+    </span><span class="n">down-right</span><span class="w">
+    </span><span class="n">down-right</span><span class="w">
+    </span><span class="n">down-right</span><span class="w">
+    </span><span class="n">down-right</span><span class="w">
+    </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; 2</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Зиппер можно назвать виртуальным, потому что данных, по которым мы путешествуем,
+на самом деле не существует — они появляются в полете.</p>
+
+<p>Пока что неясно, какая польза от этого зиппера. Но он подтверждает важный тезис
+— можно получать потомков в процессе обхода дерева. Это не нарушает правила
+зипперов и дает новые возможности.</p>
+
+<p>Однако заданный явно вектор <code class="highlighter-rouge">[1 2 3]</code> не раскрывает их. Если потомки известны
+заранее, нужда в зиппере отпадает — коллекцию можно обойти более простым
+способом. Интересен случай, когда потомки зависят от каких-то внешних
+факторов. Например, обе функции <code class="highlighter-rouge">branch?</code> и <code class="highlighter-rouge">children</code> могут быть замкнуты на
+других коллекциях и данных. Это тоже обход, но по другим правилам.</p>
+
+<p>Знакомый принес с собеседования задачу. Представим, что банк разменивает валюты,
+например доллары на евро, рубли на лиры и так далее. Для краткости обозначим
+пары <code class="highlighter-rouge">(usd, eur)</code>, <code class="highlighter-rouge">(rub, lir)</code>. Размен действует в одном направлении: чтобы
+поменять евро на доллары или лиры на рубли, у банка должны быть отдельные
+правила <code class="highlighter-rouge">(eur, usd)</code> и <code class="highlighter-rouge">(lir, rub)</code>.</p>
+
+<p>В банк обращается клиент, чтобы разменять валюту <code class="highlighter-rouge">X</code> на <code class="highlighter-rouge">Y</code>. Если в правилах
+обмена есть пара <code class="highlighter-rouge">(X, Y)</code>, проблем не возникнет. Но если пары нет, банк должен
+построить цепочку обменов. Например, клиент хочет поменять доллары на лиры, но в
+банке нет прямой пары <code class="highlighter-rouge">(usd, lir)</code>. Однако есть пары <code class="highlighter-rouge">(usd, eur)</code> и <code class="highlighter-rouge">(eur,
+lir)</code>. В этом случае клиенту предложат обмен <code class="highlighter-rouge">usd -&gt; eur -&gt; lir</code>.</p>
+
+<p>Ваша задача — написать программу, которая принимает правила обмена, входную и
+выходную валюты. Вы должны найти цепочки обмена. Чем короче цепочка, тем
+лучше. Если возможны несколько цепочек одинаковой длины, вернуть их все, чтобы
+клиент мог выбирать. Учесть, что решений может не быть и адекватно реагировать
+на этот случай.</p>
+
+<p>Опишем входные данные в терминах Clojure. Каждое правило будет вектором двух
+кейвордов — с какой валюты на какую происходит обмен. Вектор правил назовем
+<code class="highlighter-rouge">rules</code>. Кроме правил, мы принимаем параметры <code class="highlighter-rouge">from</code> и <code class="highlighter-rouge">to</code> — валюты, с чего на
+что менять, тоже кейворды.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; rules</span><span class="w">
+</span><span class="p">[[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="no">:rub</span><span class="w"> </span><span class="no">:eur</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="no">:eur</span><span class="w"> </span><span class="no">:lir</span><span class="p">]]</span><span class="w">
+
+</span><span class="no">:usd</span><span class="w"> </span><span class="c1">;; from</span><span class="w">
+</span><span class="no">:rub</span><span class="w"> </span><span class="c1">;; to</span><span class="w">
+</span></code></pre></div></div>
+
+<p>На выходе ожидаем последовательность цепочек от <code class="highlighter-rouge">from</code> к <code class="highlighter-rouge">to</code> или <code class="highlighter-rouge">nil</code>. Для
+случая выше цепочка от доллара к евро выглядит так:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="w"> </span><span class="no">:eur</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Все вместе дает функцию <code class="highlighter-rouge">exchanges</code>, тело которой нам предстоит заполнить:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">exchanges</span><span class="w"> </span><span class="p">[</span><span class="n">rules</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">to</span><span class="p">]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Для начала напишем несколько тестов. Они помогут размяться, и заодно мы лучше
+поймем задачу. Первый тест — простой обмен, который есть среди правил:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">test-simple</span><span class="w">
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">[[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="p">]]</span><span class="w">
+         </span><span class="p">(</span><span class="nf">exchanges</span><span class="w"> </span><span class="p">[[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="p">]]</span><span class="w"> </span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Обмен в обратную сторону невозможен, если нет обратного правила:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">test-reverse-err</span><span class="w">
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">nil?</span><span class="w"> </span><span class="p">(</span><span class="nf">exchanges</span><span class="w"> </span><span class="p">[[</span><span class="no">:rub</span><span class="w"> </span><span class="no">:usd</span><span class="p">]]</span><span class="w"> </span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Случай, когда обмен невозможен:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">test-no-solution</span><span class="w">
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">nil?</span><span class="w"> </span><span class="p">(</span><span class="nf">exchanges</span><span class="w"> </span><span class="p">[[</span><span class="no">:rub</span><span class="w"> </span><span class="no">:usd</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="no">:lir</span><span class="w"> </span><span class="no">:eur</span><span class="p">]]</span><span class="w"> </span><span class="no">:usd</span><span class="w"> </span><span class="no">:eur</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Наиболее важный сценарий: транзитивный обмен. От долларов к рублям можно дойти
+двумя путями:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">test-two-ways</span><span class="w">
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">[[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:eur</span><span class="w"> </span><span class="no">:rub</span><span class="p">]</span><span class="w">
+          </span><span class="p">[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:lir</span><span class="w"> </span><span class="no">:rub</span><span class="p">]]</span><span class="w">
+         </span><span class="p">(</span><span class="nf">exchanges</span><span class="w"> </span><span class="p">[[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:eur</span><span class="p">]</span><span class="w">
+                     </span><span class="p">[</span><span class="no">:eur</span><span class="w"> </span><span class="no">:rub</span><span class="p">]</span><span class="w">
+                     </span><span class="p">[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:lir</span><span class="p">]</span><span class="w">
+                     </span><span class="p">[</span><span class="no">:lir</span><span class="w"> </span><span class="no">:rub</span><span class="p">]]</span><span class="w"> </span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Еще один тест проверяет, что вы вернем только самые короткие цепочки. Обмен с
+четырьмя валютами (в данном случае <code class="highlighter-rouge">[:usd :yen :eur :rub]</code>) не попадет в
+результат:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">test-short-ways-only</span><span class="w">
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">[[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:eur</span><span class="w"> </span><span class="no">:rub</span><span class="p">]</span><span class="w">
+          </span><span class="p">[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:lir</span><span class="w"> </span><span class="no">:rub</span><span class="p">]]</span><span class="w">
+         </span><span class="p">(</span><span class="nf">exchanges</span><span class="w"> </span><span class="p">[[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:eur</span><span class="p">]</span><span class="w">
+                     </span><span class="p">[</span><span class="no">:eur</span><span class="w"> </span><span class="no">:rub</span><span class="p">]</span><span class="w">
+                     </span><span class="p">[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:lir</span><span class="p">]</span><span class="w">
+                     </span><span class="p">[</span><span class="no">:lir</span><span class="w"> </span><span class="no">:rub</span><span class="p">]</span><span class="w">
+                     </span><span class="p">[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:yen</span><span class="p">]</span><span class="w">
+                     </span><span class="p">[</span><span class="no">:yen</span><span class="w"> </span><span class="no">:eur</span><span class="p">]]</span><span class="w"> </span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>В терминах олимпиадного программирования можно сказать, что задача предлагает
+отдельные ребра графа. Требуется проверить, можно ли составить из ребер
+непрерывный маршрут от вершины А к B. Но в этом уроке мы решим задачу на
+зипперах, поэтому не будем использовать термины “граф”, “ребра” и другие. Мы не
+гарантируем, что решение будет оптимальным, и возможно, алгоритм на графах
+справится лучше. Однако надеемся, что пример еще больше раскроет мощь зипперов.</p>
+
+<p>Как вы помните, зипперы нужны для обхода деревьев, и данные задачи подходят на
+эту роль. Представим, что на вершине дерева стоит валюта <code class="highlighter-rouge">from</code>, которую мы
+хотим разменять. Пусть это будет доллар. Очевидно, что потомки этой валюты — все
+те, на которую ее можно разменять. Для этого выберем второй элемент из каждой
+пары, где первый элемент равен <code class="highlighter-rouge">from</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">rules</span><span class="w">
+  </span><span class="p">[[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:lir</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="no">:rub</span><span class="w"> </span><span class="no">:eur</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="no">:rub</span><span class="w"> </span><span class="no">:yen</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="no">:eur</span><span class="w"> </span><span class="no">:lir</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="no">:lir</span><span class="w"> </span><span class="no">:tug</span><span class="p">]])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="no">:usd</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">usd-children</span><span class="w">
+  </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[[</span><span class="n">v1</span><span class="w"> </span><span class="n">v2</span><span class="p">]</span><span class="w"> </span><span class="n">rules</span><span class="w">
+        </span><span class="no">:when</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="n">v1</span><span class="w"> </span><span class="n">from</span><span class="p">)]</span><span class="w">
+    </span><span class="n">v2</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; (:rub :lir)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Изобразим мнимое дерево и обозначим уровни:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>                  ┌───────┐
+     1            │  usd  │
+                  └───────┘
+                      │
+          ┌───────┐   │   ┌───────┐
+     2    │  rub  │◀──┴──▶│  lir  │
+          └───────┘       └───────┘
+</code></pre></div></div>
+
+<p>Для каждой валюты второго уровня найдем потомков по такому же правилу. Для
+удобства напишем функцию <code class="highlighter-rouge">get-children</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">get-children</span><span class="w"> </span><span class="p">[</span><span class="n">value</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[[</span><span class="n">v1</span><span class="w"> </span><span class="n">v2</span><span class="p">]</span><span class="w"> </span><span class="n">rules</span><span class="w">
+        </span><span class="no">:when</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="n">v1</span><span class="w"> </span><span class="n">value</span><span class="p">)]</span><span class="w">
+    </span><span class="n">v2</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">get-children</span><span class="w"> </span><span class="no">:rub</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; (:eur :yen)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Новое дерево:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>                      ┌───────┐
+    1                 │  usd  │
+                      └───────┘
+                          │
+              ┌───────┐   │   ┌───────┐
+    2         │  rub  │◀──┴──▶│  lir  │
+              └───────┘       └───────┘
+                  │               │
+       ┌───────┐  │  ┌───────┐    │  ┌───────┐
+    3  │  eur  │◀─┴─▶│  yen  │    └─▶│  tug  │
+       └───────┘     └───────┘       └───────┘
+</code></pre></div></div>
+
+<p>Заметим, что это именно виртуальное дерево, о котором мы говорили недавно. У нас
+нет этого дерева на руках – оно получается в процессе. Функция <code class="highlighter-rouge">make-children</code>
+замкнута на исходных парах обмена. Это пример того, как обходить структуры
+данных, которые получаем в полете из других данных.</p>
+
+<p>Структура дерева валют известна, и его можно обойти. Вопрос, до каких пор его
+обходить? Очевидно, мы должны остановиться, как только встретим локацию, чей
+узел равен валюте <code class="highlighter-rouge">to</code>. Пусть это будут йены. Это значит, мы соединили <code class="highlighter-rouge">from</code> и
+<code class="highlighter-rouge">to</code> с помощью других валют. На схеме ниже обозначено решение:</p>
+
+<div class="asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>                      ┌───────┐
+    1                 │  usd  │
+                      └───────┘
+                          │
+              ┌───────┐   │   ┌ ─ ─ ─ ┐
+    2         │  rub  │◀──┘
+              └───────┘       └ ─ ─ ─ ┘
+                  │
+       ┌ ─ ─ ─ ┐  │  ┌───────┐       ┌ ─ ─ ─ ┐
+    3             └─▶│  yen  │
+       └ ─ ─ ─ ┘     └───────┘       └ ─ ─ ─ ┘
+
+</code></pre></div></div>
+
+<p>Чтобы получить цепочку обмена, локацию передают в функцию <code class="highlighter-rouge">zip/path</code>. Она вернет
+вектор всех родителей локации, не включая ее саму. Таким образом, путь к локации
+и ее узел образуют цепочку обмена.</p>
+
+<p>На базе этих рассуждений напишем код. Двигаемся сверху вниз. Подготовим зиппер:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">zip-val</span><span class="w">
+  </span><span class="p">(</span><span class="nf">zip/zipper</span><span class="w"> </span><span class="nb">keyword?</span><span class="w">
+              </span><span class="n">get-children</span><span class="w">
+              </span><span class="n">nil</span><span class="w">
+              </span><span class="n">from</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Ищем в зиппере локацию с целевой валютой:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">loc-to</span><span class="w">
+  </span><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="n">zip-val</span><span class="w">
+       </span><span class="n">iter-zip</span><span class="w">
+       </span><span class="p">(</span><span class="nb">some</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+               </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="n">to</span><span class="p">))</span><span class="w">
+                 </span><span class="n">loc</span><span class="p">)))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Если нашли, то получим из нее цепочку обмена:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">conj</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/path</span><span class="w"> </span><span class="n">loc-to</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/node</span><span class="w"> </span><span class="n">loc-to</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; [:usd :rub :yen]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Основная задача решена. Но не обошлось без недостатков: для любых данных мы
+получим только одну цепочку, даже если их несколько. Это можно исправить: для
+этого мы ищем не единственную локацию с валютой <code class="highlighter-rouge">to</code>, а их несколько с помощью
+<code class="highlighter-rouge">filter</code>.</p>
+
+<p>Расширим исходные данные:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">rules</span><span class="w">
+  </span><span class="p">[[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:lir</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="no">:rub</span><span class="w"> </span><span class="no">:eur</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="no">:lir</span><span class="w"> </span><span class="no">:yen</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="no">:rub</span><span class="w"> </span><span class="no">:yen</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="no">:eur</span><span class="w"> </span><span class="no">:lir</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="no">:lir</span><span class="w"> </span><span class="no">:tug</span><span class="p">]])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="no">:usd</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">to</span><span class="w"> </span><span class="no">:yen</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>и найдем цепочки. Для этого заменим <code class="highlighter-rouge">some</code> на <code class="highlighter-rouge">filter</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">locs-to</span><span class="w">
+  </span><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="n">zip-val</span><span class="w">
+       </span><span class="n">iter-zip</span><span class="w">
+       </span><span class="p">(</span><span class="nb">filter</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+                 </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="n">to</span><span class="p">))))))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="n">locs-to</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">conj</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/path</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/node</span><span class="w"> </span><span class="n">loc</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">([</span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="w"> </span><span class="no">:eur</span><span class="w"> </span><span class="no">:lir</span><span class="w"> </span><span class="no">:yen</span><span class="p">]</span><span class="w">
+ </span><span class="p">[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="w"> </span><span class="no">:yen</span><span class="p">]</span><span class="w">
+ </span><span class="p">[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:lir</span><span class="w"> </span><span class="no">:yen</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Заметим, что теперь мы нагли цепочки всех длин, что может быть избыточно. По
+условию задачи нам не нужен обмен из четырех операций, если найден с
+двумя. Напишем функцию, которая вернет самые короткие списки из результата
+выше. Внутри она группирует их по длине, находит меньшую длину и выбирает из
+словаря.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">get-shortest-chains</span><span class="w">
+  </span><span class="p">[</span><span class="n">chains</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="p">(</span><span class="nb">seq</span><span class="w"> </span><span class="n">chains</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">count-&gt;chains</span><span class="w"> </span><span class="p">(</span><span class="nf">group-by</span><span class="w"> </span><span class="nb">count</span><span class="w"> </span><span class="n">chains</span><span class="p">)</span><span class="w">
+          </span><span class="n">min-count</span><span class="w"> </span><span class="p">(</span><span class="nb">apply</span><span class="w"> </span><span class="nb">min</span><span class="w"> </span><span class="p">(</span><span class="nb">keys</span><span class="w"> </span><span class="n">count-&gt;chains</span><span class="p">))]</span><span class="w">
+      </span><span class="p">(</span><span class="nb">get</span><span class="w"> </span><span class="n">count-&gt;chains</span><span class="w"> </span><span class="n">min-count</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Для последнего результата получим два вектора по три валюты в каждом. Этот
+случай покрывает последний тест <code class="highlighter-rouge">test-short-ways-only</code>, где длинные цепочки
+отбрасываются:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:rub</span><span class="w"> </span><span class="no">:yen</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="no">:usd</span><span class="w"> </span><span class="no">:lir</span><span class="w"> </span><span class="no">:yen</span><span class="p">]]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Из фрагментов кода соберите функцию <code class="highlighter-rouge">exchanges</code>. Добейтесь, чтобы проходили
+тесты. Добавьте в них больше случаев.</p>
+
+<p>Кажется, что задача решена, однако ее все еще можно улучшить. Дело в том, что
+при особых входных данных дерево станет бесконечным. Программа либо уйдет в
+вечный цикл, либо, если число шагов ограничить, не найдет решения. Не заглядывая
+вперед, догадайтесь, что может быть тому причиной и как это исправить. На эти
+вопросы мы ответим в следующей части.</p>
+
+<p>(Продолжение следует)</p>
+
+<h2 id="Оглавление-1">Оглавление</h2>
+
+<ul>
+  <li><a href="/clj-zippers-1/">Зипперы в Clojure (часть 1). Азы навигации</a></li>
+  <li><a href="/clj-zippers-2/">Зипперы в Clojure (часть 2). Автонавигация</a></li>
+  <li><a href="/clj-zippers-3/">Зипперы в Clojure (часть 3). XML-зипперы</a></li>
+  <li><a href="/clj-zippers-4/">Зипперы в Clojure (часть 4). Поиск в XML</a></li>
+  <li><a href="/clj-zippers-5/">Зипперы в Clojure (часть 5). Редактирование</a></li>
+  <li><a href="/clj-zippers-6/">Зипперы в Clojure (часть 6). Вирутальные деревья. Обмен валют</a></li>
+</ul>
+
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+<div id="disqus_thread"></div>
+<script>
+    /**
+    * RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    * LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+    */
+    /*
+    var disqus_config = function () {
+    this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+    this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    };
+    */
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+
+    s.src = '//igrishaev.disqus.com/embed.js';
+
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
