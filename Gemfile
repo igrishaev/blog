@@ -1,6 +1,6 @@
 source "https://rubygems.org"
 gem "jekyll", ">= 3.6.3"
-gem 'kramdown'
+gem "kramdown", ">= 2.3.0"
 gem 'rouge'
 gem 'jekyll-watch'
 gem 'jekyll-paginate'
