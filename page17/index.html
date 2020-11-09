@@ -111,6 +111,309 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/highload-cup/">Clojure in Highload Cup</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-09-15T00:00:00+00:00">
+        Sep 15, 2017
+    </time>
+
+    <a href="/tag/highload/" rel="tag">highload</a>, <a href="/tag/mail.ru/" rel="tag">mail.ru</a>, <a href="/tag/clojure/" rel="tag">clojure</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>1st September was the day when the <a href="https://highloadcup.ru/">Highload Cup</a> competition has
+finished. I’m proud of I took participation in it. The Cup was a quite
+interesting event full of drive, enthusiasm and night coding. Although I haven’t
+taken any prize, I’ve got lots of fun and new knowledge that I’ve partially
+shared with you in my previous publications.</p>
+
+<p>In that post, I’m going to highlight some technical details unmentioned before.</p>
+
+<p>A minute of vanity: I’m a single developer who used Clojure/Datomic stack to
+implement a solution. And by the way a single member from my hometown Voronezh
+(my colleagues who live here argued on Cup passionately but still without a
+result).</p>
+
+<p>The task was easy only at first glance. For non-Russian speakers, let me retell
+it quickly. You’ve got three entities: a user, a location and a visit. They
+represent, respectively, a physical person, a place in the world and a fact that
+somebody visited a place and put mark for it. Say, the last year John Doe
+visited Siberia and was so excited that he put 5 stars.</p>
+
+<p>Your task is to ship a Docker container that carries a REST server. The server
+should implement basic CRUD operations on users, locations and visits. All the
+data pass in and out using JSON.</p>
+
+<p>In addition to CRUD, there are two aggregate APIs. The first one is to return
+all the places visited by specific user. The second one is to return an average
+mark assigned to specific location by all the users who have ever visited
+it. Both APIs accept optional query string arguments to filter the results by
+foreign entities. Say, <code class="highlighter-rouge">fromAge</code> parameter stands for we need to consider only
+those people who are alder than that number, <code class="highlighter-rouge">distanceTo</code> limits those locations
+with distances less than the passed value and so on.</p>
+
+<p>Once you’ve built a Docker container, you submit it to the central server where
+it is shot with a special software. It considers lots of such facts as proper
+response codes, incorrect data filtering, response time and so on. Than it
+calculates your rank. The less is the rank, the better your position is.</p>
+
+<p>Sounds simple, but I spent a week trying to implement fast Clojure
+solution. TL/DR: finally, the C++ guys have come and taken the top of the rank
+table. Some of them wrote their own HTTP server. But still, it was quite fun to
+compete with them.</p>
+
+<p>As the Cup has finished, you are welcome to <a href="https://github.com/igrishaev/highloadcup">review my code</a> (it was
+private before due to Cup rules). The final version uses Clojure
+1.9, <a href="http://www.datomic.com/">Datomic</a> free edition and <a href="https://clojure.org/guides/spec">clojure.spec</a> to validate
+incoming data. There were some experiments with SQLite database kept in memory
+but at the end I finished with Datomic (more on that below).</p>
+
+<p>So here are some technical details that I wanted to discuss.</p>
+
+<h3 id="reading-zip-on-the-fly">Reading ZIP on the fly</h3>
+
+<p>According to the Cup’s rules, when your application starts, it finds the input
+data in <code class="highlighter-rouge">/tmp/data</code> directory. There is a single zip archive with JSON files
+inside. The Docker container is mount with read-only file system, so you cannot
+unzip it using standard Unix tools. Instead, you should read the data directly
+using streams.</p>
+
+<p>Thanks to Java, it ships <code class="highlighter-rouge">java.util.zip</code> package with all we need
+inside. Surprisingly, I ended up with quite short code to read the file:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">read-zip</span><span class="w"> </span><span class="p">[</span><span class="nb">path</span><span class="p">]</span><span class="w">
+ </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">zip</span><span class="w"> </span><span class="p">(</span><span class="nf">java.util.zip.ZipFile.</span><span class="w"> </span><span class="nb">path</span><span class="p">)</span><span class="w">
+    </span><span class="n">entries</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">zip</span><span class="w"> </span><span class="n">.entries</span><span class="w"> </span><span class="n">enumeration-seq</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[</span><span class="n">e</span><span class="w"> </span><span class="n">entries</span><span class="p">]</span><span class="w">
+   </span><span class="p">(</span><span class="nf">.getInputStream</span><span class="w"> </span><span class="n">zip</span><span class="w"> </span><span class="n">e</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It accepts path to a zip file and returns a lazy sequence of input streams. Each
+stream might be read into a data structure with a function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">read-stream</span><span class="w"> </span><span class="p">[</span><span class="n">stream</span><span class="p">]</span><span class="w">
+ </span><span class="p">(</span><span class="nf">json/parse-stream</span><span class="w"> </span><span class="p">(</span><span class="nf">io/reader</span><span class="w"> </span><span class="n">stream</span><span class="p">)</span><span class="w"> </span><span class="n">true</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>, where <code class="highlighter-rouge">json</code> is an alias to the <a href="https://github.com/dakrone/cheshire">Cheshire</a> library included as
+<code class="highlighter-rouge">[cheshire.core :as json]</code> at the top of the namespace.</p>
+
+<h3 id="the-data-backend">The data backend</h3>
+
+<p>Since the beginning it was obvious to keep the data in memory but not on the
+disk. I was thinking on whether I should use in-memory SQLite backend or use
+Datomic within in-memory storage. After all, I’ve tried both options and ended
+up with Datomic finally.</p>
+
+<p>With SQLite, I’ve got only one trouble when connecting to the database. I
+described the problem in details in my previous
+post <a href="http://grishaev.me/en/clj-sqlite">“In-Memory SQLite Database In Clojure”</a>. For the rest, it
+worked fine. I used <a href="https://www.hugsql.org/">HugSQL</a> to compose queries like this:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name get-location-avg :? :1</span>
+<span class="k">select</span>
+  <span class="k">avg</span><span class="p">(</span><span class="n">v</span><span class="p">.</span><span class="n">mark</span><span class="p">)</span> <span class="k">as</span> <span class="k">avg</span>
+<span class="k">from</span> <span class="n">visits</span> <span class="n">v</span>
+<span class="cm">/*~ (when (or (:fromAge params) (:toAge params) (:gender params)) */</span>
+<span class="k">join</span> <span class="n">users</span> <span class="n">u</span> <span class="k">on</span> <span class="n">v</span><span class="p">.</span><span class="k">user</span> <span class="o">=</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span>
+<span class="cm">/*~ ) ~*/</span>
+<span class="k">where</span>
+  <span class="n">v</span><span class="p">.</span><span class="k">location</span> <span class="o">=</span> <span class="p">:</span><span class="n">location_id</span>
+  <span class="cm">/*~ (when (:fromDate params) */</span>
+  <span class="k">and</span> <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span> <span class="o">&gt;</span> <span class="p">:</span><span class="n">fromDate</span>
+  <span class="cm">/*~ ) ~*/</span>
+  <span class="cm">/*~ (when (:toDate params) */</span>
+  <span class="k">and</span> <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span> <span class="o">&lt;</span> <span class="p">:</span><span class="n">toDate</span>
+  <span class="cm">/*~ ) ~*/</span>
+  <span class="cm">/*~ (when (:fromAge params) */</span>
+  <span class="k">and</span> <span class="n">u</span><span class="p">.</span><span class="n">birth_date</span> <span class="o">&lt;</span> <span class="p">:</span><span class="n">fromAge</span>
+  <span class="cm">/*~ ) ~*/</span>
+  <span class="cm">/*~ (when (:toAge params) */</span>
+  <span class="k">and</span> <span class="n">u</span><span class="p">.</span><span class="n">birth_date</span> <span class="o">&gt;</span> <span class="p">:</span><span class="n">toAge</span>
+  <span class="cm">/*~ ) ~*/</span>
+  <span class="cm">/*~ (when (:gender params) */</span>
+  <span class="k">and</span> <span class="n">u</span><span class="p">.</span><span class="n">gender</span> <span class="o">=</span> <span class="p">:</span><span class="n">gender</span>
+  <span class="cm">/*~ ) ~*/</span>
+</code></pre></div></div>
+
+<p>Then I switched to Datomic backend. I was wondering whether it would be slower
+than good old SQLite. The results were in favor of Datomic: it was about 1.5
+times faster when returning responses.</p>
+
+<p>For in-memory backend, you do not need a registered version or a license
+key. Just add <code class="highlighter-rouge">[com.datomic/datomic-free "0.9.5561.54"]</code> into dependencies list
+and I’ve done. Then pass something like <code class="highlighter-rouge">"datomic:mem://highloadcup"</code> when
+connecting to the database.</p>
+
+<p>It was a good decision to create common functions for CRUD operations
+(create-user, update-user, etc). In fact, I had only three general functions to
+create, update and read for something, and the entity-specific functions became
+just partials on them.</p>
+
+<p>Having that, I could quickly switch from SQLite-powered backed to Datomic.</p>
+
+<p>The only think I’ve got stuck on was applying optional filters to a query. That
+became a reason to write <a href="http://grishaev.me/en/datomic-query">“Conditional Queries in Datomic”</a>
+article.</p>
+
+<p>You may examine Datomic database backend in <a href="https://github.com/igrishaev/highloadcup/blob/master/src/highloadcup/db.clj">master branch</a> whereas
+SQLite version lives in a <a href="https://github.com/igrishaev/highloadcup/blob/sqlte/src/highloadcup/db.clj">self-titled branch</a>.</p>
+
+<h3 id="json-validation">JSON validation</h3>
+
+<p>A system that tests you server tends to send incorrect data. If you accept it
+without returning <code class="highlighter-rouge">400 Bad Request</code> status you will get penalty score. So the
+validation is a major part of our application.</p>
+
+<p>Before, I used <a href="https://github.com/plumatic/schema/">Schema</a> module for that purpose. I know it well
+including some of its shadowed parts. But having Clojure 1.9 on board was a
+great chance to try <a href="https://clojure.org/guides/spec">clojure.spec</a> that is still in alpha but works great.</p>
+
+<p>After some REPL experiments, I ended up with my own <code class="highlighter-rouge">highloadcup.spec</code> namespace
+that carried wrappers around the original spec. One of them is <code class="highlighter-rouge">validate</code>
+function that does the following:</p>
+
+<ol>
+  <li>validates the data against a spec;</li>
+  <li>coerces string numbers into integers when needed;</li>
+  <li>returns <code class="highlighter-rouge">nil</code> when the data is invalid.</li>
+</ol>
+
+<p>Its code is</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">highloadcup.spec</span><span class="w">
+ </span><span class="p">(</span><span class="no">:require</span><span class="w"> </span><span class="p">[</span><span class="n">clojure.spec.alpha</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">s</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">invalid</span><span class="w"> </span><span class="no">:clojure.spec.alpha/invalid</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">validate</span><span class="w"> </span><span class="p">[</span><span class="n">spec</span><span class="w"> </span><span class="n">value</span><span class="p">]</span><span class="w">
+ </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">result</span><span class="w"> </span><span class="p">(</span><span class="nf">s/conform</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="n">value</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">when-not</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="n">invalid</span><span class="p">)</span><span class="w">
+   </span><span class="n">result</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Pay attention it’s a good practice to declare <code class="highlighter-rouge">invalid</code> constant at the
+top. Once the library becomes stable, its namespace will get rid of “alpha”.</p>
+
+<p>Another point, spec was designed to be used with full-qualified keys. But in my
+case, all the keys were without namespaces. That’s normal for non-Clojure
+applications. Declare your specs as usual, but once you compose a map of them,
+pass <code class="highlighter-rouge">:opt-un</code> parameter (stands for “unqualified”):</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">enum-gender</span><span class="w"> </span><span class="o">#</span><span class="p">{</span><span class="s">"m"</span><span class="w"> </span><span class="s">"f"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:user/id</span><span class="w"> </span><span class="n">int?</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:user/email</span><span class="w"> </span><span class="nb">string?</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:user/first_name</span><span class="w"> </span><span class="nb">string?</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:user/last_name</span><span class="w"> </span><span class="nb">string?</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:user/gender</span><span class="w"> </span><span class="n">enum-gender</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:user/birth_date</span><span class="w"> </span><span class="n">int?</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:user/create</span><span class="w">
+ </span><span class="p">(</span><span class="nf">s/keys</span><span class="w"> </span><span class="no">:req-un</span><span class="w"> </span><span class="p">[</span><span class="no">:user/id</span><span class="w">
+                  </span><span class="no">:user/email</span><span class="w">
+                  </span><span class="no">:user/first_name</span><span class="w">
+                  </span><span class="no">:user/last_name</span><span class="w">
+                  </span><span class="no">:user/gender</span><span class="w">
+                  </span><span class="no">:user/birth_date</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This is a spec for creating a user where every field is required. For updating a
+user, there is a similar spec with all the fields optional:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:user/update</span><span class="w">
+ </span><span class="p">(</span><span class="nf">s/keys</span><span class="w"> </span><span class="no">:opt-un</span><span class="w"> </span><span class="p">[</span><span class="no">:user/email</span><span class="w">
+                  </span><span class="no">:user/first_name</span><span class="w">
+                  </span><span class="no">:user/last_name</span><span class="w">
+                  </span><span class="no">:user/gender</span><span class="w">
+                  </span><span class="no">:user/birth_date</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When applying query string filters, they are all plain strings even when
+represent numbers. Turning them to the proper type is also knowing as
+coercion. To coerce a string value during validation, use <code class="highlighter-rouge">conformer</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">x-integer?</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w">
+ </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nf">integer?</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w">
+  </span><span class="n">x</span><span class="w">
+  </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nb">string?</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w">
+   </span><span class="p">(</span><span class="nf">try</span><span class="w">
+    </span><span class="p">(</span><span class="nf">Integer/parseInt</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">catch</span><span class="w"> </span><span class="n">Exception</span><span class="w"> </span><span class="n">e</span><span class="w">
+     </span><span class="n">invalid</span><span class="p">))</span><span class="w">
+   </span><span class="n">invalid</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">-&gt;int</span><span class="w"> </span><span class="p">(</span><span class="nf">s/conformer</span><span class="w"> </span><span class="n">x-integer?</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:opt.visits/fromDate</span><span class="w"> </span><span class="n">-&gt;int</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:opt.visits/toDate</span><span class="w"> </span><span class="n">-&gt;int</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:opt.visits/country</span><span class="w"> </span><span class="nb">string?</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:opt.visits/toDistance</span><span class="w"> </span><span class="n">-&gt;int</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:opt.visits/params</span><span class="w">
+ </span><span class="p">(</span><span class="nf">s/keys</span><span class="w"> </span><span class="no">:opt-un</span><span class="w"> </span><span class="p">[</span><span class="no">:opt.visits/fromDate</span><span class="w">
+          </span><span class="no">:opt.visits/toDate</span><span class="w">
+          </span><span class="no">:opt.visits/country</span><span class="w">
+          </span><span class="no">:opt.visits/toDistance</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now, then you validate parameters taken from the Ring request against
+<code class="highlighter-rouge">:opt.visits/params</code> spec, all the numbers represented with strings will be
+turned into integers as well.</p>
+
+<h3 id="docker">Docker</h3>
+
+<p>Let’s talk a bit about building a Docker container. I don’t see any reason to
+compile uberjar inside Docker. It’s Java so that it is “compiled once, works
+everywhere” (usually I’m sceptical on that point, but not now). All you need is
+to copy an uberjar file into container and setup CMD properly.</p>
+
+<p>Do not use the official <a href="https://hub.docker.com/_/java/">Java template</a>. Under the hood, it ships
+OpenJDK that is 1.5 times slower than OracleJDK, unfortunately. So I had to
+inherit my image from <a href="https://hub.docker.com/r/frolvlad/alpine-oraclejdk8/">Vlad Frolov’s one</a>. I know that’s
+illegal to distribute Java runtime as a part of your application. But the
+difference in score was more important these days.</p>
+
+<p>JVM flags also could help to tweak performance. The web pages I’ve found
+googling for “java docker” said that Java has troubles detecting heap size when
+running in Docker. So at least <code class="highlighter-rouge">"-Xmx"</code> and <code class="highlighter-rouge">"-Xms"</code> should be specified. Next
+two, <code class="highlighter-rouge">"-da"</code> and <code class="highlighter-rouge">"-dsa"</code> reduce all the assert statements. See the rest of
+flags in my <a href="https://github.com/igrishaev/highloadcup/blob/master/Dockerfile">Dockerfile</a>.</p>
+
+<p>All the project duties (lein, docker, files) should be automated with good
+old <a href="https://github.com/igrishaev/highloadcup/blob/master/Makefile">Make</a> utility. Ideally, the default target should build the
+entire project from scratch.</p>
+
+<h3 id="acknowledgments">Acknowledgments</h3>
+
+<p>I want to thank <a href="https://mail.ru/">Mail.ru</a> team who were responsible for handling that
+Cup. They’ve done really huge amount of work. I thought they didn’t sleep at
+all. During the three weeks term, they’ve been answering all the questions in
+chat, fixing the infrastructure, solving bugs, writing wiki and adapting the
+official website.</p>
+
+<p>Thank you guys, your are real professionals!</p>
+
+<p><strong>PS</strong> to my Russian readers: you are welcome to share that post with your
+foreign colleagues. Next time, let them join Highload Cup too!</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/mobile-app/">Мобильное приложение</a>
             </h2>
 
@@ -910,191 +1213,6 @@ in <code class="highlighter-rouge">clojure.core</code> for that.</p>
 сайт еще поискать. При том что денег у них до жопы.</p>
 
 <p>Погрязли в жадности и бюрократизме.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/clj-sqlite/">In-Memory SQLite Database In Clojure</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-08-22T00:00:00+00:00">
-        Aug 22, 2017
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/sqlite/" rel="tag">sqlite</a>, <a href="/tag/jdbc/" rel="tag">jdbc</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Recently, I’ve been working with a SQLite database using Clojure. In this post,
-I’d like to share my experience that I’ve got from that challenge.</p>
-
-<p>SQLite is a great tool used almost everywhere. Browsers and mobile devices use
-it a lot. A SQLite database is represented by a single file that makes it quite
-easy to share, backup and distribute. It supports most of the production-level
-databases’ features like triggers, recursive queries and so on.</p>
-
-<p>In addition, SQLite has a killer feature to be run completely in memory. So,
-instead of keeping an atom of nested maps, why not to store some temporary data
-into well organized tables?</p>
-
-<p>JDBC has SQLite support as well, you only need to install a driver, the
-documentation says. But then, I’ve got a problem dealing with in-memory
-database:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">spec</span><span class="w">
-  </span><span class="p">{</span><span class="no">:classname</span><span class="w">   </span><span class="s">"org.sqlite.JDBC"</span><span class="w">
-   </span><span class="no">:subprotocol</span><span class="w"> </span><span class="s">"sqlite"</span><span class="w">
-   </span><span class="no">:subname</span><span class="w">     </span><span class="s">":memory:"</span><span class="p">})</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="s">"create table users (id integer)"</span><span class="p">)</span><span class="w">
-</span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="s">"select * from users"</span><span class="p">)</span><span class="w">
-
-</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">SQLiteException</span><span class="w"> </span><span class="p">[</span><span class="n">SQLITE_ERROR</span><span class="p">]</span><span class="w"> </span><span class="n">SQL</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="nb">or</span><span class="w"> </span><span class="n">missing</span><span class="w"> </span><span class="n">database</span><span class="w">
-</span><span class="nb">&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">no</span><span class="w"> </span><span class="n">such</span><span class="w"> </span><span class="n">table</span><span class="err">:</span><span class="w"> </span><span class="n">users</span><span class="p">)</span><span class="w">  </span><span class="n">org.sqlite.core.DB.newSQLException</span><span class="w"> </span><span class="p">(</span><span class="nf">DB.java</span><span class="no">:909</span><span class="p">)</span><span class="w">
-</span></code></pre></div></div>
-
-<p>What the… I’ve just created a table, why cannot you find it? An interesting
-note, if I set a proper file name for the <code class="highlighter-rouge">:subname</code> field, everything works
-fine. But I needed a in-memory database, not a file.</p>
-
-<p>After some hours of googling and reading the code I’ve found the solution.</p>
-
-<p>The thing is, JDBC does not track DB connections by default. Every time you call
-for <code class="highlighter-rouge">(jdbc/*)</code> function, you create a new connection, perform an operation and
-close it. For such persistent data storages like Postgres or MySQL that’ fine
-although not effective (in our project, we use HikariCP to have a pool of open
-connections).</p>
-
-<p>But for in-memory SQLite database, closing a connection to it leads to wiping
-the data completely out form the RAM. So you need to track the connection in
-more precision way. You will create a connection by yourself and close it when
-the work is done.</p>
-
-<p>First, let’s setup your project:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="no">:dependencies</span><span class="w"> </span><span class="p">[</span><span class="n">...</span><span class="w">
-               </span><span class="p">[</span><span class="n">org.xerial/sqlite-jdbc</span><span class="w"> </span><span class="s">"3.20.0"</span><span class="p">]</span><span class="w">
-               </span><span class="p">[</span><span class="n">org.clojure/java.jdbc</span><span class="w"> </span><span class="s">"0.7.0"</span><span class="p">]</span><span class="w">
-               </span><span class="p">[</span><span class="n">com.layerware/hugsql</span><span class="w"> </span><span class="s">"0.4.7"</span><span class="p">]</span><span class="w">
-               </span><span class="p">[</span><span class="n">mount</span><span class="w"> </span><span class="s">"0.1.11"</span><span class="p">]</span><span class="w">
-               </span><span class="n">...</span><span class="p">]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>and the database module:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">project.db</span><span class="w">
-  </span><span class="p">(</span><span class="no">:require</span><span class="w"> </span><span class="p">[</span><span class="n">mount.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">mount</span><span class="p">]</span><span class="w">
-            </span><span class="p">[</span><span class="n">hugsql.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">hugsql</span><span class="p">]</span><span class="w">
-            </span><span class="p">[</span><span class="n">clojure.java.jdbc</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">jdbc</span><span class="p">]))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Declare a database URI as follows:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">db-uri</span><span class="w"> </span><span class="s">"jdbc:sqlite::memory:"</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Our database shares two states: when it’s been set up and ready to work and when
-it has not. To keep the state, let’s use <code class="highlighter-rouge">mount</code> library:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">declare</span><span class="w"> </span><span class="n">db</span><span class="p">)</span><span class="w">
-
-</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">on-start</span><span class="w"> </span><span class="p">[]</span><span class="w">
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">spec</span><span class="w"> </span><span class="p">{</span><span class="no">:connection-uri</span><span class="w"> </span><span class="n">db-uri</span><span class="p">}</span><span class="w">
-        </span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">spec</span><span class="p">)]</span><span class="w">
-    </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="no">:connection</span><span class="w"> </span><span class="n">conn</span><span class="p">)))</span><span class="w">
-
-</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">on-stop</span><span class="w"> </span><span class="p">[]</span><span class="w">
-  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:connection</span><span class="w"> </span><span class="n">.close</span><span class="p">)</span><span class="w">
-  </span><span class="n">nil</span><span class="p">)</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">mount/defstate</span><span class="w">
-  </span><span class="o">^</span><span class="p">{</span><span class="no">:on-reload</span><span class="w"> </span><span class="no">:noop</span><span class="p">}</span><span class="w">
-  </span><span class="n">db</span><span class="w">
-  </span><span class="no">:start</span><span class="w"> </span><span class="p">(</span><span class="nf">on-start</span><span class="p">)</span><span class="w">
-  </span><span class="no">:stop</span><span class="w"> </span><span class="p">(</span><span class="nf">on-stop</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Once you call <code class="highlighter-rouge">(mount/start #'db)</code>, it becomes a map with the following fields:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:connection-uri</span><span class="w"> </span><span class="s">"jdbc:sqlite::memory:"</span><span class="w">
- </span><span class="no">:connection</span><span class="w"> </span><span class="n">&lt;SomeJavaConnectionObject</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="mi">0</span><span class="n">x0...&gt;</span><span class="p">}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>When any JDBC function or a method accepts that map, it checks for the
-<code class="highlighter-rouge">:connection</code> field. If it’s filled, JDBC uses that connection as well. If it’s
-not, a new connection is issued. In my case, every execute/query call created a
-new in-memory database and stopped it right after the call ends. That’s why the
-second query could not to find <code class="highlighter-rouge">users</code> table: because it was performed within
-another database.</p>
-
-<p>Now with the <code class="highlighter-rouge">db</code> started, you are welcome to perform all the standard <code class="highlighter-rouge">jdbc</code>
-operations:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="s">"create table users (id integer, name text))"</span><span class="p">)</span><span class="w">
-</span><span class="p">(</span><span class="nf">jdbc/insert!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">})</span><span class="w">
-</span><span class="p">(</span><span class="nf">jdbc/get-by-id</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="c1">;; {:id 1 :name "Ivan"}</span><span class="w">
-</span><span class="p">(</span><span class="nf">jdbc/find-by-keys</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">})</span><span class="w"> </span><span class="c1">;; ({:id 1 :name "Ivan"})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Finally, you stop the db calling <code class="highlighter-rouge">(mount/stop #'db)</code>. The connection stops, the
-data disappears completely.</p>
-
-<p>For more complicated queries with joins, HugSQL library would be a good
-choice. Create a file <code class="highlighter-rouge">queries.sql</code> in your <code class="highlighter-rouge">resources</code> folder. Say, you want to
-write a complex query that filters a result by some values that probably are not
-set. Here is an example of what you should put into <code class="highlighter-rouge">queries.sql</code> file:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name get-user-visits :?</span>
-<span class="k">select</span>
-    <span class="n">v</span><span class="p">.</span><span class="n">mark</span><span class="p">,</span>
-    <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span><span class="p">,</span>
-    <span class="n">l</span><span class="p">.</span><span class="n">place</span>
-<span class="k">from</span> <span class="n">visits</span> <span class="n">v</span>
-<span class="k">join</span> <span class="n">locations</span> <span class="n">l</span> <span class="k">on</span> <span class="n">v</span><span class="p">.</span><span class="k">location</span> <span class="o">=</span> <span class="n">l</span><span class="p">.</span><span class="n">id</span>
-<span class="k">where</span>
-    <span class="n">v</span><span class="p">.</span><span class="k">user</span> <span class="o">=</span> <span class="p">:</span><span class="n">user_id</span>
-    <span class="cm">/*~ (when (:fromDate params) */</span>
-    <span class="k">and</span> <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span> <span class="o">&gt;</span> <span class="p">:</span><span class="n">fromDate</span>
-    <span class="cm">/*~ ) ~*/</span>
-    <span class="cm">/*~ (when (:toDate params) */</span>
-    <span class="k">and</span> <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span> <span class="o">&lt;</span> <span class="p">:</span><span class="n">toDate</span>
-    <span class="cm">/*~ ) ~*/</span>
-    <span class="cm">/*~ (when (:toDistance params) */</span>
-    <span class="k">and</span> <span class="n">l</span><span class="p">.</span><span class="n">distance</span> <span class="o">&lt;</span> <span class="p">:</span><span class="n">toDistance</span>
-    <span class="cm">/*~ ) ~*/</span>
-    <span class="cm">/*~ (when (:country params) */</span>
-    <span class="k">and</span> <span class="n">l</span><span class="p">.</span><span class="n">country</span> <span class="o">=</span> <span class="p">:</span><span class="n">country</span>
-    <span class="cm">/*~ ) ~*/</span>
-<span class="k">order</span> <span class="k">by</span>
-    <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>In your database module, put the following on the top level:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">hugsql/def-db-fns</span><span class="w"> </span><span class="s">"queries.sql"</span><span class="p">)</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Now, every SQL template has become a plain Clojure function that takes a
-database and a map of additional parameters. To get all the visits in our
-application, we do:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-user-visits</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:user_id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:fromDate</span><span class="w"> </span><span class="mi">123456789</span><span class="w"> </span><span class="no">:country</span><span class="w"> </span><span class="s">"SomePlace"</span><span class="p">})</span><span class="w">
-</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">...gives</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="nb">seq</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">maps...</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Hope this article will help those who’ve got stuck with SQLite.</p>
 
                 
             </div>
