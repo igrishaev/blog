@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Базы данных в Clojure (1)</title>
+  <meta name="description" content="В этой главе мы обсудим, как работать с реляционными базами данных изClojure. Большую часть описания займет библиотека clojure.java.jdbc и еенадстройки. Вы у...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/clj-jdbc-1/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <script>
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+    ga('create', 'UA-33533163-2', 'auto');
+    ga('send', 'pageview');
+
+</script>
+
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img src="/assets/static/photo-round-small.png" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Базы данных в Clojure (1)</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2020-11-30T00:00:00+00:00">
+        Nov 30, 2020
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/jdbc/" rel="tag">jdbc</a>
+
+</div>
+
+    <script src="https://yastatic.net/es5-shims/0.0.2/es5-shims.min.js"></script>
+<script src="https://yastatic.net/share2/share.js"></script>
+<div class="ya-share2" data-services="twitter,telegram,facebook,vkontakte,lj,evernote,linkedin,reddit" data-limit="4"></div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p><em>В этой главе мы обсудим, как работать с реляционными базами данных из
+Clojure. Большую часть описания займет библиотека clojure.java.jdbc и ее
+надстройки. Вы узнаете, какие проблемы обычно сопровождают доступ к базам и как
+их решать в Clojure.</em></p>
+
+<h2 id="Реляционные-БД">Реляционные БД</h2>
+
+<p>В разработке на бекенде базы данных занимают важное место. Говоря упрощенно,
+любая программа сводится к обработке данных. Конечно, данные могут поступать не
+только из баз, но и сети и файлов. Однако в целом доступ к информации регулируют
+базы данных — специальные программы, сложные, но с богатыми возможностями.</p>
+
+<p>Базы данных, или сокращенно БД, бывают разных видов. Они различаются
+архитектурой, способом хранения информации, протоколом работы с
+клиентом. Некоторые базы работают только на клиенте, потому что не предлагают
+сетевой интерфейс. Другие хранят только текст и оставляют вывод типов на
+усмотрение клиента. В этой главе мы не ставим цель охватить как можно больше
+СУБД и способов для работы с ними. Наоборот, сфокусируем внимание на том, что
+вас ждет в реальном проекте. Скорей всего это будет классическая реляционная БД
+вроде PostgreSQL или MySQL. О них мы и будем говорить.</p>
+
+<!-- more -->
+
+<p>Реляционные базы данных называют так из за модели реляционной алгебры. Это
+изящный математический аппарат с набором операций, например выборкой, проекцией,
+декартовым произведением и другими. Из аппарата следуют строгие правила о том,
+как работает та или иная операция. Важно помнить, что базы данных работают не
+спонтанно, а по четким алгебраическим правилам. Из этих же правил следуют
+нормальные формы (первая, вторая и третья), доказать которые можно аналитически,
+а не на глаз.</p>
+
+<p>Мы не ставим цель учить реляционную алгебру с самых азов. Обратитесь к <a href="https://ru.wikipedia.org/wiki/%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D0%B0%D1%8F_%D0%B0%D0%BB%D0%B3%D0%B5%D0%B1%D1%80%D0%B0">статье в
+Википедии</a> и другим книгам, где ее рассматривают без привязки к конкретной
+БД.</p>
+
+<h2 id="Устройство">Устройство</h2>
+
+<p>Перейдем к понятиям, более привычным программисту. Базы хранят содержимое в
+таблицах. Запись в таблице называется кортежем и состоит из отдельных
+полей. Поля могут быть разного типа. Состав полей и их порядок одинаков в рамках
+таблицы. Не может быть так, что в первой записи два поля, а во второй три. Если
+нужно указать, что в поле нет значения, в него пишут специальное “пустое”, чаще
+всего NULL.</p>
+
+<p>У записи есть особое поле, которое называют первичным ключом, Primary key. Ключ
+однозначно идентифицирует запись в таблице. Не может быть двух записей с
+одинаковым ключом. Чаще всего роль ключа играет число с автонумерацией, но может
+быть и почтовым адресом или полными именем. В редких случаях ключ может быть
+составным, то есть определяться парой полей, например полным именем и годом
+рождения. В этом случае мы допускаем, что в таблице могут быть полные тезки
+разных годов рождения или люди одного года с разными именами, но не то и другое
+вместе.</p>
+
+<p>Внешним ключом называется поле, которые ссылается на первичный ключ другой
+таблицы. Для краткости его называют ссылкой. Примером ссылки может быть поле
+<code class="highlighter-rouge">user_id</code> в таблице профилей, которое указывает на поле <code class="highlighter-rouge">id</code> из таблицы
+пользователей.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span><span class="p">(</span>
+    <span class="n">id</span>   <span class="n">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">name</span> <span class="n">text</span> <span class="k">not</span> <span class="k">null</span>
+<span class="p">);</span>
+
+<span class="k">create</span> <span class="k">table</span> <span class="n">profiles</span><span class="p">(</span>
+    <span class="n">id</span>      <span class="n">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">user_id</span> <span class="n">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="k">references</span> <span class="n">users</span><span class="p">(</span><span class="n">id</span><span class="p">),</span>
+    <span class="n">avatar</span>  <span class="n">text</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>В данном случае ссылка отличается от простого числового поля. Ссылка
+гарантирует, что такой пользователь действительно существует. Если бы это было
+просто число, гарантии целостности бы не было.</p>
+
+<p>Кроме целостности, внешний ключ поддерживает реакцию на удаление. По умолчанию
+нельзя удалить сущность, на которую кто-то ссылается. Однако можно задать
+правило, что связанная сущность тоже удаляется. Так, при удалении пользователя
+удалится и его профиль, ведь он не нужен нам сам по себе. В другом случае ссылка
+на удаленную сущность станет NULL, если это разрешено в свойствах поля.</p>
+
+<p>Из университета мы знаем, что связи бывают разных типов: один к одному или ко
+многим, многие ко многим. Профиль, который ссылается на пользователя — пример
+связи один к одному. Несколько заказов у пользователя — один ко многим. Тип
+связи легко задать ограничением на поле ссылки. Если в таблице профилей сделать
+поле <code class="highlighter-rouge">user_id</code> уникальным, не получится создать два профиля с одинаковым
+<code class="highlighter-rouge">user_id</code>. Это именно то, что нам требуется — чтобы у одного пользователя не
+могло быть два профиля.</p>
+
+<h2 id="Запросы">Запросы</h2>
+
+<p>База данных обращается с миром через SQL — структурированный язык запросов. Это
+текст, в котором описаны наши намерения — прочитать таблицу, добавить запись,
+обновить поле. Запросы имеют четкую структуру, которая чаще всего зависит от
+главного оператора. К ним относятся SELECT, INSERT, UPDATE, DELETE — стандартные
+CRUD-операции над записями.</p>
+
+<p>Существуют несколько стандартов SQL, обозначенных годами, когда они были
+приняты: SQL’92, ‘99, ‘2003 и другие. Как правило, каждая база данных
+поддерживает стандарт определенного года вдобавок с расширениями —
+возможностями, которые не входят в стандарт. При чтении документации обращайте
+внимание на то, относится ли функциональность к стандарту или же это частное
+решение конкретной БД.</p>
+
+<p>В аббревиатуре SQL последняя буква означает language, язык. Важно помнить, что
+это не язык программирования: в нем нельзя описать что-либо алгоритмом или
+переменной. Говоря точнее, SQL не является полным по Тьюрингу языком: вы не
+сможете построить SQL-выражение на нем самом. Поэтому SQL-запросы часто
+приходится строить по частям в полноценном (полным по Тьюрингу) языке, например
+Java, Python, Clojure.</p>
+
+<p>Современные базы данных предлагают встроенные языки и операторы, чтобы это
+исправить. Так, в PostgreSQL вам доступен блок DO, где работают переменные,
+циклы и даже перехват исключений. Но это частное решение, которое не входит в
+стандарт.</p>
+
+<p>(Продолжение следует)</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+<div id="disqus_thread"></div>
+<script>
+    /**
+    * RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    * LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+    */
+    /*
+    var disqus_config = function () {
+    this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+    this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    };
+    */
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+
+    s.src = '//igrishaev.disqus.com/embed.js';
+
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
