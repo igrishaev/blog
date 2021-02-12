@@ -5,7 +5,7 @@ git-prepare:
 	git clone -b gh-pages --single-branch git@github.com:igrishaev/interview.git gh-pages
 
 docker-build:
-	docker build -t blog .
+	docker build --no-cache -t blog .
 
 DOCKER_BASE=docker run -it --rm -p 4000:4000 -v $(CURDIR):/blog blog
 
