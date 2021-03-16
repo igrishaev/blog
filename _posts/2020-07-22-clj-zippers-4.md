@@ -138,8 +138,18 @@ Clojure.
 (defn loc->org [loc]
   (->> loc
        (iterate zip/up)
-       (drop-while (complement loc-org?))
-       (first)))
+       (find-first loc-org?)))
+~~~
+
+Служебная функция `find-first` находит первый элемент коллекции, который подошёл
+предикату. Она ещё не раз пригодится нам.
+
+~~~clojure
+(defn find-first [pred coll]
+  (some (fn [x]
+          (when (pred x)
+            x))
+        coll))
 ~~~
 
 Чтобы сократить код, не будем объявлять переменные `loc-iphones` и
@@ -162,7 +172,7 @@ Clojure.
 хранили данные в JSON, это была бы комбинация списков и словарей, и версии с
 филиалами и без них отличались.
 
-Без филиалов:
+Товары без филиалов:
 
 ~~~json
 [{"name": "re-Store",
@@ -173,7 +183,7 @@ Clojure.
                {"type": "notebook", "name": "Macbook Pro"}]}]
 ~~~
 
-С ними:
+Товары с филиалами:
 
 ~~~json
 [{"name": "re-Store",
