@@ -34,3 +34,10 @@ clear:
 
 gh-pages-init:
 	git clone --branch gh-pages git@github.com:igrishaev/blog.git gh-pages
+
+
+aws-upload:
+	aws s3 sync aws s3://igrishaev.public --acl public-read --exclude '.DS_Store'
+
+aws-download:
+	aws s3 sync s3://igrishaev.public aws
