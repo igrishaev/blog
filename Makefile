@@ -41,3 +41,12 @@ aws-upload:
 
 aws-download:
 	aws s3 sync s3://igrishaev.public aws
+
+grep-github:
+	grep --no-filename -r --include="*.md" -o -E -i '(https://user-images.githubusercontent.com.+?(\.\w+))' . > urls.txt
+
+wget-github:
+	wget -i urls.txt -x
+
+# !\[(.*)\]\((https://user-images.githubusercontent.com/(.*?))\)
+# {% include static.html path="$3" title="$1" %}

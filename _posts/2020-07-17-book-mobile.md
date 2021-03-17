@@ -48,28 +48,28 @@ tags: book mobile
 
 Шрифт хорошо читается:
 
-![](https://user-images.githubusercontent.com/1059232/87761823-ca7b3b00-c81a-11ea-8897-f39f8baa1b33.JPG)
+{% include static.html path="1059232/87761823-ca7b3b00-c81a-11ea-8897-f39f8baa1b33.JPG" %}
 
 Код влезает на страницу без переносов. Там, где они есть, переносы выполнены
 вручную, чтобы попасть в удобное место.
 
-![](https://user-images.githubusercontent.com/1059232/87761855-d49d3980-c81a-11ea-9b2c-3f3f080d69a0.JPG)
+{% include static.html path="1059232/87761855-d49d3980-c81a-11ea-9b2c-3f3f080d69a0.JPG" %}
 
 В PDF расставлены ссылки и метки глав. Если нажать на Go To, открывается список
 закладок. Жаль только, что плоский, без иерархии. Впрочем, это зависит от
 устройства.
 
-![](https://user-images.githubusercontent.com/1059232/87761849-d2d37600-c81a-11ea-8857-3373adefe38b.JPG)
+{% include static.html path="1059232/87761849-d2d37600-c81a-11ea-8857-3373adefe38b.JPG" %}
 
 Еще картинки:
 
-![](https://user-images.githubusercontent.com/1059232/87761853-d404a300-c81a-11ea-933a-97d0cc6e76f2.JPG)
+{% include static.html path="1059232/87761853-d404a300-c81a-11ea-933a-97d0cc6e76f2.JPG" %}
 
-![](https://user-images.githubusercontent.com/1059232/87761846-d23adf80-c81a-11ea-9a89-8bf38156d388.JPG)
+{% include static.html path="1059232/87761846-d23adf80-c81a-11ea-9a89-8bf38156d388.JPG" %}
 
-![](https://user-images.githubusercontent.com/1059232/87761832-cc44fe80-c81a-11ea-9ffa-659bc7ed8c29.JPG)
+{% include static.html path="1059232/87761832-cc44fe80-c81a-11ea-9ffa-659bc7ed8c29.JPG" %}
 
-![](https://user-images.githubusercontent.com/1059232/87761823-ca7b3b00-c81a-11ea-8897-f39f8baa1b33.JPG)
+{% include static.html path="1059232/87761823-ca7b3b00-c81a-11ea-8897-f39f8baa1b33.JPG" %}
 
 Закачайте годноту на устройства, чтобы читать в очереди, самолете, в парке.
 

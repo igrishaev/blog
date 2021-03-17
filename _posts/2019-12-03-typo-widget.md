@@ -12,16 +12,16 @@ lang: ru
 
 Делай раз — выделяем текст:
 
-![](https://user-images.githubusercontent.com/1059232/70032157-eb5d8b80-15bd-11ea-9df9-de81144133d5.png)
+{% include static.html path="1059232/70032157-eb5d8b80-15bd-11ea-9df9-de81144133d5.png" %}
 
 Делай два — жмем `Ctrl+Enter`, открывается черновик. В какой именно программе,
 зависит от настроек системы:
 
-![](https://user-images.githubusercontent.com/1059232/70032156-eac4f500-15bd-11ea-9b0a-f7891250cea3.png)
+{% include static.html path="1059232/70032156-eac4f500-15bd-11ea-9b0a-f7891250cea3.png" %}
 
 Делай три — отправляем, мне падает вот такое письмо:
 
-![](https://user-images.githubusercontent.com/1059232/70032155-eac4f500-15bd-11ea-93a2-8d4071a90f80.png)
+{% include static.html path="1059232/70032155-eac4f500-15bd-11ea-93a2-8d4071a90f80.png" %}
 
 [js]: https://github.com/igrishaev/blog/blob/master/assets/typo.js
 
