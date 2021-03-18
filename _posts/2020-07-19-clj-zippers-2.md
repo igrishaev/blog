@@ -128,9 +128,10 @@ tags: clojure zippers
       zip/next))
 
 loc-end
-[[1 2 3] :end]
+;; [[1 2 3] :end]
 
 (zip/end? loc-end)
+;; true
 ~~~
 
 Чтобы получить конечную цепь локаций, будет сдвигать указатель до тех пор, пока
