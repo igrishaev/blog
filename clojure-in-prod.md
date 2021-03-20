@@ -8,7 +8,7 @@ tags: book
 
 [mobile]: /book-mobile/
 
-![](https://user-images.githubusercontent.com/1059232/85860614-be75fd80-b7c7-11ea-8553-3bde8d14b576.jpg)
+{% include static.html path="1059232/85860614-be75fd80-b7c7-11ea-8553-3bde8d14b576.jpg" %}
 
 Clojure? Это где скобочки и нет типов? На производстве? Всё верно. Это
 функциональный язык с акцентом на неизменяемость и многопоточность. Он появился
@@ -151,29 +151,26 @@ Clojure? Это где скобочки и нет типов? На произв�
 
 Страницы:
 
-{: .book-page}
-![](https://user-images.githubusercontent.com/1059232/85308022-5d91b100-b4b9-11ea-8f3b-9b421ba5b19a.png)
+{% include static.html path="1059232/85308022-5d91b100-b4b9-11ea-8f3b-9b421ba5b19a.png" class="book-page" %}
 
-{: .book-page}
-![](https://user-images.githubusercontent.com/1059232/85308024-5ec2de00-b4b9-11ea-9ac1-cccd3f60cabf.png)
+{% include static.html path="1059232/85308024-5ec2de00-b4b9-11ea-9ac1-cccd3f60cabf.png" class="book-page" %}
 
 Вживую:
 
-![](https://user-images.githubusercontent.com/1059232/84793877-49a00800-affe-11ea-95a2-2d2c57486f9e.JPG)
+{% include static.html path="1059232/84793877-49a00800-affe-11ea-95a2-2d2c57486f9e.JPG" class="book-page" %}
 
+{% include static.html path="1059232/84793881-4ad13500-affe-11ea-8048-2cf1dc8f89cf.JPG" class="book-page" %}
 
-![](https://user-images.githubusercontent.com/1059232/84793881-4ad13500-affe-11ea-8048-2cf1dc8f89cf.JPG)
-
-![](https://user-images.githubusercontent.com/1059232/84793885-4b69cb80-affe-11ea-9dde-3bafdd9bdbfb.JPG)
+{% include static.html path="1059232/84793885-4b69cb80-affe-11ea-9dde-3bafdd9bdbfb.JPG" class="book-page" %}
 
 Версия на Айпаде:
 
-![](https://user-images.githubusercontent.com/1059232/85307325-6fbf1f80-b4b8-11ea-9b14-d195709233d2.jpg)
+{% include static.html path="1059232/85307325-6fbf1f80-b4b8-11ea-9b14-d195709233d2.jpg" class="book-page" %}
 
-![](https://user-images.githubusercontent.com/1059232/85307328-70f04c80-b4b8-11ea-94fd-cdd29b31a443.jpg)
+{% include static.html path="1059232/85307328-70f04c80-b4b8-11ea-94fd-cdd29b31a443.jpg" class="book-page" %}
 
 Читалка и телефон:
 
-![](https://user-images.githubusercontent.com/1059232/85383753-089d7b80-b549-11ea-8999-8b957cabacb4.JPG)
+{% include static.html path="1059232/85383753-089d7b80-b549-11ea-8999-8b957cabacb4.JPG" class="book-page" %}
 
-![](https://user-images.githubusercontent.com/1059232/85383921-413d5500-b549-11ea-82a8-a605394458ec.JPG)
+{% include static.html path="1059232/85383921-413d5500-b549-11ea-82a8-a605394458ec.JPG" class="book-page" %}
