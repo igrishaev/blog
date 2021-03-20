@@ -37,7 +37,7 @@ gh-pages-init:
 
 
 aws-upload:
-	aws s3 sync aws s3://igrishaev.public --acl public-read --exclude '.DS_Store'
+	aws s3 sync aws s3://igrishaev.public --acl public-read --exclude '*.DS_Store'
 
 aws-download:
 	aws s3 sync s3://igrishaev.public aws
