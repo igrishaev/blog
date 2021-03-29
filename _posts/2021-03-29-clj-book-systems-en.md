@@ -56,7 +56,7 @@ Clojure offers several libraries for systems. We'll take a look at Mount, Compon
 
 We deliberately arranged the libraries in this order. Mount is the simplest of them, so let's start with it as an introduction to the topic. Component has become an industry standard. Let's pay more attention to it and therefore put it in the middle. Integrant completes our overview. We'll discuss it as an alternative to the Component library, which you will be familiar with by then.
 
-Our system is similar to what you might come across in practice. It consists of a web server, a database, and a worker (a background task that updates records in the database). We added the worker specifically to help you learn how to work with dependencies. To better understand the system, let's draw its topology \fig{fig:chart-system}.
+Our system is similar to what you might come across in practice. It consists of a web server, a database, and a worker (a background task that updates records in the database). We added the worker specifically to help you learn how to work with dependencies. To better understand the system, let's draw its topology.
 
 {:.code_chart}
 ~~~
@@ -1146,7 +1146,7 @@ To start the system, it is passed into `component/start`. The system has a speci
 (def sys-stopped (component/stop sys-started))
 ~~~
 
-Like a component, the system flows freely through the `start` and `stop` functions in the \arr operator. If not, there is an error in the system.
+Like a component, the system flows freely through the `start` and `stop` functions in the &rarr; operator. If not, there is an error in the system.
 
 ~~~clojure
 (-> (make-system config)
