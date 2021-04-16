@@ -42,6 +42,9 @@ aws-upload:
 aws-download:
 	aws s3 sync s3://igrishaev.public aws
 
+aws-rm:
+	aws s3 rm s3://igrishaev.public/foo --recursive
+
 grep-github:
 	grep --no-filename -r --include="*.md" -o -E -i '(https://user-images.githubusercontent.com.+?(\.\w+))' . > urls.txt
 
