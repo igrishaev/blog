@@ -448,7 +448,7 @@ moves the pointer so that sooner or later we'll traverse the entire structure. W
 ;; 2
 ~~~
 
-We don't know how many times to call  `zip/next`, so let's resort to a ploy. The `iterate` function takes the `f` function and an `x` value. It returns a sequence where the first element is `x`, and each next is an `f(x)` from the previous one. For a zipper, we get the initial location, then `zip/next` from it, then ` zip/next` from the previous movement, and so on.
+We don't know how many times to call  `zip/next`, so let's resort to a ploy. The `iterate` function takes the `f` function and an `x` value. It returns a sequence where the first element is `x`, and each next is an `f(x)` from the previous one. For a zipper, we get the initial location, then `zip/next` from it, then `zip/next` from the previous movement, and so on.
 
 Below, the variable `loc-seq` is the location chain of the source zipper. To get the nodes, we take the first six elements (the number we take randomly) and call `zip/node` for each.
 
@@ -866,7 +866,7 @@ To get back to zippers, let's pick a problem where `tree-seq` loses its benefits
 
 ## Part 4. XML search
 
-Let's say we need to select the stores that sell iPhones from an XML with products. Note: this is the first time we've touched on the relationship between nodes. That's important! It's easy to select the data individually. Shops are locations that have the `organization` tag. iPhones are locations that have a node with the `product` tag and the ` type = "tablet" `attribute. But how to find a relationship between them?
+Let's say we need to select the stores that sell iPhones from an XML with products. Note: this is the first time we've touched on the relationship between nodes. That's important! It's easy to select the data individually. Shops are locations that have the `organization` tag. iPhones are locations that have a node with the `product` tag and the `type="tablet"` attribute. But how to find a relationship between them?
 
 The previous time, we decomposed the XML into a sequence using `xml-seq`. The problem is that the function returns a collection of nodes with no relationship, which prevents us from solving our task. Let's show this with an example: First, let's get a chain of nodes:
 
@@ -1351,7 +1351,7 @@ Now, we'll find the location, fix it and go up to the root:
 ;; [1 2 [3 4 [5 :ok]]]
 ~~~
 
-Another example: change all `nil` items to `0` in the nested vector to make the math safe. This time there may be more than one location, so a traversal through the `loop` is required. At each step, we check if the location matches the condition, and if so, we pass the `zip/next` call from the modified version to ` recur`:
+Another example: change all `nil` items to `0` in the nested vector to make the math safe. This time there may be more than one location, so a traversal through the `loop` is required. At each step, we check if the location matches the condition, and if so, we pass the `zip/next` call from the modified version to `recur`:
 
 ~~~clojure
 (def data [1 2 [5 nil 2 [3 nil]] nil 1])
@@ -1482,7 +1482,7 @@ Note that products now have prices — a characteristic that changes frequently.
 As you might remember, in terms of Clojure, XML is nested dictionaries with keys.
 `:tag`, `:attrs` и `:content`. But after the changes, we would like to see it in its usual, textual form. We need the opposite action: converting XML from the data structure to text. To do this, import the built-in `clojure.xml` module. Its `emit` function prints XML.
 
-Often, `emit` is wrapped in ` with-out-str` (a macro to intercept printing to a string). In the examples below, we'll output the XML in the console. Since `emit` doesn't support indentation, we will add it manually for clarity.
+Often, `emit` is wrapped in `with-out-str` (a macro to intercept printing to a string). In the examples below, we'll output the XML in the console. Since `emit` doesn't support indentation, we will add it manually for clarity.
 
 **The first task** is to make a 10 percent discount on all iPhones. We have almost all abstractions ready,
 so let's write the solution from top to bottom:
@@ -2438,7 +2438,7 @@ Here's how to find all the images on a webpage:
 The first function checks if the location points to a node with the `<img>` tag, the second
 extracts the `src` attribute from it. The third form returns a list of links to images.
 
-Based on these actions, you can build HTML filtering, especially if an HTML markup comes from a source you don't trust. Another scenario is to find a suitable image for a social media cover in HTML. To do this, you need to select all images, estimate their width and height, and select the largest in area (if the `width` and ` height` attributes are filled in).
+Based on these actions, you can build HTML filtering, especially if an HTML markup comes from a source you don't trust. Another scenario is to find a suitable image for a social media cover in HTML. To do this, you need to select all images, estimate their width and height, and select the largest in area (if the `width` and `height` attributes are filled in).
 
 Hickory considers typical cases and offers selectors for searching by tag and attribute. It isn't even necessary to cast the JSoup tree to a zipper to do this. However, in rare cases, you need to find tags with complex relationships, as in the product and bundle example (either only in the bundle or strictly outside it). These problems fit zippers very well.
 
