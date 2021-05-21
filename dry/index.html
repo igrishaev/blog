@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Сага о DRY и зависимостях</title>
+  <meta name="description" content="Предположим, в вашем проекте два модуля: project.foo и project.bar. В первыйиз них вы добавили служебную функцию, например поиск элемента попредикату. Через ...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/dry/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <script>
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+    ga('create', 'UA-33533163-2', 'auto');
+    ga('send', 'pageview');
+
+</script>
+
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img src="/assets/static/photo-round-small.png" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Сага о DRY и зависимостях</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2021-05-21T00:00:00+00:00">
+        May 21, 2021
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/dry/" rel="tag">dry</a>
+
+</div>
+
+    <script src="https://yastatic.net/es5-shims/0.0.2/es5-shims.min.js"></script>
+<script src="https://yastatic.net/share2/share.js"></script>
+<div class="ya-share2" data-services="twitter,telegram,facebook,vkontakte,lj,evernote,linkedin,reddit" data-limit="4"></div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Предположим, в вашем проекте два модуля: <code class="language-plaintext highlighter-rouge">project.foo</code> и <code class="language-plaintext highlighter-rouge">project.bar</code>. В первый
+из них вы добавили служебную функцию, например поиск элемента по
+предикату. Через некоторое время то же самое понадобилось во втором модуле. Как
+вы поступите?</p>
+
+<p>Варианты:</p>
+
+<ol>
+  <li>Вынесу функцию в третий модуль <code class="language-plaintext highlighter-rouge">project.utils</code> и подключу его к <code class="language-plaintext highlighter-rouge">foo</code> и
+<code class="language-plaintext highlighter-rouge">bar</code>.</li>
+  <li>Скопирую функцию во второй модуль.</li>
+</ol>
+
+<p>Конечно, вы и так знаете, что правильный способ — первый. <a href="https://ru.wikipedia.org/wiki/Don%E2%80%99t_repeat_yourself">DRY</a> (Don’t
+Repeat Yourself), не дублируй код. Держи одну точку входа, чтобы в случае ошибки
+править в одном месте. Копирование — наш враг и все такое. Я тоже тоже так думал
+раньше, и вот, в тридцать пять лет, поменял мнение.</p>
+
+<!-- more -->
+
+<p>Теперь я просто копирую код. Да, так было можно, и вот почему.</p>
+
+<p>Рассмотрим ваши модули <code class="language-plaintext highlighter-rouge">foo</code> и <code class="language-plaintext highlighter-rouge">bar</code>. Сейчас они не связаны друг с другом, и это
+хорошо:</p>
+
+<div class="language-plaintext asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+        ┌───────────────┐
+        │  project.foo  │
+        └───────────────┘
+
+        ┌───────────────┐
+        │  project.bar  │
+        └───────────────┘
+</code></pre></div></div>
+
+<p>Если добавить в каждый из них по одинаковой функции, они по-прежнему не будут
+связаны:</p>
+
+<div class="language-plaintext asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+    ┌─────────────────────┐
+    │project.foo          │
+    │                     │
+    │function zip(...)    │
+    └─────────────────────┘
+
+
+    ┌─────────────────────┐
+    │project.bar          │
+    │                     │
+    │function zip(...)    │
+    └─────────────────────┘
+
+</code></pre></div></div>
+
+<p>Если вынести общую часть в условный <code class="language-plaintext highlighter-rouge">commons</code> или <code class="language-plaintext highlighter-rouge">utils</code>, получатся лишние
+связи:</p>
+
+<div class="language-plaintext asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+
+                                ┌───────────────┐
+  ┌─────────────────────┐   ┌───│  project.foo  │
+  │project.util         │   │   └───────────────┘
+  │                     │◀──┤
+  │function zip(...)    │   │   ┌───────────────┐
+  └─────────────────────┘   └───│  project.bar  │
+                                └───────────────┘
+
+</code></pre></div></div>
+
+<p>Конечно, всего лишь две связи не разрушат проект. Но представьте, что оба <code class="language-plaintext highlighter-rouge">foo</code>
+и <code class="language-plaintext highlighter-rouge">bar</code> зависят от других модулей, а те — от третьих. Добавляя новые зависимости
+между модулями, вы запутываете проект. Чем файлов и импортов, тем сложнее
+поддержка.</p>
+
+<p>Далее: мы только создали модуль <code class="language-plaintext highlighter-rouge">utils</code> или <code class="language-plaintext highlighter-rouge">commons</code>. Как точно описать его
+семантику? Что должно там храниться? У нас есть поиск элемента по
+предикату. Если коллега добавит преобразование времени в миллисекунды, будет ли
+это верным местом? А форматирование валюты? А генерация паролей?</p>
+
+<p>Очевидно, <code class="language-plaintext highlighter-rouge">utils</code> становится помойкой, в которую пихают что угодно. Но страшно
+не это. <code class="language-plaintext highlighter-rouge">Utils</code>, как раковая опухоль, расползается по проекту, и скоро каждый
+второй модуль заражен нашим <code class="language-plaintext highlighter-rouge">utils</code>. Далее случается вот что: одну из функций
+<code class="language-plaintext highlighter-rouge">utils</code> нужно улучшить с помощью сторонней библиотеки. Теперь все, кто затянут
+себе <code class="language-plaintext highlighter-rouge">utils</code>, транзитивно подтянут и стороннюю библиотеку, даже если в ней не
+нуждались.</p>
+
+<p>Модули <code class="language-plaintext highlighter-rouge">utils</code> — частое явление в проектах, и нужно его обуздать. Если в проекте
+уже есть подобный модуль-помойка, то я предлагаю правило — в нем можно
+пользоваться только коробочными модулями. Если функция требует чужую библиотеку,
+ей не место в <code class="language-plaintext highlighter-rouge">utils</code>. С этим ограничением мы гарантируем, что по крайней мере
+<code class="language-plaintext highlighter-rouge">utils</code> не ухудшится окончательно.</p>
+
+<p>Понимаю, что у каждого разработчика есть набор самописных функций, которых нет в
+поставке языка. У меня их пара десятков. Вот несколько:</p>
+
+<p><code class="language-plaintext highlighter-rouge">Find-first</code>, поиск первого элемента по предикату. Требуется постоянно. Варианты
+с <code class="language-plaintext highlighter-rouge">filter</code> и <code class="language-plaintext highlighter-rouge">first</code> я считаю уродливыми и терпеть не могу их комбинацию в
+коде. Моя реализация:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(dеfn find-first [pred coll]
+  (some (fn [x]
+          (when (pred x)
+            x))
+        coll))
+</code></pre></div></div>
+
+<p>Зиппер двух и более коллекций. В отличие от <code class="language-plaintext highlighter-rouge">zip-map</code>, вернет вектор векторов,
+что гарантирует порядок:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(dеfn zip [coll1 coll2 &amp; colls]
+  (apply mapv vector coll1 coll2 colls))
+</code></pre></div></div>
+
+<p>Неленивая склейка коллекций. Стандартный <code class="language-plaintext highlighter-rouge">concat</code> ленив и в особых случаях им
+можно отстрелить себе ногу. Ниже — простая и быстрая версия:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(dеfn concat-colls
+  [coll-of-colls]
+  (reduce into [] coll-of-colls))
+</code></pre></div></div>
+
+<p>Разделение словаря на два вектора ключей и значений:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(dеfn map-split [mapping]
+  (apply mapv vector mapping))
+</code></pre></div></div>
+
+<p>Список можно продолжить, но вы поняли: этих функций нет в коробке, но они
+нужны. С их помощью мы именуем сложные действия и делаем код понятнее. Конечно,
+и без всякого <code class="language-plaintext highlighter-rouge">map-split</code> можно написать в коде:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(let [[user-keys user-vals] (apply mapv vector user-map)]
+  ...)
+</code></pre></div></div>
+
+<p>Но получится каша, которую трудно понять. Что такое <code class="language-plaintext highlighter-rouge">(apply mapv vector ...)</code>? Я
+должен выполнить этот код в уме или репле, прежде чем станет ясно. Это
+недопустимо — при чтении кода он должен быть ясен сразу. Поэтому опытный
+программист выносит подобные комбо в именованные функции. Не чтобы сэкономить
+место, а чтобы назначить операции семантику.</p>
+
+<p>В работе я постоянно использую эти и другие функции. Раньше я как и все выносил
+их в условный commons и подключал где только можно. Теперь просто копирую — не
+парит. Обычно мой код начинается с нескольких служебных функций и макросов,
+содранных с других модулей, а дальше следует логика.</p>
+
+<p>И вы знаете, это прекрасный подход. Если нужен слегка другой вариант функции, я
+меняю его прямо здесь, а не в <code class="language-plaintext highlighter-rouge">commons</code>. Таким образом я не волнуюсь, что зацеплю
+остальных потребителей этой функции, потому что их нет.</p>
+
+<p>Возвращаясь к вопросу в начале статьи — я бы смело скопировал функцию во второй
+модуль и продолжил работу. Конечно, в ревью могут набежать адепты чистоты
+кода. Основная их претензия в следующем: если функцию потребуется изменить,
+придется делать это в двух местах, а в случае с общим модулем — в одном месте.</p>
+
+<p>Справедливо, но вот что на это можно ответить. Прежде всего, какова вероятность,
+что простую и чистую функцию придется переписывать? Как правило, функции просты
+и проверены временем. Может ли адепт DRY дать какой-то прогноз? Ответ очевиден —
+нет. Аргументы из серии “а что, если” относятся к демагогии. Случиться может что
+угодно: и ядерная война, и ликвидация фирмы, и покупка ее новым владельцем с
+переписыванием кода на PHP. Готовиться к каждому хоть сколько вероятному событию
+означает распылять внимание и терять фокус.</p>
+
+<p>Кроме того, предложение улучшить код “на всякий случай” нерационально. Это выбор
+из двух. Первое — ничего не делать сейчас и, возможно, доработать в
+будущем. Второе — править сейчас, хотя в будущем, возможно, это не
+пригодится. Разумный человек выберет первый вариант. И не забывайте, что задача
+адепта DRY — просто написать комментарий, чтобы дать о себе знать. А работать
+придется вам.</p>
+
+<p>Вообще, в чем ваша конечная цель как программиста? Не в том, чтобы писать
+понятный код и говорить на созвонах. Цель — создавать продукт в разумные
+сроки. Если в проекте встречаются повторы кода, но продукт развивается по
+графику — это лучшее, что можно пожелать. Гораздо хуже, когда модули полны
+перекрестных зависимостей, и проект становится хрупким.</p>
+
+<p>Когда-то я работал в большом проекте на Питоне. У нас были классы, идеологически
+верное ООП, все по заветам умных людей. Навсегда запомнил такой случай. В
+проекте была сущность, которую описывал класс на три экрана. Нам велели добавить
+в продукт похожую сущность, но с некоторыми отличиями. Если бы задачу дали мне,
+я бы унаследовал новый класс от прежнего и переопределил нужные методы. ООП,
+наследование, все дела.</p>
+
+<p>Но тимлид предугадал такой сценарий и забрал задачу себе. Он скопировал класс в
+новый модуль и уже там изменил поля и методы. Помню, как подкатывал к нему с
+претензией: ты нарушаешь принципы ООП, пятое-десятое. Но тимлид умел брать
+ответственность за решения. Он все сделал правильно, а я, 25-летний дурачок,
+тогда этого не понял.</p>
+
+<p>Помните, что каждое правило имеет область определения: где, когда и с
+кем. Начинающие обычно закрывают на это глаза: сложно, приходится
+думать. Гораздо легче свести правило к догме: всегда и только так. Увы, это не
+работает в больших масштабах. Дублирование кода — компромисс, на который
+приходится идти, чтобы бороться с ростом связей внутри проекта.</p>
+
+<p>Конечно, нельзя дублировать части, которые относятся к бизнес-логике
+приложения. Например, расчет комиссии, конвертация валют, авторизация. Но
+опытный программист ни за что не поместит подобный код в <code class="language-plaintext highlighter-rouge">utils</code>. Ему место в
+модулях <code class="language-plaintext highlighter-rouge">project.currency</code>, <code class="language-plaintext highlighter-rouge">project.billing</code> или <code class="language-plaintext highlighter-rouge">project.auth</code>. Если у вас
+обратная ситуация — это грубая ошибка.</p>
+
+<p>Опасность лишних связей видна еще лучше в мульти-проектах. Если простыми
+словами, это головной проект, внутри которого дочерние проекты. Они наследуют
+основные параметры головного, а последний может ими пакетно управлять. Например,
+прогнать тесты для всех дочерних проектов, собрать их, выкатить релиз и так
+далее. Но главная задача мульти-проекта — сделать так, чтобы потребители могли
+использовать лишь его малую часть, не затягивая все целиком.</p>
+
+<p>Вот как это работает в проекте, над которым тружусь прямо сейчас. Мы
+интегрируемся с неким сторонним сервисом. На первый взгляд задача банальна —
+нужно дергать чужую REST-апишку, конвертировать данные в наш формат и возвращать
+клиенту. Но вот что происходит на практике.</p>
+
+<ul>
+  <li>Сначала пишем низкоуровневый HTTP-клиент для сервиса.</li>
+  <li>Оборачиваем CRUD операции в некий Entity-фреймворк, который активно используем
+в остальных проектах.</li>
+  <li>Пишем HTTP-обработчик, который подключим в отдельное приложение.</li>
+  <li>Для биллинга пишем хранилище сущностей, которые создаем в том
+сервисе. Хранилище включает в себя таблицу в Кассандре и несколько
+компонентов.</li>
+  <li>Пишем <code class="language-plaintext highlighter-rouge">reconciler</code> — периодическую задачу, которая выгребает данные из сервиса
+и записывает к нам.</li>
+</ul>
+
+<p>Если валить все в одну кучу, это будет удобно нам, но не другим
+командам. Например, соседней команде нужны только CRUD-операции. Если они
+затянут проект целиком, то получат кассандру, <code class="language-plaintext highlighter-rouge">reconciler</code> и прочее
+барахло. Конечно, с помощью параметра <code class="language-plaintext highlighter-rouge">:exclude</code> можно указать, от чего
+отказаться. Но практика показывает, что к нему прибегают редко — только когда в
+консоли появляются предупреждения о конфликтах версий. Поэтому по умолчанию
+библиотеки затягивают целиком.</p>
+
+<p>Правильно разделить код на под-проекты: <code class="language-plaintext highlighter-rouge">service-client</code>, <code class="language-plaintext highlighter-rouge">service-entities</code>,
+<code class="language-plaintext highlighter-rouge">service-storage</code>, <code class="language-plaintext highlighter-rouge">service-reconciler</code> и так далее. Вести для них единую
+систему версий. Тогда ребята, которым нужны CRUD-сущности, добавят себе
+<code class="language-plaintext highlighter-rouge">[service-entities "0.1.3"]</code> и получат только то, что им нужно.</p>
+
+<p>Теперь внимание: в дочерних проектах <code class="language-plaintext highlighter-rouge">service-client</code> и <code class="language-plaintext highlighter-rouge">service-reconciler</code>
+встречаются одинаковые функции типа <code class="language-plaintext highlighter-rouge">zip</code>, <code class="language-plaintext highlighter-rouge">find-first</code> и другие. Как с ними
+быть?  Просто воткнуть зависимость <code class="language-plaintext highlighter-rouge">service-reconciler</code> от <code class="language-plaintext highlighter-rouge">service-client</code>
+нельзя — это будет катастрофа. Мы же намеренно разносили их, а теперь мешаем в
+кучу.</p>
+
+<div class="language-plaintext asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+    ┌─────────────────────┐
+    │service-client       │
+    │                     │
+    │function zip(...)    │
+    └─────────────────────┘
+               ▲
+               │
+               │    ┌─────────────────────┐
+               │    │                     │
+               └────│service-reconciler   │
+                    │                     │
+                    └─────────────────────┘
+
+</code></pre></div></div>
+
+<p>Более мягкий вариант — собрать дочерний проект <code class="language-plaintext highlighter-rouge">service-utils</code> и подключить ко
+всем остальным.</p>
+
+<div class="language-plaintext asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+                      ┌─────────────────────┐
+                      │                     │
+              ┌───────│service-client       │
+              │       │                     │
+              ▼       └─────────────────────┘
+   ┌─────────────────────┐
+   │service-util         │
+   │                     │
+   │function zip(...)    │
+   └─────────────────────┘
+              ▲
+              │       ┌─────────────────────┐
+              │       │                     │
+              └───────│service-reconciler   │
+                      │                     │
+                      └─────────────────────┘
+
+</code></pre></div></div>
+
+<p>Но опыт показывает, что это слабый ход. Вы получите лишние связи уже не между
+модулями, а библиотеками. Это затрудняет разработку: если изменится служебная
+функция в <code class="language-plaintext highlighter-rouge">service-utils</code>, нужно собрать новую версию пакета, обновить его
+версию в <code class="language-plaintext highlighter-rouge">service-client</code>, <code class="language-plaintext highlighter-rouge">service-reconciler</code> и прочих, прогнать тесты… Даже
+текстом тяжело описать, что для этого придется, не говоря уж о практике.</p>
+
+<p>Именно поэтому я осторожно отношусь к чужим библиотекам, в названии которых
+встречается <code class="language-plaintext highlighter-rouge">utils</code> или <code class="language-plaintext highlighter-rouge">commons</code>. Я всегда смотрю их исходный код. Мое
+обязательное требование — библиотека не должна зависеть от других сторонних
+либ. Если мне нужна одна функция на десяток строк, а вместе с ней я затягиваю
+еще чьи-то поделки, то так не пойдет.</p>
+
+<p>В последнее время я поступаю нагло: просто копирую код из чужих <code class="language-plaintext highlighter-rouge">commons</code> и
+<code class="language-plaintext highlighter-rouge">utils</code>. Меня не волнуют вопросы лицензии и этики. Мне так удобнее и
+спокойней. Я скопировал немного кода и точно знаю, что:</p>
+
+<ul>
+  <li>я не добавил лишних зависимостей.</li>
+  <li>Мне не нужно проверять changelog чужой либы перед тем, как обновлять ее
+версию.</li>
+  <li>Код не пропадет из-за того, что автор удалил его, кому-либо передал или продал
+права.</li>
+</ul>
+
+<p>Спокойно мне — лучше проекту.</p>
+
+<p>Напоследок немного Рича Хикки. Не то чтобы я его фанат, но на одну цитату крепко
+запал, а именно: <strong>Design is about keeping things apart.</strong> Дизайн — это
+грамотное разделение вещей. Не связь, а имеено разделение. Мой опыт
+подтверждает: когда работаешь над чем-то сложным, части норовят слиться в одно
+целое. Ты слишком занят и думаешь — поправлю потом. Затем нужно поменять в одном
+месте так, чтобы не задеть остальные, и привет — по сложности это как разделить
+сиамских близнецов. Грамотный дизайн в моем понимании таковой, когда части
+работают как единое целое, но каждый компонент легко настроить и заменить.</p>
+
+<p>Тезис про разделение справедлив для мира в целом. Любая система, неважно, что
+это — организм, общество, государство — развивается успешно лишь тогда, когда
+предоставляет своим частям автономию. В неблагополучное время, когда речь идет о
+выживании, компоненты теряют полномочия. В такие моменты все решает центр, а
+некоторые компоненты ликвидируются. Тут не до разделения, а лишь бы выпустить
+релиз.</p>
+
+<p>Но для процветания нужно разделение. Хоть кода в проекте, хоть людей в группе,
+хоть общественных институтов в государстве.</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+<div id="disqus_thread"></div>
+<script>
+    /**
+    * RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    * LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+    */
+    /*
+    var disqus_config = function () {
+    this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+    this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    };
+    */
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+
+    s.src = '//igrishaev.disqus.com/embed.js';
+
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
