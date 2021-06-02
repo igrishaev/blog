@@ -1,0 +1,2248 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Introducing Farseer: the JSON RPC server, the client and utilities</title>
+  <meta name="description" content="">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/en/farseer/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <script>
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+    ga('create', 'UA-33533163-2', 'auto');
+    ga('send', 'pageview');
+
+</script>
+
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img src="/assets/static/photo-round-small.png" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Introducing Farseer: the JSON RPC server, the client and utilities</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2021-06-02T00:00:00+00:00">
+        Jun 2, 2021
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/rpc/" rel="tag">RPC</a>
+
+</div>
+
+    <script src="https://yastatic.net/es5-shims/0.0.2/es5-shims.min.js"></script>
+<script src="https://yastatic.net/share2/share.js"></script>
+<div class="ya-share2" data-services="twitter,telegram,facebook,vkontakte,lj,evernote,linkedin,reddit" data-limit="4"></div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    
+<p><em>(This is a copy of the readme file from the repository.)</em></p>
+
+<p><a href="https://github.com/igrishaev/farseer">Farseer</a> is a set of modules for <a href="https://en.wikipedia.org/wiki/JSON-RPC">JSON RPC</a>. It includes a
+transport-independent handler, Ring HTTP handler, Jetty server, HTTP client,
+local stub, documentation, and more.</p>
+
+<h2>
+
+    
+
+</h2>
+
+<ul id="toc-item-farseer-en">
+  <li><a href="#what-and-why-is-json-rpc" id="toc-item-farseer-en-what-and-why-is-json-rpc">What and Why is JSON RPC?</a>    <ul>
+      <li><a href="#benefits" id="toc-item-farseer-en-benefits">Benefits</a></li>
+      <li><a href="#disadvantages" id="toc-item-farseer-en-disadvantages">Disadvantages</a></li>
+    </ul>
+  </li>
+  <li><a href="#the-structure-of-this-project" id="toc-item-farseer-en-the-structure-of-this-project">The Structure of this Project</a>    <ul>
+      <li><a href="#installation" id="toc-item-farseer-en-installation">Installation</a></li>
+    </ul>
+  </li>
+  <li><a href="#rpc-handler" id="toc-item-farseer-en-rpc-handler">RPC Handler</a>    <ul>
+      <li><a href="#method-handlers" id="toc-item-farseer-en-method-handlers">Method handlers</a></li>
+      <li><a href="#specs" id="toc-item-farseer-en-specs">Specs</a>        <ul>
+          <li><a href="#input-spec" id="toc-item-farseer-en-input-spec">Input Spec</a></li>
+          <li><a href="#output-spec" id="toc-item-farseer-en-output-spec">Output Spec</a></li>
+          <li><a href="#in-production" id="toc-item-farseer-en-in-production">In Production</a></li>
+        </ul>
+      </li>
+      <li><a href="#more-on-context" id="toc-item-farseer-en-more-on-context">More on Context</a>        <ul>
+          <li><a href="#static-context" id="toc-item-farseer-en-static-context">Static Context</a></li>
+          <li><a href="#dynamic-context" id="toc-item-farseer-en-dynamic-context">Dynamic Context</a></li>
+        </ul>
+      </li>
+      <li><a href="#request--response-formats" id="toc-item-farseer-en-request--response-formats">Request &amp; Response Formats</a>        <ul>
+          <li><a href="#request" id="toc-item-farseer-en-request">Request</a></li>
+          <li><a href="#response" id="toc-item-farseer-en-response">Response</a></li>
+          <li><a href="#error-codes" id="toc-item-farseer-en-error-codes">Error Codes</a></li>
+        </ul>
+      </li>
+      <li><a href="#notifications" id="toc-item-farseer-en-notifications">Notifications</a></li>
+      <li><a href="#batch-requests" id="toc-item-farseer-en-batch-requests">Batch Requests</a>        <ul>
+          <li><a href="#note-on-parallelism" id="toc-item-farseer-en-note-on-parallelism">Note on Parallelism</a></li>
+          <li><a href="#configuring--limiting-batch-requests" id="toc-item-farseer-en-configuring--limiting-batch-requests">Configuring &amp; Limiting Batch Requests</a></li>
+        </ul>
+      </li>
+      <li><a href="#errors--exceptions" id="toc-item-farseer-en-errors--exceptions">Errors &amp; Exceptions</a>        <ul>
+          <li><a href="#runtime-unexpected-errors" id="toc-item-farseer-en-runtime-unexpected-errors">Runtime (Unexpected) Errors</a></li>
+          <li><a href="#rpc-expected-errors" id="toc-item-farseer-en-rpc-expected-errors">RPC (Expected) Errors</a></li>
+          <li><a href="#raising-exceptions" id="toc-item-farseer-en-raising-exceptions">Raising Exceptions</a></li>
+        </ul>
+      </li>
+      <li><a href="#configuration" id="toc-item-farseer-en-configuration">Configuration</a></li>
+    </ul>
+  </li>
+  <li><a href="#ring-http-handler" id="toc-item-farseer-en-ring-http-handler">Ring HTTP Handler</a>    <ul>
+      <li><a href="#negative-responses" id="toc-item-farseer-en-negative-responses">Negative Responses</a></li>
+      <li><a href="#batch-requests-in-http" id="toc-item-farseer-en-batch-requests-in-http">Batch Requests in HTTP</a></li>
+      <li><a href="#configuration-1" id="toc-item-farseer-en-configuration-1">Configuration</a></li>
+      <li><a href="#middleware--authorization" id="toc-item-farseer-en-middleware--authorization">Middleware &amp; Authorization</a></li>
+      <li><a href="#http-context" id="toc-item-farseer-en-http-context">HTTP Context</a></li>
+    </ul>
+  </li>
+  <li><a href="#jetty-server" id="toc-item-farseer-en-jetty-server">Jetty Server</a>    <ul>
+      <li><a href="#configuration-2" id="toc-item-farseer-en-configuration-2">Configuration</a></li>
+      <li><a href="#with-server-macro" id="toc-item-farseer-en-with-server-macro">With-server macro</a></li>
+      <li><a href="#component" id="toc-item-farseer-en-component">Component</a></li>
+    </ul>
+  </li>
+  <li><a href="#http-stub" id="toc-item-farseer-en-http-stub">HTTP Stub</a>    <ul>
+      <li><a href="#multiple-stub" id="toc-item-farseer-en-multiple-stub">Multiple Stub</a></li>
+      <li><a href="#tests" id="toc-item-farseer-en-tests">Tests</a></li>
+      <li><a href="#negative-responses-1" id="toc-item-farseer-en-negative-responses-1">Negative Responses</a></li>
+    </ul>
+  </li>
+  <li><a href="#http-client" id="toc-item-farseer-en-http-client">HTTP Client</a>    <ul>
+      <li><a href="#configuration-3" id="toc-item-farseer-en-configuration-3">Configuration</a></li>
+      <li><a href="#handling-responses" id="toc-item-farseer-en-handling-responses">Handling Responses</a></li>
+      <li><a href="#auth" id="toc-item-farseer-en-auth">Auth</a></li>
+      <li><a href="#notifications-1" id="toc-item-farseer-en-notifications-1">Notifications</a></li>
+      <li><a href="#batch-requests-1" id="toc-item-farseer-en-batch-requests-1">Batch Requests</a></li>
+      <li><a href="#connection-manager-pool" id="toc-item-farseer-en-connection-manager-pool">Connection Manager (Pool)</a></li>
+      <li><a href="#component-1" id="toc-item-farseer-en-component-1">Component</a></li>
+    </ul>
+  </li>
+  <li><a href="#documentation-builder" id="toc-item-farseer-en-documentation-builder">Documentation Builder</a>    <ul>
+      <li><a href="#configuration-4" id="toc-item-farseer-en-configuration-4">Configuration</a></li>
+      <li><a href="#building" id="toc-item-farseer-en-building">Building</a></li>
+      <li><a href="#demo" id="toc-item-farseer-en-demo">Demo</a></li>
+      <li><a href="#selmer--context" id="toc-item-farseer-en-selmer--context">Selmer &amp; Context</a></li>
+      <li><a href="#rendering-specs" id="toc-item-farseer-en-rendering-specs">Rendering Specs</a></li>
+    </ul>
+  </li>
+  <li><a href="#ideas--further-development" id="toc-item-farseer-en-ideas--further-development">Ideas &amp; Further Development</a></li>
+</ul>
+
+<h2 id="what-and-why-is-json-rpc">What and Why is JSON RPC?</h2>
+
+<p>Briefly, JSON RPC is a protocol based on HTTP &amp; JSON. When calling the server,
+you specify the method (procedure) name and its parameters. The parameters could
+be either a map of a vector. The server returns a JSON response with the
+<code class="language-plaintext highlighter-rouge">result</code> or <code class="language-plaintext highlighter-rouge">error</code> fields. For example:</p>
+
+<p>Request:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="nl">"jsonrpc"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2.0"</span><span class="p">,</span><span class="w"> </span><span class="nl">"method"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sum"</span><span class="p">,</span><span class="w"> </span><span class="nl">"params"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">],</span><span class="w"> </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Response:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="nl">"jsonrpc"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2.0"</span><span class="p">,</span><span class="w"> </span><span class="nl">"result"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Pay attention: the protocol depends on neither HTTP method, nor query params,
+nor HTTP headers and so on. Although looking a bit primitive, this schema
+eventually appears to be robust, scalable and reliable.</p>
+
+<!-- more -->
+
+<h3 id="benefits">Benefits</h3>
+
+<p>RPC protocol brings significant changes into your API, namely:</p>
+
+<ul>
+  <li>
+    <p>There is single API endpoint on the server, for example <code class="language-plaintext highlighter-rouge">/api</code>. You don’t need
+to concatenate strings manually to build the paths like
+<code class="language-plaintext highlighter-rouge">/post/42/comments/52352</code> in REST.</p>
+  </li>
+  <li>
+    <p>All the data is located in one place. There is no need to parse the URI, query
+params, check out the method and so on. You don’t need to guess which HTTP
+method to pick (PUT, PATCH) for an operation when several entities change.</p>
+  </li>
+  <li>
+    <p>RPC grows horizontally with ease. Once you’ve set it up, you only extend
+it. Technically it means adding a new key into a map.</p>
+  </li>
+  <li>
+    <p>RPC doesn’t depend on transport. You can save the payload in Cassandra or push
+to Kafka. Later on, you can replay the sequence as it has everything you need.</p>
+  </li>
+  <li>
+    <p>RPC is a great choice for interaction between internal services. When all the
+services follow the same protocol, it’s easy to develop and maintain them.
+When protected with authentication, RPC can be provided to the end customers
+as well.</p>
+  </li>
+</ul>
+
+<h3 id="disadvantages">Disadvantages</h3>
+
+<p>The only disadvantage of RPC protocol is that it’s free from caching. On the
+other hand, we rarely want to get cached data. Most often, it’s important to get
+actual data on each request. If you share some public data that update rarely,
+perhaps you should organize ordinary GET endpoints.</p>
+
+<h2 id="the-structure-of-this-project">The Structure of this Project</h2>
+
+<p>Farseer consists from several minor projects that complement each other. Every
+sub-project requires its own dependencies. If it was a single project, you would
+download lots of stuff you don’t really need. Instead, with sub-projects, you
+install only those parts (and transient dependencies) you really need in your
+project.</p>
+
+<p>The root project is named <code class="language-plaintext highlighter-rouge">com.github.igrishaev/farseer-all</code>. It unites all the
+sub-projects listed below:</p>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">com.github.igrishaev/farseer-common</code>: dependency-free parts required by other
+sub-projects;</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">com.github.igrishaev/farseer-handler</code>: a transport-free implementation of RPC
+handler;</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">com.github.igrishaev/farseer-http</code>: HTTP Ring handler for RPC;</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">com.github.igrishaev/farseer-jetty</code>: HTTP Jetty server for RPC;</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">com.github.igrishaev/farseer-stub</code>: an HTTP stub for RPC server, useful for tests;</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">com.github.igrishaev/farseer-client</code>: HTTP RPC client based on <code class="language-plaintext highlighter-rouge">clj-http</code>;</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">com.github.igrishaev/farseer-doc</code>: RPC documentation builder.</p>
+  </li>
+</ul>
+
+<h3 id="installation">Installation</h3>
+
+<p>The “-all” bundle:</p>
+
+<ul>
+  <li>Lein:</li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/farseer-all</span><span class="w"> </span><span class="s">"0.1.1"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<ul>
+  <li>Deps.edn</li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">com.github.igrishaev/farseer-all</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.1"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<ul>
+  <li>Maven</li>
+</ul>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;dependency&gt;</span>
+  <span class="nt">&lt;groupId&gt;</span>com.github.igrishaev<span class="nt">&lt;/groupId&gt;</span>
+  <span class="nt">&lt;artifactId&gt;</span>farseer-all<span class="nt">&lt;/artifactId&gt;</span>
+  <span class="nt">&lt;version&gt;</span>0.1.1<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</code></pre></div></div>
+
+<p>Alternatevely, install only what you need:</p>
+
+<ul>
+  <li>Lein:</li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/farseer-http</span><span class="w"> </span><span class="s">"0.1.1"</span><span class="p">]</span><span class="w">
+</span><span class="p">[</span><span class="n">com.github.igrishaev/farseer-client</span><span class="w"> </span><span class="s">"0.1.1"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>and so on (see the list of packages <a href="https://clojars.org/groups/com.github.igrishaev">on Clojars</a>).</p>
+
+<h2 id="rpc-handler">RPC Handler</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">com.github.igrishaev/farseer-handler</code> package provides basic implementation
+of RPC protocol. It has no any transport layer, only a handler that serves RPC
+requests no matter where the data comes from. Other packages provide HTTP layer
+for this handler. You can develop another transport layer as well.</p>
+
+<p>First, add the package to the project:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/farseer-handler</span><span class="w"> </span><span class="n">...</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Here is the minimal usage example. Prepare a namespace:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">demo</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">farseer.handler</span><span class="w"> </span><span class="no">:refer</span><span class="w"> </span><span class="p">[</span><span class="n">make-handler</span><span class="p">]]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Create a method handler and the config:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">rpc-sum</span><span class="w">
+  </span><span class="p">[</span><span class="n">_</span><span class="w"> </span><span class="p">[</span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="p">]]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">+</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:rpc/handlers</span><span class="w">
+   </span><span class="p">{</span><span class="no">:math/sum</span><span class="w">
+    </span><span class="p">{</span><span class="no">:handler/function</span><span class="w"> </span><span class="n">rpc-sum</span><span class="p">}}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now declare a handler and call it:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">handler</span><span class="w">
+  </span><span class="p">(</span><span class="nf">make-handler</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+          </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+          </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+          </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">})</span><span class="w">
+
+</span><span class="c1">;; {:id 1, :jsonrpc "2.0", :result 3}</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="method-handlers">Method handlers</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">rpc-sum</code> function is a handler for the <code class="language-plaintext highlighter-rouge">:math/sum</code> method. The function
+takes <strong>exactly two</strong> arguments. The first argument is the context map which
+we’ll discuss later. The second is the parameters passed to the method in
+request. They might be either a map or a vector. If a method doesn’t accept
+parameters, the arguments will be <code class="language-plaintext highlighter-rouge">nil</code>.</p>
+
+<p>The function might be defined in another namespace. In this case, you import it
+and pass to the map as usual:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">demo</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">com.project.handlers.math</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">math</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:rpc/handlers</span><span class="w">
+   </span><span class="p">{</span><span class="no">:math/sum</span><span class="w">
+    </span><span class="p">{</span><span class="no">:handler/function</span><span class="w"> </span><span class="n">math/sum-handler</span><span class="p">}}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It’s useful to pass the functions as vars using the <code class="language-plaintext highlighter-rouge">#'</code> syntax:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:rpc/handlers</span><span class="w">
+   </span><span class="p">{</span><span class="no">:math/sum</span><span class="w">
+    </span><span class="p">{</span><span class="no">:handler/function</span><span class="w"> </span><span class="o">#</span><span class="ss">'rpc-sum</span><span class="p">}}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In this case, you can update the function by evaling its <code class="language-plaintext highlighter-rouge">defn</code> form in REPL,
+and the changes come into play without re-creating the RPC handler. For example,
+we change plus to minus in the <code class="language-plaintext highlighter-rouge">rpc-sum</code> function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">rpc-sum</span><span class="w">
+  </span><span class="p">[</span><span class="n">_</span><span class="w"> </span><span class="p">[</span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="p">]]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Then we go to the closing bracket of the <code class="language-plaintext highlighter-rouge">defn</code> form and perform
+<code class="language-plaintext highlighter-rouge">cider-eval-last-sexp</code>. Now we make a new RPC call and get a new result:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+          </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+          </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+          </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="n">,</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">-1</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Only the methods declared in the config are served by the RPC handler. If you
+specify a non-existing one, you’ll get a negative response:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+          </span><span class="no">:method</span><span class="w"> </span><span class="no">:system/rmrf</span><span class="w">
+          </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+          </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:error</span><span class="w">
+ </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32601</span><span class="n">,</span><span class="w"> </span><span class="no">:message</span><span class="w"> </span><span class="s">"Method not found"</span><span class="n">,</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:method</span><span class="w"> </span><span class="no">:system/rmrf</span><span class="p">}}</span><span class="n">,</span><span class="w">
+ </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w">
+ </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="specs">Specs</h3>
+
+<p>The code above doesn’t validate the incoming parameters and thus is dangerous to
+execute. If you pass something like <code class="language-plaintext highlighter-rouge">["one" nil]</code> instead of two numbers, you’ll
+end up with <code class="language-plaintext highlighter-rouge">NPE</code>, which is not good.</p>
+
+<p>For each handler, you can specify a couple of specs, the input and output
+ones. The input spec validates the incoming <code class="language-plaintext highlighter-rouge">params</code> field, and the output spec
+is for the result of the function call with these parameters.</p>
+
+<h4 id="input-spec">Input Spec</h4>
+
+<p>To protect our <code class="language-plaintext highlighter-rouge">:math/sum</code> handler from weird data, you declare the specs:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:math/sum.in</span><span class="w">
+  </span><span class="p">(</span><span class="nf">s/tuple</span><span class="w"> </span><span class="n">number?</span><span class="w"> </span><span class="n">number?</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:math/sum.out</span><span class="w">
+  </span><span class="n">number?</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Then you add these specs to the method config. Their keys are <code class="language-plaintext highlighter-rouge">:handler/spec-in</code>
+and <code class="language-plaintext highlighter-rouge">:handler/spec-out</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:rpc/handlers</span><span class="w">
+   </span><span class="p">{</span><span class="no">:math/sum</span><span class="w">
+    </span><span class="p">{</span><span class="no">:handler/function</span><span class="w"> </span><span class="o">#</span><span class="ss">'rpc-sum</span><span class="w">
+     </span><span class="no">:handler/spec-in</span><span class="w"> </span><span class="no">:math/sum.in</span><span class="w">
+     </span><span class="no">:handler/spec-out</span><span class="w"> </span><span class="no">:math/sum.out</span><span class="p">}}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now if you pass something wrong to the handler, you’ll get a negative response:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+          </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+          </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="s">"one"</span><span class="w"> </span><span class="n">nil</span><span class="p">]</span><span class="w">
+          </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+ </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w">
+ </span><span class="no">:error</span><span class="w"> </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32602</span><span class="w">
+         </span><span class="no">:message</span><span class="w"> </span><span class="s">"Invalid params"</span><span class="w">
+         </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:explain</span><span class="w"> </span><span class="s">"&lt;spec explain string&gt;"</span><span class="p">}}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">:data</code> field of the <code class="language-plaintext highlighter-rouge">:error</code> object has an extra <code class="language-plaintext highlighter-rouge">explain</code> field. Inside
+it, there is standard explain string produced by the <code class="language-plaintext highlighter-rouge">s/explain-str</code>
+function. This kind of message looks noisy sometimes, and in the future, most
+likely Farseer will use <a href="https://github.com/bhb/expound">Expound</a>.</p>
+
+<p>According to the RPC specification, the <code class="language-plaintext highlighter-rouge">:params</code> field might be either a map or
+a vector. Thus, for the input spec, you probably use <code class="language-plaintext highlighter-rouge">s/tuple</code> or <code class="language-plaintext highlighter-rouge">s/keys</code>
+specs. Our <code class="language-plaintext highlighter-rouge">:math/sum</code> method accepts vector params. Let’s rewrite it and the
+specs such that they work with a map:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; a new handler</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">rpc-sum</span><span class="w">
+  </span><span class="p">[</span><span class="n">_</span><span class="w"> </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="p">]}]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">+</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; new input spec</span><span class="w">
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:sum/a</span><span class="w"> </span><span class="n">number?</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:sum/b</span><span class="w"> </span><span class="n">number?</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:math/sum.in</span><span class="w">
+  </span><span class="p">(</span><span class="nf">s/keys</span><span class="w"> </span><span class="no">:req-un</span><span class="w"> </span><span class="p">[</span><span class="no">:sum/a</span><span class="w"> </span><span class="no">:sum/a</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The output spec and the config are still the same:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:math/sum.out</span><span class="w">
+  </span><span class="n">number?</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:rpc/handlers</span><span class="w">
+   </span><span class="p">{</span><span class="no">:math/sum</span><span class="w">
+    </span><span class="p">{</span><span class="no">:handler/function</span><span class="w"> </span><span class="o">#</span><span class="ss">'rpc-sum</span><span class="w">
+     </span><span class="no">:handler/spec-in</span><span class="w"> </span><span class="no">:math/sum.in</span><span class="w">
+     </span><span class="no">:handler/spec-out</span><span class="w"> </span><span class="no">:math/sum.out</span><span class="p">}}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now we pass a map, not vector:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+          </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+          </span><span class="no">:params</span><span class="w"> </span><span class="p">{</span><span class="no">:a</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="mi">2</span><span class="p">}</span><span class="w">
+          </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="n">,</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="output-spec">Output Spec</h4>
+
+<p>If the result of the function doesn’t match the output spec, it triggers an
+internal error. Let’s reproduce this scenario by spoiling the spec:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:math/sum.out</span><span class="w">
+  </span><span class="nb">string?</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+          </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+          </span><span class="no">:params</span><span class="w"> </span><span class="p">{</span><span class="no">:a</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="mi">2</span><span class="p">}</span><span class="w">
+          </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">})</span><span class="w">
+
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w">
+ </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w">
+ </span><span class="no">:error</span><span class="w"> </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32603</span><span class="n">,</span><span class="w">
+         </span><span class="no">:message</span><span class="w"> </span><span class="s">"Internal error"</span><span class="n">,</span><span class="w">
+         </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="p">}}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>You’ll see the following log entry:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>10:18:31.256 ERROR farseer.handler - RPC result doesn't match the output spec,
+             id: 1, method: :math/sum, code: -32603, message: Internal error
+</code></pre></div></div>
+
+<p>There is no the <code class="language-plaintext highlighter-rouge">s/explain</code> message, because sometimes it’s huge and also
+contains private data.</p>
+
+<h4 id="in-production">In Production</h4>
+
+<p>You can turn off checking the input or the output specs globally in the
+configuration (see the “Configuration” section below). In real projects, we
+always validate the input data. Regarding the output, we validate it only in
+tests to save time in production.</p>
+
+<h3 id="more-on-context">More on Context</h3>
+
+<p>Summing numbers is good for tutorial but makes no sense in real projects. We’re
+rather interested in networking IO and database access. Until now, it wasn’t
+clear how a function can reach Postgres or Kafka clients, especially if the
+project relies on a system framework (e.g. <a href="https://github.com/stuartsierra/component">Component</a> or
+<a href="https://github.com/weavejester/integrant">Integrant</a>).</p>
+
+<p>In OOP languages, the environment for the RPC method usually comes from the
+<code class="language-plaintext highlighter-rouge">this</code> parameter. It’s an instance of some <code class="language-plaintext highlighter-rouge">RPCHadler</code> class that has fields for
+the database connection, message queue client and so on. In Clojure, we act
+almost like this, but instead of <code class="language-plaintext highlighter-rouge">this</code> object, we use context.</p>
+
+<p>A context is a map that carries the data needed by the method handler in
+runtime. This is the first argument of a function from the <code class="language-plaintext highlighter-rouge">:handler/function</code>
+key. By default, the context has the current id and method of the RPC call. If
+you print the first argument of the function, you’ll see:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">rpc-sum</span><span class="w">
+  </span><span class="p">[</span><span class="n">context</span><span class="w"> </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="p">]}]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="n">context</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nb">+</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="p">))</span><span class="w">
+
+</span><span class="o">#</span><span class="no">:rpc</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Both fields are prefixed with the <code class="language-plaintext highlighter-rouge">:rpc/</code> namespace to prevent the keys from
+clashing, e.g. <code class="language-plaintext highlighter-rouge">:id</code> for the RPC call and <code class="language-plaintext highlighter-rouge">:id</code> for the current user. Instead,
+the framework passes the <code class="language-plaintext highlighter-rouge">:rpc/id</code> field, and you should pass <code class="language-plaintext highlighter-rouge">:user/id</code> one.</p>
+
+<p>There are two ways of passing context: a static and dynamic ones.</p>
+
+<h4 id="static-context">Static Context</h4>
+
+<p>When you call the <code class="language-plaintext highlighter-rouge">make-handler</code> function to build an RPC handler, the second
+argument might be a context map. This map will be available in all the RPC
+functions. For example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">handler</span><span class="w">
+  </span><span class="p">(</span><span class="nf">make-handler</span><span class="w">
+   </span><span class="n">config</span><span class="w">
+   </span><span class="p">{</span><span class="no">:db</span><span class="w"> </span><span class="p">(</span><span class="nf">open-db-connection</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">})</span><span class="w">
+    </span><span class="no">:version</span><span class="w"> </span><span class="p">(</span><span class="nf">get-app-version</span><span class="p">)}))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>We assume the <code class="language-plaintext highlighter-rouge">open-db-connection</code> returns a connection pool, which is available
+to all the RPC functions as the <code class="language-plaintext highlighter-rouge">:db</code> field of the context. The <code class="language-plaintext highlighter-rouge">:version</code> field
+is the application version that is fetched from a text file.</p>
+
+<p>Now, if we had an RPC method that fetches a user by id, it would look like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">get-user-by-id</span><span class="w">
+  </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">db</span><span class="p">]}</span><span class="w">        </span><span class="c1">;; context</span><span class="w">
+   </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="p">]}]</span><span class="w">  </span><span class="c1">;; params</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/get-by-id</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="n">user-id</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:user/id</span><span class="w"> </span><span class="n">pos-int?</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:user/user-by-id.in</span><span class="w">
+  </span><span class="p">(</span><span class="nf">s/keys</span><span class="w"> </span><span class="no">:req-un</span><span class="w"> </span><span class="p">[</span><span class="no">:user/id</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">:user/user-by-id.out</span><span class="w">
+  </span><span class="p">(</span><span class="nf">s/nilable</span><span class="w"> </span><span class="nb">map?</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The config:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:rpc/handlers</span><span class="w">
+   </span><span class="p">{</span><span class="no">:user/get-by-id</span><span class="w">
+    </span><span class="p">{</span><span class="no">:handler/function</span><span class="w"> </span><span class="o">#</span><span class="ss">'get-user-by-id</span><span class="w">
+     </span><span class="no">:handler/spec-in</span><span class="w"> </span><span class="no">:user/user-by-id.in</span><span class="w">
+     </span><span class="no">:handler/spec-out</span><span class="w"> </span><span class="no">:user/user-by-id.out</span><span class="p">}}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The call:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+          </span><span class="no">:method</span><span class="w"> </span><span class="no">:user/get-by-id</span><span class="w">
+          </span><span class="no">:params</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">5</span><span class="p">}</span><span class="w">
+          </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="n">,</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Test"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="dynamic-context">Dynamic Context</h4>
+
+<p>Use dynamic context to pass a value needed only for the current RPC request or
+you don’t have a value yet when building a handler. In that case, pass the
+context map as the second argument to the function made by the
+<code class="language-plaintext highlighter-rouge">make-handler</code>. The example with the database would look like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">handler</span><span class="w"> </span><span class="p">(</span><span class="nf">make-handler</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; dynamic context, the second arg</span><span class="w">
+</span><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+          </span><span class="no">:method</span><span class="w"> </span><span class="no">:user/get-by-id</span><span class="w">
+          </span><span class="no">:params</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">5</span><span class="p">}</span><span class="w">
+          </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+         </span><span class="p">{</span><span class="no">:db</span><span class="w"> </span><span class="n">hikari-cp-pool</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>You can use both ways to pass the context. Most likely the database is needed by
+all the RPC functions, so its place in the global context. Some minor fields
+might be passes on demand for certain calls:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">handler</span><span class="w">
+  </span><span class="p">(</span><span class="nf">make-handler</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:db</span><span class="w"> </span><span class="p">(</span><span class="nf">make-db</span><span class="w"> </span><span class="n">...</span><span class="p">)}))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:method</span><span class="w"> </span><span class="n">...</span><span class="p">}</span><span class="w"> </span><span class="p">{</span><span class="no">:version</span><span class="w"> </span><span class="s">"0.2.1"</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The context maps are always merged, so from the function’s point of view, there
+is only a single map.</p>
+
+<p>The local context map gets merged into the global one. It gives you an
+opportunity to override the default values from the context. Let’s say, if the
+method <code class="language-plaintext highlighter-rouge">:user/get-by-id</code> needs a special (read-only) database, we can override
+it like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">handler</span><span class="w">
+  </span><span class="p">(</span><span class="nf">make-handler</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:db</span><span class="w"> </span><span class="p">(</span><span class="nf">make-db</span><span class="w"> </span><span class="n">...</span><span class="p">)}))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:method</span><span class="w"> </span><span class="no">:user/get-by-id</span><span class="w"> </span><span class="n">...</span><span class="p">}</span><span class="w">
+         </span><span class="p">{</span><span class="no">:db</span><span class="w"> </span><span class="n">read-only-db</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="request--response-formats">Request &amp; Response Formats</h3>
+
+<h4 id="request">Request</h4>
+
+<p>An RPC request is a map of the following fields:</p>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:id</code> is either a number or a string value representing this request. The handler
+must return the same id in response unless it was a notification (see below).</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:method</code> is either a string or a keyword (the latter is preferred) that
+specify the RPC method. If a method was a string, it gets coerced to the
+keyword anyway. We recommend using the full qualified keywords with
+namespaces. The namespaces help to group methods by semantic.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:params</code> is either a map of [<code class="language-plaintext highlighter-rouge">keyword?</code>, <code class="language-plaintext highlighter-rouge">any?</code>] pairs, or a vector of <code class="language-plaintext highlighter-rouge">any?</code>
+values (<code class="language-plaintext highlighter-rouge">sequential?</code>, if more precisely). This field is optional because some
+methods don’t require arguments.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:jsonrpc</code>: a string with exact value <code class="language-plaintext highlighter-rouge">"2.0"</code>, the required one.</p>
+  </li>
+</ul>
+
+<p>Examples:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; all the fields</span><span class="w">
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+ </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+ </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+ </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+
+</span><span class="c1">;; no params</span><span class="w">
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w">
+ </span><span class="no">:method</span><span class="w"> </span><span class="no">:app/version</span><span class="w">
+ </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+
+</span><span class="c1">;; no id (notification)</span><span class="w">
+</span><span class="p">{</span><span class="no">:method</span><span class="w"> </span><span class="no">:user/delete-by-id</span><span class="w">
+ </span><span class="no">:params</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+ </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The RPC request might be of a batch form then it’s a vector of such maps. Batch
+is useful to perform multiple actions per one call. See the “Batch Requests”
+section below.</p>
+
+<h4 id="response">Response</h4>
+
+<p>The response is map with the <code class="language-plaintext highlighter-rouge">:id</code> and <code class="language-plaintext highlighter-rouge">:jsonrpc</code> fields. The ID is the same you
+passed in the request so you can match the request and the response by ID. If
+the response was positive, its <code class="language-plaintext highlighter-rouge">:result</code> field carries the value that the RPC
+function returned:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="n">,</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>A negative response has no the <code class="language-plaintext highlighter-rouge">:result</code> field but the <code class="language-plaintext highlighter-rouge">:error</code> one instead. The
+error node consists from the <code class="language-plaintext highlighter-rouge">:code</code> and <code class="language-plaintext highlighter-rouge">:message</code> fields which are the numeric
+code representing an error and a text message explaining it. In addition, there
+might be the <code class="language-plaintext highlighter-rouge">:data</code> fields which is an arbitrary map with some extra
+context. The library adds the <code class="language-plaintext highlighter-rouge">:method</code> field to the context automatically.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+ </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w">
+ </span><span class="no">:error</span><span class="w"> </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32603</span><span class="w">
+         </span><span class="no">:message</span><span class="w"> </span><span class="s">"Internal error"</span><span class="w">
+         </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:method</span><span class="w"> </span><span class="no">:math/div</span><span class="p">}}}</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="error-codes">Error Codes</h4>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">-32700 Parse error</code>: Used then the server gets a non-JSON/broken payload.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">-32600 Invalid Request</code>: The payload is JSON but has a wrong shape.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">-32601 Method not found</code>: No such RPC method.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">-32602 Invalid params</code>: The parameters do not match the input spec.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">-32603 Internal error</code>: Either uncaught exception or the result doesn’t match
+the output spec.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">-32000 Authentication failure</code>: Something is wrong with auth/credentials.</p>
+  </li>
+</ul>
+
+<p>Find more information about the error codes <a href="https://www.jsonrpc.org/specification">on this page</a>.</p>
+
+<h3 id="notifications">Notifications</h3>
+
+<p>Sometimes, you’re not interested in the response from an RPC server. Say, if you
+delete a user, there is nothing for you to return. In this case, you send a
+notification rather than a request. Notifications are formed similar but have no
+the <code class="language-plaintext highlighter-rouge">:id</code> field. The server sends nothing back for a notification. For example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+          </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+          </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">})</span><span class="w">
+
+</span><span class="n">nil</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Notifications are useful to trigger some side effects on the server.</p>
+
+<p>Remember, if you pass a missing method or wrong input data (or any other error
+occurs), you’ll get a negative response anyway despite the fact it was a
+notification:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+          </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="s">"a"</span><span class="p">]</span><span class="w">
+          </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:error</span><span class="w">
+ </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32602</span><span class="w">
+  </span><span class="no">:message</span><span class="w"> </span><span class="s">"Invalid params"</span><span class="p">}</span><span class="w">
+ </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="batch-requests">Batch Requests</h3>
+
+<p>Batch requests is the main feature of JSON RPC. It allows you to send multiple
+request maps in one call. The server executes the requests and returns a list of
+result maps. For example, you have a method <code class="language-plaintext highlighter-rouge">user/get-by-id</code> which takes a
+single ID and returns a user map from the database. Now you got ten IDs. With
+ordinary REST API, you would run a cycle and performed ten HTTP calls. With RPC,
+you make a batch call.</p>
+
+<p>In our example, if we want to solve several math expressions at once, we do:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+           </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+           </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+           </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+          </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w">
+           </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+           </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w">
+           </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+          </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w">
+           </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+           </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="mi">6</span><span class="p">]</span><span class="w">
+           </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The result:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">({</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">7</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">11</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If some of the tasks fail, they won’t affect the others:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+           </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+           </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+           </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+          </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w">
+           </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+           </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="s">"aaa"</span><span class="p">]</span><span class="w">  </span><span class="c1">;; bad input</span><span class="w">
+           </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+          </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w">
+           </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/missing</span><span class="w"> </span><span class="c1">;; wrong method</span><span class="w">
+           </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="mi">6</span><span class="p">]</span><span class="w">
+           </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The result:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">({</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:error</span><span class="w">
+  </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32602</span><span class="w">
+   </span><span class="no">:message</span><span class="w"> </span><span class="s">"Invalid params"</span><span class="w">
+   </span><span class="no">:data</span><span class="w">
+   </span><span class="p">{</span><span class="no">:explain</span><span class="w"> </span><span class="n">...</span><span class="w">
+    </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="p">}}</span><span class="w">
+  </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w">
+  </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:error</span><span class="w">
+  </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32601</span><span class="w"> </span><span class="no">:message</span><span class="w"> </span><span class="s">"Method not found"</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:method</span><span class="w"> </span><span class="no">:math/missing</span><span class="p">}}</span><span class="w">
+  </span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w">
+  </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>You can mix ordinary RPC tasks with notifications in a batch. There will be no
+response maps for notifications in the result vector:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+           </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+           </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+           </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+          </span><span class="p">{</span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w"> </span><span class="c1">;; no ID</span><span class="w">
+           </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w">
+           </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}])</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">3</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="note-on-parallelism">Note on Parallelism</h4>
+
+<p>By default, Farseer uses the standard <a href="https://clojuredocs.org/clojure.core/pmap"><code class="language-plaintext highlighter-rouge">pmap</code> function</a> to deal with
+multiple tasks. It executes the tasks in semi-parallel way. Maybe in the future,
+we could use a custom fixed thread executor for more control.</p>
+
+<h4 id="configuring--limiting-batch-requests">Configuring &amp; Limiting Batch Requests</h4>
+
+<p>The following options help you to control batch requests:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">:rpc/batch-allowed?</code> (default is <code class="language-plaintext highlighter-rouge">true</code>): whether or not to allow batch
+requests. If you set this to <code class="language-plaintext highlighter-rouge">false</code> and someone performs a batch call, they
+will get an error:</li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:rpc/batch-allowed?</span><span class="w"> </span><span class="n">false</span><span class="w">
+   </span><span class="no">:rpc/handlers</span><span class="w"> </span><span class="n">...</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">handler</span><span class="w">
+  </span><span class="p">(</span><span class="nf">make-handler</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+
+
+</span><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+           </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+           </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+           </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+          </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w">
+           </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+           </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w">
+           </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}])</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:error</span><span class="w"> </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32602</span><span class="n">,</span><span class="w"> </span><span class="no">:message</span><span class="w"> </span><span class="s">"Batch is not allowed"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">:rpc/batch-max-size</code> (default is 25): the max number of tasks in a single
+batch request. Sending more tasks than is allowed in one request would lead to
+an error:</li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:rpc/batch-allowed?</span><span class="w"> </span><span class="n">true</span><span class="w">
+   </span><span class="no">:rpc/batch-max-size</span><span class="w"> </span><span class="mi">2</span><span class="w">
+   </span><span class="no">:rpc/handlers</span><span class="w"> </span><span class="n">...</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">handler</span><span class="w">
+  </span><span class="p">(</span><span class="nf">make-handler</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+
+
+</span><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">[{</span><span class="n">...</span><span class="p">}</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}])</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:error</span><span class="w"> </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32602</span><span class="n">,</span><span class="w"> </span><span class="no">:message</span><span class="w"> </span><span class="s">"Batch size is too large"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">:rpc/batch-parallel?</code> (default is <code class="language-plaintext highlighter-rouge">true</code>): whether or not to prefer <code class="language-plaintext highlighter-rouge">pmap</code>
+over the standard <code class="language-plaintext highlighter-rouge">mapv</code> for tasks processing. When <code class="language-plaintext highlighter-rouge">false</code>, the tasks get
+executed one by one.</li>
+</ul>
+
+<h3 id="errors--exceptions">Errors &amp; Exceptions</h3>
+
+<h4 id="runtime-unexpected-errors">Runtime (Unexpected) Errors</h4>
+
+<p>The RPC handler wraps the whole logic into <code class="language-plaintext highlighter-rouge">try/catch</code> form with the <code class="language-plaintext highlighter-rouge">Throwable</code>
+class. It means you’ll get a negative response even if something weird happens
+inside it. Here is an example of unsafe division what might lead to exception:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">rpc-div</span><span class="w">
+  </span><span class="p">[</span><span class="n">_</span><span class="w"> </span><span class="p">[</span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="p">]]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">/</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:rpc/handlers</span><span class="w">
+   </span><span class="p">{</span><span class="no">:math/div</span><span class="w">
+    </span><span class="p">{</span><span class="no">:handler/function</span><span class="w"> </span><span class="o">#</span><span class="ss">'rpc-div</span><span class="p">}}})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">handler</span><span class="w">
+  </span><span class="p">(</span><span class="nf">make-handler</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+          </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/div</span><span class="w">
+          </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">0</span><span class="p">]</span><span class="w">
+          </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+ </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w">
+ </span><span class="no">:error</span><span class="w"> </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32603</span><span class="w">
+         </span><span class="no">:message</span><span class="w"> </span><span class="s">"Internal error"</span><span class="w">
+         </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:method</span><span class="w"> </span><span class="no">:math/div</span><span class="p">}}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>All the unexpected exceptions end up with the “Internal error” response with the
+code -32603. In the console, you’ll see the the logged exception:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>10:19:35.948 ERROR farseer.handler - Divide by zero, id: 1, method: :math/div, code: -32603, message: Internal error
+java.lang.ArithmeticException: Divide by zero
+	at clojure.lang.Numbers.divide(Numbers.java:188)
+	at demo$rpc_div.invokeStatic(form-init9886809666544152192.clj:190)
+	at demo$rpc_div.invoke(form-init9886809666544152192.clj:188)
+    ...
+</code></pre></div></div>
+
+<h4 id="rpc-expected-errors">RPC (Expected) Errors</h4>
+
+<p>Sometimes, you know that you cannot serve the current request, and it must be
+failed. The easiest way to end up the request is to throw an exception. But to
+get a proper RPC response, there should be a special exception with the fields
+that take place in the response. The namespace <code class="language-plaintext highlighter-rouge">farseer.error</code> provides several
+functions for such exceptions.</p>
+
+<p>When an RPC handler catches an exception, it fetches its data using the
+<code class="language-plaintext highlighter-rouge">ex-data</code> function. Then it looks for some special fields to compose the
+response. Namely, these fields are:</p>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:rpc/code</code>: a number representing the error. When specified, it becomes the
+<code class="language-plaintext highlighter-rouge">code</code> field of the error response.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:rpc/message</code>: a string explaining the error. Becomes the <code class="language-plaintext highlighter-rouge">message</code> field of
+the error response.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:rpc/data</code>: a map with arbitrary data sent to the client. Becomes the <code class="language-plaintext highlighter-rouge">data</code>
+field of the error response.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:log/level</code>: a keyword representing the logging level of this error. Valid
+values are those that the functions from <code class="language-plaintext highlighter-rouge">clojure.tools.logging</code> package
+accept, e.g. <code class="language-plaintext highlighter-rouge">:debug</code>, <code class="language-plaintext highlighter-rouge">:info</code>, <code class="language-plaintext highlighter-rouge">:warn</code>, <code class="language-plaintext highlighter-rouge">:error</code>.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:log/stacktrace?</code>: boolean, whether to log the entire stack trace or the
+message only. Useful for “method not found” or “wrong input” cases because
+there is no need for the full stack trace in such cases.</p>
+  </li>
+</ul>
+
+<p>The data fetched from the exception instance gets merged with the default error
+map declared in the <code class="language-plaintext highlighter-rouge">internal-error</code> variable:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">internal-error</span><span class="w">
+  </span><span class="p">{</span><span class="no">:log/level</span><span class="w">       </span><span class="no">:error</span><span class="w">
+   </span><span class="no">:log/stacktrace?</span><span class="w"> </span><span class="n">true</span><span class="w">
+   </span><span class="no">:rpc/code</span><span class="w">        </span><span class="mi">-32603</span><span class="w">
+   </span><span class="no">:rpc/message</span><span class="w">     </span><span class="s">"Internal error"</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Thus, if you didn’t specify some of the fields, they would come from this map.</p>
+
+<h4 id="raising-exceptions">Raising Exceptions</h4>
+
+<p>There are some shortcut functions to simplify raising exceptions, namely:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">parse-error!</code></li>
+  <li><code class="language-plaintext highlighter-rouge">invalid-request!</code></li>
+  <li><code class="language-plaintext highlighter-rouge">not-found!</code></li>
+  <li><code class="language-plaintext highlighter-rouge">invalid-params!</code></li>
+  <li><code class="language-plaintext highlighter-rouge">internal-error!</code></li>
+  <li><code class="language-plaintext highlighter-rouge">auth-error!</code></li>
+</ul>
+
+<p>Examples:</p>
+
+<ul>
+  <li>JSON parse error:</li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">farseer.error/parse-error!</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<ul>
+  <li>RPC Method is not found:</li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">farseer.error/not-found!</span><span class="w">
+  </span><span class="p">{</span><span class="no">:rpc/message</span><span class="w"> </span><span class="s">"I don't have such method"</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<ul>
+  <li>Wrong input parameters:</li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">farseer.error/invalid-params!</span><span class="w">
+  </span><span class="p">{</span><span class="no">:rpc/data</span><span class="w"> </span><span class="p">{</span><span class="no">:spec-explain</span><span class="w"> </span><span class="s">"..."</span><span class="p">}})</span><span class="w">
+</span></code></pre></div></div>
+
+<ul>
+  <li>Internal error:</li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">farseer.error/internal-error!</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="n">caught-exception</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The signature of all these functions is <code class="language-plaintext highlighter-rouge">[&amp; [data e]]</code> meaning that you can call
+a function even without arguments. Each function has its own default <code class="language-plaintext highlighter-rouge">data</code> map
+that gets merged to the <code class="language-plaintext highlighter-rouge">data</code> you passed. For example, these are default values
+for the <code class="language-plaintext highlighter-rouge">invalid-params!</code> function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">invalid-params</span><span class="w">
+  </span><span class="p">{</span><span class="no">:log/level</span><span class="w">       </span><span class="no">:info</span><span class="w">
+   </span><span class="no">:log/stacktrace?</span><span class="w"> </span><span class="n">false</span><span class="w">
+   </span><span class="no">:rpc/code</span><span class="w">        </span><span class="mi">-32602</span><span class="w">
+   </span><span class="no">:rpc/message</span><span class="w">     </span><span class="s">"Invalid params"</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The logging level is <code class="language-plaintext highlighter-rouge">:info</code> because this is expected behaviour. We also we
+don’t log the whole stack trace for the same reason.</p>
+
+<h3 id="configuration">Configuration</h3>
+
+<h2 id="ring-http-handler">Ring HTTP Handler</h2>
+
+<p>The Ring package creates an HTTP handler from an RPC configuration. The HTTP
+handler follows the official Ring protocol: it’s a function that takes an HTTP
+request map and returns a response map. The handler uses JSON format for
+transport. It’s already wrapped with <a href="https://github.com/ring-clojure/ring-json">Ring JSON middleware</a> that
+decodes and encodes the payload. You can pass other middleware stack to use
+something other that JSON, say MessagePack or EDN.</p>
+
+<p>Add the package:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; deps</span><span class="w">
+</span><span class="p">[</span><span class="n">com.github.igrishaev/farseer-http</span><span class="w"> </span><span class="s">"..."</span><span class="p">]</span><span class="w">
+
+</span><span class="c1">;; module</span><span class="w">
+</span><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">...</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">farseer.http</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">http</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The package reuses the same config we wrote above. All the HTTP-related fields
+have default values, so you can just pass the config to the <code class="language-plaintext highlighter-rouge">make-app</code> function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">app</span><span class="w">
+  </span><span class="p">(</span><span class="nf">http/make-app</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now let’s compose the HTTP request for the app:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">rpc</span><span class="w">
+  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+   </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w">
+   </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+   </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">request</span><span class="w">
+  </span><span class="p">{</span><span class="no">:request-method</span><span class="w"> </span><span class="no">:post</span><span class="w">
+   </span><span class="no">:uri</span><span class="w"> </span><span class="s">"/"</span><span class="w">
+   </span><span class="no">:headers</span><span class="w"> </span><span class="p">{</span><span class="s">"content-type"</span><span class="w"> </span><span class="s">"application/json"</span><span class="p">}</span><span class="w">
+   </span><span class="no">:body</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">rpc</span><span class="w"> </span><span class="n">json/generate-string</span><span class="w"> </span><span class="n">.getBytes</span><span class="p">)})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>and call it like an HTTP server:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">response</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">app</span><span class="w"> </span><span class="n">request</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="n">json/parse-string</span><span class="w"> </span><span class="n">true</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w">
+ </span><span class="no">:body</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+ </span><span class="no">:headers</span><span class="w"> </span><span class="p">{</span><span class="s">"Content-Type"</span><span class="w"> </span><span class="s">"application/json; charset=utf-8"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="negative-responses">Negative Responses</h4>
+
+<p>A quick example of how would the handler behave in case of an error:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">rpc</span><span class="w">
+  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+   </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w">
+   </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/missing</span><span class="w"> </span><span class="c1">;; wrong method</span><span class="w">
+   </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="n">nil</span><span class="w"> </span><span class="s">"a"</span><span class="p">]})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">request</span><span class="w">
+  </span><span class="p">{</span><span class="no">:request-method</span><span class="w"> </span><span class="no">:post</span><span class="w">
+   </span><span class="no">:uri</span><span class="w"> </span><span class="s">"/"</span><span class="w">
+   </span><span class="no">:headers</span><span class="w"> </span><span class="p">{</span><span class="s">"content-type"</span><span class="w"> </span><span class="s">"application/json"</span><span class="p">}</span><span class="w">
+   </span><span class="no">:body</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">rpc</span><span class="w"> </span><span class="n">json/generate-string</span><span class="w"> </span><span class="n">.getBytes</span><span class="p">)})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">response</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">app</span><span class="w"> </span><span class="n">request</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="n">json/parse-string</span><span class="w"> </span><span class="n">true</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w">
+ </span><span class="no">:body</span><span class="w">
+ </span><span class="p">{</span><span class="no">:error</span><span class="w">
+  </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32601</span><span class="w"> </span><span class="no">:message</span><span class="w"> </span><span class="s">"Method not found"</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:method</span><span class="w"> </span><span class="s">"math/missing"</span><span class="p">}}</span><span class="w">
+  </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+  </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+ </span><span class="no">:headers</span><span class="w"> </span><span class="p">{</span><span class="s">"Content-Type"</span><span class="w"> </span><span class="s">"application/json; charset=utf-8"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Pay attention that the server <strong>always</strong> responds with the status code 200. This
+is the main deference from the REST approach. In RPC, HTTP is nothing else than
+just a transport layer. Its purpose is only to deliver messages without
+interfering into the pipeline. It’s up to you how to check if the RPC response
+was correct or not. However, the HTTP client package (see below) provides an
+option to raise an exception in case of error response.</p>
+
+<h4 id="batch-requests-in-http">Batch Requests in HTTP</h4>
+
+<p>If your configuration allows batch requests, you can send them via HTTP. For
+this, replace the <code class="language-plaintext highlighter-rouge">rpc</code> variable above with the vector of RPC maps. The result
+will be a vector of response maps.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">rpc</span><span class="w">
+  </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+    </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w">
+    </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+    </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]}</span><span class="w">
+   </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w">
+    </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w">
+    </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum</span><span class="w">
+    </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">]}])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">request</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">response</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w">
+ </span><span class="no">:headers</span><span class="w"> </span><span class="p">{</span><span class="s">"Content-Type"</span><span class="w"> </span><span class="s">"application/json; charset=utf-8"</span><span class="p">}</span><span class="w">
+ </span><span class="no">:body</span><span class="w"> </span><span class="p">({</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+        </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">7</span><span class="p">})}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Everything said above for batch requests also apply to HTTP as well.</p>
+
+<h4 id="configuration-1">Configuration</h4>
+
+<p>Here is a list of HTTP options the library supports:</p>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:http/method</code> (default is <code class="language-plaintext highlighter-rouge">:post</code>) is an HTTP method to listen. POST is the
+one recommended by the RPC specification.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:http/path</code> (default is <code class="language-plaintext highlighter-rouge">"/"</code>) URI path to listen. You may specify something
+like <code class="language-plaintext highlighter-rouge">"/api"</code>, <code class="language-plaintext highlighter-rouge">"/rpc"</code> or similar.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:http/health?</code> (default is <code class="language-plaintext highlighter-rouge">true</code>) whether or not the health endpoint is
+available. When true, <code class="language-plaintext highlighter-rouge">GET /health</code> or <code class="language-plaintext highlighter-rouge">GET /healthz</code> requests receive an
+empty <code class="language-plaintext highlighter-rouge">200 OK</code> response. This is useful for monitoring your server.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:http/middleware</code> (default is the <code class="language-plaintext highlighter-rouge">farseer.http/default-middleware</code> vector) a
+list of HTTP middleware that get applied to the HTTP handler. See the next
+section.</p>
+  </li>
+</ul>
+
+<h4 id="middleware--authorization">Middleware &amp; Authorization</h4>
+
+<p>By default, the handler gets wrapped into a couple of middleware. These are the
+standard <code class="language-plaintext highlighter-rouge">wrap-json-body</code> and <code class="language-plaintext highlighter-rouge">wrap-json-response</code> from the
+<code class="language-plaintext highlighter-rouge">ring.middleware.json</code> package. The first one is set up such that passing an
+incorrect JSON payload will return a proper RPC response (pay attention to the
+status 200):</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">app</span><span class="w"> </span><span class="p">{</span><span class="no">:request-method</span><span class="w"> </span><span class="no">:post</span><span class="w">
+      </span><span class="no">:uri</span><span class="w"> </span><span class="s">"/"</span><span class="w">
+      </span><span class="no">:headers</span><span class="w"> </span><span class="p">{</span><span class="s">"content-type"</span><span class="w"> </span><span class="s">"application/json"</span><span class="p">}</span><span class="w">
+      </span><span class="no">:body</span><span class="w"> </span><span class="p">(</span><span class="nf">.getBytes</span><span class="w"> </span><span class="s">"1aaa-"</span><span class="p">)})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="n">,</span><span class="w">
+ </span><span class="no">:headers</span><span class="w"> </span><span class="p">{</span><span class="s">"Content-Type"</span><span class="w"> </span><span class="s">"application/json"</span><span class="p">}</span><span class="n">,</span><span class="w">
+ </span><span class="no">:body</span><span class="w"> </span><span class="s">"{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Invalid JSON was received by the server.\"}}"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Note: we use the <code class="language-plaintext highlighter-rouge">wrap-json-body</code> middleware but not <code class="language-plaintext highlighter-rouge">wrap-json-params</code> to make
+it work with batch requests. As the payload is not a map, it cannot be merged
+with the <code class="language-plaintext highlighter-rouge">:params</code> field.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">:http/middleware</code> parameter must be a vector of middleware. Each middleware
+is either a function or a vector of <code class="language-plaintext highlighter-rouge">[function, arg2, arg3, ...]</code>. In the second
+case, it will be applied to the handler as <code class="language-plaintext highlighter-rouge">(apply function handler arg2, arg3,
+...)</code>. For example, if a middleware takes additional params, you specify it as a
+vector <code class="language-plaintext highlighter-rouge">[middleware, params]</code>.</p>
+
+<p>You can bring your own logic into the HTTP pipeline by overriding the
+<code class="language-plaintext highlighter-rouge">:http/middleware</code> field. Here is a quick example how you protect the handler
+with Basic Auth:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; ns imports</span><span class="w">
+</span><span class="p">[</span><span class="n">farseer.http</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">http</span><span class="p">]</span><span class="w">
+</span><span class="p">[</span><span class="n">ring.middleware.basic-authentication</span><span class="w"> </span><span class="no">:refer</span><span class="w"> </span><span class="p">[</span><span class="n">wrap-basic-authentication</span><span class="p">]]</span><span class="w">
+
+</span><span class="c1">;; preparing a middleware stack</span><span class="w">
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">fn-auth?</span><span class="w">
+      </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">user</span><span class="w"> </span><span class="n">pass</span><span class="p">]</span><span class="w">
+        </span><span class="p">(</span><span class="nb">and</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="s">"foo"</span><span class="w"> </span><span class="n">user</span><span class="p">)</span><span class="w">
+             </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="s">"bar"</span><span class="w"> </span><span class="n">pass</span><span class="p">)))</span><span class="w">
+
+      </span><span class="n">middleware-auth</span><span class="w">
+      </span><span class="p">[</span><span class="n">wrap-basic-authentication</span><span class="w"> </span><span class="n">fn-auth?</span><span class="w"> </span><span class="s">"auth"</span><span class="w"> </span><span class="n">http/non-auth-response</span><span class="p">]</span><span class="w">
+
+      </span><span class="n">middleware-stack</span><span class="w"> </span><span class="p">[</span><span class="n">middleware-auth</span><span class="w">
+                        </span><span class="n">http/wrap-json-body</span><span class="w">
+                        </span><span class="n">http/wrap-json-resp</span><span class="p">]</span><span class="w">
+
+      </span><span class="n">config*</span><span class="w">
+      </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="no">:http/middleware</span><span class="w"> </span><span class="n">middleware-stack</span><span class="p">)]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Also, you can replace JSON middleware with the one that uses some other format
+like MessagePack, Transient or whatever.</p>
+
+<h4 id="http-context">HTTP Context</h4>
+
+<p>The function <code class="language-plaintext highlighter-rouge">http/make-app</code> also takes an additional context map. This map will
+be merged with the data the RPC function accepts when being called.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">app</span><span class="w">
+  </span><span class="p">(</span><span class="nf">make-app</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:app/version</span><span class="w"> </span><span class="s">"0.0.1"</span><span class="p">}))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">rpc-func</span><span class="w"> </span><span class="p">[</span><span class="n">context</span><span class="w"> </span><span class="n">params</span><span class="p">]</span><span class="w">
+  </span><span class="p">{</span><span class="no">:message</span><span class="w"> </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"The version is "</span><span class="w"> </span><span class="p">(</span><span class="no">:app/version</span><span class="w"> </span><span class="n">context</span><span class="p">))})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The HTTP handler adds the <code class="language-plaintext highlighter-rouge">:http/request</code> item into the context. This is the
+instance of the request map that the handler accepted. Having the request, you
+can handle some extra logic in your function. For example, some middleware
+supplements the request with the <code class="language-plaintext highlighter-rouge">:user</code> field, and you check if the user has
+permissions.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">some-rpc</span><span class="w"> </span><span class="p">[</span><span class="n">context</span><span class="w"> </span><span class="n">params</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[{</span><span class="no">:http/keys</span><span class="w"> </span><span class="p">[</span><span class="n">request</span><span class="p">]}</span><span class="w"> </span><span class="n">context</span><span class="w">
+        </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">user</span><span class="p">]}</span><span class="w"> </span><span class="n">request</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nb">when-not</span><span class="w"> </span><span class="n">request</span><span class="w">
+      </span><span class="p">(</span><span class="nf">throw</span><span class="w"> </span><span class="n">...</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="jetty-server">Jetty Server</h2>
+
+<p>The Jetty sub-package allows you to run an RPC server using Jetty Ring
+adapter. Add it to the project:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; deps</span><span class="w">
+</span><span class="p">[</span><span class="n">com.github.igrishaev/farseer-jetty</span><span class="w"> </span><span class="s">"..."</span><span class="p">]</span><span class="w">
+
+</span><span class="c1">;; require</span><span class="w">
+</span><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">farseer.jetty</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">jetty</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>All the Jetty config fields have default values, so we pass a minimal config
+we’ve been using so far.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">server</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jetty/start-server</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; #object[org.eclipse.jetty.server.Server 0x3e82fe49 "Server@3e82fe49{STARTED}[9.4.12.v20180830]"]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The default port is 8080. Now that your server is being run, test it with cURL:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl <span class="nt">-X</span> POST <span class="s1">'http://127.0.0.1:8080/'</span> <span class="se">\</span>
+  <span class="nt">--data</span> <span class="s1">'{"id": 1, "jsonrpc": "2.0", "method": "math/sum", "params": [1, 2]}'</span> <span class="se">\</span>
+  <span class="nt">-H</span> <span class="s1">'content-type: application/json'</span> | jq
+
+<span class="o">{</span>
+  <span class="s2">"id"</span>: 1,
+  <span class="s2">"jsonrpc"</span>: <span class="s2">"2.0"</span>,
+  <span class="s2">"result"</span>: 3
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>Pay attention to the <code class="language-plaintext highlighter-rouge">content-type</code> header. Without it, the request payload won’t
+be decoded and the call will fail.</p>
+
+<p>To stop the sever, pass it to the <code class="language-plaintext highlighter-rouge">stop-server</code> function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jetty/stop-server</span><span class="w"> </span><span class="n">server</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">start-server</code> function also accepts a second optional argument which is a
+context map.</p>
+
+<h3 id="configuration-2">Configuration</h3>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:jetty/port</code> (8080 by default) is the port to listen to.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:jetty/join?</code> (<code class="language-plaintext highlighter-rouge">false</code> by default) is whether or not to wait for the server
+being stopped. When it’s <code class="language-plaintext highlighter-rouge">true</code>, the main thread hangs until you press
+Ctrl-C.</p>
+  </li>
+  <li>
+    <p>any other <a href="https://github.com/ring-clojure/ring/blob/master/ring-jetty-adapter/src/ring/adapter/jetty.clj#L162">Jetty-related keys</a> with the <code class="language-plaintext highlighter-rouge">:jetty/</code> namespace, for
+example: <code class="language-plaintext highlighter-rouge">:jetty/ssl-context</code>, <code class="language-plaintext highlighter-rouge">:jetty/max-threads</code> and so on. The library
+will scan the config for the <code class="language-plaintext highlighter-rouge">:jetty/</code>-prefixed keys, select them, unqualify
+and pass to the <code class="language-plaintext highlighter-rouge">run-jetty</code> function.</p>
+  </li>
+</ul>
+
+<h3 id="with-server-macro">With-server macro</h3>
+
+<p>The macro <code class="language-plaintext highlighter-rouge">with-server</code> temporary spawns an RPC server. It accepts a config, an
+optional context map and a block of code to execute.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jetty/with-server</span><span class="w"> </span><span class="p">[</span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="mi">42</span><span class="p">}]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="component">Component</h3>
+
+<p>The Jetty package also provides a component object for use with the <a href="https://github.com/stuartsierra/component">Component
+library</a>. The <code class="language-plaintext highlighter-rouge">jetty/component</code> function creates a component. It
+takes a config and an optional context map.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">jetty</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jetty/component</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:some</span><span class="w"> </span><span class="s">"field"</span><span class="p">}))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now that you have an initiated component, you can start and stop it with
+functions from the Component library.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">com.stuartsierra.component</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">component</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">jetty-started</span><span class="w">
+  </span><span class="p">(</span><span class="nf">component/start</span><span class="w"> </span><span class="n">jetty</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; The server starts working</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">jetty-stopped</span><span class="w">
+  </span><span class="p">(</span><span class="nf">component/stop</span><span class="w"> </span><span class="n">jetty-started</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; Now it's shut down.</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Of course, it’s better to place the component into a system. One more benefit of
+a system is, all the dependencies will become a context map. For example, if
+your Jetty component depends on the database, cache, Kafka, and waterier else,
+you’ll have them all in the context map.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">make-system</span><span class="w">
+  </span><span class="p">[</span><span class="n">rpc-config</span><span class="w"> </span><span class="n">db-config</span><span class="w"> </span><span class="n">cache-config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">component/system-using</span><span class="w">
+   </span><span class="p">(</span><span class="nf">component/system-map</span><span class="w">
+    </span><span class="no">:cache</span><span class="w"> </span><span class="p">(</span><span class="nf">cache-component</span><span class="w"> </span><span class="n">cache-config</span><span class="p">)</span><span class="w">
+    </span><span class="no">:db-pool</span><span class="w"> </span><span class="p">(</span><span class="nf">db-component</span><span class="w"> </span><span class="n">db-config</span><span class="p">)</span><span class="w">
+    </span><span class="no">:rpc-server</span><span class="w"> </span><span class="p">(</span><span class="nf">jetty/component</span><span class="w"> </span><span class="n">rpc-config</span><span class="p">))</span><span class="w">
+   </span><span class="p">{</span><span class="no">:rpc-server</span><span class="w"> </span><span class="p">[</span><span class="no">:db-pool</span><span class="w"> </span><span class="no">:cache</span><span class="p">]}))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The function above will make a new system which consists from the RPC server,
+cache and database pooling connection. Once the system gets started, the context
+map of all RPC functions will have the <code class="language-plaintext highlighter-rouge">:db-pool</code> and <code class="language-plaintext highlighter-rouge">:cache</code> keys. Here is how
+you reach them in your RPC function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">rpc-user-get-by-id</span><span class="w">
+  </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">db-pool</span><span class="w"> </span><span class="n">cache</span><span class="p">]}</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="p">]]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="p">(</span><span class="nf">get-user-from-cache</span><span class="w"> </span><span class="n">cache</span><span class="w"> </span><span class="n">user-id</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">get-user-from-db</span><span class="w"> </span><span class="n">db-pool</span><span class="w"> </span><span class="n">user-id</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="http-stub">HTTP Stub</h2>
+
+<p>The Stub package provides a couple of macros for making HTTP RPC stubs. These
+are local HTTP servers that run on your machine. The difference with the Jetty
+package is that a stub returns a pre-defined data which is useful for testing.</p>
+
+<p>Imagine you have a piece of code that interacts with two RPC endpoints. To make
+this code well tested, you need to cover the cases:</p>
+
+<ul>
+  <li>both sources work fine;</li>
+  <li>the first one works, the second returns an error;</li>
+  <li>the first one is unavailable, the second one works;</li>
+  <li>neither of them work.</li>
+</ul>
+
+<p>The package provides the <code class="language-plaintext highlighter-rouge">with-stub</code> macro which accepts a config map and a
+block of code. The config must have the <code class="language-plaintext highlighter-rouge">:stub/handlers</code> field which is a map of
+method =&gt; result. For example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:stub/handlers</span><span class="w">
+   </span><span class="p">{</span><span class="no">:user/get-by-id</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w">
+                     </span><span class="no">:email</span><span class="w"> </span><span class="s">"test@test.com"</span><span class="p">}</span><span class="w">
+    </span><span class="no">:math/sum</span><span class="w"> </span><span class="mi">42</span><span class="p">}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>As the Stub package works on top of Jetty, it takes into account all the Jetty
+keys. To specify the port number, pass the <code class="language-plaintext highlighter-rouge">:jetty/port</code> field to the config:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:jetty/port</span><span class="w"> </span><span class="mi">18080</span><span class="w">
+   </span><span class="no">:stub/handlers</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In the example above, we defined the handlers such that the methods
+<code class="language-plaintext highlighter-rouge">:user/get-by-id</code> and <code class="language-plaintext highlighter-rouge">:math/sum</code> would always return the same response.</p>
+
+<p>To run a server out from this config, there is the macro <code class="language-plaintext highlighter-rouge">with-stub</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">stub/with-stub</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="c1">;; Execute any expressions</span><span class="w">
+  </span><span class="c1">;; while the RPC server is running.</span><span class="w">
+  </span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>While the server is running, you can reach it as you normally do with any HTTP
+client. If you send either <code class="language-plaintext highlighter-rouge">:user/get-by-id</code> or <code class="language-plaintext highlighter-rouge">:math/sum</code> requests to it,
+you’ll get the result you defined in the config. Quick check with cURL:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl <span class="nt">-X</span> POST <span class="s1">'http://127.0.0.1:8080/'</span> <span class="se">\</span>
+  <span class="nt">--data</span> <span class="s1">'{"id": 1, "jsonrpc": "2.0", "method": "math/sum", "params": [1, 2]}'</span> <span class="se">\</span>
+  <span class="nt">-H</span> <span class="s1">'content-type: application/json'</span> | jq
+
+<span class="o">{</span>
+  <span class="s2">"id"</span>: 1,
+  <span class="s2">"jsonrpc"</span>: <span class="s2">"2.0"</span>,
+  <span class="s2">"result"</span>: 42
+<span class="o">}</span>
+</code></pre></div></div>
+
+<h4 id="multiple-stub">Multiple Stub</h4>
+
+<p>There is a multiple version of this macro called <code class="language-plaintext highlighter-rouge">with-stub</code>. It’s useful when
+you interact with more than one RPC server at once. The macro takes a vector of
+config maps. For each one, it runs a local HTTP Stub. All of them get stopped
+once you exit the macro.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">stub/with-stubs</span><span class="w"> </span><span class="p">[</span><span class="n">config1</span><span class="w"> </span><span class="n">config1</span><span class="w"> </span><span class="n">...</span><span class="p">]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="tests">Tests</h4>
+
+<p>To test you application with stubs, you need:</p>
+
+<ul>
+  <li>define a port for the HTTP stub, e.g. 18080;</li>
+  <li>pass this port to the stub config: <code class="language-plaintext highlighter-rouge">:jetty/port ...</code>;</li>
+  <li>wrap the testing code with the <code class="language-plaintext highlighter-rouge">with-stub</code> macro;</li>
+  <li>Aim the code which interacts with RPC at the local address like this one:
+<code class="language-plaintext highlighter-rouge">http://127.0.0.1:18080/...</code>.</li>
+</ul>
+
+<p>Having everything said above, you can easily check how does your application
+behave when getting a positive or a negative responses from an RPC server. You
+can check out the source code of the <a href="https://github.com/igrishaev/farseer/blob/master/farseer-stub/test/farseer/stub_test.clj">testing module</a> as an example.</p>
+
+<h4 id="negative-responses-1">Negative Responses</h4>
+
+<p>The result of a method can be not only regular data but also a function. Inside
+it, you can raise an exception or even trigger something weird to imitate a
+disaster. For example, to divide by zero:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:stub/handlers</span><span class="w">
+   </span><span class="p">{</span><span class="no">:some/failure</span><span class="w">
+    </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="n">_</span><span class="p">]</span><span class="w">
+      </span><span class="p">(</span><span class="nb">/</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="mi">0</span><span class="p">))}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This would lead to a real exception on the server side. Another way of
+triggering a negative response is to pass one of the predefined functions:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">stub/invalid-request</code></li>
+  <li><code class="language-plaintext highlighter-rouge">stub/not-found</code></li>
+  <li><code class="language-plaintext highlighter-rouge">stub/invalid-params</code></li>
+  <li><code class="language-plaintext highlighter-rouge">stub/internal-error</code></li>
+  <li><code class="language-plaintext highlighter-rouge">stub/auth-error</code></li>
+</ul>
+
+<p>Passing them will return an RPC error result. If you want to play the scenario
+when a user is not authenticated on the server, compose the config:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:stub/handlers</span><span class="w">
+   </span><span class="p">{</span><span class="no">:user/get-by-id</span><span class="w"> </span><span class="n">stub/auth-error</span><span class="p">}})</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="http-client">HTTP Client</h2>
+
+<p>The Client package is to communicate with an RPC Server by HTTP protocol. It
+relies on <code class="language-plaintext highlighter-rouge">clj-http</code> library for making HTTP requests. Add it to the project:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; deps</span><span class="w">
+</span><span class="p">[</span><span class="n">com.github.igrishaev/farseer-client</span><span class="w"> </span><span class="n">...</span><span class="p">]</span><span class="w">
+
+</span><span class="c1">;; module</span><span class="w">
+</span><span class="p">[</span><span class="n">farseer.client</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">client</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To reach an RPC server, first you create an instance of the client. This is done
+with the <code class="language-plaintext highlighter-rouge">make-client</code> function which accepts the config map:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config-client</span><span class="w">
+  </span><span class="p">{</span><span class="no">:http/url</span><span class="w"> </span><span class="s">"http://127.0.0.1:18080/"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">client</span><span class="w">
+  </span><span class="p">(</span><span class="nf">client/make-client</span><span class="w"> </span><span class="n">config-client</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>There is only one mandatory field in the config: the <code class="language-plaintext highlighter-rouge">:http/url</code> one which is
+the endpoint of the server. Other fields have default values.</p>
+
+<p>For further experiments we will spawn a local Jetty RPC server and will work
+with it using the client.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:jetty/port</span><span class="w"> </span><span class="mi">18080</span><span class="w">
+   </span><span class="no">:rpc/handlers</span><span class="w">
+   </span><span class="p">{</span><span class="no">:math/sum</span><span class="w">
+    </span><span class="p">{</span><span class="no">:handler/function</span><span class="w"> </span><span class="o">#</span><span class="ss">'rpc-sum</span><span class="w">
+     </span><span class="no">:handler/spec-in</span><span class="w"> </span><span class="no">:math/sum.in</span><span class="w">
+     </span><span class="no">:handler/spec-out</span><span class="w"> </span><span class="no">:math/sum.out</span><span class="p">}}})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">server</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jetty/start-server</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Once you have the client, make a request with the <code class="language-plaintext highlighter-rouge">client/call</code> function. It
+accepts the client, method, and optional parameters.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">response</span><span class="w">
+  </span><span class="p">(</span><span class="nf">client/call</span><span class="w"> </span><span class="n">client</span><span class="w"> </span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]))</span><span class="w">
+
+</span><span class="c1">;; {:id 81081, :jsonrpc "2.0", :result 3}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The parameters might be either a vector or map. If the method doesn’t accept
+parameters, you may omit them.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; map params</span><span class="w">
+</span><span class="p">(</span><span class="nf">client/call</span><span class="w"> </span><span class="n">client</span><span class="w"> </span><span class="no">:user/create</span><span class="w">
+             </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:email</span><span class="w"> </span><span class="s">"test@test.com"</span><span class="p">})</span><span class="w">
+
+</span><span class="c1">;; no params</span><span class="w">
+</span><span class="p">(</span><span class="nf">client/call</span><span class="w"> </span><span class="n">client</span><span class="w"> </span><span class="no">:some/side-effect</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>An example of a negative response:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">client/call</span><span class="w"> </span><span class="n">client</span><span class="w"> </span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="n">nil</span><span class="w"> </span><span class="s">"a"</span><span class="p">])</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:error</span><span class="w">
+ </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32602</span><span class="n">,</span><span class="w">
+  </span><span class="no">:message</span><span class="w"> </span><span class="s">"Invalid params"</span><span class="n">,</span><span class="w">
+  </span><span class="no">:data</span><span class="w">
+  </span><span class="p">{</span><span class="no">:explain</span><span class="w">
+   </span><span class="s">"nil - failed: number? in: [0] at: [0] spec: :math/sum.in\n\"a\" - failed: number? in: [1] at: [1] spec: :math/sum.in\n"</span><span class="n">,</span><span class="w">
+   </span><span class="no">:method</span><span class="w"> </span><span class="s">"math/sum"</span><span class="p">}}</span><span class="n">,</span><span class="w">
+ </span><span class="no">:id</span><span class="w"> </span><span class="mi">73647</span><span class="n">,</span><span class="w">
+ </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>You won’t get an exception; the result shown above is just data. If you prefer
+exceptions, you can adjust the client configuration (see below).</p>
+
+<h4 id="configuration-3">Configuration</h4>
+
+<p>The following fields affect the client’s behaviour.</p>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:rpc/fn-before-send</code> (default is <code class="language-plaintext highlighter-rouge">identity</code>) a function which is called
+before the HTTP request gets sent to the server. It accepts the Clj-http
+request map and should return it as well. The function useful for signing
+requests, authentication and so on.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:rpc/fn-id</code> (default is <code class="language-plaintext highlighter-rouge">:id/int</code>) determines an algorithm for generating
+IDs. The <code class="language-plaintext highlighter-rouge">:id/int</code> value means an ID will be a random integer; <code class="language-plaintext highlighter-rouge">:id/uuid</code>
+stands for a random UUID. You can also pass a custom function of no arguments
+that must return either an integer or a string.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:rpc/ensure?</code> (default is <code class="language-plaintext highlighter-rouge">false</code>) when false, return the body of the
+response as is. When true, either return the <code class="language-plaintext highlighter-rouge">:result</code> field of the body or
+throw an exception if the <code class="language-plaintext highlighter-rouge">:error</code> field presents (see below).</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:http/method</code> (default is <code class="language-plaintext highlighter-rouge">:post</code>) an HTTP method for request.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:http/headers</code> (default is <code class="language-plaintext highlighter-rouge">{:user-agent "farseer.client"}</code>) a map of HTTP
+headers.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:http/as</code> (default is <code class="language-plaintext highlighter-rouge">:json</code>) how to treat the response body.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:http/content-type</code> (<code class="language-plaintext highlighter-rouge">:json</code>) how to encode the request body.</p>
+  </li>
+</ul>
+
+<p>The HTTP package takes into account all the keys prefixed with the <code class="language-plaintext highlighter-rouge">:http/</code>
+namespace. These are the standard Clj-http keys, .e.g <code class="language-plaintext highlighter-rouge">:http/socket-timeout</code>,
+<code class="language-plaintext highlighter-rouge">:http/throw-exceptions?</code> and others, so you configure the HTTP part as you
+want. When making a request, the client scans the config for the
+<code class="language-plaintext highlighter-rouge">:http/</code>-prefixed keys, selects them, removes the namespace and passes to the
+<code class="language-plaintext highlighter-rouge">clj-http/request</code> function as a map.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">:conn-mgr/</code> keys specify options for the connection manager:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">:conn-mgr/timeout</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:conn-mgr/threads</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:conn-mgr/default-per-route</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:conn-mgr/insecure?</code></li>
+</ul>
+
+<p>and others. They have default values copied from Clj-http. The connection
+manager is not created by default. You need to setup it manually (see below).</p>
+
+<h4 id="handling-responses">Handling Responses</h4>
+
+<p>By default, calling the server just returns the body of the HTTP response. It’s
+up to you how to handle the <code class="language-plaintext highlighter-rouge">:result</code> and <code class="language-plaintext highlighter-rouge">:error</code> fields. Sometimes, the good
+old exception-based approach is convenient: you either get a result or an error
+pops up.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">:rpc/ensure?</code> option is exactly for that. When it’s false, you get a parsed
+body of the HTTP response. When it’s true, the following logic takes control:</p>
+
+<ul>
+  <li>for a positive response (no <code class="language-plaintext highlighter-rouge">:error</code> field) you’ll get the content of the
+<code class="language-plaintext highlighter-rouge">:result</code> field. For example:</li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config-client</span><span class="w">
+  </span><span class="p">{</span><span class="no">:rpc/ensure?</span><span class="w"> </span><span class="n">true</span><span class="w">
+   </span><span class="no">:http/url</span><span class="w"> </span><span class="s">"http://127.0.0.1:18080/"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">client</span><span class="w">
+  </span><span class="p">(</span><span class="nf">client/make-client</span><span class="w"> </span><span class="n">config-client</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">client/call</span><span class="w"> </span><span class="n">client</span><span class="w"> </span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">])</span><span class="w">
+</span><span class="c1">;; 3</span><span class="w">
+</span></code></pre></div></div>
+
+<p>For a negative response, you’ll get an exception:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">client/call</span><span class="w"> </span><span class="n">client</span><span class="w"> </span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="s">"two"</span><span class="p">])</span><span class="w">
+
+</span><span class="mi">17</span><span class="no">:04:34.780</span><span class="w"> </span><span class="n">INFO</span><span class="w">  </span><span class="n">farseer.handler</span><span class="w"> </span><span class="nb">-</span><span class="w"> </span><span class="n">RPC</span><span class="w"> </span><span class="n">error,</span><span class="w"> </span><span class="n">id</span><span class="err">:</span><span class="w"> </span><span class="mi">94415</span><span class="n">,</span><span class="w"> </span><span class="n">method</span><span class="err">:</span><span class="w"> </span><span class="n">math/sum,</span><span class="w"> </span><span class="n">code</span><span class="err">:</span><span class="w"> </span><span class="mi">-32602</span><span class="n">,</span><span class="w"> </span><span class="n">message</span><span class="err">:</span><span class="w"> </span><span class="n">Invalid</span><span class="w"> </span><span class="n">params</span><span class="w">
+
+</span><span class="n">Unhandled</span><span class="w"> </span><span class="n">clojure.lang.ExceptionInfo</span><span class="w">
+</span><span class="n">RPC</span><span class="w"> </span><span class="n">error,</span><span class="w"> </span><span class="n">id</span><span class="err">:</span><span class="w"> </span><span class="mi">94415</span><span class="n">,</span><span class="w"> </span><span class="n">method</span><span class="err">:</span><span class="w"> </span><span class="no">:math/sum,</span><span class="w"> </span><span class="n">code</span><span class="err">:</span><span class="w"> </span><span class="mi">-32602</span><span class="n">,</span><span class="w"> </span><span class="n">message</span><span class="err">:</span><span class="w"> </span><span class="n">Invalid</span><span class="w">
+</span><span class="n">params</span><span class="w">
+</span><span class="o">#</span><span class="no">:rpc</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">94415</span><span class="n">,</span><span class="w">
+      </span><span class="no">:method</span><span class="w"> </span><span class="no">:math/sum,</span><span class="w">
+      </span><span class="no">:code</span><span class="w"> </span><span class="mi">-32602</span><span class="n">,</span><span class="w">
+      </span><span class="no">:message</span><span class="w"> </span><span class="s">"Invalid params"</span><span class="n">,</span><span class="w">
+      </span><span class="no">:data</span><span class="w">
+      </span><span class="p">{</span><span class="no">:explain</span><span class="w"> </span><span class="s">"\"two\" - failed: number? in: [1] at: [1] spec: :math/sum.in\n"</span><span class="n">,</span><span class="w">
+       </span><span class="no">:method</span><span class="w"> </span><span class="s">"math/sum"</span><span class="p">}}</span><span class="w">
+             </span><span class="n">client.clj</span><span class="err">:</span><span class="w">  </span><span class="mi">122</span><span class="w">  </span><span class="n">farseer.client/ensure-handler</span><span class="w">
+             </span><span class="n">client.clj</span><span class="err">:</span><span class="w">   </span><span class="mi">97</span><span class="w">  </span><span class="n">farseer.client/ensure-handler</span><span class="w">
+             </span><span class="n">client.clj</span><span class="err">:</span><span class="w">  </span><span class="mi">148</span><span class="w">  </span><span class="n">farseer.client/make-request</span><span class="w">
+             </span><span class="n">client.clj</span><span class="err">:</span><span class="w">  </span><span class="mi">128</span><span class="w">  </span><span class="n">farseer.client/make-request</span><span class="w">
+             </span><span class="n">client.clj</span><span class="err">:</span><span class="w">  </span><span class="mi">187</span><span class="w">  </span><span class="n">farseer.client/call</span><span class="w">
+             </span><span class="n">client.clj</span><span class="err">:</span><span class="w">  </span><span class="mi">179</span><span class="w">  </span><span class="n">farseer.client/call</span><span class="w">
+</span></code></pre></div></div>
+
+<p>At the moment, the <code class="language-plaintext highlighter-rouge">:rpc/ensure?</code> option doesn’t affect batch requests (see
+below).</p>
+
+<h4 id="auth">Auth</h4>
+
+<p>Handling authentication for the client is simple. Clj-http <a href="https://github.com/dakrone/clj-http#authentication">already
+covers</a> most of the authentication types, so you only need to
+pass proper options to the config. If the server is protected with Basic auth,
+you extend the config with the <code class="language-plaintext highlighter-rouge">:http/basic-auth</code> field:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config-client</span><span class="w">
+  </span><span class="p">{</span><span class="no">:http/url</span><span class="w"> </span><span class="s">"http://127.0.0.1:18080/"</span><span class="w">
+   </span><span class="no">:http/basic-auth</span><span class="w"> </span><span class="p">[</span><span class="s">"user"</span><span class="w"> </span><span class="s">"password"</span><span class="p">]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>For oAuth2, you pass another key:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config-client</span><span class="w">
+  </span><span class="p">{</span><span class="no">:http/url</span><span class="w"> </span><span class="s">"http://127.0.0.1:18080/"</span><span class="w">
+   </span><span class="no">:http/oauth-token</span><span class="w"> </span><span class="s">"***********"</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If the server requires a constant token, you put it directly into headers:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config-client</span><span class="w">
+  </span><span class="p">{</span><span class="no">:http/url</span><span class="w"> </span><span class="s">"http://127.0.0.1:18080/"</span><span class="w">
+   </span><span class="no">:http/headers</span><span class="w"> </span><span class="p">{</span><span class="s">"authorization"</span><span class="w"> </span><span class="s">"Bearer *********"</span><span class="p">}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Finally, the <code class="language-plaintext highlighter-rouge">:rpc/fn-before-send</code> parameter allows your to do everything with
+the request before it gets sent to the server. There might be a custom function
+which supplements the request with additional headers that are calculated on the
+fly. For example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">sign-request</span><span class="w">
+  </span><span class="p">[{</span><span class="no">:as</span><span class="w"> </span><span class="n">request</span><span class="w"> </span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">body</span><span class="p">]}]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">body-hash</span><span class="w"> </span><span class="p">(</span><span class="nf">calc-body-hash</span><span class="w"> </span><span class="n">body</span><span class="p">)</span><span class="w">
+        </span><span class="n">sign</span><span class="w"> </span><span class="p">(</span><span class="nf">sign-body-hash</span><span class="w"> </span><span class="n">body-hash</span><span class="w"> </span><span class="s">"*******"</span><span class="p">)</span><span class="w">
+        </span><span class="n">header</span><span class="w"> </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"Bearer "</span><span class="w"> </span><span class="n">sign</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">assoc-in</span><span class="w"> </span><span class="n">request</span><span class="w"> </span><span class="p">[</span><span class="no">:headers</span><span class="w"> </span><span class="s">"authorization"</span><span class="p">]</span><span class="w"> </span><span class="n">header</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config-client</span><span class="w">
+  </span><span class="p">{</span><span class="no">:http/url</span><span class="w"> </span><span class="s">"http://127.0.0.1:18080/"</span><span class="w">
+   </span><span class="no">:rpc/fn-before-send</span><span class="w"> </span><span class="n">sign-request</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="notifications-1">Notifications</h4>
+
+<p>A notification is when you’re not interested in the response from the server. To
+send a notification, use the <code class="language-plaintext highlighter-rouge">client/notify</code> function. Its signature looks the
+same: the client, method, and optional params. The result will be <code class="language-plaintext highlighter-rouge">nil</code>.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">client/notify</span><span class="w"> </span><span class="n">client</span><span class="w"> </span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">])</span><span class="w">
+</span><span class="c1">;; nil</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="batch-requests-1">Batch Requests</h4>
+
+<p>To send batch requests, there is the <code class="language-plaintext highlighter-rouge">client/batch</code> function. It takes the
+client and a vector of tasks. Each task is a pair of (method, params).</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">client/batch</span><span class="w"> </span><span class="n">client</span><span class="w">
+              </span><span class="p">[[</span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]]</span><span class="w">
+               </span><span class="p">[</span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]]</span><span class="w">
+               </span><span class="p">[</span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">]]])</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">51499</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">45992</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">5</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">84590</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">7</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Some important notes on batches:</p>
+
+<ul>
+  <li>
+    <p>There will be only one HTTP request.</p>
+  </li>
+  <li>
+    <p>The order of the result maps always match the order of the tasks.</p>
+  </li>
+  <li>
+    <p>If one of the tasks fails, you’ll get a negative map for it. The whole request
+won’t fail.</p>
+  </li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">client/batch</span><span class="w"> </span><span class="n">client</span><span class="w">
+              </span><span class="p">[[</span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]]</span><span class="w">
+               </span><span class="p">[</span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="s">"aa"</span><span class="w"> </span><span class="n">nil</span><span class="p">]]</span><span class="w">
+               </span><span class="p">[</span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">]]])</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">75623</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:error</span><span class="w">
+  </span><span class="p">{</span><span class="no">:code</span><span class="w"> </span><span class="mi">-32602</span><span class="w">
+   </span><span class="no">:message</span><span class="w"> </span><span class="s">"Invalid params"</span><span class="w">
+   </span><span class="no">:data</span><span class="w">
+   </span><span class="p">{</span><span class="no">:explain</span><span class="w"> </span><span class="s">"\"aa\" - failed: number? in: [0] at: [0] spec: :math/sum.in\nnil - failed: number? in: [1] at: [1] spec: :math/sum.in\n"</span><span class="w">
+    </span><span class="no">:method</span><span class="w"> </span><span class="s">"math/sum"</span><span class="p">}}</span><span class="w">
+  </span><span class="no">:id</span><span class="w"> </span><span class="mi">43075</span><span class="w">
+  </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">13160</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">7</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">:rpc/ensure?</code> option doesn’t apply to batch requests (which is a subject to
+change in the future).</p>
+
+<p>Sometimes, you want one of the tasks in a batch to be a notification. To make a
+task a notification, prepend its vector with the <code class="language-plaintext highlighter-rouge">^:rpc/notify</code> metadata tag:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">client/batch</span><span class="w"> </span><span class="n">client</span><span class="w">
+              </span><span class="p">[[</span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]]</span><span class="w">
+               </span><span class="o">^</span><span class="no">:rpc/notify</span><span class="w"> </span><span class="p">[</span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]]</span><span class="w">
+               </span><span class="p">[</span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">]]])</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">54810</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">34377</span><span class="w"> </span><span class="no">:jsonrpc</span><span class="w"> </span><span class="s">"2.0"</span><span class="w"> </span><span class="no">:result</span><span class="w"> </span><span class="mi">7</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="connection-manager-pool">Connection Manager (Pool)</h4>
+
+<p>Clj-http offers a <a href="https://github.com/dakrone/clj-http#persistent-connections">connection manager</a> for HTTP requests. It’s a pool of
+open TCP connections. Sending requests within a pool is much faster then opening
+and closing connections every time. The package provides some bits to handle
+connection manager for the client.</p>
+
+<p>The function <code class="language-plaintext highlighter-rouge">client/start-conn-mgr</code> takes a client and returns it with the new
+connection manager associated under the <code class="language-plaintext highlighter-rouge">:http/connection-manager</code> key. If you
+pass the new client to the <code class="language-plaintext highlighter-rouge">client/call</code> function, it will take the manager into
+account, and the request will work faster.</p>
+
+<p>The function considers the keys which start with the <code class="language-plaintext highlighter-rouge">:conn-mgr/</code>
+namespace. These keys become a map of standard parameters for connection
+manager.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config-client</span><span class="w">
+  </span><span class="p">{</span><span class="no">:conn-mgr/timeout</span><span class="w"> </span><span class="mi">5</span><span class="w">
+   </span><span class="no">:conn-mgr/threads</span><span class="w"> </span><span class="mi">4</span><span class="w">
+   </span><span class="no">:http/url</span><span class="w"> </span><span class="s">"http://127.0.0.1:18080/"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">client</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">config-client</span><span class="w">
+      </span><span class="n">client/make-client</span><span class="w">
+      </span><span class="n">client/start-conn-mgr</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The opposite function <code class="language-plaintext highlighter-rouge">client/stop-conn-mgr</code> stops the manager (if present) and
+returns the client without the key.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">client/stop-conn-mgr</span><span class="w"> </span><span class="n">client</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The macro <code class="language-plaintext highlighter-rouge">client/with-conn-mgr</code> enables the connection manager temporary. It
+takes a binding form and a block of code to execute. Inside the macro, the
+client is bound to the first symbol from the vector form.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; a client without a pool</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">client</span><span class="w">
+  </span><span class="p">(</span><span class="nf">client/make-client</span><span class="w"> </span><span class="n">config-client</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; temporary assing a pool</span><span class="w">
+</span><span class="p">(</span><span class="nf">client/with-conn-mgr</span><span class="w"> </span><span class="p">[</span><span class="n">client-mgr</span><span class="w"> </span><span class="n">client</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">client/call</span><span class="w"> </span><span class="n">client-mgr</span><span class="w"> </span><span class="no">:math/sum</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="component-1">Component</h4>
+
+<p>Since the client might have a state (a connection manager), you can put it into
+the system. There is a function <code class="language-plaintext highlighter-rouge">client/component</code> which returns an HTTP client
+charged with the <code class="language-plaintext highlighter-rouge">start</code> and <code class="language-plaintext highlighter-rouge">stop</code> methods. These methods turn on and off
+connection pool for the client.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; no pool yet</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">client</span><span class="w">
+  </span><span class="p">(</span><span class="nf">client/component</span><span class="w"> </span><span class="n">config-client</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; enabling the pool</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">client-started</span><span class="w">
+  </span><span class="p">(</span><span class="nf">component/start</span><span class="w"> </span><span class="n">client</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; closing the pool</span><span class="w">
+</span><span class="p">(</span><span class="nf">component/stop</span><span class="w"> </span><span class="n">client-started</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="documentation-builder">Documentation Builder</h2>
+
+<p>The config map for the server has enough data to be rendered as a document. It
+would be nice to pass it into a template and generate a file each time you build
+or the application. The Docs package serves exactly for this purpose.</p>
+
+<p>Add the <code class="language-plaintext highlighter-rouge">com.github.igrishaev/farseer-doc</code> library into your project:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; deps</span><span class="w">
+</span><span class="p">[</span><span class="n">com.github.igrishaev/farseer-doc</span><span class="w"> </span><span class="n">...</span><span class="p">]</span><span class="w">
+
+</span><span class="c1">;; ns</span><span class="w">
+</span><span class="p">[</span><span class="n">farseer.doc</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="nb">doc</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Pay attention that generating a docfile is usually a separate task, but not a
+part of business logic. That’s why the application <strong>must not include that
+library in production</strong>. The <code class="language-plaintext highlighter-rouge">:dev</code>-specific dependencies would be a better
+place for this package.</p>
+
+<h3 id="configuration-4">Configuration</h3>
+
+<p>To generate a doc file, you extend the server config with the keys that have
+<code class="language-plaintext highlighter-rouge">:doc/</code> namespace. Here is an example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:doc/title</span><span class="w"> </span><span class="s">"My API"</span><span class="w">
+   </span><span class="no">:doc/description</span><span class="w"> </span><span class="s">"Long API Description"</span><span class="w">
+
+   </span><span class="no">:rpc/handlers</span><span class="w">
+   </span><span class="p">{</span><span class="no">:user/delete</span><span class="w">
+    </span><span class="p">{</span><span class="no">:doc/title</span><span class="w"> </span><span class="s">"Delete a user by ID"</span><span class="w">
+     </span><span class="no">:doc/description</span><span class="w"> </span><span class="s">"Long text for deleting a user."</span><span class="w">
+     </span><span class="no">:handler/spec-in</span><span class="w"> </span><span class="n">pos-int?</span><span class="w">
+     </span><span class="no">:handler/spec-out</span><span class="w"> </span><span class="p">(</span><span class="nf">s/keys</span><span class="w"> </span><span class="no">:req-un</span><span class="w"> </span><span class="p">[</span><span class="no">:api/message</span><span class="p">])}</span><span class="w">
+
+    </span><span class="no">:user/get-by-id</span><span class="w">
+    </span><span class="p">{</span><span class="no">:doc/title</span><span class="w"> </span><span class="s">"Get a user by ID"</span><span class="w">
+     </span><span class="no">:doc/description</span><span class="w"> </span><span class="s">"Long text for getting a user."</span><span class="w">
+     </span><span class="no">:doc/ignore?</span><span class="w"> </span><span class="n">false</span><span class="w">
+     </span><span class="no">:doc/resource</span><span class="w"> </span><span class="s">"docs/user-get-by-id.md"</span><span class="w">
+     </span><span class="no">:handler/spec-in</span><span class="w"> </span><span class="n">int?</span><span class="w">
+     </span><span class="no">:handler/spec-out</span><span class="w">
+     </span><span class="p">(</span><span class="nf">s/map-of</span><span class="w"> </span><span class="nb">keyword?</span><span class="w"> </span><span class="p">(</span><span class="nf">s/or</span><span class="w"> </span><span class="no">:int</span><span class="w"> </span><span class="n">int?</span><span class="w"> </span><span class="no">:str</span><span class="w"> </span><span class="nb">string?</span><span class="p">))}</span><span class="w">
+
+    </span><span class="no">:hidden/api</span><span class="w">
+    </span><span class="p">{</span><span class="no">:doc/title</span><span class="w"> </span><span class="s">"Non-documented API"</span><span class="w">
+     </span><span class="no">:doc/ignore?</span><span class="w"> </span><span class="n">true</span><span class="w">
+     </span><span class="no">:handler/spec-in</span><span class="w"> </span><span class="n">any?</span><span class="w">
+     </span><span class="no">:handler/spec-out</span><span class="w"> </span><span class="n">any?</span><span class="p">}}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The the list of the fields used for documentation:</p>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:doc/title</code> (string). A title of an API or an RPC method.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:doc/description</code> (string). A description of an API or an RPC method.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:doc/resource</code> (string). A path to a resource with the detailed text with
+examples, edge cases and so on. Useful for large chunks of text.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:doc/endpoint</code> (string). An URL of this RPC server.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:doc/ignore?</code> (boolean, <code class="language-plaintext highlighter-rouge">false</code> by default). When true, the method is not
+included into the documentation.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">:doc/sorting</code> (keyword, <code class="language-plaintext highlighter-rouge">:method</code> or <code class="language-plaintext highlighter-rouge">:title</code>). How to sort RPC methods. The
+<code class="language-plaintext highlighter-rouge">:method</code> keyword means to sort by machine names, e.g. <code class="language-plaintext highlighter-rouge">:user/get-by-id</code>. The
+<code class="language-plaintext highlighter-rouge">:title</code> means to sort by the <code class="language-plaintext highlighter-rouge">:doc/title</code> field, e.g. “Get user by ID”.</p>
+  </li>
+</ul>
+
+<h3 id="building">Building</h3>
+
+<p>Once you have a documentation-powered config, render it with the <code class="language-plaintext highlighter-rouge">generate-doc</code>
+function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">doc/generate-doc</span><span class="w">
+   </span><span class="n">config</span><span class="w">
+   </span><span class="s">"templates/farseer/default.md"</span><span class="w">
+   </span><span class="s">"dev-resources/default-out.md"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This function takes a config map, a resource template and a path of the output
+file. The Doc package provides the <a href="https://raw.githubusercontent.com/igrishaev/farseer/master/farseer-doc/resources/templates/farseer/default.md">default Markdown template</a> which
+can be found by the path <code class="language-plaintext highlighter-rouge">"templates/farseer/default.md"</code>.</p>
+
+<p>In your project, most likely you create a <code class="language-plaintext highlighter-rouge">dev</code> namespace with this function
+that builds the documentation file. Every time the application gets run on CI,
+you generate a file and host it somewhere.</p>
+
+<h3 id="demo">Demo</h3>
+
+<p>You can checkout a <a href="https://github.com/igrishaev/farseer/blob/master/farseer-doc/dev-resources/default-out.md">real demo</a> generated by the test module. The file
+lists all the non-ignored methods and their specs. The specs are put under
+collapsible items as sometimes they might be huge.</p>
+
+<h3 id="selmer--context">Selmer &amp; Context</h3>
+
+<p>The Doc package uses the great <a href="https://github.com/yogthos/Selmer">Selmer library</a> which is inspired by
+Django Templates. You can pass your own template, and not only Markdown one, but
+HTML, AsciiDoc, or LaTeX. The template might have any graphic elements, your
+logo, JavaScript, and so on.</p>
+
+<p>The Doc package passes the config not directly but with transformation. Here is
+an example of the context map that you have when rendering a template. Note that
+all the keys are free from namespaces. The <code class="language-plaintext highlighter-rouge">:handlers</code> field is not a map but a
+vector of maps sorted according to the <code class="language-plaintext highlighter-rouge">:doc/sorting</code> option.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"My API"</span><span class="w">
+ </span><span class="no">:description</span><span class="w"> </span><span class="s">"Long API Description"</span><span class="w">
+ </span><span class="no">:resource</span><span class="w"> </span><span class="n">nil</span><span class="w">
+ </span><span class="no">:handlers</span><span class="w">
+ </span><span class="p">({</span><span class="no">:method</span><span class="w"> </span><span class="s">"user/delete"</span><span class="w">
+   </span><span class="no">:title</span><span class="w"> </span><span class="s">"Delete a user by ID"</span><span class="w">
+   </span><span class="no">:description</span><span class="w"> </span><span class="s">"Long text for deleting a user."</span><span class="w">
+   </span><span class="no">:resource</span><span class="w"> </span><span class="n">nil</span><span class="w">
+   </span><span class="no">:spec-in</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"integer"</span><span class="w"> </span><span class="no">:format</span><span class="w"> </span><span class="s">"int64"</span><span class="w"> </span><span class="no">:minimum</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+   </span><span class="no">:spec-out</span><span class="w">
+   </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"object"</span><span class="w">
+    </span><span class="no">:properties</span><span class="w"> </span><span class="p">{</span><span class="s">"message"</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"string"</span><span class="p">}}</span><span class="w">
+    </span><span class="no">:required</span><span class="w"> </span><span class="p">[</span><span class="s">"message"</span><span class="p">]}}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:method</span><span class="w"> </span><span class="s">"user/get-by-id"</span><span class="w">
+   </span><span class="no">:title</span><span class="w"> </span><span class="s">"Get a user by ID"</span><span class="w">
+   </span><span class="no">:description</span><span class="w"> </span><span class="s">"Long text for getting a user."</span><span class="w">
+   </span><span class="no">:resource</span><span class="w"> </span><span class="s">"\n### Get user by ID examples\n\n........"</span><span class="w">
+   </span><span class="no">:spec-in</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"integer"</span><span class="w"> </span><span class="no">:format</span><span class="w"> </span><span class="s">"int64"</span><span class="p">}</span><span class="w">
+   </span><span class="no">:spec-out</span><span class="w">
+   </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"object"</span><span class="w">
+    </span><span class="no">:additionalProperties</span><span class="w">
+    </span><span class="p">{</span><span class="no">:anyOf</span><span class="w"> </span><span class="p">[{</span><span class="no">:type</span><span class="w"> </span><span class="s">"integer"</span><span class="w"> </span><span class="no">:format</span><span class="w"> </span><span class="s">"int64"</span><span class="p">}</span><span class="w"> </span><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="s">"string"</span><span class="p">}]}}})}</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="rendering-specs">Rendering Specs</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">:handler/spec-in</code> and <code class="language-plaintext highlighter-rouge">:handler/spec-out</code> fields get transformed to JSON
+Schema using the <a href="https://github.com/metosin/spec-tools">Spec-tools</a> library. You may see the result of
+transformation in the context map above. For more control of transformation,
+check out <a href="https://github.com/metosin/spec-tools/blob/master/docs/04_json_schema.md">the manual page</a> from the Spec-tools repository.</p>
+
+<p>To render the spec in a template, use the <code class="language-plaintext highlighter-rouge">json-pretty</code> filter. It turns the
+Clojure data into a JSON string being well printed. To prevent quoting some
+symbols, add the <code class="language-plaintext highlighter-rouge">safe</code> filter to the end. Everything together gives the
+following snippet:</p>
+
+<div class="language-jinja highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+</code></pre></div></div>
+
+<p>Pay attention to the empty lines before and after the JSON code block. Without
+them, GitHub renders the content in a weird way.</p>
+
+<h2 id="ideas--further-development">Ideas &amp; Further Development</h2>
+
+<p>It would be nice to:</p>
+
+<ul>
+  <li>
+    <p>Keep the entire server config in an EDN file. The functions should be resolved
+by their full symbols.</p>
+  </li>
+  <li>
+    <p>Provide a nested map like method =&gt; overrides. With this map, one could
+specify custom options for specific methods. For example, to enable batch
+requests in common, but disallow them for specific methods.</p>
+  </li>
+</ul>
+
+<ul>
+  <li>
+    <p>Develop a browser version of the client. The module would rely on <a href="https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API">Fetch
+API</a>.</p>
+  </li>
+  <li>
+    <p>Create a wrapper for re-frame. Instead of calling functions, one triggers
+events.</p>
+  </li>
+</ul>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+<div id="disqus_thread"></div>
+<script>
+    /**
+    * RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    * LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+    */
+    /*
+    var disqus_config = function () {
+    this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+    this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    };
+    */
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+
+    s.src = '//igrishaev.disqus.com/embed.js';
+
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
