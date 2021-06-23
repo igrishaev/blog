@@ -8,6 +8,8 @@ permalink: /bookshelf/
 
 <div class="book-list">
 
+    {% include books-02.html %}
+
     {% include books-01.html %}
 
     <div class="book-item">
