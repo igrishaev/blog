@@ -6,9 +6,132 @@
 </description>
     <link>https://grishaev.me/</link>
     <atom:link href="https://grishaev.me/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Sat, 05 Jun 2021 18:29:05 +0000</pubDate>
-    <lastBuildDate>Sat, 05 Jun 2021 18:29:05 +0000</lastBuildDate>
+    <pubDate>Wed, 23 Jun 2021 12:55:54 +0000</pubDate>
+    <lastBuildDate>Wed, 23 Jun 2021 12:55:54 +0000</lastBuildDate>
     <generator>Jekyll v4.2.0</generator>
+    
+      <item>
+        <title>Crontab и отправка почты</title>
+        <description>&lt;p&gt;На днях столкнулся с проблемой. На моем ноуте крутится несколько
+crontab-задач. Хотелось бы видеть, когда сработала ли каждая из них и если нет,
+то почему. Какое-то время я выкручивался с помощью логов. Оба канала (stdout и
+stderr) перехватываются в общий пайп, где каждая строка предваряется текущий
+датой и записывается в файл. Например:&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nv&quot;&gt;SHELL&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;/bin/bash
+
+0 &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt;/3 &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt; /path/to/command &amp;amp;&amp;gt; &lt;span class=&quot;o&quot;&gt;&amp;gt;(&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;while &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;read &lt;/span&gt;line&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;do &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;echo&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;$(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;date&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;: &lt;/span&gt;&lt;span class=&quot;k&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;line&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;done&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;gt;&amp;gt;&lt;/span&gt; /Users/ivan/logs/command.log&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;В результате и обычный, и ошибочный выхлоп оседают в файле. Выглядит это так:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;Tue Jun 22 15:58:02 MSK 2021: warning: Skipping file ...
+Tue Jun 22 15:58:19 MSK 2021: Completed 0 file(s) with ...
+Tue Jun 22 15:59:02 MSK 2021: warning: Skipping file /Users/ivan/...
+Tue Jun 22 15:59:19 MSK 2021: Completed 0 file(s) with ...
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Недостаток в том, что логи нужно регулярно проверять. Об этом легко забыть на
+месяц, а потом выяснится, что задача не работала из-за глупой ошибки.&lt;/p&gt;
+
+&lt;p&gt;Тут я вспомнил, что крон умеет отправлять выхлоп задачи на почту. Если задана
+переменная &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;MAILTO=&amp;lt;email&amp;gt;&lt;/code&gt;, то на эту почту свалится выхлоп. Это значит,
+отпадают логи, ведь теперь достаточно проверить почту. Проверять ее можно и с
+телефона, что в разы удобней.&lt;/p&gt;
+
+&lt;p&gt;Отправка письма работает за счет утилиты &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;mail&lt;/code&gt;. В общем виде ей пользуются так:&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nb&quot;&gt;cat &lt;/span&gt;something | mail &lt;span class=&quot;nt&quot;&gt;-s&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'subject'&lt;/span&gt; friend@domain.com
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Эта команда отправит письмо на сервер &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;domain.com&lt;/code&gt;, при этом отправитель будет
+выглядеть как &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ivan@ivan.local&lt;/code&gt;, то есть имя пользователя и текущего хоста. То
+же самое можно получить командой:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;echo `whoami`@`hostname`
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Обратите внимание на кавычки – они означают выполнить выражение в новом шелле и
+подставить результат.&lt;/p&gt;
+
+&lt;p&gt;Отправленное письмо никто не получит, что потому что современные сервера
+отметают письма, где айпи отправителя не совпадает с айпи его домена. Это
+хорошо, иначе бы мы утонули в спаме. Будем отправлять письма с серверов Гугла. А
+чтобы &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;mail&lt;/code&gt; мог подключиться к Гуглу, сделаем три вещи.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Первое.&lt;/strong&gt; В файл &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/etc/postfix/main.cf&lt;/code&gt; дописать строки ниже. Делать это нужно
+под &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sudo&lt;/code&gt;:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;relayhost = [smtp.gmail.com]:587
+smtp_sasl_auth_enable = yes
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+smtp_use_tls = yes
+smtp_sasl_mechanism_filter = plain
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;Второе.&lt;/strong&gt; Создать файл &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/etc/postfix/sasl_passwd&lt;/code&gt; и вписать в него:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;[smtp.gmail.com]:587 username@gmail.com:password
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;, где &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;password&lt;/code&gt; — пароль приложения для почты. Сгенерить этот пароль можно на
+специальной &lt;a href=&quot;https://myaccount.google.com/apppasswords&quot;&gt;странице Гугла&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;Замечу, что вместо &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;gmail.com&lt;/code&gt; может быть ваш домен, если он нацелен на гугловые
+сервера как в моем случае.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Третье&lt;/strong&gt; — указать &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;postfix&lt;/code&gt; новые конфиги и перезагрузить его:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;sudo chmod 600 /etc/postfix/sasl_passwd
+sudo postmap /etc/postfix/sasl_passwd
+sudo launchctl stop org.postfix.master
+sudo launchctl start org.postfix.master
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Все. Пробуем отправить письмо. Сообщим в нем содержимое домашней папки:&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nb&quot;&gt;ls&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-l&lt;/span&gt; | mail &lt;span class=&quot;nt&quot;&gt;-s&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'my home dir'&lt;/span&gt; ivan@grishaev.me
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Мне пришло с первого раза. Plain text, красота.&lt;/p&gt;
+
+&lt;p&gt;Так вот, теперь когда почта работает, настроим крон. Открываем его командой
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;crontab -e&lt;/code&gt; и пишем сверху:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;MAILTO=&amp;lt;ваша@почта&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Кроме того, в конец каждой команды добавляем эхо, например:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;0 */3 * * * cd /some/path &amp;amp;&amp;amp; command --foo 42 &amp;amp;&amp;amp; echo OK
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Зачем нужно эхо? Оказалось, что крон не отправляет письмо, если выхлоп задачи
+пуст. А поскольку я всегда хочу знать о запуске задачи, то делаю вывод не
+пустым. Вместо &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;echo OK&lt;/code&gt; можно вывести текущую дату с помощью &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&amp;amp;&amp;amp; date&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;В результате мы получим письмо, где тема — команда задачи, а тело — ее
+выхлоп. Работает в том числе и для задач, которые не сработали из-за ошибки.&lt;/p&gt;
+
+&lt;p&gt;Я уж не говорю о том, что с помощью &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;mail&lt;/code&gt; можно быстро что-то скидывать себе на
+почту, организовать какие-то заметки и прочее. Что самое прекрасное — нет
+интерфейса, все простое и открытое, работает везде. Чудо.&lt;/p&gt;
+
+&lt;p&gt;В следующий раз расскажу, что именно я ставлю на крон, там тоже интересные вещи.&lt;/p&gt;
+</description>
+        <pubDate>Wed, 23 Jun 2021 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/cron-mail/</link>
+        <guid isPermaLink="true">https://grishaev.me/cron-mail/</guid>
+        
+        <category>programming</category>
+        
+        <category>cron</category>
+        
+        <category>mail</category>
+        
+        
+      </item>
     
       <item>
         <title>И ещё немного книг</title>
@@ -6758,108 +6881,6 @@ Items” добавить путь к шелл-скрипту.&lt;/p&gt;
         <guid isPermaLink="true">https://grishaev.me/whats-wrong/</guid>
         
         <category>life</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Второе издание</title>
-        <description>
-&lt;p&gt;У меня большая радость — выпустил второе издание книги &lt;a href=&quot;/clojure-in-prod/&quot;&gt;“Clojure на
-производстве”&lt;/a&gt;. Сел за него спустя полгода после первой
-публикации. Процесс занял четыре месяца, и вот — готово.&lt;/p&gt;
-
-&lt;p&gt;Исправил опечатки и неточности, о которых сообщили читатели. Низкий поклон всем,
-кто их прислал.&lt;/p&gt;
-
-&lt;p&gt;Некоторые разделы урезал, другие, наоборот, дополнил. Так, в главе про спеку мне
-показался слабым пример, где парсим конфигурацию через &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;s/conform&lt;/code&gt;. Опыт
-подсказывает, что так не делают в проде, поэтому удалил эту часть. Заменил ее на
-парсинг структур данных — задачу, которую решал в либе &lt;a href=&quot;https://github.com/igrishaev/etaoin&quot;&gt;Etaoin&lt;/a&gt;.&lt;/p&gt;
-
-&lt;p&gt;То же самое относится к другим главам — нашлись смысловые неточности, которые
-пришлось проверить и допилить.&lt;/p&gt;
-
-&lt;p&gt;Самое важное — в книге наконец-то шрифт нормального размера. Вы будете смеяться,
-но в первом издании на титульном листе был незакрытый тег &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\small&lt;/code&gt;, из-за
-которого остальной текст был на один пункт меньше. Глаз замылился, и я заметил
-это уже когда сдал макет в печать. Позже получил несколько писем о том, что
-шрифт маловат. Теперь это исправлено, но и книга потолстела — с 360 до 444
-страниц, то есть на четверть.&lt;/p&gt;
-
-&lt;p&gt;Купить книгу можно все теми же способами:&lt;/p&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;&lt;a href=&quot;https://ridero.ru/books/clojure_na_proizvodstve/&quot;&gt;в издательстве&lt;/a&gt;,&lt;/li&gt;
-  &lt;li&gt;&lt;a href=&quot;https://www.chitai-gorod.ru/catalog/book/1267534/&quot;&gt;в Читай-городе&lt;/a&gt;,&lt;/li&gt;
-  &lt;li&gt;&lt;a href=&quot;https://www.ozon.ru/product/clojure-na-proizvodstve-179829229/&quot;&gt;на Озоне&lt;/a&gt;,&lt;/li&gt;
-  &lt;li&gt;&lt;a href=&quot;https://www.bookvoed.ru/book?id=10490030&quot;&gt;в Буквоеде&lt;/a&gt;,&lt;/li&gt;
-  &lt;li&gt;&lt;a href=&quot;https://aliexpress.ru/item/1005002322504648.html&quot;&gt;на Али-Экспрессе&lt;/a&gt;.&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;Почти все магазины обновили обложку, но если вы видите старую, не страшно:
-напечатают всё равно второе издание.&lt;/p&gt;
-
-&lt;p&gt;Электронная версия &lt;a href=&quot;https://gum.co/clojure-in-prod&quot;&gt;на Gumroad&lt;/a&gt;. Если вы уже покупали, то сервис
-позволит вам скачать новые файлы бесплатно. Я обновляю их с каждой найденной
-опечаткой, которые, увы, все еще попадаются.&lt;/p&gt;
-
-&lt;p&gt;Ну и самое важное — провел эксперимент. Отпечатал двадцать пробных книжек
-формата B5 в твердой обложке. Это нечто среднее между А5 и А4. После первого
-издания книга смотрится неприлично большой. Даже если не выстрелит, ей можно
-ударить по голове ©. Зато очень легко читать и листать.&lt;/p&gt;
-
-&lt;p&gt;Несколько фотографий. В мягкой глянцевой обложке, обычный формат А5:&lt;/p&gt;
-
-&lt;!-- more --&gt;
-
-&lt;p&gt;&lt;img src=&quot;https://s3.amazonaws.com/igrishaev.public/clj-2nd-ed/IMG_0388.jpeg&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;Твердый B5:&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;https://s3.amazonaws.com/igrishaev.public/clj-2nd-ed/IMG_0381.jpeg&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;Соотношение форматов:&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;https://s3.amazonaws.com/igrishaev.public/clj-2nd-ed/IMG_0387.jpg&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;Внутри:&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;https://s3.amazonaws.com/igrishaev.public/clj-2nd-ed/IMG_0382.jpg&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;https://s3.amazonaws.com/igrishaev.public/clj-2nd-ed/IMG_0392.jpg&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;На книжной полке:&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;https://s3.amazonaws.com/igrishaev.public/clj-2nd-ed/IMG_0394.jpg&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;Чтобы получить книжку, действуйте тем же способом. Нажмите на форму оплаты, вас
-перекинет на форму Яндекс-Денег (ныне ЮМани). Стоимость — 1000 рублей. Введите
-имя, емейл, адрес и телефон. Я получу письмо и вышлю книгу с подписью почтой
-России. Если не работает Яндекс, можно PayPal с моей почтой или Сбер/Тиньков по
-телефону +79623289677.&lt;/p&gt;
-
-&lt;iframe src=&quot;https://yoomoney.ru/quickpay/button-widget?targets=%D0%9A%D0%BD%D0%B8%D0%B3%D0%B0%20%C2%ABClojure%20%D0%BD%D0%B0%20%D0%BF%D1%80%D0%BE%D0%B8%D0%B7%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%B5%C2%BB&amp;amp;default-sum=1000&amp;amp;button-text=11&amp;amp;any-card-payment-type=on&amp;amp;button-size=l&amp;amp;button-color=orange&amp;amp;fio=on&amp;amp;phone=on&amp;amp;mail=on&amp;amp;address=on&amp;amp;successURL=https%3A%2F%2Fgrishaev.me%2F&amp;amp;quickpay=small&amp;amp;account=410012183974663&amp;amp;&quot; width=&quot;227&quot; height=&quot;48&quot; frameborder=&quot;0&quot; allowtransparency=&quot;true&quot; scrolling=&quot;no&quot;&gt;&lt;/iframe&gt;
-
-&lt;p&gt;Книга станет отличным подарком себе или коллеге, который интересуется
-скобочками.&lt;/p&gt;
-
-&lt;p&gt;Параллельно опубликовал две главы на английском: &lt;a href=&quot;/en/clj-book-systems/&quot;&gt;шестую&lt;/a&gt; и
-&lt;a href=&quot;/en/clj-book-exceptions/&quot;&gt;третью&lt;/a&gt;. С переводом мне помогает Евгений Бартов и его &lt;a href=&quot;https://tran.su/&quot;&gt;Бюро Альянс
-Про&lt;/a&gt;. Цель — концу года выпустить книгу за рубежом. Несколько
-англоязычных читателей уже написали в личку за продолжением.&lt;/p&gt;
-
-&lt;p&gt;Днем рождения книги я считаю первое июля, потому что именно тогда я опубликовал
-&lt;a href=&quot;https://habr.com/ru/post/508630/&quot;&gt;анонс на Хабре&lt;/a&gt;. Когда книге исполнится год, выложу статистику продаж по
-всем платформам, траты и прибыль.&lt;/p&gt;
-</description>
-        <pubDate>Fri, 16 Apr 2021 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/clj-2nd-edition/</link>
-        <guid isPermaLink="true">https://grishaev.me/clj-2nd-edition/</guid>
-        
-        <category>life</category>
-        
-        <category>pomidor</category>
         
         
       </item>
