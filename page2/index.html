@@ -111,6 +111,140 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/cron-mail/">Crontab и отправка почты</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2021-06-23T00:00:00+00:00">
+        Jun 23, 2021
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/cron/" rel="tag">cron</a>, <a href="/tag/mail/" rel="tag">mail</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>На днях столкнулся с проблемой. На моем ноуте крутится несколько
+crontab-задач. Хотелось бы видеть, когда сработала каждая из них и если нет, то
+почему. Какое-то время я выкручивался с помощью логов. Оба канала (stdout и
+stderr) перехватываются в общий пайп, где каждая строка предваряется текущий
+датой и записывается в файл. Например:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">SHELL</span><span class="o">=</span>/bin/bash
+
+0 <span class="k">*</span>/3 <span class="k">*</span> <span class="k">*</span> <span class="k">*</span> /path/to/command &amp;&gt; <span class="o">&gt;(</span> <span class="k">while </span><span class="nb">read </span>line<span class="p">;</span> <span class="k">do </span><span class="nb">echo</span> <span class="s2">"</span><span class="si">$(</span><span class="nb">date</span><span class="si">)</span><span class="s2">: </span><span class="k">${</span><span class="nv">line</span><span class="k">}</span><span class="s2">"</span><span class="p">;</span> <span class="k">done</span> <span class="o">&gt;&gt;</span> /Users/ivan/logs/command.log<span class="o">)</span>
+</code></pre></div></div>
+
+<p>В результате и обычный, и ошибочный выхлоп оседают в файле. Выглядит это так:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Tue Jun 22 15:58:02 MSK 2021: warning: Skipping file ...
+Tue Jun 22 15:58:19 MSK 2021: Completed 0 file(s) with ...
+Tue Jun 22 15:59:02 MSK 2021: warning: Skipping file /Users/ivan/...
+Tue Jun 22 15:59:19 MSK 2021: Completed 0 file(s) with ...
+</code></pre></div></div>
+
+<p>Недостаток в том, что логи нужно регулярно проверять. Об этом легко забыть на
+месяц, а потом выяснится, что задача не работала из-за глупой ошибки.</p>
+
+<p>Тут я вспомнил, что крон умеет отправлять выхлоп задачи на почту. Если задана
+переменная <code class="language-plaintext highlighter-rouge">MAILTO=&lt;email&gt;</code>, то на эту почту свалится выхлоп. Это значит,
+отпадают логи, ведь теперь достаточно проверить почту. Проверять ее можно и с
+телефона, что в разы удобней.</p>
+
+<p>Отправка письма работает за счет утилиты <code class="language-plaintext highlighter-rouge">mail</code>. В общем виде ей пользуются так:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">cat </span>something | mail <span class="nt">-s</span> <span class="s1">'subject'</span> friend@domain.com
+</code></pre></div></div>
+
+<p>Эта команда отправит письмо на сервер <code class="language-plaintext highlighter-rouge">domain.com</code>, при этом отправитель будет
+выглядеть как <code class="language-plaintext highlighter-rouge">ivan@ivan.local</code>, то есть имя пользователя и текущего хоста. То
+же самое можно получить командой:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo `whoami`@`hostname`
+</code></pre></div></div>
+
+<p>Обратите внимание на кавычки – они означают выполнить выражение в новом шелле и
+подставить результат.</p>
+
+<p>Отправленное письмо никто не получит, что потому что современные сервера
+отметают письма, где айпи отправителя не совпадает с айпи его домена. Это
+хорошо, иначе бы мы утонули в спаме. Будем отправлять письма с серверов Гугла. А
+чтобы <code class="language-plaintext highlighter-rouge">mail</code> мог подключиться к Гуглу, сделаем три вещи.</p>
+
+<p><strong>Первое.</strong> В файл <code class="language-plaintext highlighter-rouge">/etc/postfix/main.cf</code> дописать строки ниже. Делать это нужно
+под <code class="language-plaintext highlighter-rouge">sudo</code>:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>relayhost = [smtp.gmail.com]:587
+smtp_sasl_auth_enable = yes
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+smtp_use_tls = yes
+smtp_sasl_mechanism_filter = plain
+</code></pre></div></div>
+
+<p><strong>Второе.</strong> Создать файл <code class="language-plaintext highlighter-rouge">/etc/postfix/sasl_passwd</code> и вписать в него:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[smtp.gmail.com]:587 username@gmail.com:password
+</code></pre></div></div>
+
+<p>, где <code class="language-plaintext highlighter-rouge">password</code> — пароль приложения для почты. Сгенерить этот пароль можно на
+специальной <a href="https://myaccount.google.com/apppasswords">странице Гугла</a>.</p>
+
+<p>Замечу, что вместо <code class="language-plaintext highlighter-rouge">gmail.com</code> может быть ваш домен, если он нацелен на гугловые
+сервера как в моем случае.</p>
+
+<p><strong>Третье</strong> — указать <code class="language-plaintext highlighter-rouge">postfix</code> новые конфиги и перезагрузить его:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo chmod 600 /etc/postfix/sasl_passwd
+sudo postmap /etc/postfix/sasl_passwd
+sudo launchctl stop org.postfix.master
+sudo launchctl start org.postfix.master
+</code></pre></div></div>
+
+<p>Все. Пробуем отправить письмо. Сообщим в нем содержимое домашней папки:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">ls</span> <span class="nt">-l</span> | mail <span class="nt">-s</span> <span class="s1">'my home dir'</span> ivan@grishaev.me
+</code></pre></div></div>
+
+<p>Мне пришло с первого раза. Plain text, красота.</p>
+
+<p>Так вот, теперь когда почта работает, настроим крон. Открываем его командой
+<code class="language-plaintext highlighter-rouge">crontab -e</code> и пишем сверху:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>MAILTO=&lt;ваша@почта&gt;
+</code></pre></div></div>
+
+<p>Кроме того, в конец каждой команды добавляем эхо, например:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>0 */3 * * * cd /some/path &amp;&amp; command --foo 42 &amp;&amp; echo OK
+</code></pre></div></div>
+
+<p>Зачем нужно эхо? Оказалось, что крон не отправляет письмо, если выхлоп задачи
+пуст. А поскольку я всегда хочу знать о запуске задачи, то делаю вывод не
+пустым. Вместо <code class="language-plaintext highlighter-rouge">echo OK</code> можно вывести текущую дату с помощью <code class="language-plaintext highlighter-rouge">&amp;&amp; date</code>.</p>
+
+<p>В результате мы получим письмо, где тема — команда задачи, а тело — ее
+выхлоп. Работает в том числе и для задач, которые не сработали из-за ошибки.</p>
+
+<p>Я уж не говорю о том, что с помощью <code class="language-plaintext highlighter-rouge">mail</code> можно быстро что-то скидывать себе на
+почту, организовать какие-то заметки и прочее. Что самое прекрасное — нет
+интерфейса, все простое и открытое, работает везде. Чудо.</p>
+
+<p>В следующий раз расскажу, что именно я ставлю на крон, там тоже интересные вещи.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/books-more/">И ещё немного книг</a>
             </h2>
 
@@ -953,81 +1087,6 @@ to work with collections. Using a zipper, you can traverse a data structure arbi
 
 <p>См. также <a href="https://ru.wikipedia.org/wiki/Whataboutism">Whataboutism</a>.</p>
 
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/clj-2nd-edition/">Второе издание</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2021-04-16T00:00:00+00:00">
-        Apr 16, 2021
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/pomidor/" rel="tag">pomidor</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>У меня большая радость — выпустил второе издание книги <a href="/clojure-in-prod/">“Clojure на
-производстве”</a>. Сел за него спустя полгода после первой
-публикации. Процесс занял четыре месяца, и вот — готово.</p>
-
-<p>Исправил опечатки и неточности, о которых сообщили читатели. Низкий поклон всем,
-кто их прислал.</p>
-
-<p>Некоторые разделы урезал, другие, наоборот, дополнил. Так, в главе про спеку мне
-показался слабым пример, где парсим конфигурацию через <code class="language-plaintext highlighter-rouge">s/conform</code>. Опыт
-подсказывает, что так не делают в проде, поэтому удалил эту часть. Заменил ее на
-парсинг структур данных — задачу, которую решал в либе <a href="https://github.com/igrishaev/etaoin">Etaoin</a>.</p>
-
-<p>То же самое относится к другим главам — нашлись смысловые неточности, которые
-пришлось проверить и допилить.</p>
-
-<p>Самое важное — в книге наконец-то шрифт нормального размера. Вы будете смеяться,
-но в первом издании на титульном листе был незакрытый тег <code class="language-plaintext highlighter-rouge">\small</code>, из-за
-которого остальной текст был на один пункт меньше. Глаз замылился, и я заметил
-это уже когда сдал макет в печать. Позже получил несколько писем о том, что
-шрифт маловат. Теперь это исправлено, но и книга потолстела — с 360 до 444
-страниц, то есть на четверть.</p>
-
-<p>Купить книгу можно все теми же способами:</p>
-
-<ul>
-  <li><a href="https://ridero.ru/books/clojure_na_proizvodstve/">в издательстве</a>,</li>
-  <li><a href="https://www.chitai-gorod.ru/catalog/book/1267534/">в Читай-городе</a>,</li>
-  <li><a href="https://www.ozon.ru/product/clojure-na-proizvodstve-179829229/">на Озоне</a>,</li>
-  <li><a href="https://www.bookvoed.ru/book?id=10490030">в Буквоеде</a>,</li>
-  <li><a href="https://aliexpress.ru/item/1005002322504648.html">на Али-Экспрессе</a>.</li>
-</ul>
-
-<p>Почти все магазины обновили обложку, но если вы видите старую, не страшно:
-напечатают всё равно второе издание.</p>
-
-<p>Электронная версия <a href="https://gum.co/clojure-in-prod">на Gumroad</a>. Если вы уже покупали, то сервис
-позволит вам скачать новые файлы бесплатно. Я обновляю их с каждой найденной
-опечаткой, которые, увы, все еще попадаются.</p>
-
-<p>Ну и самое важное — провел эксперимент. Отпечатал двадцать пробных книжек
-формата B5 в твердой обложке. Это нечто среднее между А5 и А4. После первого
-издания книга смотрится неприлично большой. Даже если не выстрелит, ей можно
-ударить по голове ©. Зато очень легко читать и листать.</p>
-
-<p>Несколько фотографий. В мягкой глянцевой обложке, обычный формат А5:</p>
-
-
-                    <p><a href="/clj-2nd-edition/">Read more &rarr;</a></p>
                 
             </div>
 
