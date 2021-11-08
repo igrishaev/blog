@@ -5,7 +5,7 @@ permalink: /clj-dmk-press/
 tags: clojure databases
 ---
 
-[dmk]: https://dmkpress.com/catalog/computer/programming/functional/978-5-93700-055-2/
+[dmk]: {{ site.clj_prod_book_dmk}}
 
 [gumroad]: {{ site.url_gumroad_clj_prod_ru }}
 
