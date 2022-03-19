@@ -52,7 +52,7 @@ The purpose of a config is to control the program without changing the code. The
 
 But the more complex a company's infrastructure, the more constraints it has. Today's software development practices negate spontaneous changes in a project. You can't `git push` directly to the master branch; `git merge` is prohibited until at least two colleagues approve your work; an application will not reach the server until tests pass.
 
-This leads to the fact that even a sligh change in the code will take hours to get in production. Editing in configuration is cheaper than releasing a new version of the product. The rule follows from this: if you can make something a configurable option, do it right now.
+This leads to the fact that even a slight change in the code will take hours to get in production. Editing in configuration is cheaper than releasing a new version of the product. The rule follows from this: if you can make something a configurable option, do it right now.
 
 Large companies practice what is called a feature flag. It is a boolean field that enables a vast layer of the application logic. For example, a new interface, a ticket processing system, or an improved chat. Of course, updates are tested before releasing them, but there is always a risk of something going wrong in production. In this case, we set the flag to false and restart the service. Thus, the company will not only save time but also preserve its reputation.
 
