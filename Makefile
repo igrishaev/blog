@@ -1,4 +1,6 @@
 
+PORT := 4001
+
 all: clear build deploy
 
 git-prepare:
@@ -7,7 +9,7 @@ git-prepare:
 docker-build:
 	docker build --no-cache -t blog .
 
-DOCKER_BASE=docker run -it --rm -p 4000:4000 -v $(CURDIR):/blog blog
+DOCKER_BASE=docker run -it --rm -p $(PORT):$(PORT) -v $(CURDIR):/blog blog
 
 run:
 	$(DOCKER_BASE)
