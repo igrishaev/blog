@@ -6,7 +6,7 @@ tags: clojure strings format
 lang: en
 ---
 
-I'd like to share a Clojure trick I've been using for years. It's simple, it makes your code safer; I always highlight it when making reviews. The trick is: don't use str function to concatenate strings. Instead, use format. A couple of examples:
+I'd like to share a Clojure trick I've been using for years. It's simple, it makes your code safer; I always highlight it when making reviews. The trick is: don't use the `str` function to concatenate strings. Instead, use `format`. A couple of examples:
 
 ~~~clojure
 (let [username "Ivan"]
