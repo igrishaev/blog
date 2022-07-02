@@ -111,6 +111,151 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/clj-format">Use format rather than str</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-07-02T00:00:00+00:00">
+        Jul 2, 2022
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/strings/" rel="tag">strings</a>, <a href="/tag/format/" rel="tag">format</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>I’d like to share a Clojure trick I’ve been using for years. It’s simple, it makes your code safer; I always highlight it when making reviews. The trick is: don’t use str function to concatenate strings. Instead, use format. A couple of examples:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">username</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"The user `"</span><span class="w"> </span><span class="n">username</span><span class="w"> </span><span class="s">"` has been created."</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; "The user `Ivan` has been created."</span><span class="w">
+
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="w"> </span><span class="mi">5234</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"/files/uploads/"</span><span class="w"> </span><span class="n">user-id</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; "/files/uploads/5234"</span><span class="w">
+</span></code></pre></div></div>
+
+<p><strong>The first point</strong> in favour of this approach is, <code class="language-plaintext highlighter-rouge">str</code> turns nil into an empty string. Thus, when printing the final message, that’s unclear if a variable was an empty string or <code class="language-plaintext highlighter-rouge">nil</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">username</span><span class="w"> </span><span class="n">nil</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"The user `"</span><span class="w"> </span><span class="n">username</span><span class="w"> </span><span class="s">"` has been created."</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; "The user `` has been created."</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The difference between these two is important. Say, an empty string means broken validation; a title of a book, a name of a person must not be blank. But if I got nil, most likey I missed the key in a map because of a namespace:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">user</span><span class="w">
+  </span><span class="p">{</span><span class="no">:acme.user/id</span><span class="w"> </span><span class="mi">5234</span><span class="w">
+   </span><span class="no">:acme.user/name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">username</span><span class="w"> </span><span class="p">(</span><span class="nb">get</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="no">:id</span><span class="p">)]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>or the keyword/string case:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">user</span><span class="w">
+  </span><span class="p">(</span><span class="nf">parse-json</span><span class="w"> </span><span class="s">"user.json"</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; {"id" 5234 "name" "Ivan"}</span><span class="w">
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">username</span><span class="w"> </span><span class="p">(</span><span class="nb">get</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="no">:name</span><span class="p">)]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now compare it to the <code class="language-plaintext highlighter-rouge">format</code> function. The <code class="language-plaintext highlighter-rouge">nil</code> value becomes <code class="language-plaintext highlighter-rouge">"null"</code> when passed to <code class="language-plaintext highlighter-rouge">format</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">username</span><span class="w"> </span><span class="n">nil</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"The user `%s` has been created."</span><span class="w"> </span><span class="n">username</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; "The user `null` has been created."</span><span class="w">
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="w"> </span><span class="n">nil</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"/files/uploads/%s"</span><span class="w"> </span><span class="n">user-id</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; "/files/uploads/null"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If I had my way, I would produce not <code class="language-plaintext highlighter-rouge">"null"</code> but <code class="language-plaintext highlighter-rouge">"nil"</code> string from <code class="language-plaintext highlighter-rouge">nil</code>, but that’s not so important.</p>
+
+<p><strong>The second point</strong> is much more serious. <code class="language-plaintext highlighter-rouge">Nil</code> values are extremely dangerous when building file paths or URLs. Imagine you’re about to delete files of a person who’s terminating their account. Most likely you store files on disk like this:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>files/&lt;user-id&gt;/avatars/...
+files/&lt;user-id&gt;/attachments/...
+files/&lt;user-id&gt;/uploads/...
+</code></pre></div></div>
+
+<p>Then you have a function that accepts the <code class="language-plaintext highlighter-rouge">user-id</code> parameter, then builds the right path and does recursive deletion:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">drop-user-files</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="nb">path</span><span class="w">
+        </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"files/"</span><span class="w"> </span><span class="n">user-id</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">rm-rf-recur</span><span class="w"> </span><span class="nb">path</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If you pass <code class="language-plaintext highlighter-rouge">nil</code> for <code class="language-plaintext highlighter-rouge">user-id</code>, the path will be <code class="language-plaintext highlighter-rouge">"files/"</code>. Running that code will erase all the files of all users which would be a disaster. But if you have used format, the path would have been <code class="language-plaintext highlighter-rouge">"files/null"</code>, which would just have thrown an exception saying there is no such a directory.</p>
+
+<p>One may say: add an assert clause for user-id right before you build a path. Like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">drop-user-files</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">assert</span><span class="w"> </span><span class="n">user-id</span><span class="w"> </span><span class="s">"User-id is empty!"</span><span class="p">)</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; or</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">drop-user-files</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="p">]</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pre</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="p">]}</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In practice, you easily forget doing this and recall when the data is lost. I don’t see any reason for skipping that minor fix — change str to format — to reduce chances of a disaster.</p>
+
+<p>The same applies to S3 URLs. Although it’s a web-service, we all treat it as a file system. Composing the file paths for S3 reminds me of the file paths. Again, if you’re about to drop user’s directory with uploads, be aware of the the same thing: <code class="language-plaintext highlighter-rouge">str</code> + <code class="language-plaintext highlighter-rouge">nil</code> for <code class="language-plaintext highlighter-rouge">user-id</code> produce a broken path:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">drop-s3-user-files</span><span class="w"> </span><span class="p">[</span><span class="n">s3-client</span><span class="w"> </span><span class="n">user-id</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="nb">path</span><span class="w">
+        </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"files/"</span><span class="w"> </span><span class="n">user-id</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">s3.client/delete-files</span><span class="w"> </span><span class="n">s3-client</span><span class="w"> </span><span class="nb">path</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If you pass <code class="language-plaintext highlighter-rouge">nil</code> into a function that recursively drops S3 files, the data is all gone.</p>
+
+<p>Of course, such an issue can be held with special Java classes like <code class="language-plaintext highlighter-rouge">Path</code> or <code class="language-plaintext highlighter-rouge">URI</code>. But in fact, in Clojure we use them quite rarely. Most often we just concatenate plain strings as it’s enough for the task. It’s simpler and takes less code.</p>
+
+<p>I recommend using <code class="language-plaintext highlighter-rouge">str</code> for one purpose only — to coerce a non-string value to a string. For example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="mi">5</span><span class="p">)</span><span class="w"> </span><span class="c1">;; =&gt; "5"</span><span class="w">
+</span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="p">(</span><span class="nf">random-uuid</span><span class="p">))</span><span class="w"> </span><span class="c1">;; =&gt; "154ac...b2642"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Briefly, it’s safe when the <code class="language-plaintext highlighter-rouge">str</code> function accepts strictly one argument. When there are more than one, I feel worried.</p>
+
+<p>I always keep in mind a real story about a guy who owned a small hosting company. He released the <code class="language-plaintext highlighter-rouge">rm -rf $FOO/$BAR</code> command among the whole park. Too sad for him, both of the env vars were unset, nor special bash flags prescribing to terminate a script were set as well. The command turned into <code class="language-plaintext highlighter-rouge">rm -rf /</code> with known consequences. A couple of missing vars has ruined one’s business. By <code class="language-plaintext highlighter-rouge">str</code>-ing strings, especially when building file paths, you may easily mess up the same way (but I wish you won’t).</p>
+
+<p>Let’s recap:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">str</code> turns <code class="language-plaintext highlighter-rouge">nil</code> into an empty string;</li>
+  <li>by reading such a message, you never know if a value was an empty string or nil;</li>
+  <li>the difference between these two <strong>does</strong> matter;</li>
+  <li>with that behaviour, it’s easy to build a weird file/S3 path and lost the data;</li>
+  <li>instead, <code class="language-plaintext highlighter-rouge">format</code> turns <code class="language-plaintext highlighter-rouge">nil</code> into <code class="language-plaintext highlighter-rouge">"null"</code>. This is much better than emptiness and solves the troubles mentioned above;</li>
+  <li>use <code class="language-plaintext highlighter-rouge">str</code> only to coerce a value to a string.</li>
+</ul>
+
+<p>Safe coding!</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/dobrofile/">Книга на Доброфайле</a>
             </h2>
 
@@ -780,65 +925,6 @@ tinkering with Bogus gave me some good material for the book.</p>
 <h3 id="other">Other</h3>
 
 <p>Copyright © 2022 Ivan Grishaev</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/terminated/">Увольнение</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-03-05T00:00:00+00:00">
-        Mar 5, 2022
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/life/" rel="tag">life</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>Прошлый понедельник запомнился слитыми письмами, где фирмы разрывали контракты с российскими удаленьщиками. Вроде того, что <a href="/assets/static/aws/term/google.jpeg">от Гугла по ссылке</a>. Тенденция не обошла меня стороной. Понедельник я провел в смутной тревоге, понимая, что работодатель способен на этот шаг. В пять вечера получил письмо об увольнении.</p>
-
-<p>По этическим причинам не будут постить сюда скрин — по моим меркам слив переписки находится ниже любого дна. Это был такой же абстрактный текст, как и у Гугла. Что-то в духе “мы ценим твою работу, ничего личного, прощай”.</p>
-
-<p>Дело в том, Иван, что как бы мы ни ценили три с половиной года твоей работы, есть некие полиси, которые предписывают порвать наши отношения. Что это за полиси, где их увидеть и прочесть – начальство не уточнило.</p>
-
-<p>Не то чтобы меня расстроила потеря работы — не конец света, найду другую. Но такой стремительный конец отношений заставляет мысленно к нему возвращаться. Еще в пятницу расписываешь коллегам задачи, проводишь созвоны, планов громадье. В понедельник — до свидания.</p>
-
-<p>Казалось бы, кому как не мне, удаленьщику с семилетним стажем, понимать, насколько ты не защищен от подобных ситуаций. В отличие от всяких EULA, договор с заказчиком я читаю по слогам до подписания. Прекрасно знаю, что одним пинком меня могут выставить. Но на созвоне все улыбаются, и это кажется невозможным. Оттого пинок ощущается сильнее.</p>
-
-<p>Удивила скорость всей процедуры. В 17:00 я получаю персональное письмо. Через пятнадцать минут приходит анонс всей команде: Иван больше не с нами, будем скучать. Еще через десять минут отваливается доступ ко всей инфраструктуре. Никаких обсуждений, торгов: все линейно, от тебя ничего не зависит.</p>
-
-<p>Интересно, что адекватная реакция была только у одного человека – украинского коллеги. Он эмоционально ответил в тред с анонсом, что увольнение русских не поможет Украине и ваша гнилая солидарность никому не нужна. Но разве его кто-то слушал? Швейцария знает лучше Украины, как ей помочь.</p>
-
-<p>Начальство взялось отвечать на выпад: теперь мы не можем платить Ивану. Сухо возражу — никаких проблем с оплатой не было. МодульБанк, в котором я счастлив обслуживаться, не под санкциями, свифты доходят. Кроме свифта, в нем работает альтернативная система Visa B2B Connect, доступная и в Швейцарии. На какое-то время я бы согласился получать Пейпал или Transfer Wise. Можно попробовать крипту: биток, USD-токены. Тоже норм, есть знать как обращаться (а я знаю).</p>
-
-<p>Да что там: на худой конец я бы мог формально уволиться и поработать бесплатно, а потом, как все наладится, заключить контракт по новой ставке, чтобы компенсировать потери. За пять минут я назвал пять вариантов, а если подумать, найдутся другие. Но если сказано “не можем” — значит не можем.</p>
-
-<p>Украинский коллега, кстати, тоже попал в поле зрения “помогаторов” Украине. Если мой контракт расторгнут (агрессор), то его — “временно приостановлен” до тех пор, пока “ситуация не придет в норму” (жертва). Временно — это на сколько? Норма — как это понимать?</p>
-
-<p>Не надо быть гением, чтобы понять: “временно” означает “пока ты сам не уволишься”. Будешь заморожен месяц, год, пять. Ты жертва, поэтому увольнять тебя опасно: еще сольешь переписку в Твиттер и подорвешь репутацию фирмы. Поэтому прояви инициативу.</p>
-
-<p>Схожее происходит и в других фирмах: от русских надо избавиться, агрессоры, все дела. Но от украинцев тоже, только слегка по-другому. “Временно отключим” вас, пока ситуация “не придет в норму”.</p>
-
-<p>По идее я должен ругать Путина и его “спецоперацию”. Но дело в том, что уволил меня не Путин — это сделали конкретные люди. Которые, в свою очередь, вешают на меня груз: это не мы, это ваш президент, к нему и обращайтесь. Со мной это не работает. Я потерял работу потому, что менеджеры решили что-то доказать. Не сегодня Путин, так завтра нашелся бы другой предлог.</p>
-
-<p>Наши с фирмой отношения не прошли проверку на прочность. Фирме важнее следовать международной повестке, чем сохранить ведущего разработчика, взятого три с половиной года назад. Хорошо, как считаете нужным.</p>
-
-<p>Не вздумайте меня жалеть: уже подсуетился, собеседуюсь туда-сюда. Назревают два варианта. Пишу не ради нытья, а чтобы сбросить мысли в текст и двигаться дальше.</p>
-
-<p>То, что происходит с нами сегодня, ново и непонятно. Замечаю тенденции, которых раньше не было; жизнь стремительно меняется, и не так уж важно, в какую сторону. Искренне надеюсь, что смогу как-то выразить мысли на эту тему в следующем тексте.</p>
 
                 
             </div>
