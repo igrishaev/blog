@@ -98,7 +98,7 @@ One may say: add an assert clause for user-id right before you build a path. Lik
 
 In practice, you easily forget doing this and recall when the data is lost. I don't see any reason for skipping that minor fix — change `str` to `format` — to reduce chances of a disaster.
 
-The same applies to S3 URLs. Although it's a web-service, we all treat it as a file system. Composing the file paths for S3 reminds me of the file paths. Again, if you're about to drop user's directory with uploads, be aware of the the same thing: `str` + `nil` for `user-id` produce a broken path:
+The same applies to S3 URLs. Although it's a web-service, we all treat it as a file system. Composing S3 URLs reminds me of ordinary file paths. Again, if you're about to drop user's directory with uploads, be aware of the the same thing: `str` + `nil` for `user-id` produce a broken path:
 
 ~~~clojure
 (defn drop-s3-user-files [s3-client user-id]
@@ -120,7 +120,7 @@ I recommend using `str` for one purpose only — to coerce a non-string value to
 
 Briefly, it's safe when the `str` function accepts strictly one argument. When there are more than one, I feel worried.
 
-I always keep in mind a real story about a guy who owned a small hosting company. He released the `rm -rf $FOO/$BAR` command among the whole park. Too sad for him, both of the env vars were unset, nor special bash flags prescribing to terminate a script were set as well. The command turned into `rm -rf /` with known consequences. A couple of missing vars has ruined one's business. By `str`-ing strings, especially when building file paths, you may easily mess up the same way (but I wish you won't).
+I always keep in mind a real story about a guy who owned a small hosting company. He released the `rm -rf $FOO/$BAR` command among the whole park. Too sad for him, both of the env vars were unset, nor special bash flags terminating a script were set as well. The command turned into `rm -rf /` with known consequences. A couple of missing vars has ruined one's business. By `str`-ing strings, especially when building file paths, you may easily mess up the same way (but I wish you won't).
 
 Let's recap:
 
