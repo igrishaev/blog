@@ -96,7 +96,7 @@ One may say: add an assert clause for user-id right before you build a path. Lik
   ...)
 ~~~
 
-In practice, you easily forget doing this and recall when the data is lost. I don't see any reason for skipping that minor fix — change str to format — to reduce chances of a disaster.
+In practice, you easily forget doing this and recall when the data is lost. I don't see any reason for skipping that minor fix — change `str` to `format` — to reduce chances of a disaster.
 
 The same applies to S3 URLs. Although it's a web-service, we all treat it as a file system. Composing the file paths for S3 reminds me of the file paths. Again, if you're about to drop user's directory with uploads, be aware of the the same thing: `str` + `nil` for `user-id` produce a broken path:
 
