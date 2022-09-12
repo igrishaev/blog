@@ -1057,4 +1057,4 @@ class Person(models.Model):
 
 - Сервис сокращалки урлов
 
-{% include disqus.html %}
+{% include comments.html %}
