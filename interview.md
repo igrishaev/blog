@@ -1057,4 +1057,4 @@ class Person(models.Model):
 
 - Сервис сокращалки урлов
 
-{% include comments.html %}
+{% include comments.html permalink=page.permalink %}

@@ -1139,4 +1139,4 @@ Luminus. В книге рассмотрены основные шаги по с�
 
 </div>
 
-{% include comments.html %}
+{% include comments.html permalink=page.permalink %}
