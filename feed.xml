@@ -6,9 +6,107 @@
 </description>
     <link>https://grishaev.me/</link>
     <atom:link href="https://grishaev.me/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Mon, 12 Sep 2022 15:31:49 +0000</pubDate>
-    <lastBuildDate>Mon, 12 Sep 2022 15:31:49 +0000</lastBuildDate>
+    <pubDate>Tue, 13 Sep 2022 12:23:26 +0000</pubDate>
+    <lastBuildDate>Tue, 13 Sep 2022 12:23:26 +0000</lastBuildDate>
     <generator>Jekyll v4.2.0</generator>
+    
+      <item>
+        <title>Деджаваскриптизиция (2)</title>
+        <description>&lt;p&gt;Сделал то, что намеревался: удалил с сайта все сторонние сервисы. Больше нет социальных кнопок, гугло-аналитики и, самое важное, комментариев Disqus. На страницах вообще нет аякса за тем исключением, когда встроен плеер Ютуба. Красота.&lt;/p&gt;
+
+&lt;p&gt;Отдельно расскажу про комментарии. Теперь они встроены в блог, являются его частью, а не лежат на серверах Disqus. Для этого я написал импорт из XML. Ясное дело, на Кложе, &lt;a href=&quot;https://github.com/igrishaev/blog/blob/master/clj-comments/src/clj_comments/core.clj&quot;&gt;исходники на Гитхабе&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;Если вкратце, код пробегает по XML, строит мапы и индексы по ID. Для каждого комментария он создает файл вроде &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;_comments/2016-08-08-08-27-14.md&lt;/code&gt; с содержимым:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;---
+id: 2826354744
+is_spam: false
+is_deleted: false
+post: /interview/
+date: 2016-08-08T08:27:14Z
+author_fullname: 'Александр'
+author_nickname: 'VinokurovAlexnader'
+author_is_anon: false
+---
+
+&amp;lt;p&amp;gt;Вопрос &quot;Есть кортеж из трех элементов. Назначить переменным a, b, c его значения&quot;.&amp;lt;/p&amp;gt;
+&amp;lt;p&amp;gt;У Вас ответ:&amp;lt;br&amp;gt;a, b, c = [1, 2, 3]&amp;lt;/p&amp;gt;
+&amp;lt;p&amp;gt;Но это список, а не кортеж. С кортежом будет вот так:&amp;lt;br&amp;gt;a, b, c = (1, 2, 3)&amp;lt;/p&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Всего таких файлов 993. В шаблон заметки я добавил код для вывода комментариев:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&quot;language-jinja2&quot;&gt;{% assign comments = site.comments | where:'post', include.permalink %}
+
+{% if comments.size == 0 %}
+
+&amp;lt;center&amp;gt;Комментариев пока нет&amp;lt;/center&amp;gt;
+
+{% else %}
+
+&amp;lt;center&amp;gt;Комментарии&amp;lt;/center&amp;gt;
+
+&amp;lt;div class=&quot;comments-block&quot;&amp;gt;
+  {% for comment in comments %}
+    &amp;lt;div class=&quot;comment-block&quot;&amp;gt;
+      &amp;lt;p class=&quot;comment-lead&quot;&amp;gt;
+        &amp;lt;small&amp;gt;
+          &amp;lt;em&amp;gt;{{ comment.author_fullname or comment.author_nickname }}, {{ comment.date | date_to_string: &quot;ordinal&quot;, &quot;RU&quot; }}&amp;lt;/em&amp;gt;
+        &amp;lt;/small&amp;gt;
+      &amp;lt;/p&amp;gt;
+      &amp;lt;div&amp;gt;{{ comment.content | markdownify }}&amp;lt;/div&amp;gt;
+    &amp;lt;/div&amp;gt;
+  {% endfor %}
+&amp;lt;/div&amp;gt;
+
+{% endif %}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Получилось неоптимально, потому что на каждый пост происходит линейный поиск. В идеале нужно один раз построить словарь URL =&amp;gt; список комментариев и затем брать оттуда. Но я не настолько хорошо знаю Jekyll и Ruby, чтобы это запилить.&lt;/p&gt;
+
+&lt;p&gt;Ради интереса проверьте страницы, где много комментариев, например &lt;a href=&quot;/ivi/#comments-block&quot;&gt;про сервис IVI&lt;/a&gt; или &lt;a href=&quot;/interview/#comments-block&quot;&gt;про интервью&lt;/a&gt;. Лично мне результат нравится: чистенький HTML, минимум CSS, все лаконично. На текущий момент не учитывается структура, но технически это возможно: каждый комментарий знает ID родителя, и однажды их вывод можно улучшить.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/de-js2/2.png&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Теперь главное: как сделать прием комментариев. Мне накидали советов, плюс я гуглил, и все сводится двум решениям: Гитхаб или self-hosted сервис.&lt;/p&gt;
+
+&lt;p&gt;Напомню, как работает Гитхаб: люди пишут комменты к какому-либо issue. Зная номер issue, легко выгрести комментарии GET-запросом, сгенерить HTML и вставить под заметкой. Выглядит красиво:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/de-js2/1.png&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;, но меня тревожат две вещи.&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;Комментарии лежат в чужом сервисе, который может отвалиться из-за санкций или Роскомнадзора.&lt;/li&gt;
+  &lt;li&gt;Обязательна авторизация через Гитхаб — не у всех есть учетная запись.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Self-hosted-решения вроде &lt;a href=&quot;https://remark42.com/&quot;&gt;Remark42&lt;/a&gt; интересны, но вынуждают держать виртуалку, платить за нее и делать бекапы. Придется возиться.&lt;/p&gt;
+
+&lt;p&gt;Я придумал так. Пишем лямбду для Яндекс.Облака (на Кложе с компиляцией Граалем). Лямбда принимает POST-запросы с сайта. На сайте висит статичная форма с полем action=URL нашей лямбды. Отправить форму может любой желающий, даже тот, у кого нет учетки в Гитхабе, Твиттере, Инстаграме и так далее.&lt;/p&gt;
+
+&lt;p&gt;Получив запрос, лямбда создает pull request в репозитории блога. Для этого не нужен git: все возможности Гитхаба доступны &lt;a href=&quot;https://docs.github.com/en/rest/pulls/pulls#create-a-pull-request&quot;&gt;в REST API&lt;/a&gt;. Pull request содержит новый файл с комментарием в папке &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;_comments&lt;/code&gt;. Мне приходит письмо. Если норм, я нажимаю Merge, блог собирается и выкатывается новая версия.&lt;/p&gt;
+
+&lt;p&gt;Одновременно получается модерация: если кто-то написал дичь, я отклоняю PR, и делу конец.&lt;/p&gt;
+
+&lt;p&gt;Открыв PR, лямбда перенаправляет пользователя обратно в блог со словами “спасибо, ваш комментарий скоро появится”.&lt;/p&gt;
+
+&lt;p&gt;Вот такую штуку я хочу запилить. А пока что комментации работают только в Телеграме.&lt;/p&gt;
+</description>
+        <pubDate>Tue, 13 Sep 2022 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/de-js-2/</link>
+        <guid isPermaLink="true">https://grishaev.me/de-js-2/</guid>
+        
+        <category>programming</category>
+        
+        <category>javascript</category>
+        
+        <category>blog</category>
+        
+        <category>disqus</category>
+        
+        
+      </item>
     
       <item>
         <title>Деджаваскриптизиция</title>
@@ -4106,45 +4204,6 @@ section. There, you specify something like &lt;code class=&quot;language-plainte
         <category>podcast</category>
         
         <category>fail</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Сервис не смог</title>
-        <description>&lt;p&gt;Иные сервисы уведомляют о всякой ерунде — новом дизайне, посте в блоге или просто какой-то дичи — и забывают о важных вещах. Например, проблемах с платежами и авторизацией. Вот три примера из практики.&lt;/p&gt;
-
-&lt;p&gt;До известных событий (которые в России нельзя назвать коротким словом) сервис Gumroad регулярно переводил деньги за книгу на Paypal. Как только Палка отвалилась, пропали и выплаты. Однако Gumroad не прислал ни одного письма об этом.&lt;/p&gt;
-
-&lt;p&gt;Как программист я понимаю: вызов к PayPal обернут в try/catch, ошибка падает в лог. Ладно, а что потом? Получили сотни ошибок, кто будет с ними разбираться?&lt;/p&gt;
-
-&lt;p&gt;По-хорошему надо так: делать задачу на выплату, повторять ее с интервалом в час, день, неделю. Если не вышло — слать пользователю письмо, а не молчать, словно ничего не происходит.&lt;/p&gt;
-
-&lt;p&gt;То же самое с Leanpub. У меня там короткая книжка на английском, и раз-два в месяц ее покупают. Выплаты прекратились, все молчком, никаких уведомлений. Неужели так трудно отправить письмо?&lt;/p&gt;
-
-&lt;p&gt;Наконец, Амазон. Какое-то время назад я жаловался, что не могу зайти в аккаунт. Думал, что блокирует Амазон, но все оказалось проще. Когда-то давно, подключая двухфакторную авторизацию, я поленился открыть Google Authenticator и выбрал вариант с смс — зря!&lt;/p&gt;
-
-&lt;p&gt;Оказалось, сервис, который отправляет смс, теперь не делает этого для российских номеров. Без понятния, как это происходит: возвращает ли он статус 403? Или отдает 200, чтобы молча выкинуть мое смс? И кто виноват? Я, потому что живу в России? Амазон, потому что сервис не работает, а к нему обращаются? Сервис, потому что не смог?&lt;/p&gt;
-
-&lt;p&gt;Кто кого должен уведомлять? Амазон меня, потому что дело происходит на странице Амазона? Или смс-сервис уведомляет Амазон, потому что первый не смог? Все сломано: смс не доходит, Амазон об этом не знает, сервис не считает нужным доложить. Скорей всего, записали в лог и забыли.&lt;/p&gt;
-
-&lt;p&gt;Как вы поняли, так быть не должно. Клиенту все равно, какие сервисы вызывает ваш сервис. Чей домен открыт в браузере, тот и уведомляет. Во всех случаях письма должны были прислать Gumroad, Leanpub и Amazon — то, что я вижу и с чем работаю. Не нужно переводить стрелки на сторонний сервис, который не смог. В данном случае не смогли упомянутые фирмы.&lt;/p&gt;
-
-&lt;p&gt;Все это я переживу, а вот взять на заметку стоит.&lt;/p&gt;
-</description>
-        <pubDate>Tue, 05 Jul 2022 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/service-failed/</link>
-        <guid isPermaLink="true">https://grishaev.me/service-failed/</guid>
-        
-        <category>services</category>
-        
-        <category>amazon</category>
-        
-        <category>leanpub</category>
-        
-        <category>gumroad</category>
-        
-        <category>paypal</category>
         
         
       </item>
