@@ -65,7 +65,7 @@
      :deleted? (-> tag->node :isDeleted :content first parse-boolean)
      :spam? (-> tag->node :isSpam :content first parse-boolean)
      :thread (-> tag->node :thread :attrs :dsq:id)
-     :parent(-> tag->node :parent :attrs :dsq:id)
+     :parent (-> tag->node :parent :attrs :dsq:id)
      :author
      (let [tag->node
            (-> tag->node :author :content group-tags)]
