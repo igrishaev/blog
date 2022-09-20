@@ -6,9 +6,100 @@
 </description>
     <link>https://grishaev.me/</link>
     <atom:link href="https://grishaev.me/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Mon, 19 Sep 2022 13:28:31 +0000</pubDate>
-    <lastBuildDate>Mon, 19 Sep 2022 13:28:31 +0000</lastBuildDate>
+    <pubDate>Tue, 20 Sep 2022 10:25:16 +0000</pubDate>
+    <lastBuildDate>Tue, 20 Sep 2022 10:25:16 +0000</lastBuildDate>
     <generator>Jekyll v4.2.0</generator>
+    
+      <item>
+        <title>Деджаваскриптизиция (3)</title>
+        <description>&lt;p&gt;Сбылась мечта идиота: теперь на сайте работают комментарии без строчки кода на Джаваскрипте. Смотайте экран вниз, там форма. Требуется только имя и тело комментария. Ввели, отправили, и через некоторое время он появится в блоге.&lt;/p&gt;
+
+&lt;p&gt;Форма:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/de-js3/1.jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Экран возврата:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/de-js3/2.jpg&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Расскажу, как это работает. &lt;a href=&quot;/de-js-2/&quot;&gt;В прошлый раз&lt;/a&gt; я перенес комментарии Disqus в репозиторий. Каждый комментарий — это файл формата YAML + markdown. В числе прочего он хранит ссылку на пост. Когда я собираю блог, в подвал каждой заметки подставляются ее комментарии.&lt;/p&gt;
+
+&lt;p&gt;Для приема комментариев я следую тому же принципу: чтобы они появились на сайте, нужно создать файл в репозитории. Теоретически любой может оформить pull request, но это сложно. Должен быть сервис, который преобразует ввод пользователя в pull request для блога. Этот сервис я написал и назвал &lt;a href=&quot;https://github.com/igrishaev/blog-backend&quot;&gt;blog-backend&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;Сервис напоминает веб-приложение: оно принимает HTTP-запрос с формой. После прелюдии с валидацией перехожу к главному: интеграции с Гитхабом. Это оказалось не так-то просто. У Гитхаба уже &lt;a href=&quot;https://docs.github.com/en/rest&quot;&gt;три рестовых API&lt;/a&gt;, но ни одно не покрывает все возможности. Кроме REST есть &lt;a href=&quot;https://docs.github.com/en/graphql&quot;&gt;убер-апишка на GraphQL&lt;/a&gt; — она-то мне и нужна.&lt;/p&gt;
+
+&lt;p&gt;Интеграция по GraphQL была нелегкой: это самобытный язык и вещь в себе. Если бы в текущем проекте не было GraphQL, я бы полез на стенку. Во-вторых, сложность процесса: чтобы сделать PR силами API, нужно четыре вызова:&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;получить метаданные репозитория, в том числе последний коммит;&lt;/li&gt;
+  &lt;li&gt;создать ветку от этого коммита;&lt;/li&gt;
+  &lt;li&gt;сделать коммит в новую ветку;&lt;/li&gt;
+  &lt;li&gt;сделать PR.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Как по мне, апишка не консистентна: где-то на репозиторий ссылаешься по имени, а где-то по машинному ID, который приходит из метаданных. То же самое с ветками: где-то имя, где-то айдишник. Ответы GraphQL развесистые, с глубокой вложенностью. Например, последний коммит ветки погружен на пять уровней:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;(-&amp;gt; resp-get-repo :data :repository :ref :target :oid)
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;С такой апишкой невозможно программировать без образца данных.&lt;/p&gt;
+
+&lt;p&gt;Когда подружился с Гитхабом, настала проблема хостинга: где и как размещать логику. Мне понравился опыт с облаком Яндекса, и я продолжил эксперименты. Сервис написан на Кложе, скомпилирован Граалем в бинарь и хостится в &lt;a href=&quot;https://cloud.yandex.ru/docs/functions/concepts/&quot;&gt;Яндекс.Функции&lt;/a&gt; — аналоге AWS Lambda.&lt;/p&gt;
+
+&lt;p&gt;В свою очередь, Яндекс.Функция — это облачный сервис, где размещают какой-то код и дергают его по запросу. Отличие от обычного хостинга в том, что у лямбды нет состояния: она запускается на короткое время и умирает. В зависимости от окружения лямбда может умереть не сразу, и если ее дернуть повторно, сработает уже запущенный экземпляр. На базе этого делают “прогрев” лямбд, у которых окружение стартует медленно, например Java. В моем случае граальный бинарник быстрый как не весть что, прогрева ему не надо.&lt;/p&gt;
+
+&lt;p&gt;Лямбду можно вызывать разными способами, в том числе HTTP-запросом. У каждой лямбды свой урл, который может быть приватным и публичным. Его можно указать в разных сервисах, что отлично подходит для ботов.&lt;/p&gt;
+
+&lt;p&gt;По сравнению с VM-хостингом у лямбды следующие плюсы:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;не нужна виртуальная машина и ее настройка;&lt;/li&gt;
+  &lt;li&gt;не нужен домен;&lt;/li&gt;
+  &lt;li&gt;лямбды экстремально дешевы, потому оплачивается только время работы с округлением до 0.1 секунды;&lt;/li&gt;
+  &lt;li&gt;лямбды поощряют писать код без компонентов и состояния, что как бальзам на душу после проектов по работе.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Поначалу я был крайне скептичен к лямбдам, но теперь вижу в них особую прелесть. Единственный момент — пришлось написать код, чтобы подружить Кложу и Ring с окружением лямбды. Также поправил компиляцию Граалем, чтобы в бинарнике была верная кодировка. В будущем я планирую вынести код Яндекс.Облака в отдельную библиотеку, чтобы избавиться от копипасты.&lt;/p&gt;
+
+&lt;p&gt;Форма поддерживает синтаксис Markdown. Пока что нет кнопок выделения текста болдом и италиком, сделаю потом. Форма отправляется чистым POST, никаких аяксов, хотя первую версию я сделал на fetch, JSON и CORS. Про CORS я все забыл, и пришлось читать свою же статью о том, как все настроить.&lt;/p&gt;
+
+&lt;p&gt;Новые комментарии совмещают модерацию. После отправки создается PR в блок, мне приходит письмо, а пользователь переходит на прошлую страницу. Если все в порядке, я мерджу ветку и заливаю свежий билд блога. Таким образом, с момента публикации комментария может пройти от пяти минут до нескольких дней, но это ничего.&lt;/p&gt;
+
+&lt;p&gt;Первые комментарии я получил от кого? Правильно, от спамеров. Этим утром предложили виагру, казино и просто левые ссылки. Вот ссылка &lt;a href=&quot;https://github.com/igrishaev/blog/pull/120/files&quot;&gt;на уже закрытый RP&lt;/a&gt; и его содержимое:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;---
+id: 1663659055173
+is_spam: false
+is_deleted: false
+post: /bookshelf/
+date: 2022-09-20 07:30:55 +0000
+author_fullname: 'epiehuliqukib'
+---
+
+http://slkjfdf.net/ - Tatacatay &amp;lt;a href=&quot;http://slkjfdf.net/&quot;&amp;gt;Aebaluk&amp;lt;/a&amp;gt;
+lwk.wlgg.grishaev.me.mrq.mn http://slkjfdf.net/
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Очевидно, нужно вводить капчу для защиты от ботов. Я рассматриваю это как новый вызов: как сделать капчу без Javascript в статичном блоге? Уже есть мыслишки, расскажу в четвертой части эпопеи.&lt;/p&gt;
+
+&lt;p&gt;Наконец, последний тезис — зачем вы это делаете, мистер Андерсон? Зачем эти отказы, костыли, превозможения? Ответ — потому что могу. Просто хочется экспериментов. Надоели тормозные сайты с JS, хочу маленький оазис в своем огороде.&lt;/p&gt;
+</description>
+        <pubDate>Tue, 20 Sep 2022 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/de-js-3/</link>
+        <guid isPermaLink="true">https://grishaev.me/de-js-3/</guid>
+        
+        <category>programming</category>
+        
+        <category>javascript</category>
+        
+        <category>blog</category>
+        
+        <category>disqus</category>
+        
+        <category>comments</category>
+        
+        
+      </item>
     
       <item>
         <title>REPL, Cider, Emacs (часть 4/4)</title>
@@ -5153,269 +5244,6 @@ user/add
         <category>emacs</category>
         
         <category>cider</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Teleward: a CAPTCHA bot for Telegram in Clojure + GraalVM</title>
-        <description>
-&lt;p&gt;&lt;em&gt;(This is a copy of the readme file from the repository.)&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&quot;https://github.com/igrishaev/teleward&quot;&gt;Teleward&lt;/a&gt; is a Telegram captcha bot written in Clojure and compiled
-with GraalVM native image. Runs on bare Linux/MacOS with no requirements. Fast
-and robust.&lt;/p&gt;
-
-&lt;h3 id=&quot;why&quot;&gt;Why&lt;/h3&gt;
-
-&lt;p&gt;Telegram chats suffer from spammers who are pretty smart nowadays. They don’t
-use bots; instead, they register ordinary accounts and automate them with
-Selenium + web-version of Telegram. Personally, I found Shieldy and other bots
-useless when dealing with such kind of spammers. This project aims the goal to
-finish that mess.&lt;/p&gt;
-
-&lt;p&gt;Another reason I opened Teleward for is to try my skills in developing Clojure
-applications with GraalVM. Binary applications are nice: they are fast, and they
-don’t need installing JDK. At the same time, they’re are still Clojure: REPL is
-here, and that’s amazing.&lt;/p&gt;
-
-&lt;h3 id=&quot;features&quot;&gt;Features&lt;/h3&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;This is Clojure, so you have REPL! During development, you call Telegram API
-directly from REPL and see what’s going on.&lt;/li&gt;
-  &lt;li&gt;The bot can be delivered either as a Jar file or a binary file (with Graal).&lt;/li&gt;
-  &lt;li&gt;When Graal-compiled, needs no requirements (Java SDK, etc). The binary size is
-about 30 Mb.&lt;/li&gt;
-  &lt;li&gt;At the moment, supports only long polling strategy to obtain messages. The
-webhook is to be done soon.&lt;/li&gt;
-  &lt;li&gt;Keeps all the state in memory and thus doesn’t need any kind of a
-database. The only exception is the current offset value which is tracked in a
-file.&lt;/li&gt;
-  &lt;li&gt;Supports English and Russian languages.&lt;/li&gt;
-  &lt;li&gt;Two captcha styles: normal “1 + 2” and Lisp captcha “(+ 1 2)”.&lt;/li&gt;
-  &lt;li&gt;The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;+&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;-&lt;/code&gt;, and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;*&lt;/code&gt; operators are corresponding Unicode characters that
-prevent captcha from naive evaluation.&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;h3 id=&quot;algorithm&quot;&gt;Algorithm&lt;/h3&gt;
-
-&lt;p&gt;The bot listens for all the messages in a group. Once a new pack of messages
-arrives, the bot applies the following procedure to each message:&lt;/p&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;Mark new members as locked.&lt;/li&gt;
-  &lt;li&gt;Send a captcha message to all members.&lt;/li&gt;
-  &lt;li&gt;Unless an author of a message is locked, delete that message.&lt;/li&gt;
-  &lt;li&gt;If a message is short and matches the captcha’s solution, unlock a user and
-delete the catpcha message.&lt;/li&gt;
-  &lt;li&gt;If a locked user has posted three messages with no solution, ban them.&lt;/li&gt;
-  &lt;li&gt;If a locked user hasn’t solved captcha in time, ban them as well.&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;&lt;em&gt;Please note:&lt;/em&gt; the bot processes only messages no older than two minutes from
-now. In other words, the bot is interested in what is happening now (with a
-slight delay), but not in the far past. This is to prevent a sutuation what a
-bot had been inactive and then has started to consume messages. Without this
-condition, it will send captcha to chat members who have already joined and
-confuse them.&lt;/p&gt;
-
-&lt;h3 id=&quot;java-version&quot;&gt;Java version&lt;/h3&gt;
-
-&lt;p&gt;To make a Jar artefact, run:&lt;/p&gt;
-
-&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;make uberjar
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;uberjar&lt;/code&gt; target calls &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;lein uberjar&lt;/code&gt; and also injects the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;VERSION&lt;/code&gt; file
-into it. The output file is &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;./target/teleward.jar&lt;/code&gt;.&lt;/p&gt;
-
-&lt;h3 id=&quot;binary-version-linux&quot;&gt;Binary version, Linux&lt;/h3&gt;
-
-&lt;p&gt;Linux version is built inside a Docker image, namely the
-&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ghcr.io/graalvm/graalvm-ce&lt;/code&gt; one with &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;native-image&lt;/code&gt; extension preinstalled. Run
-the following command:&lt;/p&gt;
-
-&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;make docker-build
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;The output binary file appears at &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;./target/teleward&lt;/code&gt;.&lt;/p&gt;
-
-&lt;h3 id=&quot;binary-version-macos&quot;&gt;Binary version, MacOS&lt;/h3&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;
-    &lt;p&gt;&lt;a href=&quot;https://www.graalvm.org/docs/getting-started/&quot;&gt;Install GraalVM&lt;/a&gt; locally.&lt;/p&gt;
-  &lt;/li&gt;
-  &lt;li&gt;
-    &lt;p&gt;Install the “native image” extension:&lt;/p&gt;
-  &lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;gu &lt;span class=&quot;nb&quot;&gt;install &lt;/span&gt;native-image
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;Then &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;make&lt;/code&gt; the project:&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;make
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;h3 id=&quot;setting-up-your-bot&quot;&gt;Setting Up Your Bot&lt;/h3&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;
-    &lt;p&gt;To run the bot, first you need a token. Contact &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;@BotFather&lt;/code&gt; in Telegram to
-create a new bot. Copy the token and don’t share it.&lt;/p&gt;
-  &lt;/li&gt;
-  &lt;li&gt;
-    &lt;p&gt;Add your new bot into a Telegram group. Promote it to admins. At least the bot
-must be able to 1) send messages, 2) delete messages, and 3) ban users.&lt;/p&gt;
-  &lt;/li&gt;
-  &lt;li&gt;
-    &lt;p&gt;Run the bot locally:&lt;/p&gt;
-  &lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;teleward &lt;span class=&quot;nt&quot;&gt;-t&lt;/span&gt; &amp;lt;telegram-token&amp;gt; &lt;span class=&quot;nt&quot;&gt;-l&lt;/span&gt; debug
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;If everything is fine, the bot will start consuming messages and print them in
-console.&lt;/p&gt;
-
-&lt;h3 id=&quot;configuration&quot;&gt;Configuration&lt;/h3&gt;
-
-&lt;p&gt;See the version with &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;-v&lt;/code&gt;, and help with &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;-h&lt;/code&gt;. The bot takes into account plenty
-of settings, yet not all of them are available for configuration for now. Below,
-we name the most important parameters you will need.&lt;/p&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;
-    &lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;-t, --telegram.token&lt;/code&gt;: the Telegram token you obtain from
-BotFather. Required, can be set via an env variable &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;TELEGRAM_TOKEN&lt;/code&gt;.&lt;/p&gt;
-  &lt;/li&gt;
-  &lt;li&gt;
-    &lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;-l, --logging.level&lt;/code&gt;: the logging level. Can be &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;debug, info, error&lt;/code&gt;. Default
-is &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;info&lt;/code&gt;. In production, most likely you will set &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;error&lt;/code&gt;.&lt;/p&gt;
-  &lt;/li&gt;
-  &lt;li&gt;
-    &lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;--telegram.offset-file&lt;/code&gt;: where to store offset number for the next
-&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;getUpdates&lt;/code&gt; call. Default is &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;TELEGRAM_OFFSET&lt;/code&gt; in the current working
-directory.&lt;/p&gt;
-  &lt;/li&gt;
-  &lt;li&gt;
-    &lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;--lang&lt;/code&gt;: the language for messages. Can be &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;en, ru&lt;/code&gt;, default is &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ru&lt;/code&gt;.&lt;/p&gt;
-  &lt;/li&gt;
-  &lt;li&gt;
-    &lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;--captcha.style&lt;/code&gt;: a type of captcha. When &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;lisp&lt;/code&gt;, the captcha looks like a
-lisp expression &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;(+ 4 3)&lt;/code&gt;. Any other value type will produce &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;4 + 3&lt;/code&gt;. The
-operator is taken randomly.&lt;/p&gt;
-  &lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;Example:&lt;/p&gt;
-
-&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;./target/teleward &lt;span class=&quot;nt&quot;&gt;-t&lt;/span&gt; &amp;lt;...&amp;gt; &lt;span class=&quot;nt&quot;&gt;-l&lt;/span&gt; debug &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
-  &lt;span class=&quot;nt&quot;&gt;--lang&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;en &lt;span class=&quot;nt&quot;&gt;--telegram&lt;/span&gt;.offset-file&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;mybot.offset &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
-  &lt;span class=&quot;nt&quot;&gt;--captcha&lt;/span&gt;.style&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;normal
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;For the rest of the config, see the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;src/teleward/config.clj&lt;/code&gt; file.&lt;/p&gt;
-
-&lt;h3 id=&quot;deploying-on-bare-ubuntu&quot;&gt;Deploying on bare Ubuntu&lt;/h3&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;
-    &lt;p&gt;Buy the cheapest VPS machine and SSH to it.&lt;/p&gt;
-  &lt;/li&gt;
-  &lt;li&gt;
-    &lt;p&gt;Create a user:&lt;/p&gt;
-  &lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nb&quot;&gt;sudo &lt;/span&gt;useradd &lt;span class=&quot;nt&quot;&gt;-s&lt;/span&gt; /bin/bash &lt;span class=&quot;nt&quot;&gt;-d&lt;/span&gt; /home/ivan/ &lt;span class=&quot;nt&quot;&gt;-m&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-G&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;sudo &lt;/span&gt;ivan
-&lt;span class=&quot;nb&quot;&gt;sudo &lt;/span&gt;passwd ivan
-&lt;span class=&quot;nb&quot;&gt;mkdir&lt;/span&gt; /home/ivan/teleward
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;Compile the file locally and copy it to the machine:&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;scp ./target/teleward ivan@hostname:/home/ivan/teleward/
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;Create a new &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;systemctl&lt;/code&gt; service:&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nb&quot;&gt;sudo &lt;/span&gt;mcedit /etc/systemd/system/teleward.service
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;Paste the following config:&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;[Unit]
-Description = Teleward bot
-After = network.target
-
-[Service]
-Type = simple
-Restart = always
-RestartSec = 1
-User = ivan
-WorkingDirectory = /home/ivan/teleward/
-ExecStart = /home/ivan/teleward/teleward -l debug
-Environment = TELEGRAM_TOKEN=xxxxxxxxxxxxxx
-
-[Install]
-WantedBy = multi-user.target
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;Enable autoload:&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nb&quot;&gt;sudo &lt;/span&gt;systemctl &lt;span class=&quot;nb&quot;&gt;enable &lt;/span&gt;teleward
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;Manage the service with commands:&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nb&quot;&gt;sudo &lt;/span&gt;systemctl stop teleward
-&lt;span class=&quot;nb&quot;&gt;sudo &lt;/span&gt;systemctl start teleward
-&lt;span class=&quot;nb&quot;&gt;sudo &lt;/span&gt;systemctl status teleward
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;For Jar, the config file would be almost the same except the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ExecStart&lt;/code&gt;
-section. There, you specify something like &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;java -jar teleward.jar ...&lt;/code&gt;.&lt;/p&gt;
-
-&lt;h3 id=&quot;health-check&quot;&gt;Health check&lt;/h3&gt;
-
-&lt;p&gt;The bot accepts the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/health&lt;/code&gt; command which it replies to “OK”.&lt;/p&gt;
-
-&lt;h3 id=&quot;further-work&quot;&gt;Further work&lt;/h3&gt;
-
-&lt;ul&gt;
-  &lt;li&gt;Implement webhook.&lt;/li&gt;
-  &lt;li&gt;Add tests.&lt;/li&gt;
-  &lt;li&gt;Report uptime for &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/health&lt;/code&gt;.&lt;/li&gt;
-  &lt;li&gt;More config parameters via CLI args.&lt;/li&gt;
-  &lt;li&gt;Widnows build.&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;© 2022 Ivan Grishaev&lt;/p&gt;
-</description>
-        <pubDate>Mon, 18 Jul 2022 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/en/teleward/</link>
-        <guid isPermaLink="true">https://grishaev.me/en/teleward/</guid>
-        
-        <category>clojure</category>
-        
-        <category>programming</category>
         
         
       </item>
