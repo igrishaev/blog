@@ -23,6 +23,7 @@ serve:
 
 .PHONY: deploy
 deploy:
+	cd gh-pages && git pull
 	cp -r _site/* gh-pages
 	cd gh-pages && git add -A && git commit -m "updated" && git push
 
