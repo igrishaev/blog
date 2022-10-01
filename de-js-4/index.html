@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Деджаваскриптизиция (4)</title>
+  <meta name="description" content="Пора заканчивать эпопею про избавление от Js. Чтобы не утомлять, расскажу о последнем штрихе — как внедрил капчу для комментариев.">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/de-js-4/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img src="/assets/static/photo-round-small.png" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Деджаваскриптизиция (4)</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-10-01T00:00:00+00:00">
+        Oct 1, 2022
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/javascript/" rel="tag">javascript</a>, <a href="/tag/blog/" rel="tag">blog</a>, <a href="/tag/disqus/" rel="tag">disqus</a>, <a href="/tag/comments/" rel="tag">comments</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Пора заканчивать эпопею про избавление от Js. Чтобы не утомлять, расскажу о последнем штрихе — как внедрил капчу для комментариев.</p>
+
+<p>Как только я убрал Disqus, полезли спамные комментарии. Каждый день приходят два-три предложения купить виагру, надувную лодку или просто левые ссылки. Поскольку каждый комментарий открывает PR в репозиторий, все остается в истории Гитхаба. Посмотреть на это добро <a href="https://github.com/igrishaev/blog/pulls?q=is%3Apr+is%3Aclosed">можно по ссылке</a>.</p>
+
+<p>Разгребать подобные комментарии нет желания, поэтому должна быть минимальная защита от спама. С условием — без Js. Надумал такую схему:</p>
+
+<ul>
+  <li>капча генерируется на этапе сборки блога. На выходе получается HTML-форма с полем captcha и значением 2 × 5.</li>
+  <li>В форму добавляется поле для решения.</li>
+  <li>Сервер парсит капчу, решает и сверяет с ответом. Если что-то не так, заворачивает комментарий.</li>
+</ul>
+
+<p>Как ни странно, даже на таком примитиве боты отваливаются. Разве что с оговоркой: когда был оператор +, боты решали капчу. Как только заменил на <code class="language-plaintext highlighter-rouge">×</code> (знак умножения в юникоде), стала тишь да благодать. Надеюсь, читатель не забыл таблицу умножения! Тестируя форму, сам подвис с примером <code class="language-plaintext highlighter-rouge">8 × 9</code>.</p>
+
+<p>Техническая сторона: вот построить капчу в шаблоне:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+{% assign val1 = '1 2 3 4 5 6 7 8 9' | split: ' ' | sample %}
+{% assign val2 = '1 2 3 4 5 6 7 8 9' | split: ' ' | sample %}
+{% assign op   = '&amp;#215;'            | split: ' ' | sample %}
+{% assign captcha = val1 | append: " " | append: op | append: " " | append: val2 %}
+
+</code></pre></div></div>
+
+<p>Замечу, что при каждой сборке блога значения будут разные.</p>
+
+<p>Скрытое поле в форме:</p>
+
+<div class="language-html highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;input</span> <span class="na">required</span> <span class="na">name=</span><span class="s">"captcha"</span> <span class="na">type=</span><span class="s">"hidden"</span> <span class="na">value=</span><span class="s">""</span><span class="nt">&gt;</span>
+</code></pre></div></div>
+
+<p>Виджет для ввода решения:</p>
+
+<div class="language-html highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;div</span> <span class="na">class=</span><span class="s">"block"</span><span class="nt">&gt;</span>
+    <span class="nt">&lt;span</span> <span class="na">class=</span><span class="s">"comment-form-label"</span><span class="nt">&gt;&lt;small&gt;</span> = <span class="nt">&lt;/small&gt;&lt;/span&gt;</span>
+    <span class="nt">&lt;input</span> <span class="na">required</span> <span class="na">id=</span><span class="s">"comment-form-solution"</span> <span class="na">name=</span><span class="s">"solution"</span> <span class="na">type=</span><span class="s">"text"</span><span class="nt">&gt;</span>
+<span class="nt">&lt;/div&gt;</span>
+</code></pre></div></div>
+
+<p>Наконец, серверный код проверки капчи:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">d</span><span class="err">е</span><span class="k">fn</span><span class="w"> </span><span class="n">validate-captcha</span><span class="w"> </span><span class="p">[</span><span class="n">captcha</span><span class="w"> </span><span class="n">solution</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">when-let</span><span class="w"> </span><span class="p">[[</span><span class="n">_</span><span class="w"> </span><span class="n">val1-raw</span><span class="w"> </span><span class="n">op-raw</span><span class="w"> </span><span class="n">val2-raw</span><span class="p">]</span><span class="w">
+             </span><span class="p">(</span><span class="nb">re-find</span><span class="w"> </span><span class="o">#</span><span class="s">"^(-?\d+) (.+?) (-?\d+)$"</span><span class="w"> </span><span class="n">captcha</span><span class="p">)]</span><span class="w">
+
+    </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">val1</span><span class="w">
+          </span><span class="p">(</span><span class="nf">Integer/parseInt</span><span class="w"> </span><span class="n">val1-raw</span><span class="p">)</span><span class="w">
+
+          </span><span class="n">val2</span><span class="w">
+          </span><span class="p">(</span><span class="nf">Integer/parseInt</span><span class="w"> </span><span class="n">val2-raw</span><span class="p">)</span><span class="w">
+
+          </span><span class="n">op</span><span class="w">
+          </span><span class="p">(</span><span class="nf">case</span><span class="w"> </span><span class="n">op-raw</span><span class="w">
+            </span><span class="p">(</span><span class="s">"+"</span><span class="w"> </span><span class="s">"&amp;#43;"</span><span class="p">)</span><span class="w"> </span><span class="nb">+</span><span class="w">
+            </span><span class="p">(</span><span class="s">"*"</span><span class="w"> </span><span class="s">"×"</span><span class="w"> </span><span class="s">"&amp;#215;"</span><span class="p">)</span><span class="w"> </span><span class="nb">*</span><span class="w">
+            </span><span class="n">nil</span><span class="p">)]</span><span class="w">
+
+      </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="p">(</span><span class="nb">and</span><span class="w"> </span><span class="n">val1</span><span class="w"> </span><span class="n">val2</span><span class="w"> </span><span class="n">op</span><span class="p">)</span><span class="w">
+        </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="p">(</span><span class="nf">op</span><span class="w"> </span><span class="n">val1</span><span class="w"> </span><span class="n">val2</span><span class="p">))</span><span class="w">
+           </span><span class="p">(</span><span class="nf">str/trim</span><span class="w"> </span><span class="n">solution</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Грубо, неуклюже, но работает.</p>
+
+<p>На этом я закончу тему с избавлением от Js. На мой взгляд, цели достигнуты, жить с новыми комментариями можно. Это был интересный опыт, в будущем пригодится.</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/de-js-4/">
+    <input required name="captcha" type="hidden" value="4 &#215; 5">
+
+    <div class="block">
+        <span class="comment-form-label"><small>4 &#215; 5 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
