@@ -248,7 +248,98 @@
    </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">File</span><span class="w"> </span><span class="nb">path</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Другой интересный пример – когда функции <code class="language-plaintext highlighter-rouge">branch?</code> и <code class="language-plaintext highlighter-rouge">children</code> замкнуты на
+<p>Получим зиппер проведем с ним эксперименты. Первая локация указывает на
+корневую папку:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">fz</span><span class="w">
+  </span><span class="p">(</span><span class="nf">file-zip</span><span class="w"> </span><span class="s">"/Users/ivan"</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">fz</span><span class="w"> </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; #object[java.io.File 0xe413375 "/Users/ivan"]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Вызов <code class="language-plaintext highlighter-rouge">zip/next</code> сдвигает указатель на вложенные папки и файлы. В случае автора
+это скрытая папка <code class="language-plaintext highlighter-rouge">.eclipse</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">fz</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; #object[java.io.File 0x23e1b67 "/Users/ivan/.eclipse"]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Через три сдвига получим файл <code class="language-plaintext highlighter-rouge">secure_storage</code> в ее недрах:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">fz</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/node</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; #object[java.io.File 0x138b3172 "/Users/ivan/.eclipse/org.eclipse.equinox.security/secure_storage"]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Сохраним локацию в переменную и вызовем <code class="language-plaintext highlighter-rouge">zip/path</code>. Получим вектор папок,
+ведущих к файлу из локации:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">file-loc</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">fz</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="w"> </span><span class="n">zip/next</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">zip/path</span><span class="w"> </span><span class="n">file-loc</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[</span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.io.File</span><span class="w"> </span><span class="mi">0</span><span class="n">xe413375</span><span class="w"> </span><span class="s">"/Users/ivan"</span><span class="p">]</span><span class="w">
+ </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.io.File</span><span class="w"> </span><span class="mi">0</span><span class="n">x2067c8ff</span><span class="w"> </span><span class="s">"/Users/ivan/.eclipse"</span><span class="p">]</span><span class="w">
+ </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.io.File</span><span class="w"> </span><span class="mi">0</span><span class="n">x69304325</span><span class="w"> </span><span class="s">"/Users/ivan/.eclipse/org.eclipse.equinox.security"</span><span class="p">]]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Файловый зиппер поддерживает <code class="language-plaintext highlighter-rouge">iter-zip</code>, поиск, переходы и прочие техники, что
+мы рассмотрели. Признаем, в случае с файлами это не самое оптимальное решение:
+за долгие годы для них созданы инструменты намного быстрее. Но пример
+подтверждает, что зиппером может выступить объект, который на первый взгляд не
+подходит на эту роль.</p>
+
+<p>Наверное, каждый программист сталкивался с неуклюжим API, который возвращает
+сущности и ее потомков по одной. Например, древняя CRM по запросу <code class="language-plaintext highlighter-rouge">GET
+/api/entity/&lt;id&gt;</code> вернет JSON вида:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="nl">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Gizmo"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Does something"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"children"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span><span class="w"> </span><span class="mi">11</span><span class="p">,</span><span class="w"> </span><span class="mi">23</span><span class="p">]</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Если у сущности нет потомков, в поле <code class="language-plaintext highlighter-rouge">children</code> пустой массив или оно
+отсутствует.</p>
+
+<p>Чтобы обойти сущности, построим зиппер, замкнутый на API. Предположим, функция
+<code class="language-plaintext highlighter-rouge">entity-by-id</code> принимает HTTP-клиент с активным соединением и номер сущности и
+возвращает прочитанный JSON из тела ответа.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">entity-by-id</span><span class="w"> </span><span class="p">[</span><span class="n">http-client</span><span class="w"> </span><span class="n">entity-id</span><span class="p">]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>В этом случае зиппер выглядит как в примере ниже. Он принимает HTTP-клиент и
+номер корневой сущности. Функция <code class="language-plaintext highlighter-rouge">branch?</code> проверяет, что поле <code class="language-plaintext highlighter-rouge">children</code> не
+пустое. Функция потомков извлекает их в цикле <code class="language-plaintext highlighter-rouge">for</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">entity-zip</span><span class="w"> </span><span class="p">[</span><span class="n">http-client</span><span class="w"> </span><span class="n">entity-id</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">zip/zipper</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="nb">children</span><span class="p">]}]</span><span class="w">
+                </span><span class="p">(</span><span class="nb">pos?</span><span class="w"> </span><span class="p">(</span><span class="nb">count</span><span class="w"> </span><span class="nb">children</span><span class="p">)))</span><span class="w">
+              </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="nb">children</span><span class="p">]}]</span><span class="w">
+                </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[</span><span class="n">child</span><span class="w"> </span><span class="nb">children</span><span class="p">]</span><span class="w">
+                  </span><span class="p">(</span><span class="nf">entity-by-id</span><span class="w"> </span><span class="n">http-client</span><span class="w"> </span><span class="n">child</span><span class="p">)))</span><span class="w">
+              </span><span class="n">nil</span><span class="w">
+              </span><span class="p">(</span><span class="nf">entity-by-id</span><span class="w"> </span><span class="n">http-client</span><span class="w"> </span><span class="n">entity-id</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Вызывая <code class="language-plaintext highlighter-rouge">zip/next</code>, мы будем шагать по сущностям, извлекая их по сети по мере
+необходимости. Ради оптимизации можно заменить цикл <code class="language-plaintext highlighter-rouge">for</code> на частично
+параллельный <code class="language-plaintext highlighter-rouge">pmap</code> или применить библиотеки Aleph и Manifold для удобной
+многопоточности.</p>
+
+<p>Когда сведения о потомках приходят по сети, важно оценить частоту запросов и
+нагрузку на источник данных. Если это CRM в банковской системе, ее замедление
+скажется на других частях компании. В этом случае данные полезно кэшировать в
+памяти или в key-value хранилищах типа Memcached или Redis. Зиппер, построенный
+на базе подобного хранилища, выглядит похоже за исключением функции
+<code class="language-plaintext highlighter-rouge">entity-by-id</code>. Изменится только его конструктор, но не принцип работы.</p>
+
+<p>Еще один интересный пример – когда функции <code class="language-plaintext highlighter-rouge">branch?</code> и <code class="language-plaintext highlighter-rouge">children</code> замкнуты на
 некоторых данных, например словарях. Это тоже обход, но по другим правилам.</p>
 
 <p>Рассмотрим следующую задачу. Банк разменивает валюты, например доллары на евро,
@@ -585,10 +676,10 @@ lir)</code>. В этом случае клиенту предложат обме
     </div>
 
     <input required name="path" type="hidden" value="/clj-zippers-6/">
-    <input required name="captcha" type="hidden" value="6 &#215; 1">
+    <input required name="captcha" type="hidden" value="8 &#215; 9">
 
     <div class="block">
-        <span class="comment-form-label"><small>6 &#215; 1 = </small></span>
+        <span class="comment-form-label"><small>8 &#215; 9 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 
