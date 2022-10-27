@@ -132,16 +132,16 @@
 CRUD (Create, Read, Update, Delete), знакомые из веб-разработки. Ниже мы
 разберем, как они работают в зипперах.</p>
 
-<p>Напомним, зиппер принимает третью функцию <code class="language-plaintext highlighter-rouge">make-node</code>, в которую мы до сих пор
+<p>Напомним, зиппер принимает третью функцию <code class="language-plaintext highlighter-rouge">make-node</code>, в которую до сих пор мы
 передавали <code class="language-plaintext highlighter-rouge">nil</code>. В ней не было нужды, потому что мы только читали
 данные. Зиппер вызовет функцию в момент, когда мы просим вернуть данные с учётом
 изменений, которые внесли в локации. Функция принимает два параметра: ветку и
-потомков. Ее задача — соединить их так, как это принято в дереве.</p>
+потомков. Ее задача — соединить их должным образом.</p>
 
 <!-- more -->
 
 <p>Для простых коллекций вроде вектора функция проста — нужно только обернуть
-потомков в vec, чтобы получить из последовательности вектор. В <code class="language-plaintext highlighter-rouge">vector-zip</code>
+потомков в <code class="language-plaintext highlighter-rouge">vec</code>, чтобы получить из последовательности вектор. В <code class="language-plaintext highlighter-rouge">vector-zip</code>
 функция чуть сложнее, потому что учитывает метаданные. Приведём код этого
 зиппера без сокращений:</p>
 
@@ -160,7 +160,7 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 поэтому оборачиваем его в <code class="language-plaintext highlighter-rouge">with-meta</code>. Если убрать <code class="language-plaintext highlighter-rouge">with-meta</code>, на выходе
 получим вектор без метаданных, что может повлиять на логику программы.</p>
 
-<p>У XML-зиппера сборка слегка иная: потомков помещают в поле <code class="language-plaintext highlighter-rouge">:content</code>.</p>
+<p>У XML-зиппера сборка иная: потомков помещают в поле <code class="language-plaintext highlighter-rouge">:content</code>.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="nb">node</span><span class="w"> </span><span class="nb">children</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="nb">node</span><span class="w"> </span><span class="no">:content</span><span class="w"> </span><span class="p">(</span><span class="nb">and</span><span class="w"> </span><span class="nb">children</span><span class="w"> </span><span class="p">(</span><span class="nb">apply</span><span class="w"> </span><span class="nb">vector</span><span class="w"> </span><span class="nb">children</span><span class="p">))))</span><span class="w">
@@ -170,20 +170,19 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 как <code class="language-plaintext highlighter-rouge">assoc</code> или <code class="language-plaintext highlighter-rouge">into</code> с набором пар <code class="language-plaintext highlighter-rouge">MapEntry</code>.</p>
 
 <p>Зиппер неявно вызывает эту функцию, если находит изменённые узлы. Для изменения
-служат функции <code class="language-plaintext highlighter-rouge">zip/edit</code>, <code class="language-plaintext highlighter-rouge">zip/replace</code> и другие. Но перед тем, как
-рассматривать их, объясним, как именно протекают изменения в зиппере.</p>
+служат функции <code class="language-plaintext highlighter-rouge">zip/edit</code>, <code class="language-plaintext highlighter-rouge">zip/replace</code> и другие. Но перед тем, как рассмотреть
+их, объясним, как именно протекают изменения в зиппере.</p>
 
 <p>Особенность в том, что изменения сказываются не на исходных данных, а на
-локациях. Если изменить текущую локацию, данные зиппера останутся
-прежними. Когда вы поработали с локацией, она помечается флагом <code class="language-plaintext highlighter-rouge">:changed?</code>. Это
-сигнал к пересборке данных с помощью функции <code class="language-plaintext highlighter-rouge">zip/root</code>, о которой расскажем
-чуть позже.</p>
+локациях. Если изменить текущую локацию, она помечается флагом <code class="language-plaintext highlighter-rouge">:changed?</code>. Это
+сигнал к пересборке данных с помощью функции <code class="language-plaintext highlighter-rouge">zip/root</code>, о которой скажем чуть
+позже.</p>
 
 <p>Рассмотрим пример с вектором <code class="language-plaintext highlighter-rouge">[1 2 3]</code>. Переместимся на двойку и удвоим её с
 помощью функции <code class="language-plaintext highlighter-rouge">zip/edit</code>. Она принимает локацию, функцию и остаточные
 аргументы – подход, знакомый вам из атомов (<code class="language-plaintext highlighter-rouge">swap!</code>) и коллекций (<code class="language-plaintext highlighter-rouge">update</code>). По
-аналогии с ними, локация получит новое значение, которое рассчитала функция на
-базе прежнего.</p>
+аналогии с ними, локация получит новое значение, которое вернула функция на базе
+прежнего.</p>
 
 <p>Локация до изменений:</p>
 
@@ -220,7 +219,7 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 изменениями. Её алгоритм следующий:</p>
 
 <ul>
-  <li>подняться до корневой локации;</li>
+  <li>подняться до первичной локации, повторно вызывая <code class="language-plaintext highlighter-rouge">zip/up</code>;</li>
   <li>вернуть узел.</li>
 </ul>
 
@@ -238,7 +237,7 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 
 <p>Основная работа происходит в функции <code class="language-plaintext highlighter-rouge">zip/up</code>, которую мы вызвали вручную или
 неявно в <code class="language-plaintext highlighter-rouge">zip/root</code>. При подъёме вверх она проверяет, была ли изменена локация,
-и если да, перестраивает её с помощью <code class="language-plaintext highlighter-rouge">make-node</code>. Приведём фрагмент её кода:</p>
+и если да, перестраивает её с помощью <code class="language-plaintext highlighter-rouge">make-node</code>. Приведём её код в сокращении:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="nb">up</span><span class="w">
   </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
@@ -254,8 +253,8 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 
 <h2 id="множественное-изменени">Множественное изменени</h2>
 
-<p>При изменении одной локации проблем обычно не возникает. Однако мы редко
-изменяем одну локацию – на практике это делают по признаку, то есть пакетно.</p>
+<p>При изменении одной локации проблем не возникает. Однако мы редко изменяем одну
+локацию – на практике это делают по признаку, то есть пакетно.</p>
 
 <p>Ранее мы раскладывали зиппер в цепочку локаций с помощью <code class="language-plaintext highlighter-rouge">iter-zip</code>, а затем
 пропускали через серию <code class="language-plaintext highlighter-rouge">map</code>, <code class="language-plaintext highlighter-rouge">filter</code> и других функций. Для редактирования этот
@@ -272,8 +271,7 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 </span><span class="c1">;;    :changed? true}]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Зипперы неизменяемы, и любое действие вернёт новую локацию. В то же время
-функция <code class="language-plaintext highlighter-rouge">zip-iter</code> устроена так, что каждая следующая локация получается из
+<p>Функция <code class="language-plaintext highlighter-rouge">zip-iter</code> устроена так, что каждая следующая локация получается из
 предыдущей. Вызов <code class="language-plaintext highlighter-rouge">zip/edit</code> на одном из элементов не повлияет на
 последующие. Если подняться вверх от последней локации, получим вектор без
 изменений.</p>
@@ -282,6 +280,8 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 </span><span class="c1">;; [1 2 3]</span><span class="w">
 </span></code></pre></div></div>
 
+<p>Как видно из примера, выражение с <code class="language-plaintext highlighter-rouge">zip/edit</code> не повлияло на результат.</p>
+
 <p>При редактировании зипперов применяют следующие паттерны.</p>
 
 <p><strong>Изменяется один элемент.</strong> В этом случае мы итерируем зиппер до тех пор, пока
@@ -289,32 +289,31 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 
 <p><strong>Изменяются многие элементы.</strong> С помощью <code class="language-plaintext highlighter-rouge">loop</code> и <code class="language-plaintext highlighter-rouge">zip/next</code> мы вручную
 итерируем зиппер. При этом задана функция, которая либо меняет локацию, любо
-оставляет нетронутой. В форму <code class="language-plaintext highlighter-rouge">recur</code> попадает <code class="language-plaintext highlighter-rouge">zip/next</code> от её результата. Это
-значит, что если изменения были, <code class="language-plaintext highlighter-rouge">zip/next</code> оттолкнётся от новой, а не исходной
-локации.</p>
+оставляет нетронутой. В форму <code class="language-plaintext highlighter-rouge">recur</code> попадает <code class="language-plaintext highlighter-rouge">zip/next</code> от её результата. Если
+изменения были, <code class="language-plaintext highlighter-rouge">zip/next</code> оттолкнётся от новой, а не исходной локации.</p>
 
 <p>Для изменения локаций служат функции:</p>
 
 <ul>
-  <li><code class="language-plaintext highlighter-rouge">zip/replace</code> — буквальная замена текущего узла на другой;</li>
-  <li><code class="language-plaintext highlighter-rouge">zip/edit</code> — более гибкая замена узла. По аналогии с <code class="language-plaintext highlighter-rouge">update</code> и <code class="language-plaintext highlighter-rouge">swap!</code>
-принимает функцию и добавочные аргументы. Первым аргументом функция получит
-текущей узел. Результат заменит содержимое локации;</li>
-  <li><code class="language-plaintext highlighter-rouge">zip/remove</code> — удаляет локацию и перемещает указатель на родителя.</li>
+  <li><code class="language-plaintext highlighter-rouge">zip/replace</code> — буквальная замена текущего узла на другой.</li>
+  <li><code class="language-plaintext highlighter-rouge">zip/edit</code> — Редактирование узла. По аналогии с <code class="language-plaintext highlighter-rouge">update</code> и <code class="language-plaintext highlighter-rouge">swap!</code> принимает
+функцию и добавочные аргументы. Первым аргументом функция получит текущей
+узел. Результат заменит содержимое локации.</li>
+  <li><code class="language-plaintext highlighter-rouge">zip/remove</code> — Удаляет локацию и перемещает указатель на родителя.</li>
 </ul>
 
-<p>Функции для вставки соседей или потомков:</p>
+<p>Функции для вставки соседей и потомков:</p>
 
 <ul>
   <li><code class="language-plaintext highlighter-rouge">zip/insert-left</code> — добавить соседа слева от текущей локации;</li>
   <li><code class="language-plaintext highlighter-rouge">zip/insert-right</code> — добавить соседа справа;</li>
   <li><code class="language-plaintext highlighter-rouge">zip/insert-child</code> — добавить текущей локации потомка в начало;</li>
-  <li><code class="language-plaintext highlighter-rouge">zip/append-child</code> — добавить потомка в их конец.</li>
+  <li><code class="language-plaintext highlighter-rouge">zip/append-child</code> — добавить потомка в конец.</li>
 </ul>
 
-<p>Разница между соседом и потомком в иерархии. Сосед появляется на одном уровне с
-локацией, а потомок ниже. В центре диаграммы находится локация с вектором <code class="language-plaintext highlighter-rouge">[2 3]</code>.
-Её соседи – числа 1 и 4, а потомки – 2 и 3.</p>
+<p>Разница между соседом и потомком в иерархии. Сосед находится на одном уровне с
+локацией, а потомок ниже. В центре диаграммы находится локация с вектором <code class="language-plaintext highlighter-rouge">[2
+3]</code>.  Её соседи – числа 1 и 4, а потомки – 2 и 3.</p>
 
 <div class="language-plaintext asciichart highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
 
@@ -336,7 +335,7 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 </code></pre></div></div>
 
 <p>Рассмотрим функции на простых примерах. Предположим, в глубине вложенных
-векторов находится ключ <code class="language-plaintext highlighter-rouge">:error</code>. Нужно исправить его на <code class="language-plaintext highlighter-rouge">:ok</code>. Сперва добавим
+векторов находится ключ <code class="language-plaintext highlighter-rouge">:error</code>, и нужно исправить его на <code class="language-plaintext highlighter-rouge">:ok</code>. Сперва добавим
 предикат для поиска:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">loc-error?</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
@@ -378,7 +377,7 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 </span></code></pre></div></div>
 
 <p>То же самое, но заменить все отрицательные числа по модулю. Для начала объявим
-функцию <code class="language-plaintext highlighter-rouge">abs</code>:</p>
+функцию <code class="language-plaintext highlighter-rouge">abs</code> (с версии 1.11 она встроена в Clojure):</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">abs</span><span class="w"> </span><span class="p">[</span><span class="n">num</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nb">neg?</span><span class="w"> </span><span class="n">num</span><span class="p">)</span><span class="w">
@@ -401,16 +400,14 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
       </span><span class="p">(</span><span class="nf">recur</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/next</span><span class="w"> </span><span class="n">loc</span><span class="p">)))))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>В обоих случаях логика цикла проста. Если это конечная локация, вернём её
-узел. Напомним, конечной считается исходная локация, когда к ней вернулись после
-серии вызовов <code class="language-plaintext highlighter-rouge">zip/next</code>. В противном случае, если в локации отрицательное
-число, мы меняем содержимое с помощью <code class="language-plaintext highlighter-rouge">zip/edit</code>. От изменённой локации мы
-переходим к следующей. Это ключевой момент: в предпоследней строке вызов
-<code class="language-plaintext highlighter-rouge">zip/next</code> принимает результат <code class="language-plaintext highlighter-rouge">zip/edit</code>, а не исходную локацию. Значит,
-изменения в ней будут переданы на следующий шаг.</p>
+<p>В обоих случаях цикл выглядит одинаково. Если это конечная локация, вернём её
+узел. В противном случае, если локация подходит предикату, меняем ее содержимое
+с помощью <code class="language-plaintext highlighter-rouge">zip/edit</code>. От изменённой локации переходим к следующей. Это ключевой
+момент: в предпоследней строке вызов <code class="language-plaintext highlighter-rouge">zip/next</code> принимает результат <code class="language-plaintext highlighter-rouge">zip/edit</code>,
+а не исходную локацию. Поэтому изменения будут переданы в следующий шаг <code class="language-plaintext highlighter-rouge">loop</code>.</p>
 
-<p>Примеры выше позволяют увидеть паттерны — повторяющиеся приёмы. Поместим их в
-отдельные функции, чтобы не тратить на них внимание в будущем.</p>
+<p>Примеры выше образуют паттерны — повторяющиеся приёмы. Поместим их в отдельные
+функции, чтобы не тратить на них внимание в будущем.</p>
 
 <p><strong>Поиск локации по предикату.</strong> Принимает начальную локацию и предикат, начинает
 итерацию. Вернёт первую же локацию, которая подошла предикату:</p>
@@ -421,10 +418,10 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
        </span><span class="p">(</span><span class="nf">find-first</span><span class="w"> </span><span class="n">loc-pred</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p><strong>Прогон локаций с изменениями.</strong> Перебирает локации с помощью <code class="language-plaintext highlighter-rouge">zip/next</code> и
+<p><strong>Обход локаций с изменениями.</strong> Перебирает локации с помощью <code class="language-plaintext highlighter-rouge">zip/next</code> и
 <code class="language-plaintext highlighter-rouge">loop/recur</code>. При переходе на следующий шаг оборачивает локацию в
 функцию. Ожидается, что функция либо изменит локацию, либо вернёт её без
-изменений. Это обобщённая версия <code class="language-plaintext highlighter-rouge">loop</code>, что мы написали выше.</p>
+изменений. Это обобщённая версия цикла, что мы написали выше.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">alter-loc</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="n">loc-fn</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nb">loop</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="n">loc</span><span class="p">]</span><span class="w">
@@ -471,9 +468,13 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 </span><span class="c1">;; [1 2 [5 2 2 [3 2]] 1 5]</span><span class="w">
 </span></code></pre></div></div>
 
+<p>Как только мы вынесли часть кода в функции, преобразования стали короче и
+понятней. Как правило, любое действие над зиппером можно обобщить и поместить в
+функцию, тем самым упростив логику.</p>
+
 <h2 id="цены-в-xml">Цены в XML</h2>
 
-<p>Перейдём к промышленным примерам с XML и товарами. Подготовим следующий файл
+<p>Перейдём к практическим примерам с XML и товарами. Подготовим следующий файл
 <code class="language-plaintext highlighter-rouge">products-price.xml</code>:</p>
 
 <div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
@@ -493,18 +494,18 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 <span class="nt">&lt;/catalog&gt;</span>
 </code></pre></div></div>
 
-<p>Обратите внимание, что теперь у товаров появились цены – характеристика,
-которая часто меняется.</p>
+<p>Обратите внимание, что у товаров появились цены – характеристика, которая часто
+меняется.</p>
 
 <p>Напомним, что с точки зрения Clojure XML – это вложенные словари с ключами
-<code class="language-plaintext highlighter-rouge">:tag</code>, <code class="language-plaintext highlighter-rouge">:attrs</code> и <code class="language-plaintext highlighter-rouge">:content</code>. Но после изменений мы бы хотели увидеть его в
+<code class="language-plaintext highlighter-rouge">:tag</code>, <code class="language-plaintext highlighter-rouge">:attrs</code> и <code class="language-plaintext highlighter-rouge">:content</code>. После изменений мы бы хотели видеть его в
 привычном, текстовом виде. Понадобится обратное действие — из структуры данных
-получить XML в виде текста. Для этого импортируем встроенный модуль
-<code class="language-plaintext highlighter-rouge">clojure.xml</code>. Его функция <code class="language-plaintext highlighter-rouge">emit</code> выводит XML на печать.</p>
+получить XML в виде текста. Для этого импортируем модуль <code class="language-plaintext highlighter-rouge">clojure.xml</code>. Его
+функция <code class="language-plaintext highlighter-rouge">emit</code> выводит XML на печать.</p>
 
 <p>Часто <code class="language-plaintext highlighter-rouge">emit</code> оборачивают в <code class="language-plaintext highlighter-rouge">with-out-str</code> — макрос для перехвата печати в
-строку. В примерах ниже мы просто выведем XML в консоль. Поскольку <code class="language-plaintext highlighter-rouge">emit</code> не
-поддерживает отступы, добавим их вручную для ясности.</p>
+строку. В примерах ниже мы просто выводим XML в консоль. <code class="language-plaintext highlighter-rouge">Emit</code> не поддерживает
+отступы, поэтому мы добавили их вручную для ясности.</p>
 
 <p><strong>Первая задача</strong> — сделать скидку 10% на все айфоны. У нас готовы почти все
 абстракции, так что опишем решение сверху вниз:</p>
@@ -519,9 +520,9 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 </span></code></pre></div></div>
 
 <p>Этих пяти строк достаточно для нашей задачи. Под вопросом только функция
-<code class="language-plaintext highlighter-rouge">alter-iphone-price</code>. Мы ожидаем, что для локации-айфона функция вернёт её же,
-но с другим атрибутом <code class="language-plaintext highlighter-rouge">price</code>. Локация другого типа останется без
-изменений. Опишем функцию:</p>
+<code class="language-plaintext highlighter-rouge">alter-iphone-price</code>. Ожидается, что для локации-айфона она вернёт её же, но с
+другим атрибутом <code class="language-plaintext highlighter-rouge">price</code>. Локация другого типа останется без изменений. Опишем
+функцию:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">alter-iphone-price</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nf">loc-iphone?</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
@@ -530,7 +531,7 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 </span></code></pre></div></div>
 
 <p>Предикат <code class="language-plaintext highlighter-rouge">loc-iphone?</code> проверяет локацию на “айфонность”. Мы уже писали его в
-прошлых занятиях:</p>
+прошлом разделе:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">loc-iphone?</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="nb">node</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/node</span><span class="w"> </span><span class="n">loc</span><span class="p">)]</span><span class="w">
@@ -539,11 +540,11 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 </span></code></pre></div></div>
 
 <p>Осталась функция <code class="language-plaintext highlighter-rouge">alter-attr-price</code>. Она принимает узел (содержимое локации) и
-должна изменить его атрибут. Второй аргумент функции — коэффициент, на который
-нужно умножить текущую цену. Небольшая трудность в том, что атрибуты в XML —
-строки. Чтобы выполнить умножение, нужно вывести число из строки, умножить на
-коэффициент, а результат перевести обратно в строку с округлением до двух
-цифр. Все вместе даёт нам функцию:</p>
+должна изменить его атрибут <code class="language-plaintext highlighter-rouge">:price</code>. Второй аргумент функции — коэффициент, на
+который нужно умножить текущую цену. Небольшая трудность в том, что атрибуты в
+XML — строки. Чтобы выполнить умножение, нужно вывести число из строки, умножить
+на коэффициент, а результат привести в строку с округлением до двух цифр. Все
+вместе даёт нам функцию:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">alter-attr-price</span><span class="w"> </span><span class="p">[</span><span class="nb">node</span><span class="w"> </span><span class="n">ratio</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nf">update-in</span><span class="w"> </span><span class="nb">node</span><span class="w"> </span><span class="p">[</span><span class="no">:attrs</span><span class="w"> </span><span class="no">:price</span><span class="p">]</span><span class="w">
@@ -560,7 +561,7 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 </span><span class="c1">;; {:attrs {:price "11.00"}}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>После запуска всей цепочки мы получим XML:</p>
+<p>Теперь когда известны все компоненты, запустим первое выражение и получим XML:</p>
 
 <div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
 <span class="nt">&lt;catalog&gt;</span>
@@ -638,9 +639,10 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 <span class="nt">&lt;/catalog&gt;</span>
 </code></pre></div></div>
 
-<p><strong>Третья задача</strong> — упразднить все наборы. По каким-то причинам мы решили, что
-продавать товары в наборах невыгодно. Из XML уходят все теги <code class="language-plaintext highlighter-rouge">&lt;bundle&gt;</code>, однако
-их товары должны перейти в организацию.</p>
+<p><strong>Третья задача</strong> — упразднить все наборы. Возможно, руководство решило, что
+продавать товары в наборах невыгодно. Что ж, бывает. Для программиста это
+значит, что из XML уходят все теги <code class="language-plaintext highlighter-rouge">&lt;bundle&gt;</code>, однако их товары должны перейти в
+организацию.</p>
 
 <p>И в третий раз решение отличается лишь целевой функцией:</p>
 
@@ -651,10 +653,10 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
     </span><span class="n">xml/emit</span><span class="p">)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Опишем алгоритм <code class="language-plaintext highlighter-rouge">disband-bundle</code>. Если текущий узел — набор, мы сохраняем его
-потомков (товары) в переменную, чтобы не потерять их. Затем удаляем
-набор. Функция удаления вернёт предка локации, что в нашем случае будет
-организацией. Присоединим ей товары и вернем её.</p>
+<p>Опишем алгоритм <code class="language-plaintext highlighter-rouge">disband-bundle</code>. Если текущий узел — набор, сохраним его
+потомков (товары) в переменную, чтобы не потерять их. Затем удалим
+набор. Функция удаления вернёт предка локации, в нашем случае
+организацию. Присоединим к ней товары и вернем её.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">disband-bundle</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nf">loc-bundle?</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
@@ -664,9 +666,9 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
     </span><span class="n">loc</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Функция <code class="language-plaintext highlighter-rouge">append-childs</code> – это наша обёртка над встроенной
+<p>Функция <code class="language-plaintext highlighter-rouge">append-childs</code> – это обёртка над встроенной
 <code class="language-plaintext highlighter-rouge">zip/append-child</code>. Последняя присоединяет только один элемент, что
-неудобно. Чтобы присоединить список, напишем свёртку:</p>
+неудобно. Чтобы присоединить их список, напишем свёртку:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">append-childs</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="n">items</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nb">reduce</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="n">item</span><span class="p">]</span><span class="w">
@@ -695,8 +697,8 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
 <p>Надеемся, этих примеров достаточно, чтобы читатель понял, как редактировать
 зипперы. Обратите внимание, что кода получилось немного: для каждой задачи мы
 писали в среднем три функции. Другое преимущество в том, что нет состояния. Все
-функции чистые, и их вызов не сказывается на данных. Если где-то на середине вы
-“упали” с исключением, дерево XML не будет наполовину изменённым.</p>
+функции чистые, и их вызов не сказывается на данных. Если на середине выскочит
+исключение, дерево XML не будет частично изменённым.</p>
 
 <p>(Продолжение следует)</p>
 
@@ -752,10 +754,10 @@ CRUD (Create, Read, Update, Delete), знакомые из веб-разрабо
     </div>
 
     <input required name="path" type="hidden" value="/clj-zippers-5/">
-    <input required name="captcha" type="hidden" value="4 &#215; 1">
+    <input required name="captcha" type="hidden" value="9 &#215; 2">
 
     <div class="block">
-        <span class="comment-form-label"><small>4 &#215; 1 = </small></span>
+        <span class="comment-form-label"><small>9 &#215; 2 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 

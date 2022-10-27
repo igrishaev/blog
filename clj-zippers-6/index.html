@@ -208,11 +208,48 @@
 — можно получать потомков в процессе обхода дерева. Это не нарушает правила
 зипперов и даёт новые возможности.</p>
 
-<p>Однако заданный явно вектор <code class="language-plaintext highlighter-rouge">[1 2 3]</code> не раскрывает их. Если потомки известны
-заранее, нужда в зиппере отпадает — коллекцию можно обойти более простым
-способом. Интересен случай, когда потомки зависят от каких-то внешних
-факторов. Например, обе функции <code class="language-plaintext highlighter-rouge">branch?</code> и <code class="language-plaintext highlighter-rouge">children</code> замкнуты на других
-коллекциях и данных. Это тоже обход, но по другим правилам.</p>
+<p>Явно заданный вектор <code class="language-plaintext highlighter-rouge">[1 2 3]</code> не раскрывает их. Если потомки известны заранее,
+нужда в зиппере отпадает — коллекцию можно обойти более простым
+способом. Интересен случай, когда потомки зависят от каких-то внешних факторов,
+например, приходят из сторонних источников. В терминах функционального
+программирования зиппер становится “грязным”: поскольку мы не контролируем
+внешний источник, повторный обход может дать разный результат. Однако это не
+значит, что грязный зиппер не имеет права на жизнь. Рассматривайте его как
+абстракцию над источником, которая делает его удобней.</p>
+
+<p>На роль примера отлично подходит файловая система. Ее элементы – файлы и
+директории – отвечают всем условиям зиппера. Директория – это узел, который
+содержит ссылки на другие элементы. Когда вы просматриваете файлы в любом
+менеджере, курсор ведет себя как локация. Он знает текущий файл, его соседей по
+директории и пути вверх и вглубь (если текущий файл – директория). Если
+правильно подобрать функции <code class="language-plaintext highlighter-rouge">branch?</code> и <code class="language-plaintext highlighter-rouge">children</code>, обычный файл становится
+зиппером.</p>
+
+<p>Код оказывается на удивление коротким. Добавьте в пространство модуль
+<code class="language-plaintext highlighter-rouge">clojure.zip</code> и класс <code class="language-plaintext highlighter-rouge">java.io.File</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">zipper-demo</span><span class="w">
+  </span><span class="p">(</span><span class="no">:import</span><span class="w"> </span><span class="n">java.io.File</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">clojure.zip</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">zip</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Функция <code class="language-plaintext highlighter-rouge">file-zip</code> принимает строковый путь и возвращает зиппер. Проверка
+<code class="language-plaintext highlighter-rouge">branch?</code> сводится к вызову метода <code class="language-plaintext highlighter-rouge">.isDirectory</code> файла. Очевидно, если это
+обычный файл, а не папка, двигаться ниже нельзя. Функция <code class="language-plaintext highlighter-rouge">children</code> опирается на
+метод <code class="language-plaintext highlighter-rouge">.listFiles</code>, который вернет массив файлов в директории. Обертка в <code class="language-plaintext highlighter-rouge">seq</code>
+необходима, чтобы привести пустой массив к <code class="language-plaintext highlighter-rouge">nil</code>.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">file-zip</span><span class="w"> </span><span class="p">[</span><span class="o">^</span><span class="n">String</span><span class="w"> </span><span class="nb">path</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">zip/zipper</span><span class="w">
+   </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="o">^</span><span class="n">File</span><span class="w"> </span><span class="n">f</span><span class="p">]</span><span class="w"> </span><span class="p">(</span><span class="nf">.isDirectory</span><span class="w"> </span><span class="n">f</span><span class="p">))</span><span class="w">
+   </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="o">^</span><span class="n">File</span><span class="w"> </span><span class="n">f</span><span class="p">]</span><span class="w"> </span><span class="p">(</span><span class="nb">seq</span><span class="w"> </span><span class="p">(</span><span class="nf">.listFiles</span><span class="w"> </span><span class="n">f</span><span class="p">)))</span><span class="w">
+   </span><span class="n">nil</span><span class="w">
+   </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">File</span><span class="w"> </span><span class="nb">path</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Другой интересный пример – когда функции <code class="language-plaintext highlighter-rouge">branch?</code> и <code class="language-plaintext highlighter-rouge">children</code> замкнуты на
+некоторых данных, например словарях. Это тоже обход, но по другим правилам.</p>
 
 <p>Рассмотрим следующую задачу. Банк разменивает валюты, например доллары на евро,
 рубли на лиры и так далее. Для краткости обозначим их парами: <code class="language-plaintext highlighter-rouge">(usd, eur)</code>,
@@ -548,10 +585,10 @@ lir)</code>. В этом случае клиенту предложат обме
     </div>
 
     <input required name="path" type="hidden" value="/clj-zippers-6/">
-    <input required name="captcha" type="hidden" value="3 &#215; 2">
+    <input required name="captcha" type="hidden" value="6 &#215; 6">
 
     <div class="block">
-        <span class="comment-form-label"><small>3 &#215; 2 = </small></span>
+        <span class="comment-form-label"><small>6 &#215; 6 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 

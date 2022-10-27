@@ -127,10 +127,10 @@
   <li><a href="/clj-zippers-8/">Зипперы (часть 8). Заключение</a></li>
 </ul>
 
-<p>Предположим, нам поставили задачу: из XML с товарами выбрать магазины, где
-продаются айфоны. Обратите внимание: мы впервые коснулись связи между узлами, и
-это важно. По отдельности выбрать данные легко. Магазины — это локации, у
-которых тег <code class="language-plaintext highlighter-rouge">organization</code>. Айфоны — локации, в которых узел с тегом <code class="language-plaintext highlighter-rouge">product</code> и
+<p>Предположим, нам поставили задачу: выбрать из XML магазины, где продаются
+айфоны. Обратите внимание: мы впервые коснулись связи между узлами, и это
+важно. По отдельности выбрать данные легко. Магазины — это локации, у которых
+тег <code class="language-plaintext highlighter-rouge">organization</code>. Айфоны — локации, в которых узел с тегом <code class="language-plaintext highlighter-rouge">product</code> и
 атрибутом <code class="language-plaintext highlighter-rouge">type="tablet"</code>. Но как найти связь между ними?</p>
 
 <p>В прошлый раз мы разложили XML в последовательность с помощью
@@ -155,28 +155,27 @@
 </span><span class="c1">;; {:tag :product :attrs {:type "iphone"} :content ["iPhone 11 Pro"]}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Однако будет трудно найти магазин, которому он принадлежит. Можно догадаться,
-что магазин находится слева от товара, потому что предшествует ему в обходе
+<p>Однако трудно найти магазин, которому он принадлежит. Можно догадаться, что
+магазин находится слева от товара, потому что предшествует ему в обходе
 дерева. Это станет ясно, если напечатать теги узлов:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="n">xml-nodes</span><span class="w"> </span><span class="p">(</span><span class="nf">mapv</span><span class="w"> </span><span class="no">:tag</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nb">remove</span><span class="w"> </span><span class="nb">nil?</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">run!</span><span class="w"> </span><span class="nb">print</span><span class="p">))</span><span class="w">
 </span><span class="c1">;; :catalog :organization :product :product :organization ...</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Идея верная, но в целом слабая, потому что зависит от порядка обхода XML. Кроме
-того, решение задачи усложняется: при обходе нужно не просто выбрать нужные
-товары, но и переместиться назад в поисках магазина. Затем продолжить вперед и
-при этом пропустить найденный товар, чтобы не попасть в вечный цикл. Схема
-подразумевает состояние и хорошо смотрелась бы на императивных языках, но не в
-Clojure.</p>
+<p>Идея верная, но в целом слабая, потому что зависит от порядка обхода. Кроме
+того, задача усложняется: при обходе нужно не просто выбрать нужные товары, но и
+переместиться назад в поисках магазина. Затем продолжить вперед и при этом
+пропустить найденный товар, чтобы не попасть в вечный цикл. Схема подразумевает
+состояние и хорошо смотрелась бы на императивных языках, но не в Clojure.</p>
 
 <p>Здесь и приходит на помощь зиппер. Локация, которую он возвращает на каждом
-шаге, помнит своё положение в структуре. Это значит, от локации мы можем пройти
-в нужное место с помощью функций <code class="language-plaintext highlighter-rouge">zip/up</code>, <code class="language-plaintext highlighter-rouge">zip/right</code> и других, что мы
-рассмотрели в первой части. Это тот случай, когда ручная навигация оправдана.</p>
+шаге, помнит положение в структуре. От локации можно пройти в нужное место с
+помощью функций <code class="language-plaintext highlighter-rouge">zip/up</code>, <code class="language-plaintext highlighter-rouge">zip/right</code> и других, что мы рассмотрели в первой
+части. Это тот случай, когда ручная навигация оправдана.</p>
 
-<p>Вернемся к XML с простой структурой “каталог — организация — товары”. Освежим
-его в памяти:</p>
+<p>Вернемся к XML со структурой “каталог — организация — товары”. Освежим его в
+памяти:</p>
 
 <div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
 <span class="nt">&lt;catalog&gt;</span>
@@ -211,8 +210,8 @@ Clojure.</p>
 </span><span class="mi">2</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Теперь, чтобы найти организацию по товару, просто поднимемся на уровень выше с
-помощью <code class="language-plaintext highlighter-rouge">zip/up</code>. Это верно, потому что организация – родитель товара:</p>
+<p>Теперь, чтобы найти организацию по товару, поднимемся на уровень выше с помощью
+<code class="language-plaintext highlighter-rouge">zip/up</code>. Это верно, потому что организация – родитель товара:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">loc-orgs</span><span class="w">
   </span><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="n">loc-iphones</span><span class="w">
@@ -223,7 +222,7 @@ Clojure.</p>
 </span></code></pre></div></div>
 
 <p>Для каждого айфона мы получим организацию, где его продают. Получились дубли,
-потому что оба айфона продаются в re-Store. Чтобы сделать результат уникальным,
+потому что оба айфона продаются в re-Store. Чтобы избавиться от повторов,
 оберните результат в <code class="language-plaintext highlighter-rouge">set</code>.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">
@@ -233,13 +232,13 @@ Clojure.</p>
 </span></code></pre></div></div>
 
 <p>Это и есть ответ на вопрос: айфоны можно купить в магазине re-Store. Если
-добавить айфон в организацию DNS, последняя тоже появится в <code class="language-plaintext highlighter-rouge">loc-orgs</code>.</p>
+добавить айфон в организацию DNS, она тоже появится в <code class="language-plaintext highlighter-rouge">loc-orgs</code>.</p>
 
-<p>Решим ту же задачу для XML с филиалами. Теперь мы не можем просто вызвать
-<code class="language-plaintext highlighter-rouge">zip/up</code> для товара, чтобы получить организацию, потому что в некоторых случаях
-получим филиал, и понадобится еще один шаг вверх. Чтобы не гадать, сколько раз
-подниматься, напишем функцию <code class="language-plaintext highlighter-rouge">loc-&gt;org</code>. Она поднимается до тех пор, пока мы не
-выйдем на нужный тег:</p>
+<p>Решим ту же задачу для XML с филиалами. Мы не можем вызвать <code class="language-plaintext highlighter-rouge">zip/up</code> для товара,
+чтобы получить организацию, потому что в некоторых случаях получим филиал, и
+понадобится еще один шаг вверх. Чтобы не гадать, сколько раз подниматься,
+напишем функцию <code class="language-plaintext highlighter-rouge">loc-&gt;org</code>. Она вызывает <code class="language-plaintext highlighter-rouge">zip/ах</code> до тех пор, пока не выйдет на
+нужный тег:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">loc-org?</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="no">:tag</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="no">:organization</span><span class="p">)))</span><span class="w">
@@ -250,7 +249,7 @@ Clojure.</p>
        </span><span class="p">(</span><span class="nf">find-first</span><span class="w"> </span><span class="n">loc-org?</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Служебная функция <code class="language-plaintext highlighter-rouge">find-first</code> находит первый элемент коллекции, который подошёл
+<p>Функция <code class="language-plaintext highlighter-rouge">find-first</code> находит первый элемент коллекции, который подошёл
 предикату. Она ещё не раз пригодится нам.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">find-first</span><span class="w"> </span><span class="p">[</span><span class="n">pred</span><span class="w"> </span><span class="n">coll</span><span class="p">]</span><span class="w">
@@ -276,10 +275,8 @@ Clojure.</p>
 сложным восхождением. В остальном ничего не изменилось.</p>
 
 <p>Обратите внимание, насколько удобен XML в плане поиска и навигации. Если бы мы
-хранили данные в JSON, это была бы комбинация списков и словарей, и версии с
-филиалами и без них отличались.</p>
-
-<p>Товары без филиалов:</p>
+хранили данные в JSON, их структура и обход сильно бы отличались. Сравните
+товары без филиалов:</p>
 
 <div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[{</span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"re-Store"</span><span class="p">,</span><span class="w">
   </span><span class="nl">"products"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nl">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"iphone"</span><span class="p">,</span><span class="w"> </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"iPhone 11 Pro"</span><span class="p">},</span><span class="w">
@@ -289,7 +286,7 @@ Clojure.</p>
                </span><span class="p">{</span><span class="nl">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"notebook"</span><span class="p">,</span><span class="w"> </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Macbook Pro"</span><span class="p">}]}]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Товары с филиалами:</p>
+<p>и с ними:</p>
 
 <div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[{</span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"re-Store"</span><span class="p">,</span><span class="w">
   </span><span class="nl">"products"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nl">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"iphone"</span><span class="p">,</span><span class="w"> </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"iPhone 11 Pro"</span><span class="p">},</span><span class="w">
@@ -303,16 +300,16 @@ Clojure.</p>
                              </span><span class="p">{</span><span class="nl">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"notebook"</span><span class="p">,</span><span class="w"> </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Macbook Pro"</span><span class="p">}]}]}]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Очевидно, для обхода этих структур нужен разный код. В случае с XML его
+<p>Очевидно, для работы с этими данными нужен разный код. В случае с XML его
 структура однородна: добавление филиала меняет лишь глубину товаров, но не
-правила перемещения по данным.</p>
+правило обхода.</p>
 
 <p>Усложним задачу: среди обычных товаров встречаются наборы из них (bundle). Товар
 из набора нельзя купить отдельно. Например, тряпочка для протирки экрана
 продаётся чаще всего с устройством. Нас просят найти магазин, где тряпочку можно
 купить отдельно.</p>
 
-<p>Приведем пример такого XML:</p>
+<p>Пример XML с наборами:</p>
 
 <div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
 <span class="nt">&lt;catalog&gt;</span>
@@ -331,7 +328,7 @@ Clojure.</p>
 <span class="nt">&lt;/catalog&gt;</span>
 </code></pre></div></div>
 
-<p>Ради интереса найдём все тряпочки. В них окажутся как отдельные товары, так и из
+<p>Сначала найдём все тряпочки. В них окажутся как отдельные товары, так и из
 набора:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">loc-fiber?</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
@@ -346,10 +343,9 @@ Clojure.</p>
 </span><span class="p">(</span><span class="s">"VIP Fiber Plus"</span><span class="w"> </span><span class="s">"Premium iFiber"</span><span class="p">)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Теперь решим задачу. Сперва находим все тряпочки как сделали это выше. Затем
-отсекаем те, что входят в набор. С точки зрения зиппера это значит, что у
-родителя этой локации тег не равен <code class="language-plaintext highlighter-rouge">:bundle</code>. От оставшихся тряпочек переходим к
-магазинам.</p>
+<p>Теперь решим задачу. Из найденных тряпочек отсекаем те, что входят в набор. С
+точки зрения зиппера это значит, что у родителя этой локации тег не равен
+<code class="language-plaintext highlighter-rouge">:bundle</code>. От оставшихся тряпочек переходим к магазинам.</p>
 
 <p>Введём предикат <code class="language-plaintext highlighter-rouge">loc-in-bundle?</code> – входит ли локация в набор или нет:</p>
 
@@ -377,14 +373,13 @@ Clojure.</p>
 <p>Новое усложнение: мы хотим купить айфон, <em>но только в наборе</em> с тряпочкой. В
 какой магазин направить покупателя?</p>
 
-<p>Решение: сначала ищем все айфоны. Оставляем только те, что входят в набор. Далее
-среди соседей айфона ищем тряпочку. Если нашли, переходим от айфона или тряпочки
-к магазину. Основная часть функций уже готова: это предикаты на проверку набора,
-тип товара и другие мелкие вещи. Но мы не рассмотрели, как получить соседей
-локации.</p>
+<p>Решение: сначала ищем все айфоны. Оставляем те, что входят в набор. Среди
+соседей айфона ищем тряпочку. Если нашли, переходим от айфона или тряпочки к
+магазину. Основные функции уже готовы: это предикаты на проверку набора, тип
+товара и другие мелочи. Но мы не рассмотрели, как получить соседей локации.</p>
 
 <p>Функции <code class="language-plaintext highlighter-rouge">zip/lefts</code> и <code class="language-plaintext highlighter-rouge">zip/rights</code> вернут узлы по левую и правую стороны от
-текущей локации. Если совместить их через <code class="language-plaintext highlighter-rouge">concat</code>, получим всех соседей:</p>
+текущей локации. Совместим их через <code class="language-plaintext highlighter-rouge">concat</code>, чтобы получить всех соседей:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">node-neighbors</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nb">concat</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/lefts</span><span class="w"> </span><span class="n">loc</span><span class="p">)</span><span class="w">
@@ -407,7 +402,7 @@ Clojure.</p>
 локацию влево или вправо. Поэтому при поиске соседей выгодно работать с узлами
 (данными), а не локациями.</p>
 
-<p>Добавим функций, чтобы проверить, если в соседях локации тряпочка:</p>
+<p>Добавим функции, чтобы проверить, если в соседях локации тряпочка:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">node-fiber?</span><span class="w"> </span><span class="p">[</span><span class="nb">node</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nf">some-&gt;</span><span class="w"> </span><span class="nb">node</span><span class="w"> </span><span class="no">:attrs</span><span class="w"> </span><span class="no">:type</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="s">"fiber"</span><span class="p">)))</span><span class="w">
@@ -417,7 +412,7 @@ Clojure.</p>
     </span><span class="p">(</span><span class="nf">find-first</span><span class="w"> </span><span class="n">node-fiber?</span><span class="w"> </span><span class="n">nodes</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>И финальное выражение:</p>
+<p>Финальное выражение:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="s">"products-bundle.xml"</span><span class="w">
      </span><span class="n">-&gt;xml-zipper</span><span class="w">
@@ -437,23 +432,24 @@ Clojure.</p>
 что не подходит. Если заменить в наборе тряпочку на гарнитуру, мы не получим ни
 один магазин.</p>
 
-<p>Наконец, можно добавить новые ограничения. Например, из найденных магазинов
-выбрать те, что расположены в радиусе 300 метров от покупателя. Для этого
-понадобится расположение магазинов на карте и функция попадания точки в
-окружность. Можно выбрать только открытые магазины или те, что предлагают
-доставку. Запишем эти признаки в атрибуты организаций и добавим функции отбора.</p>
+<p>Можно добавить больше ограничений. Например, из найденных магазинов выбрать те,
+что расположены в радиусе 300 метров от покупателя. Для этого понадобится
+расположение магазинов на карте и функция попадания точки в окружность. Можно
+выбрать только открытые магазины или те, что предлагают доставку. Запишем эти
+признаки в атрибуты организаций и добавим функции отбора.</p>
 
 <p>Легко увидеть, что XML-зиппер стал настоящей базой данных. Он даёт ответы на
 сложные запросы, и при этом код растет медленней, чем их смысловая
-нагрузка. Из-за регулярной структуры XML хорошо поддается обходу, и зипперы
-только усиливают это свойство. Обратите внимание, как удобно работают переходы и
+нагрузка. Из-за рекурсивной структуры XML хорошо поддается обходу, и зипперы
+усиливают это преимущество. Обратите внимание, как удобно работают переходы и
 связи между узлами. Представьте, каких усилий стоило бы разбить данные на
 таблицы и строить SQL-запросы со многими JOIN.</p>
 
 <p>Конечно, по сравнению с настоящей базой у XML недостаток — в нём нет индексов, и
-поиск работает линейным перебором, а не как в словарях. Кроме того, наш подход
-требует, чтобы все данные находились в памяти. Он не сработает для очень больших
-документов с миллионами записей, но пока что не будем волноваться об этом.</p>
+поиск работает линейным перебором, а не как в бинарных деревьях. Кроме того, наш
+подход требует, чтобы все находились в памяти целиком. Он не сработает для очень
+больших документов с миллионами записей, но пока что не будем волноваться об
+этом.</p>
 
 <p>(Продолжение следует)</p>
 
@@ -509,10 +505,10 @@ Clojure.</p>
     </div>
 
     <input required name="path" type="hidden" value="/clj-zippers-4/">
-    <input required name="captcha" type="hidden" value="4 &#215; 8">
+    <input required name="captcha" type="hidden" value="7 &#215; 7">
 
     <div class="block">
-        <span class="comment-form-label"><small>4 &#215; 8 = </small></span>
+        <span class="comment-form-label"><small>7 &#215; 7 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 
