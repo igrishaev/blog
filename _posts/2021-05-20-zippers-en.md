@@ -1823,7 +1823,7 @@ Another test checks if we only return the shortest chains. An exchange with four
                      [:yen :eur]] :usd :rub))))
 ~~~
 
-In terms of olympiad programming, we can say that the problem offers separate edges of the graph. It's required to check whether it's possible to construct a continuous route from the vertex A to B from the edges. But since we're solving the problem with zippers, we won't use the terms "graph" and "edges". We don't guarantee that the solution will be optimal — perhaps the graph algorithm will do better. However, we hope that the example will further reveal the power of zippers.
+In terms of competitive programming, we can say that the problem offers separate edges of the graph. It's required to check whether it's possible to construct a continuous route from the vertex A to B from the edges. But since we're solving the problem with zippers, we won't use the terms "graph" and "edges". We don't guarantee that the solution will be optimal — perhaps the graph algorithm will do better. However, we hope that the example will further reveal the power of zippers.
 
 As you remember, zippers are used to traverse trees, which is included in the problem statement. Let's say the `from` currency, which we want to exchange, is at the root node of the tree. Let it be a dollar. Obviously, children of this currency are all those that can be exchanged for the dollar. To do this, select the second element from each pair, where the first element is `:usd`:
 
@@ -2025,7 +2025,7 @@ a zipper:
 ;; 5
 ~~~
 
-The values `3` and `4` towards the end of the output indicate that the zipper first goes into the depths of the data (inside the vector `[3]`), and only then to the right.
+The number `3` preceding `4` means the zipper goes deep first (inside the vector `[3]`) and only then to the right.
 
 Even more interesting is the case with a naive virtual tree, where each node has children `[1 2 3]`. When traversing such a tree, the zipper will tend downward, each time descending into the next vector `[1 2 3]` and stopping at 1. Let's show this in the diagram:
 
