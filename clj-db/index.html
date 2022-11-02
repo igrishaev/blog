@@ -690,23 +690,16 @@
 
 <p>, то вас ждет разочарование. Запрос вернет строки “id”, “fname” и “email”, а не значения одноименных полей. Чтобы строить запросы, где таблицы и поля зависят от условий, прибегают к специальным библиотекам. Позже мы рассмотрим наиболее популярные из них.</p>
 
-<!-- edited -->
-
 <h3 id="подготовленные-выражения">Подготовленные выражения</h3>
 
-<p>Вторая причина в пользу параметров в том, с ними база получит выигрыш в скорости. Следует помнить, что даже простой запрос</p>
+<p>Вторая причина в пользу параметров в том, с ними база получит выигрыш в скорости. Следует помнить, что даже простой запрос выполняется поэтапно. Процесс напоминает компиляцию: выражение разбирают на лексемы и строят дерево. Например, строка <code class="language-plaintext highlighter-rouge">3 + 2 * 2</code> после разбора станет списком <code class="language-plaintext highlighter-rouge">(+ 3 (* 2 2))</code>, который проще выполнить благодаря структуре.</p>
+
+<p>База данных тоже выполняет разбор и анализ запроса. На выходе получается так называемое Prepared Statement, подготовленное выражение. Это объектное представление запроса, который прошел анализ и теперь может быть выполнен. Предположим, поступил запрос на поиск пользователя по <code class="language-plaintext highlighter-rouge">id</code>:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">1</span>
 </code></pre></div></div>
 
-<p>включает несколько шагов. В целом они напоминают действия компилятора: для выражения <code class="language-plaintext highlighter-rouge">3 + 2 * 2</code> он выполняет лексический разбор и строит условное дерево:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[+ 3 [* 2 2]]
-</code></pre></div></div>
-
-<p>, которое проще выполнить благодаря структуре.</p>
-
-<p>База данных тоже выполняет разбор и анализ запроса. На выходе получается так называемое Prepared Statement, подготовленное выражение. Это объектное представление запроса, который прошел анализ и теперь может быть выполнен. Схематично представим его на Clojure:</p>
+<p>Схематично представим его в виде дерева на Clojure:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:type</span><span class="w"> </span><span class="no">:select</span><span class="w">
  </span><span class="no">:tables</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]</span><span class="w">
@@ -715,11 +708,11 @@
  </span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="no">:integer</span><span class="p">]}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Смысловые части запроса разложены по слотам объекта. Обратите внимание, что литерал звёздочки замен на список полей. Известно число параметров и их тип. Осталось вызвать подготовленное выражение с конкретным ID, чтобы получить результат.</p>
+<p>Смысловые части запроса разложены по полям. Обратите внимание, что вместо звёздочки следует явный список полей. Известно число параметров и их тип. Осталось вызвать подготовленное выражение с конкретным ID, чтобы получить результат.</p>
 
-<p>Из структуры выше понятно, почему таблица не может быть параметром. Если бы она менялась динамически, пришлось бы каскадно вычислять набор полей и их тип, что рушит идею Prepared Statement — вычислить все один раз. Наоборот, подстановка чисел 5, 15 или 99 на место id не влечет перестройку выражения.</p>
+<p>Из структуры выше понятно, почему таблица не может быть параметром. Если бы она менялась динамически, пришлось бы каждый раз вычислять набор полей и их тип, что рушит идею Prepared Statement — сделать это единожды. Наоборот, подстановка чисел 5, 15 или 99 на место <code class="language-plaintext highlighter-rouge">id</code> не влечет перестройку выражения.</p>
 
-<p>Покажем, как работать с подготовленными выражениями в Clojure. Чтобы создать его, вызывают функцию <code class="language-plaintext highlighter-rouge">jdbc/prepare-statement</code>. Первым параметром она ожидает открытое TCP-соединение с базой (не то же самое, что JDBC-спека). Соединение получают функцией <code class="language-plaintext highlighter-rouge">jdbc/get-connection</code> из спеки:</p>
+<p>Покажем, как работать с подготовленными выражениями в Clojure. Чтобы создать его, вызывают функцию <code class="language-plaintext highlighter-rouge">jdbc/prepare-statement</code>. Первым параметром она ожидает открытое TCP-соединение с базой. Соединение получают функцией <code class="language-plaintext highlighter-rouge">jdbc/get-connection</code> из JDBC-спеки:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
   </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">db</span><span class="p">))</span><span class="w">
@@ -728,12 +721,12 @@
   </span><span class="p">(</span><span class="nf">jdbc/prepare-statement</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from users where id = ?"</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Второй аргумент <code class="language-plaintext highlighter-rouge">jdbc/prepare-statement</code> — произвольный запрос со знаками вопроса на месте параметров. В переменной <code class="language-plaintext highlighter-rouge">prep-stmt</code> окажется объект с типом <code class="language-plaintext highlighter-rouge">PreparedStatement</code>. Чтобы выполнить его, передайте в query вектор, где первый элемент — подготовленное выражение:</p>
+<p>Второй аргумент <code class="language-plaintext highlighter-rouge">jdbc/prepare-statement</code> — произвольный запрос со знаками вопроса на месте параметров. В переменной <code class="language-plaintext highlighter-rouge">prep-stmt</code> окажется объект с типом <code class="language-plaintext highlighter-rouge">PreparedStatement</code>. Чтобы выполнить его, передайте в <code class="language-plaintext highlighter-rouge">jdbc/query</code> вектор, где первый элемент — подготовленное выражение:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">[</span><span class="n">prep-stmt</span><span class="w"> </span><span class="mi">1</span><span class="p">])</span><span class="w">
 </span></code></pre></div></div>
 
-<p>По аналогии напишем выражение для вставки записей и выполним его через <code class="language-plaintext highlighter-rouge">execute!</code>:</p>
+<p>По аналогии напишем выражение для вставки пользователя и выполним его через <code class="language-plaintext highlighter-rouge">execute!</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">stmt-insert</span><span class="w">
   </span><span class="p">(</span><span class="nf">jdbc/prepare-statement</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into users (fname, lname, age, email) values (?, ?, ?, ?)"</span><span class="p">))</span><span class="w">
@@ -742,7 +735,7 @@
 </span><span class="c1">;; (1)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Подготовленные выражения несут состояние, поэтому их нельзя объявлять на верхнем уровне модуля. Выражения адаптируют под систему, на которой основан проект. Например, если это Component, объявляют компонент, который зависит от базы. При запуске компонент объявляет нужные выражения и записывает в слоты, а в момент остановки закрывает их.</p>
+<p>Подготовленные выражения несут состояние, поэтому их нельзя объявлять на верхнем уровне модуля. Выражения адаптируют под систему, на которой основан проект. Если это Component, объявляют компонент, который зависит от базы. При запуске компонент создает выражения и записывает в слоты, а в момент остановки закрывает их.</p>
 
 <p>Напишем подобный компонент. Для экономии места заполним только одно выражение для поиска пользователя по номеру:</p>
 
@@ -768,13 +761,13 @@
     </span><span class="p">(</span><span class="nf">.close</span><span class="w"> </span><span class="n">stmt-get-by-id</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Теперь добавим протокол для действий с пользователями. Пока что в нем один метод для поиска по ID:</p>
+<p>Добавим протокол для действий с пользователями. Пока что в нем один метод поиска по ID:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">defprotocol</span><span class="w"> </span><span class="n">IUserManager</span><span class="w">
   </span><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="p">[</span><span class="n">this</span><span class="w"> </span><span class="n">id</span><span class="p">]))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Расширим тип <code class="language-plaintext highlighter-rouge">UserManager</code> этим протоколом. В теле <code class="language-plaintext highlighter-rouge">get-by-id</code> вызываем функцию <code class="language-plaintext highlighter-rouge">jdbc/query</code>, при этом соединение и подготовленное выражение приходят из слотов менеджера.</p>
+<p>Расширим тип <code class="language-plaintext highlighter-rouge">UserManager</code> этим протоколом. В теле <code class="language-plaintext highlighter-rouge">get-by-id</code> вызываем функцию <code class="language-plaintext highlighter-rouge">jdbc/query</code>, при этом соединение и подготовленное выражение приходят из слотов записи.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">IUserManager</span><span class="w">
 
@@ -793,11 +786,11 @@
 </span><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">user-mgr</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Запросы, выполненные через подготовленные выражения, как правило работают быстрее обычных, потому что не требуют разбора. Для нагруженных проектов это может оказаться критично.</p>
+<p>Запросы, выполненные через подготовленные выражения, работают быстрее обычных, потому что не требуют разбора. Для нагруженных проектов это может оказаться критично.</p>
 
 <h2 id="результат-запроса">Результат запроса</h2>
 
-<p>Рассмотрим, что предлагает библиотека для работы с ответом. По умолчанию функция query возвращает последовательность словарей. Структура каждого словаря одинакова: его ключи — поля выборки, приведенные к типу <code class="language-plaintext highlighter-rouge">Keyword</code>, а значения — то, что пришло для этого поля из базы. Пример с таблицей пользователей:</p>
+<p>Рассмотрим, что предлагает библиотека для работы с ответом. По умолчанию функция <code class="language-plaintext highlighter-rouge">query</code> возвращает последовательность словарей. Структура каждого словаря одинакова: его ключи — поля выборки, приведенные к типу <code class="language-plaintext highlighter-rouge">Keyword</code>, а значения — то, что пришло для этого поля из базы. Пример с пользователями:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="s">"select * from users"</span><span class="p">)</span><span class="w">
 
@@ -813,9 +806,9 @@
   </span><span class="no">:age</span><span class="w"> </span><span class="mi">20</span><span class="p">})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Функция <code class="language-plaintext highlighter-rouge">jdbc/query</code> оборачивает результат <code class="language-plaintext highlighter-rouge">ResultSet</code> в функцию <code class="language-plaintext highlighter-rouge">jdbc/result-set-seq</code>. Последняя приводит его к ленивой коллекции “кложурных” значений. Поскольку список словарей — наиболее удобная структура, именно этот способ задан по умолчанию. В особых случаях поведение query меняют так, чтобы получить данные в другом виде. Но прежде чем мы узнаем, как это сделать, вспомним, как устроен объект <code class="language-plaintext highlighter-rouge">ResultSet</code>.</p>
+<p>Функция <code class="language-plaintext highlighter-rouge">jdbc/query</code> оборачивает результат <code class="language-plaintext highlighter-rouge">ResultSet</code> в функцию <code class="language-plaintext highlighter-rouge">jdbc/result-set-seq</code>. Последняя приводит его к ленивой коллекции “кложурных” значений. Поскольку список словарей — наиболее удобная структура, именно этот способ задан по умолчанию. В особых случаях поведение <code class="language-plaintext highlighter-rouge">query</code> меняют так, чтобы получить данные в другом виде. Но прежде чем мы узнаем, как это сделать, вспомним, как устроен объект <code class="language-plaintext highlighter-rouge">ResultSet</code>.</p>
 
-<p>Этот класс напоминает источник данных со внутренним указателем. По умолчанию он установлен <em>до</em> первого элемента. У <code class="language-plaintext highlighter-rouge">ResultSet</code> несколько методов, чтобы сдвигать указатель, но самый простой называется <code class="language-plaintext highlighter-rouge">.next()</code>. Результат метода означает, удался ли сдвиг (если мы в конце, получим ложь). Таким образом, обход <code class="language-plaintext highlighter-rouge">ResultSet</code> сводится к шаблону:</p>
+<p>Этот класс напоминает источник данных со внутренним указателем. По умолчанию указатель находится <em>до</em> первого элемента. У <code class="language-plaintext highlighter-rouge">ResultSet</code> несколько методов, чтобы сдвигать его, но самый простой называется <code class="language-plaintext highlighter-rouge">.next()</code>. Результат метода означает, удался ли сдвиг или нет (получим ложь, если достигли конца). Обход <code class="language-plaintext highlighter-rouge">ResultSet</code> сводится к шаблону:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">while</span><span class="w"> </span><span class="p">(</span><span class="nf">.next</span><span class="w"> </span><span class="n">rs</span><span class="p">)</span><span class="w">
   </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="p">(</span><span class="nf">.getInt</span><span class="w"> </span><span class="n">rs</span><span class="w"> </span><span class="s">"id"</span><span class="p">))</span><span class="w">
@@ -824,7 +817,7 @@
 
 <p>Методы <code class="language-plaintext highlighter-rouge">getInt</code>, <code class="language-plaintext highlighter-rouge">getString</code> и другие вернут значения поля по его имени (если вызваны со строкой) или индексу (с числом).</p>
 
-<p>Поскольку по умолчанию указатель стоит до первого элемента, начальный вызов <code class="language-plaintext highlighter-rouge">.next</code> сдвигает его на первый. Это существенно упрощает код. Если бы указатель стоял сразу на первом элементе, пришлось бы обработать его до входа в цикл, а потом скопировать тот же код внутрь цикла:</p>
+<p>Так как указатель стоит до первого элемента, начальный вызов <code class="language-plaintext highlighter-rouge">.next</code> сдвигает его на первый. Это существенно упрощает код. Если бы указатель сразу стоял на первом элементе, пришлось бы обработать его до входа в цикл, а потом скопировать тот же код внутрь цикла, что выглядит неуклюже:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="p">(</span><span class="nf">.getInt</span><span class="w"> </span><span class="n">rs</span><span class="w"> </span><span class="s">"id"</span><span class="p">))</span><span class="w">
 </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="p">(</span><span class="nf">.getString</span><span class="w"> </span><span class="n">rs</span><span class="w"> </span><span class="s">"fname"</span><span class="p">))</span><span class="w">
@@ -834,21 +827,11 @@
   </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="p">(</span><span class="nf">.getString</span><span class="w"> </span><span class="n">rs</span><span class="w"> </span><span class="s">"fname"</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Методы <code class="language-plaintext highlighter-rouge">getInt</code> и <code class="language-plaintext highlighter-rouge">getString</code> выше говорят о том, что мы знаем структуру ответа заранее. Это не всегда так. В общем случае данные о полях можно получить из объекта <code class="language-plaintext highlighter-rouge">ResultSetMetaData</code>. Он возвращает состав полей, их имена и типы. С его помощью задают функцию, которая принимает очередной элемент <code class="language-plaintext highlighter-rouge">ResultSet</code> и переводит его в словарь.</p>
+<p>Методы <code class="language-plaintext highlighter-rouge">getInt</code> и <code class="language-plaintext highlighter-rouge">getString</code> выше говорят о том, что мы знаем структуру ответа заранее. Это не всегда так. Данные о полях можно получить из объекта <code class="language-plaintext highlighter-rouge">ResultSetMetaData</code>. Он возвращает состав полей, их имена и типы. С его помощью задают функцию, которая принимает очередной элемент <code class="language-plaintext highlighter-rouge">ResultSet</code> и переводит его в словарь.</p>
 
-<p>Модуль <code class="language-plaintext highlighter-rouge">clojure.core</code> предлагает функцию <code class="language-plaintext highlighter-rouge">resultset-seq</code>, чтобы преобразовать произвольный <code class="language-plaintext highlighter-rouge">ResultSet</code> в данные <code class="language-plaintext highlighter-rouge">Clojure</code>. В свободное время изучите ее код: он занимает 13 строк. Версия JDBC работает схожим образом, но учитывает больше параметров. Особенно изящно выглядит это место:</p>
+<p>Модуль <code class="language-plaintext highlighter-rouge">clojure.core</code> предлагает функцию <code class="language-plaintext highlighter-rouge">resultset-seq</code>, чтобы привести <code class="language-plaintext highlighter-rouge">ResultSet</code> к ленивой цепочке словарей. В свободное время изучите <a href="https://github.com/clojure/clojure/blob/clojure-1.10.1/src/clj/clojure/core.clj#L5702">ее код</a>: он занимает всего 13 строк.</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">...</span><span class="w">
-      </span><span class="n">records</span><span class="w">
-      </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="n">thisfn</span><span class="w"> </span><span class="p">[]</span><span class="w">
-        </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="p">(</span><span class="nf">.next</span><span class="w"> </span><span class="n">rs</span><span class="p">)</span><span class="w">
-          </span><span class="p">(</span><span class="nb">cons</span><span class="w"> </span><span class="p">(</span><span class="nb">zipmap</span><span class="w"> </span><span class="nb">keys</span><span class="w"> </span><span class="p">(</span><span class="nf">row-values</span><span class="p">))</span><span class="w"> </span><span class="p">(</span><span class="nf">lazy-seq</span><span class="w"> </span><span class="p">(</span><span class="nf">thisfn</span><span class="p">)))))]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">records</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Это ленивая коллекция, где известен только текущий элемент, а остальная часть — отложенный вызов <code class="language-plaintext highlighter-rouge">(thisfn)</code>. Переменная <code class="language-plaintext highlighter-rouge">keys</code> в данном случае ссылается на вектор с именам полей, который получили из метаданных <code class="language-plaintext highlighter-rouge">ResultSet</code>. В Clojure ленивые коллекции часто описывают при помощи <code class="language-plaintext highlighter-rouge">cons</code> и рекурсивного вызова, обернутого в <code class="language-plaintext highlighter-rouge">lazy-seq</code>. Прием можно назвать паттерном; ознакомьтесь с ним ближе, если не понимаете, что происходит.</p>
-
-<p>По умолчанию query “прогоняет” ленивую выборку через <code class="language-plaintext highlighter-rouge">doall</code>. В результате все элементы <code class="language-plaintext highlighter-rouge">ResultSet</code> будут прочитаны. В зависимости от логики программы чтением можно управлять, например специально не вычислять последовательность. При таком подходе от вас требуется ручное закрытие объекта <code class="language-plaintext highlighter-rouge">ResultSet</code>. О ленивости и ее влиянии на результат мы скажем чуть ниже.</p>
+<p>По умолчанию <code class="language-plaintext highlighter-rouge">query</code> прогоняет ленивую выборку через <code class="language-plaintext highlighter-rouge">doall</code>. В результате все элементы <code class="language-plaintext highlighter-rouge">ResultSet</code> будут прочитаны. В зависимости от логики чтением можно управлять, например делать это отложено. При таком подходе требуется ручное закрытие объекта <code class="language-plaintext highlighter-rouge">ResultSet</code>. О ленивости и ее влиянии на результат мы скажем чуть позже.</p>
 
 <p>Теперь когда мы знакомы с <code class="language-plaintext highlighter-rouge">ResultSet</code>, рассмотрим, в каком еще виде можно читать данные из базы.</p>
 
@@ -861,9 +844,9 @@
  </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="s">"John"</span><span class="w"> </span><span class="s">"Smith"</span><span class="w"> </span><span class="s">"john@test.com"</span><span class="p">]]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Подобная структура полезна для записи CSV-файлов. Их формат известен заранее, поэтому заголовок указывают однажды в начале файла. Библиотеки для записи CSV ожидают список именно векторов, а не словарей. Если мы выбрали из базы словари, нужно привести их к вектору, что означает пустую работу. Будет лучше, если функция query вернет данные в готовом виде.</p>
+<p>Такая структура полезна для CSV-файлов. Их формат известен заранее, поэтому заголовок указывают однажды в начале файла. Библиотеки для записи CSV ожидают список именно векторов, а не словарей. Если мы выбрали из базы словари, нужно привести их к вектору, что означает лишнюю работу. Будет лучше, если функция <code class="language-plaintext highlighter-rouge">query</code> вернет данные в готовом виде.</p>
 
-<p>Параметр <code class="language-plaintext highlighter-rouge">{:as-arrays? true}</code> в query означает, что элемент списка будет вектором. При этом первый ряд содержит имена колонок:</p>
+<p>Параметр <code class="language-plaintext highlighter-rouge">{:as-arrays? true}</code> в <code class="language-plaintext highlighter-rouge">query</code> означает, что элементы списка будут векторами. Первый ряд содержит имена колонок:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="s">"select * from users"</span><span class="w"> </span><span class="p">{</span><span class="no">:as-arrays?</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
 
@@ -886,6 +869,8 @@
 <p>В папке проекта вы найдете файл <code class="language-plaintext highlighter-rouge">users.csv</code>. Проверьте содержимое в табличном редакторе. Напишите универсальную функцию для выгрузки любой таблицы. Она принимает имя таблицы, путь к CSV-файлу и, по желанию, набор полей на тот случай, если нужны только некоторые из них.</p>
 
 <p>Список векторов полезен не только для CSV, но и для матричных данных или работы со статистикой.</p>
+
+<!-- edited -->
 
 <h3 id="ключи">Ключи</h3>
 
@@ -4169,10 +4154,10 @@ and p.created_at &gt; ..."</span><span class="w">
     </div>
 
     <input required name="path" type="hidden" value="/clj-db/">
-    <input required name="captcha" type="hidden" value="5 &#215; 1">
+    <input required name="captcha" type="hidden" value="8 &#215; 3">
 
     <div class="block">
-        <span class="comment-form-label"><small>5 &#215; 1 = </small></span>
+        <span class="comment-form-label"><small>8 &#215; 3 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 
