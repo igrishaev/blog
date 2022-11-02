@@ -564,8 +564,6 @@
 
 <h2 id="подробнее-о-запросах">Подробнее о запросах</h2>
 
-<!-- edited -->
-
 <p>Выше мы упоминали, что функция <code class="language-plaintext highlighter-rouge">query</code> принимает либо строку запроса, либо вектор с параметрами. Разберемся, в чем разница между подходами.</p>
 
 <p>Представим, что нужно найти пользователя по известному <code class="language-plaintext highlighter-rouge">id</code>, например 13. Приведем варианты со строкой и вектором. В первом выражении значение 13 “вшито” в запрос, а во втором выступает параметром.</p>
@@ -579,37 +577,38 @@
 
 <h3 id="sql-инъекции">SQL-инъекции</h3>
 
-<p>Инъекцией называют случай, когда в запрос попадает вредоносный текст. Это возможно при ручной подстановке параметров в шаблон. Пик этой уязвимости пришелся на середину нулевых годов в эпоху расцвета PHP. Новый язык резко сократил порог входа в веб-разработку, и ей занялись в том числе те, кто не имел представлений о безопасности. Типичный запрос в базу на PHP выглядел так (пример из интернета):</p>
+<p>Инъекцией называют случай, когда в запрос попадает вредоносный текст. Это возможно при ручной подстановке параметров в шаблон. Пик инъекций пришелся на середину нулевых годов в эпоху расцвета PHP. Новый язык резко сократил порог входа в веб-разработку, и ей занялись в том числе те, кто не имел представлений о безопасности. В PHP типичный запрос выглядит так (пример взят из интернета):</p>
 
 <div class="language-php highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$user_id</span> <span class="o">=</span> <span class="mi">13</span><span class="p">;</span>
 <span class="nv">$query</span> <span class="o">=</span> <span class="nb">sprintf</span><span class="p">(</span><span class="s2">"SELECT * FROM users WHERE id = %s"</span><span class="p">,</span> <span class="nv">$user_id</span><span class="p">);</span>
 <span class="nv">$result</span> <span class="o">=</span> <span class="nb">mysql_query</span><span class="p">(</span><span class="nv">$query</span><span class="p">);</span>
 </code></pre></div></div>
 
-<p>Разберемся, в чем проблема в выражением выше. Для начала перепишем его на Clojure:</p>
+<p>Разберемся, в чем проблема с выражением выше. Для начала перепишем его на Clojure:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">user-id</span><span class="w"> </span><span class="mi">13</span><span class="p">)</span><span class="w">
 
 </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"select * from users where id = %s"</span><span class="w"> </span><span class="n">user-id</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>До тех пор, пока в <code class="language-plaintext highlighter-rouge">user-id</code> находится число, запрос работает без ошибок. Но что если параметр получили из адресной строки браузера? Предположим, кто-то исправил URL следующим образом:</p>
+<p>До тех пор, пока в <code class="language-plaintext highlighter-rouge">user-id</code> находится число, запрос работает без ошибок. Но что если параметр приходит из адресной строки браузера? Предположим, кто-то исправил URL следующим образом:</p>
 
 <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>http://site.com/users?user-id=13+OR+TRUE
 </code></pre></div></div>
 
-<p>Хакер понимает, что перед 13 идет выражение <code class="language-plaintext highlighter-rouge">WHERE id = ...</code>. Идея в том, чтобы через оператор <code class="language-plaintext highlighter-rouge">OR</code> добавить условие, которое истинно всегда, например TRUE или 1=1. В результате даже если первое выражение ложно, второе будет истиной. Оператор OR сделает выбор в пользу второго, и запись попадет в выборку. В результате запрос вернет все записи из таблицы без отбора по id. Так вы раскроете чужие данные.</p>
+<p>Хакер понимает, что перед 13 идет выражение <code class="language-plaintext highlighter-rouge">WHERE id = ...</code>. Идея в том, чтобы через оператор <code class="language-plaintext highlighter-rouge">OR</code> добавить условие, которое истинно всегда, например TRUE или 1=1. В результате даже если первое выражение ложно, второе будет истиной. Оператор OR сделает выбор в пользу второго, и запись попадет в выборку. В результате база вернет все записи таблицы без фильтра по <code class="language-plaintext highlighter-rouge">id</code>. Так вы раскроете чужие данные.</p>
 
-<p>Ради интереса изменим <code class="language-plaintext highlighter-rouge">user-id</code> и выполним запрос с форматированием. Получим все записи из таблицы users.</p>
+<p>Изменим <code class="language-plaintext highlighter-rouge">user-id</code> на вредоносную строку и выполним запрос с форматированием. Получим все записи таблицы <code class="language-plaintext highlighter-rouge">users</code>.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">user-id</span><span class="w"> </span><span class="s">"13 OR TRUE"</span><span class="p">)</span><span class="w">
 
-</span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"select * from users where id = %s"</span><span class="w"> </span><span class="n">user-id</span><span class="p">))</span><span class="w">
+</span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w">
+  </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"select * from users where id = %s"</span><span class="w"> </span><span class="n">user-id</span><span class="p">))</span><span class="w">
 
 </span><span class="c1">;; ({:id 1, ...}, {:id 2, ...}, ...)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>В интернете популярен <a href="https://xkcd.com/327/">комикс xkcd</a> об SQL-инъекциях. В нем учитель спрашивает родителя, почему они назвали сына <code class="language-plaintext highlighter-rouge">Robert'; DROP TABLE students;</code>. Легко догадаться, что на сервере был следующий код:</p>
+<p>В интернете популярен <a href="https://xkcd.com/327/">комикс xkcd</a> об SQL-инъекциях. Учитель спрашивает родителя, почему они назвали сына <code class="language-plaintext highlighter-rouge">Robert'; DROP TABLE students;</code>. Легко догадаться, что на сервере был следующий код:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">fname</span><span class="w"> </span><span class="s">"Robert"</span><span class="w">
       </span><span class="n">query</span><span class="w"> </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"select * from users where fname = '"</span><span class="w"> </span><span class="n">fname</span><span class="w"> </span><span class="s">"'"</span><span class="p">)]</span><span class="w">
@@ -618,28 +617,22 @@
 </span><span class="c1">;; select * from users where fname = 'Robert';</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Однако если задать переменной fname другое значение:</p>
+<p>Если задать переменной <code class="language-plaintext highlighter-rouge">fname</code> то, что вписал в поле Роберт:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">fname</span><span class="w"> </span><span class="s">"Robert'; DROP TABLE users;--"</span><span class="p">]</span><span class="w">
   </span><span class="n">...</span><span class="p">)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>, то получим:</p>
+<p>, запрос примет вид:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">fname</span> <span class="o">=</span> <span class="s1">'Robert'</span><span class="p">;</span> <span class="k">DROP</span> <span class="k">TABLE</span> <span class="n">users</span><span class="p">;</span><span class="c1">--'</span>
 </code></pre></div></div>
 
-<p>Обратите внимание на двойной минус в конце. Он нужен для того, чтобы закомментировать последнюю одинарную кавычку. База данных отбросит ее и получит два корректных запроса в одном выражении. Теперь представим, что переменная приходит из параметров запроса без какой-либо проверки:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">fname</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">request</span><span class="w"> </span><span class="no">:params</span><span class="w"> </span><span class="s">"first_name"</span><span class="p">)]</span><span class="w">
-  </span><span class="n">...</span><span class="p">)</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Если подставить ее в запрос и выполнить, это приведет сначала к поиску по имени Robert, а затем к удалению таблицы пользователей. Опробуйте подобный трюк на локальной базе.</p>
+<p>Обратите внимание на двойной минус в конце. Он нужен для того, чтобы закомментировать последнюю одинарную кавычку. База данных отбросит ее и получит два запроса через точку с запятой. Если выполнить это выражение, сработает поиск по имени Robert, а затем из таблицы <code class="language-plaintext highlighter-rouge">users</code> удалятся все записи. Опробуйте трюк на локальной базе.</p>
 
 <h3 id="атаки-с-union">Атаки с UNION</h3>
 
-<p>На практике задача хакера не в том, чтобы удалить данные — их легко восстановить из резервной копии. Его цель — заполучить данные, к которым нет доступа. Рассмотрим все тот же пример с поиском пользователя. На этот раз вместо <code class="language-plaintext highlighter-rouge">DROP TABLE</code> мы напишем другой вредоносный SQL, а именно объединение исходного запроса с таким же, но без отбора. Для этого служит оператор <code class="language-plaintext highlighter-rouge">UNION</code>:</p>
+<p>Главная задача хакера не в том, чтобы удалить данные — их легко восстановить из резервной копии. Его цель — заполучить данные, к которым нет доступа. Рассмотрим тот же пример с поиском пользователя. На этот раз вместо <code class="language-plaintext highlighter-rouge">DROP TABLE</code> мы напишем другой вредоносный SQL, а именно объединение запроса с таким же, но без отбора. Для этого служит оператор <code class="language-plaintext highlighter-rouge">UNION</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">fname</span><span class="w"> </span><span class="s">"Robert' UNION select * from users--"</span><span class="w">
       </span><span class="n">query</span><span class="w"> </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"select * from users where fname = '"</span><span class="w"> </span><span class="n">fname</span><span class="w"> </span><span class="s">"'"</span><span class="p">)]</span><span class="w">
@@ -651,22 +644,22 @@
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">fname</span> <span class="o">=</span> <span class="s1">'Robert'</span> <span class="k">UNION</span> <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span><span class="c1">--'</span>
 </code></pre></div></div>
 
-<p>Итоговый запрос вернет всех пользователей независимо от того, сколько их нашлось в первой части. Конечно, для подобных атак нужно знать структуру таблицы. Однако и эти данные можно получить SQL-инъекцией, добавив <code class="language-plaintext highlighter-rouge">UNION</code> с чтением таблиц <code class="language-plaintext highlighter-rouge">information_schema.tables</code>, <code class="language-plaintext highlighter-rouge">pg_user</code> и других. Таблицы из схемы <code class="language-plaintext highlighter-rouge">information_schema</code> хранят метаданные о других таблицах: их имена, состав и типы колонок. Если хакер доберется до этих сведений через инъекции, он узнает о базе все.</p>
+<p>Итоговый запрос вернет всех пользователей независимо от того, сколько их нашлось в первой части. Конечно, для подобных атак нужно знать структуру таблицы. Однако и эти данные можно получить SQL-инъекцией, добавив <code class="language-plaintext highlighter-rouge">UNION</code> с таблицами <code class="language-plaintext highlighter-rouge">information_schema.tables</code>, <code class="language-plaintext highlighter-rouge">pg_user</code> и другими. Таблицы из схемы <code class="language-plaintext highlighter-rouge">information_schema</code> хранят метаданные о других таблицах: их имена, состав и типы колонок. Если хакер доберется до этих сведений через инъекции, он узнает о базе все.</p>
 
 <h3 id="кавычки">Кавычки</h3>
 
-<p>Даже если переменная приходит от надежного источника, вы не застрахованы от проблем с кавычками. Например, сотрудник вносит в базу данных фильм “Д’Артаньян и три мушкетёра”. Поскольку на клавиатуре нет знака апострофа, вполне вероятно, что после буквы Д сотрудник поставит верхнюю одинарную кавычку. В большинстве баз данных она служит для строковых литералов. При форматировании такой строки вы получите ошибку синтаксиса:</p>
+<p>Даже если переменная приходит от надежного источника, вы не застрахованы от проблем с кавычками. Например, библиотекарь добавляет книгу “Д’Артаньян и три мушкетёра”. На клавиатуре нет знака апострофа, поэтому после буквы Д сотрудник поставит верхнюю одинарную кавычку. В большинстве баз данных она служит для строковых литералов. При форматировании такой строки вы получите ошибку синтаксиса:</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">movie</span><span class="w"> </span><span class="s">"Д'Артаньян и три мушкетёра"</span><span class="p">)</span><span class="w">
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">book</span><span class="w"> </span><span class="s">"Д'Артаньян и три мушкетёра"</span><span class="p">)</span><span class="w">
 
-</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">sql</span><span class="w"> </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"insert into movies (name) values ('%s')"</span><span class="w"> </span><span class="n">movie</span><span class="p">))</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">sql</span><span class="w"> </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"insert into books (title) values ('%s')"</span><span class="w"> </span><span class="n">book</span><span class="p">))</span><span class="w">
 
-</span><span class="c1">;; insert into movies (name) values ('Д'Артаньян и три мушкетёра')</span><span class="w">
+</span><span class="c1">;; insert into books (title) values ('Д'Артаньян и три мушкетёра')</span><span class="w">
 </span></code></pre></div></div>
 
-<p>С точки зрения SQL строка заканчивается сразу после Д, и дальше идет что-то ошибочное.</p>
+<p>С точки зрения SQL строка заканчивается после Д, и дальше идет что-то ошибочное.</p>
 
-<p>Подстановка параметров сводит на нет эти угрозы. Прежде всего, JDBC следит за их типом. Если мы ожидаем поиск по ID, то при передаче строки получим ошибку даже если строка содержит только цифры. При этом ошибка возникнет на стороне JDBC до того, как запрос ушел в базу:</p>
+<p>Подстановка параметров сводит на нет эти угрозы. Прежде всего JDBC следит за их типом. Если мы ожидаем поиск по числовому ID, то при передаче строки получим ошибку даже если строка содержит цифру. При этом ошибка возникнет до того, как запрос уйдет в базу:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">[</span><span class="s">"select * from users where id = ?"</span><span class="w"> </span><span class="s">"1"</span><span class="p">])</span><span class="w">
 
@@ -677,7 +670,7 @@
   </span><span class="n">Position</span><span class="err">:</span><span class="w"> </span><span class="mi">30</span><span class="w">
 </span></code></pre></div></div>
 
-<p>При подстановке строки драйвер экранирует ввод, то есть предваряет опасные символы особой последовательностью. В PostgreSQL для этого служит все та же одинарная кавычка. Вот как безопасно выбрать из базы всех Д’Артаньянов (обратите внимание на двойную кавычку в параметре <code class="language-plaintext highlighter-rouge">$1</code>):</p>
+<p>При подстановке строки драйвер экранирует опасные символы. В PostgreSQL для этого служит одинарная кавычка. Вот как безопасно выбрать из базы всех Д’Артаньянов (обратите внимание на двойную кавычку в параметре <code class="language-plaintext highlighter-rouge">$1</code>):</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">[</span><span class="s">"select * from users where fname = ?"</span><span class="w"> </span><span class="s">"Д'Артаньян"</span><span class="p">])</span><span class="w">
 
@@ -685,7 +678,7 @@
 </span><span class="c1">;; parameters: $1 = 'Д''Артаньян'</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Заметим, что параметры доступны не в любом месте. Например, нельзя задать параметром имя таблицы или состав полей. Поэтому запрос:</p>
+<p>Важно, что параметры доступны не в любом месте запроса. Например, нельзя задать параметром имя таблицы или состав полей. Поэтому запрос:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">[</span><span class="s">"select * from ?"</span><span class="w"> </span><span class="s">"users"</span><span class="p">])</span><span class="w">
 </span></code></pre></div></div>
@@ -695,7 +688,9 @@
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">[</span><span class="s">"select ?, ?, ? from users"</span><span class="w"> </span><span class="s">"id"</span><span class="w"> </span><span class="s">"fname"</span><span class="w"> </span><span class="s">"email"</span><span class="p">])</span><span class="w">
 </span></code></pre></div></div>
 
-<p>, то вас ждет разочарование. В результате окажутся именно строки “id” “fname” “email”, а не значения одноименных полей. Чтобы строить запросы, где таблицы и поля зависят от условий, прибегают к специальным библиотекам. Позже мы рассмотрим наиболее популярные из них.</p>
+<p>, то вас ждет разочарование. Запрос вернет строки “id”, “fname” и “email”, а не значения одноименных полей. Чтобы строить запросы, где таблицы и поля зависят от условий, прибегают к специальным библиотекам. Позже мы рассмотрим наиболее популярные из них.</p>
+
+<!-- edited -->
 
 <h3 id="подготовленные-выражения">Подготовленные выражения</h3>
 
@@ -2054,10 +2049,12 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <p>Эти и другие флаги служат синтаксическим сахаром для параметра <code class="language-plaintext highlighter-rouge">:command</code>. Если вам трудно запомнить флаги, запишите их в явном виде:</p>
 
-<p>​– <code class="language-plaintext highlighter-rouge">:command :query</code>
-– <code class="language-plaintext highlighter-rouge">:command :insert</code>
-– <code class="language-plaintext highlighter-rouge">:command :execute</code>
-– <code class="language-plaintext highlighter-rouge">:command :returning-execute</code></p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">:command :query</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:command :insert</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:command :execute</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:command :returning-execute</code></li>
+</ul>
 
 <p>Если нужно создать несколько записей в транзакции, обернем функции в макрос <code class="language-plaintext highlighter-rouge">with-db-transaction</code> и укажем <code class="language-plaintext highlighter-rouge">tx</code> первым аргументом:</p>
 
@@ -2107,23 +2104,23 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <p>Если не указать город или год рождения в параметрах, получим ошибку:</p>
 
-<p>~~~clojure(find-users db {:name “Ivan”})</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">find-users</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">})</span><span class="w">
 
-<p>;; Execution error (ExceptionInfo) at hugsql.core/validate-parameters! (core.clj:83).
-;; Parameter Mismatch: :city parameter data not found.</p>
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
-Очевидно, отбор по опциональным полям должен быть только если их значения не пустые. Версия запроса с условием выглядит так:
+</span><span class="c1">;; Execution error (ExceptionInfo) at hugsql.core/validate-parameters! (core.clj:83).</span><span class="w">
+</span><span class="c1">;; Parameter Mismatch: :city parameter data not found.</span><span class="w">
+</span></code></pre></div></div>
 
-~~~sql
--- :name find-users :?
-select * from users
-where fname = :name
---~ (when (:city params) "and city = :city")
---~ (when (:year-birth params) "and year_birth = :year-birth")
-limit 10
+<p>Очевидно, отбор по опциональным полям должен быть только если их значения не пустые. Версия запроса с условием выглядит так:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name find-users :?</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span>
+<span class="k">where</span> <span class="n">fname</span> <span class="o">=</span> <span class="p">:</span><span class="n">name</span>
+<span class="c1">--~ (when (:city params) "and city = :city")</span>
+<span class="c1">--~ (when (:year-birth params) "and year_birth = :year-birth")</span>
+<span class="k">limit</span> <span class="mi">10</span>
 </code></pre></div></div>
 
-<p>Синтаксис <code class="language-plaintext highlighter-rouge">--~</code> предваряет однострочное выражение на Clojure. Оно должно вернуть строку или <code class="language-plaintext highlighter-rouge">nil</code>. Внутри доступна переменная params — словарь параметров, которые передали в запрос. Выше мы проверяем: если заданы поля с городом или возрастом, добавить к WHERE отбор по ним.</p>
+<p>Синтаксис <code class="language-plaintext highlighter-rouge">--~</code> предваряет однострочное выражение на Clojure. Оно должно вернуть строку или <code class="language-plaintext highlighter-rouge">nil</code>. Внутри доступна переменная <code class="language-plaintext highlighter-rouge">params</code> — словарь параметров, которые передали в запрос. Выше мы проверяем: если заданы поля с городом или возрастом, добавить к WHERE отбор по ним.</p>
 
 <p>Выражение</p>
 
@@ -2379,7 +2376,7 @@ limit 10
 </span><span class="c1">;;  id = ?</span><span class="w">
 </span></code></pre></div></div>
 
-<p>По желанию его можно как-то выделить, например предварить каждую строку угловой скобкой или вертикальной чертой. Однако помните, что форматирование отнимает ресурсы и снижает скорость работы map-query. Сделайте так, чтобы логирование включалось по требованию или в зависимости от среды, например только при разработке.</p>
+<p>По желанию его можно как-то выделить, например предварить каждую строку угловой скобкой или вертикальной чертой. Однако помните, что форматирование отнимает ресурсы и снижает скорость работы <code class="language-plaintext highlighter-rouge">map-query</code>. Сделайте так, чтобы логирование включалось по требованию или в зависимости от среды, например только при разработке.</p>
 
 <p>Доработайте <code class="language-plaintext highlighter-rouge">map-query</code> так, чтобы в опциях можно было задать факт логирования, его уровень, признак форматирования и другое поведение.</p>
 
@@ -2571,7 +2568,7 @@ limit 10
 
 <p>В сердце реляционных баз данных лежит модель отношений между таблицами. Почти все операции над таблицами возвращают таблицы. Прибегая к аналогии, можно сказать, что из прямоугольных блоков можно выложить только прямоугольные формы, но не треугольные или круглые. В общем случае база хранит плоские данные и не может построить из них дерево.</p>
 
-<p>На практике мы имеем дело с подчиненными сущностями. Например, у организации несколько филиалов, а в каждом из них департаменты. У автора несколько статей, к статьям пишут комментарии. Товары делятся на категории и подкатегории, заказ состоит из этапов и так далее. Это значит, не достаточно просто выбрать сущности по типу, например отдельно авторы и статьи:</p>
+<p>На практике мы имеем дело с подчиненными сущностями. Например, у организации несколько филиалов, а в каждом из них департаменты. У автора несколько статей, к статьям пишут комментарии. Товары делятся на категории и подкатегории, заказ состоит из этапов и так далее. Это значит, не достаточно просто выбрать сущности по типу, например отдельно авторов и статьи:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; authors</span><span class="w">
 </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan Petrov"</span><span class="p">}</span><span class="w">
@@ -2725,9 +2722,9 @@ limit 10
                 </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="mi">3</span><span class="n">,</span><span class="w"> </span><span class="mi">4</span><span class="n">,</span><span class="w"> </span><span class="mi">5</span><span class="n">,</span><span class="w"> </span><span class="mi">6</span><span class="n">,</span><span class="w"> </span><span class="mi">7</span><span class="n">,</span><span class="w"> </span><span class="mi">8</span><span class="n">,</span><span class="w"> </span><span class="mi">9</span><span class="n">,</span><span class="w"> </span><span class="mi">10</span><span class="p">])</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Библиотеки предлагают разные способы облегчить подобную запись. В HugSQL для этого служит оператор <code class="language-plaintext highlighter-rouge">where id in (:v*:ids)</code> — частичка <code class="language-plaintext highlighter-rouge">:v*</code> означает вставить список параметров с именем <code class="language-plaintext highlighter-rouge">ids</code>. HoneySQL предлагает форму <code class="language-plaintext highlighter-rouge">:in</code> с похожей семантикой.</p>
+<p>Библиотеки предлагают разные способы облегчить подобную запись. В HugSQL для этого служит оператор <code class="language-plaintext highlighter-rouge">where id in (:v*:ids)</code> — частичка <code class="language-plaintext highlighter-rouge">:v*</code> означает вектор параметров с именем <code class="language-plaintext highlighter-rouge">ids</code>. HoneySQL предлагает форму <code class="language-plaintext highlighter-rouge">:in</code> с похожей семантикой.</p>
 
-<p>В современных ORM такая выборка называется prefetch related, извлечь связанные записи. Например, в Django ORM у объекта QuerySet есть одноименный метод <code class="language-plaintext highlighter-rouge">prefetch_related</code>. С его помощью данные извлекают послойно: сперва сущности первого порядка, затем те, что ссылаются на них, затем потомки потомков и так далее. Вы можете управлять глубиной вложенности, типом сущностей и другими параметрами.</p>
+<p>В современных ORM такая выборка называется fetch related, извлечь связанные записи. Например, в Django ORM у объекта QuerySet есть одноименный метод <code class="language-plaintext highlighter-rouge">prefetch_related</code>. С его помощью данные извлекают послойно: сперва сущности первого порядка, затем те, что ссылаются на них, затем потомки потомков и так далее. Вы можете управлять глубиной вложенности, типом сущностей и другими параметрами.</p>
 
 <p>Несложно написать универсальную функцию на Clojure, которая выбирает данные схожим образом. Она ожидает подключение к базе, таблицу, имя внешнего ключа и список их значений.</p>
 
@@ -2764,7 +2761,7 @@ limit 10
  </span><span class="p">(</span><span class="nf">by-chunks</span><span class="w"> </span><span class="n">ids-all</span><span class="w"> </span><span class="mi">100</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Попробуйте также выборку в наполовину параллельном режиме через pmap. Функция строит ленивую коллекцию футур, которые срабатывают по мере чтения последовательности. Окно такой коллекции <code class="language-plaintext highlighter-rouge">(chunk size)</code> равно числу ядер компьютера, умноженному на два.</p>
+<p>Попробуйте также выборку в наполовину параллельном режиме через <code class="language-plaintext highlighter-rouge">pmap</code>. Функция строит ленивую коллекцию футур, которые срабатывают по мере чтения последовательности. Окно такой коллекции <code class="language-plaintext highlighter-rouge">(chunk size)</code> равно числу ядер компьютера, умноженному на два.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">ids-chunks</span><span class="w"> </span><span class="p">(</span><span class="nf">by-chunks</span><span class="w"> </span><span class="n">ids-all</span><span class="w"> </span><span class="mi">100</span><span class="p">)</span><span class="w">
       </span><span class="n">futs</span><span class="w"> </span><span class="p">(</span><span class="nb">doall</span><span class="w">
@@ -3367,7 +3364,7 @@ limit 10
        <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="s1">'book.genre'</span><span class="p">,</span> <span class="s1">'"dystopia"'</span><span class="p">);</span>
 </code></pre></div></div>
 
-<p>Обратите внмание, что значение характеристики носит тип jsonb. Это значит, нам доступно все богатство его типов. Например, можно указать размер одежды буквой (L, M); количество портов натуральным числом (2, 3); поддержку протокола (истина или ложь); список ссылок на сторонние ресурсы (массив строк).</p>
+<p>Обратите внимание, что значение характеристики носит тип <code class="language-plaintext highlighter-rouge">jsonb</code>. Это значит, нам доступно все богатство его типов. Например, можно указать размер одежды буквой (L, M); количество портов натуральным числом (2, 3); поддержку протокола (истина или ложь); список ссылок на сторонние ресурсы (массив строк).</p>
 
 <p>Хотелось бы извлечь товары одним запросом так, чтобы получить структуру:</p>
 
@@ -4172,10 +4169,10 @@ limit 10
     </div>
 
     <input required name="path" type="hidden" value="/clj-db/">
-    <input required name="captcha" type="hidden" value="1 &#215; 8">
+    <input required name="captcha" type="hidden" value="5 &#215; 1">
 
     <div class="block">
-        <span class="comment-form-label"><small>1 &#215; 8 = </small></span>
+        <span class="comment-form-label"><small>5 &#215; 1 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 
