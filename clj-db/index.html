@@ -1168,36 +1168,40 @@ u.fname as \"user/fname\",
 
 <p>Макрос временно заменяет уровень изоляции на указанный. После фиксации транзакции или ее отката возвращается прежний уровень. Уровень по умолчанию можно задать в настройках базы данных. В этом случае не придется передавать ключ <code class="language-plaintext highlighter-rouge">:isolation</code> в макрос каждый раз.</p>
 
-<!-- edited -->
-
 <h2 id="jdbc-спека-с-состоянием">JDBC-спека с состоянием</h2>
 
-<p>Читатель заметит, что в словаре спеки нет состояния, и не ясно, откуда оно приходит. Это особенность Clojure-обертки над JDBC: с базой можно работать как с состоянием, так и без него. Но чтобы ваш код был эффективным, вы должны понимать, что происходит с состоянием спеки.</p>
+<p>В словаре, который принимают функции JDBC, нет состояния, и не ясно, откуда оно приходит. Это особенность библиотеки для Clojure: с базой можно работать как с состоянием, так и без него. Но чтобы код был эффективным, вы должны понимать, что происходит на нижнем уровне JDBC.</p>
 
-<p>Под состоянием понимают TCP-соединение, по которому происходит обмен данных. В словаре</p>
+<p>Под состоянием спеки понимают TCP-соединение, по которому клиент и база передают данные. В следующем словаре никакого соединения нет:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:dbtype</span><span class="w"> </span><span class="s">"postgresql"</span><span class="w">
          </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="w">
          </span><span class="n">...</span><span class="p">})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>никакого соединения нет. Если передать словарь в функцию <code class="language-plaintext highlighter-rouge">query</code>, произойдет следующее:</p>
+<p>Если передать его в функцию <code class="language-plaintext highlighter-rouge">query</code>, произойдет следующее:</p>
 
 <ul>
-  <li>из словаря библиотека построит JDBC URL — длинную строку, похожую на адрес страницы в интернете. Для конфигурации выше получим что-то похожее на “jdbc:postgresql://127.0.0.1:5432/test”.</li>
-  <li>По этому адресу получим открытое TCP-соединение. Через него функция query отправит и прочитает данные.</li>
-  <li>После работы query соединение закрывается.</li>
+  <li>
+    <p>из словаря библиотека построит JDBC URL — длинную строку, похожую на адрес страницы в интернете. Для конфигурации выше результат будет примерно таким: “jdbc:postgresql://127.0.0.1:5432/test”.</p>
+  </li>
+  <li>
+    <p>По URL получим открытое TCP-соединение. Через него функция <code class="language-plaintext highlighter-rouge">query</code> отправит и получит данные.</p>
+  </li>
+  <li>
+    <p>После выполнения <code class="language-plaintext highlighter-rouge">query</code> соединение закроется.</p>
+  </li>
 </ul>
 
-<p>Аналогично работают функции <code class="language-plaintext highlighter-rouge">update!</code>, <code class="language-plaintext highlighter-rouge">delete!</code> и другие. Все они сводятся к единой точке, где создается новое соединение, происходит обмен данных по нему, затем соединение закрывается.</p>
+<p>Аналогично устроены функции <code class="language-plaintext highlighter-rouge">update!</code>, <code class="language-plaintext highlighter-rouge">delete!</code> и другие. Все они сводятся к единой точке, где создается соединение, происходит обмен данных, затем оно закрывается.</p>
 
-<p>Открывать соединение на каждый запрос расточительно. Чтобы использовать его повторно, JDBC предлагает макрос <code class="language-plaintext highlighter-rouge">with-db-connection</code>. Макрос связывает обычную спеку db с ее копией, где открыто постоянное соединение. Внутри макроса мы передаем копию в функции JDBC.</p>
+<p>Открывать соединение на каждый запрос расточительно. Чтобы использовать его повторно, JDBC предлагает макрос <code class="language-plaintext highlighter-rouge">with-db-connection</code>. Макрос связывает символ с копией спеки, в одном из полей которой находится соединение.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/with-db-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">db</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select 1"</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Макрос открывает соединение и добавляет его в спеку под ключом <code class="language-plaintext highlighter-rouge">:connection</code>. Функция, которая строит соединение по словарю, проверяет этот ключ. Если в нем уже есть соединение, функция вернет его же. Вместе это работает как кэш. Исследуем переменную conn и убедимся, что в ней хранится открытое соединение:</p>
+<p>Макрос добавляет соединение в спеку с ключом <code class="language-plaintext highlighter-rouge">:connection</code>. Функция, которая строит соединение по словарю, проверяет этот ключ. Если в нем уже есть соединение, функция вернет его же. Вместе это работает как кэш. Исследуем переменную <code class="language-plaintext highlighter-rouge">conn</code> и убедимся, что в ней заполнено поле <code class="language-plaintext highlighter-rouge">:connection</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/with-db-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">db</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nb">print</span><span class="w"> </span><span class="n">conn</span><span class="p">))</span><span class="w">
@@ -1221,7 +1225,7 @@ u.fname as \"user/fname\",
 </span><span class="c1">;; "Elapsed time: 1680.252291 msecs"</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Разница в одиннадцать раз в пользу постоянного соединения. Очевидно, что первый вариант — соединение на запрос — подойдет только разовым скриптам. Для веб-приложений и долгоиграющих систем нужно постоянное соединение. Это подводит нас к JDBC-спеке с состоянием.</p>
+<p>Разница в одиннадцать раз в пользу постоянного соединения. Очевидно, что первый вариант — соединение на запрос — подойдет только разовым скриптам. Для долгоиграющих систем нужно постоянное соединение. Это подводит нас к JDBC-спеке с состоянием.</p>
 
 <p>Чтобы управлять спекой с минимальными усилиями, обратимся к библиотеке <code class="language-plaintext highlighter-rouge">Mount</code>. Мы познакомились с ней в первой книге в главе про системы. Объявим компонент, который при запуске открывает TCP-соединение и дописывает его в поле <code class="language-plaintext highlighter-rouge">:connection</code> спеки:</p>
 
@@ -1233,7 +1237,7 @@ u.fname as \"user/fname\",
          </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">db</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>В фазе остановки мы закрываем соединение и возвращаем исходную спеку без состояния:</p>
+<p>В фазе остановки закрываем соединение и возвращаем исходную спеку без состояния:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">  </span><span class="no">:stop</span><span class="w">
   </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">connection</span><span class="p">]}</span><span class="w"> </span><span class="n">DB</span><span class="p">]</span><span class="w">
@@ -1249,7 +1253,7 @@ u.fname as \"user/fname\",
 
 <h3 id="пул-соединений">Пул соединений</h3>
 
-<p>У открытого соединения одна проблема: его легко потерять. Проведем эксперимент: когда компонент базы включен, перезапустите сервер базы данных. Компонент придет в негодность: при попытке использовать соединение мы получим ошибку о том, соединение закрыто.</p>
+<p>У открытого соединения есть проблема: его легко потерять. Проведем эксперимент: когда компонент базы включен, перезапустите сервер базы данных. Компонент придет в негодность: при попытке выполнить запрос получим ошибку о том, что соединение закрыто.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Execution</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="p">(</span><span class="nf">PSQLException</span><span class="p">)</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="n">org.postgresql.jdbc.PgConnection/checkClosed</span><span class="w"> </span><span class="p">(</span><span class="nf">PgConnection.java</span><span class="no">:766</span><span class="p">)</span><span class="nb">.</span><span class="w">
 </span><span class="n">This</span><span class="w"> </span><span class="n">connection</span><span class="w"> </span><span class="n">has</span><span class="w"> </span><span class="n">been</span><span class="w"> </span><span class="n">closed.</span><span class="w">
@@ -1257,7 +1261,7 @@ u.fname as \"user/fname\",
 
 <p>Чтобы исправить компонент, придется перезапустить его — вручную вызвать функции <code class="language-plaintext highlighter-rouge">start</code> и <code class="language-plaintext highlighter-rouge">stop</code>, которые откроют новое соединение.</p>
 
-<p>Сбои в сети случаются часто, и перезапускать компонент вручную при потере соединения будет тяжело. Нужен механизм, который восстанавливал бы его за нас. Так работают пулы соединений, которые устанавливают их несколько за раз. Пул следит за обрывами связи и обновляет соединения. Он работает в отдельном потоке и не блокирует ваши действия.</p>
+<p>Сбои в сети случаются часто, и перезапускать компонент при потере соединения тяжело. Нужен механизм, который бы делал это за нас. Так работают пулы соединений, которые открывают их несколько за раз. Пул следит за обрывами связи и обновляет соединения. Он работает в отдельном потоке и не блокирует наши действия.</p>
 
 <p>О пулах мы говорили в первой книге, поэтому приведем только пример. Подключите библиотеку HikariCP в проект:</p>
 
@@ -1265,7 +1269,7 @@ u.fname as \"user/fname\",
 </span><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">hikari-cp.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">cp</span><span class="p">])</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Функция <code class="language-plaintext highlighter-rouge">cp/make-datasource</code> принимает конфигурацию пула и строит объект типа <code class="language-plaintext highlighter-rouge">DataSource</code>. Его записывают в словарь спеки с ключом <code class="language-plaintext highlighter-rouge">:datasource</code>. По аналогии с <code class="language-plaintext highlighter-rouge">:connection</code>, JDBC проверяет это поле, прежде чем открывать соединение. Если источник задан, библиотека берет соединение из него. В случае с <code class="language-plaintext highlighter-rouge">:datasource</code> мы получим уже открытое соединение, и запрос пройдет так же быстро, как в случае с <code class="language-plaintext highlighter-rouge">:connection</code>. Новый компонент:</p>
+<p>Функция <code class="language-plaintext highlighter-rouge">cp/make-datasource</code> принимает конфигурацию пула и строит объект <code class="language-plaintext highlighter-rouge">DataSource</code>. Его записывают в словарь спеки с ключом <code class="language-plaintext highlighter-rouge">:datasource</code>. По аналогии с <code class="language-plaintext highlighter-rouge">:connection</code>, JDBC проверяет это поле, прежде чем открывать соединение. Если источник задан, библиотека берет соединение из него. В случае с <code class="language-plaintext highlighter-rouge">:datasource</code> мы получим заранее открытое соединение, и запрос пройдет так же быстро, как в случае с <code class="language-plaintext highlighter-rouge">:connection</code>. Новый компонент:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">pool-config</span><span class="w"> </span><span class="c1">;; truncated</span><span class="w">
   </span><span class="p">{</span><span class="no">:minimum-idle</span><span class="w">       </span><span class="mi">10</span><span class="w">
@@ -1283,7 +1287,7 @@ u.fname as \"user/fname\",
   </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">DB</span><span class="w"> </span><span class="no">:datasource</span><span class="w"> </span><span class="n">cp/close-datasource</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Повторите эксперимент с отключением базы. Вы увидите множество тревожных сообщений, но затем HikariCP получит новое соединение, и вы сможете продолжить работу. Это свойство крайне важно для веб-приложений, поэтому в боевом запуске всегда используют пул. Спека без состояния подойдет разве что для разработки или тестов.</p>
+<p>Повторите эксперимент с отключением базы. Вы увидите тревожные сообщения, но затем HikariCP получит новое соединение, и система продолжит работу. Это крайне важно для веб-приложений, поэтому в боевом запуске всегда используют пул. Спеку без состояния применяют только для разработки или в тестах.</p>
 
 <p>Состояние поддерживают не только с помощью Mount. Это может быть и другой фреймворк, например Component. Вот как задать JDBC-спеку, которая реагирует на методы <code class="language-plaintext highlighter-rouge">start</code> и <code class="language-plaintext highlighter-rouge">stop</code>:</p>
 
@@ -1307,18 +1311,23 @@ u.fname as \"user/fname\",
        </span><span class="p">(</span><span class="nb">dissoc</span><span class="w"> </span><span class="n">this</span><span class="w"> </span><span class="no">:connection</span><span class="p">))}))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Компонент включают и передают в функции JDBC, затем отключают.</p>
+<p>Компонент включают, работают с ним и отключают:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">db-started</span><span class="w"> </span><span class="p">(</span><span class="nf">component/start</span><span class="w"> </span><span class="n">db</span><span class="p">))</span><span class="w">
-</span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db-started</span><span class="w"> </span><span class="s">"select 1"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db-started</span><span class="w"> </span><span class="s">"select ..."</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">db-started</span><span class="w"> </span><span class="s">"update ..."</span><span class="p">)</span><span class="w">
+
 </span><span class="p">(</span><span class="nf">component/stop</span><span class="w"> </span><span class="n">db-started</span><span class="p">)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Выше мы привели ручной запуск компонента, но на практике им управляет система. Если вы не уверены в том, что происходит, обратитесь к главе о системах из первой книги. По аналогии напишите компонент для пула соединений.</p>
+<p>Мы запустили компонент вручную, но на практике им управляет система. Если вы не уверены в том, что происходит, обратитесь к главе о системах из первой книги. По аналогии напишите компонент для Integrant – еще одной системы управления компонентами, которую мы изучили там же.</p>
+
+<!-- edited -->
 
 <h2 id="sqlite">SQLite</h2>
 
-<p>Особое место в нашем обзоре занимает SQLite. Это не серверная, а клиентская база данных. Ее главное отличие от PostgreSQL или MySQL в том, что в SQLite нет центрального сервера, который обслуживает клиентов. SQLite распространяется как библиотека; при компиляции проекта она становится его частью.</p>
+<p>Особое место в обзоре занимает <a href="https://www.sqlite.org/index.html">SQLite</a>. Это не серверная, а клиентская база данных. Главное отличие от PostgreSQL или MySQL в том, что в SQLite нет центрального сервера, который обслуживает клиентов. SQLite распространяется как библиотека; при компиляции проекта она становится его частью.</p>
 
 <p>SQLite хранит данные в файлах по принципу один файл — одна база, что удобно для обмена. Например, внутренняя система раз в сутки выгружает базу SQLite с абонентами и их последними платежами. Эти данные показывает веб-приложение, и ему не нужно обращаться ко внутренней системе.</p>
 
@@ -4156,10 +4165,10 @@ and p.created_at &gt; ..."</span><span class="w">
     </div>
 
     <input required name="path" type="hidden" value="/clj-db/">
-    <input required name="captcha" type="hidden" value="7 &#215; 2">
+    <input required name="captcha" type="hidden" value="7 &#215; 8">
 
     <div class="block">
-        <span class="comment-form-label"><small>7 &#215; 2 = </small></span>
+        <span class="comment-form-label"><small>7 &#215; 8 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 
