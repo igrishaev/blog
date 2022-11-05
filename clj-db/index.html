@@ -1500,13 +1500,11 @@ u.fname as \"user/fname\",
          </span><span class="no">:INN</span><span class="w"> </span><span class="s">"8626235235"</span><span class="p">}})</span><span class="w">
 </span></code></pre></div></div>
 
-<!-- edited -->
+<p>Недостаток в том, что функции <code class="language-plaintext highlighter-rouge">meta-&gt;str</code> и <code class="language-plaintext highlighter-rouge">str-&gt;meta</code> нужно вызывать каждый раз, когда мы пишем в базу объект или читаем его. Если забыть их, получим строку вместо объекта, что вызовет ошибку в дальнейшем коде. Кроме <code class="language-plaintext highlighter-rouge">meta</code>, в таблице могут быть другие поля с JSON, о которых нужно помнить.</p>
 
-<p>Недостаток в том, что функции <code class="language-plaintext highlighter-rouge">meta-&gt;str</code> и <code class="language-plaintext highlighter-rouge">str-&gt;meta</code> нужно вызывать каждый раз, когда мы пишем в базу объект или читаем его. Если в запросе участвуют другие сложные типы, это усложнит код. Можно забыть эти функции и получить вместо объекта строку, вызовет ошибку в дальнейшем коде.</p>
+<p>Удачный подход в том, чтобы найти бутылочное горлышко, через которое проходят все данные от клиента в базу и обратно. Если изменить поведение там, функции <code class="language-plaintext highlighter-rouge">query</code>, <code class="language-plaintext highlighter-rouge">insert!</code> и другие сработают одинаково в любом месте проекта. JDBC предлагает такие горлышки для чтения и записи. Рассмотрим их на примере дат и JSON.</p>
 
-<p>Удачный подход в том, чтобы найти бутылочное горлышко, через которое проходят все значения из базы и обратно. Если изменить поведение там, функции <code class="language-plaintext highlighter-rouge">query</code>, <code class="language-plaintext highlighter-rouge">insert!</code> и другие сработают одинаково в любом месте проекта. JDBC предлагает такие горлышки для чтения и записи. Рассмотрим их на примере дат и JSON.</p>
-
-<p>Сначала проверим, что случится, если выбрать из базы дату. Для этого обратимся к переменной PostgreSQL с именем <code class="language-plaintext highlighter-rouge">current_timestamp</code>:</p>
+<p>Проверим, что случится, если выбрать из базы дату. Для этого обратимся к переменной PostgreSQL с именем <code class="language-plaintext highlighter-rouge">current_timestamp</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="s">"SELECT current_timestamp AS now"</span><span class="p">)</span><span class="w">
     </span><span class="nb">first</span><span class="w">
@@ -1516,7 +1514,7 @@ u.fname as \"user/fname\",
 </span><span class="c1">;; java.sql.Timestamp</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Тип значения будет <code class="language-plaintext highlighter-rouge">Timestamp</code>. Это класс-обертка над обычным <code class="language-plaintext highlighter-rouge">java.util.Date</code>, чтобы привести его к SQL-виду. Если мы хотим передать дату в параметрах, она тоже должна быть объектом <code class="language-plaintext highlighter-rouge">Timestamp</code>. Класс Date вызовет ошибку типов:</p>
+<p>Тип значения будет <code class="language-plaintext highlighter-rouge">Timestamp</code>. Это класс-обертка над обычным <code class="language-plaintext highlighter-rouge">java.util.Date</code>, который учитывает особенности времени в SQL. Если мы хотим передать дату в параметрах, она тоже должна быть объектом <code class="language-plaintext highlighter-rouge">Timestamp</code>. Класс <code class="language-plaintext highlighter-rouge">Date</code> и другие вызовут ошибку:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">[</span><span class="s">"select ? as now"</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">java.util.Date</span><span class="p">)])</span><span class="w">
 
@@ -1524,9 +1522,9 @@ u.fname as \"user/fname\",
 </span><span class="c1">;; Use setObject() with an explicit Types value to specify the type to use.</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Но не всегда удобно работать с Timestamp. Многие проекты на Java и Clojure опираются на другие классы для работы со временем. Удачным примером станет JodaTime, наиболее продвинутая в этой области библиотека. Ее классы не имеют ничего общего с <code class="language-plaintext highlighter-rouge">Timestamp</code>, и при попытке передать их получим похожее исключение.</p>
+<p>Класс <code class="language-plaintext highlighter-rouge">Timestamp</code> не совсем удобен в работе, особенно в бизнес-логике. Проекты на Java и Clojure используют более продвинутые типы времени, например библиотеку <a href="https://www.joda.org/joda-time/">Joda Time</a>. Рассмотрим, как подружить ее с JDBC.</p>
 
-<p>Рассмотрим, как подружить JDBC с другим типом времени. Роль бутылочного горлышка играют протоколы <code class="language-plaintext highlighter-rouge">IResultSetReadColumn</code>, <code class="language-plaintext highlighter-rouge">ISQLParameter</code> и <code class="language-plaintext highlighter-rouge">ISQLValue</code>. Вместе они определяют, как обработать значение на пути из базы и обратно. Протокол <code class="language-plaintext highlighter-rouge">IResultSetReadColumn</code> отвечает за чтение. Он реализует метод с тремя параметрами:</p>
+<p>Роль бутылочного горлышка играют протоколы <code class="language-plaintext highlighter-rouge">IResultSetReadColumn</code>, <code class="language-plaintext highlighter-rouge">ISQLParameter</code> и <code class="language-plaintext highlighter-rouge">ISQLValue</code>. Вместе они определяют, как обработать значение при чтении и записи. Протокол <code class="language-plaintext highlighter-rouge">IResultSetReadColumn</code> отвечает за чтение. Он реализует метод с тремя параметрами:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">result-set-read-column</span><span class="w"> </span><span class="p">[</span><span class="nb">val</span><span class="w"> </span><span class="n">rsmeta</span><span class="w"> </span><span class="n">idx</span><span class="p">])</span><span class="w">
 </span></code></pre></div></div>
@@ -1534,14 +1532,14 @@ u.fname as \"user/fname\",
 <p>Аргументы:</p>
 
 <ul>
-  <li><code class="language-plaintext highlighter-rouge">val</code>: исходное значение, которое пришло из базы данных;</li>
-  <li><code class="language-plaintext highlighter-rouge">rsmeta</code>: метаданные результата: сводная информация о наборе полей, их именах и типах. Экземпляр класса <code class="language-plaintext highlighter-rouge">ResultSetMetaData</code>;</li>
-  <li><code class="language-plaintext highlighter-rouge">idx</code>: числовой индекс текущего поля (считается от нуля).</li>
+  <li><code class="language-plaintext highlighter-rouge">val</code>: исходное значение из базы;</li>
+  <li><code class="language-plaintext highlighter-rouge">rsmeta</code>: метаданные результата, экземпляр класса <code class="language-plaintext highlighter-rouge">ResultSetMetaData</code>. Содержит сводную информацию о полях, именах и типах;</li>
+  <li><code class="language-plaintext highlighter-rouge">idx</code>: индекс текущего поля (считается от нуля).</li>
 </ul>
 
-<p>При чтении результата JDBC прогоняет все поля через этот метод. По умолчанию протокол реализует <code class="language-plaintext highlighter-rouge">Object</code>, главный класс в дереве наследования. Для него функция <code class="language-plaintext highlighter-rouge">result-set-read-column</code> просто вернет <code class="language-plaintext highlighter-rouge">val</code>. Это значит, все значения останутся в том виде, в котором пришли из драйвера JDBC.</p>
+<p>При чтении результата JDBC прогоняет все значения через этот метод. По умолчанию протокол реализует <code class="language-plaintext highlighter-rouge">Object</code>, главный класс в дереве наследования. Для него функция <code class="language-plaintext highlighter-rouge">result-set-read-column</code> просто вернет <code class="language-plaintext highlighter-rouge">val</code>. Если не задано иное, значения останутся в том виде, в котором пришли из драйвера JDBC.</p>
 
-<p>Изменим протокол так, чтобы для типа <code class="language-plaintext highlighter-rouge">Timestamp</code> мы бы получили экземпляр <code class="language-plaintext highlighter-rouge">DateTime</code> из библиотеки JodaTime. Для этого импортируем класс и расширим протокол:</p>
+<p>Изменим протокол так, чтобы для типа <code class="language-plaintext highlighter-rouge">Timestamp</code> получился экземпляр <code class="language-plaintext highlighter-rouge">DateTime</code> из библиотеки Joda Time. Для этого импортируем класс и расширим протокол:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="no">:import</span><span class="w"> </span><span class="n">org.joda.time.DateTime</span><span class="p">)</span><span class="w">
 
@@ -1551,7 +1549,7 @@ u.fname as \"user/fname\",
     </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">DateTime</span><span class="w"> </span><span class="p">(</span><span class="nf">.getTime</span><span class="w"> </span><span class="nb">val</span><span class="p">))))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Поскольку мы не заинтересованы в параметрах <code class="language-plaintext highlighter-rouge">rsmeta</code> и <code class="language-plaintext highlighter-rouge">idx</code>, предварим их подчеркиваниями. Из переменной <code class="language-plaintext highlighter-rouge">val</code> с типом <code class="language-plaintext highlighter-rouge">Timestamp</code> получим экземпляр <code class="language-plaintext highlighter-rouge">DateTime</code>. Проще всего это сделать передачей миллисекунд. Метод <code class="language-plaintext highlighter-rouge">getTime</code> класса <code class="language-plaintext highlighter-rouge">Timestamp</code> вернет их из <code class="language-plaintext highlighter-rouge">val</code>; далее передаем их в конструктор <code class="language-plaintext highlighter-rouge">DateTime</code>. Теперь любая дата, выбранная из базы, придет в новом виде. Проверим себя:</p>
+<p>Поскольку параметры <code class="language-plaintext highlighter-rouge">rsmeta</code> и <code class="language-plaintext highlighter-rouge">idx</code> не нужны, предварим их подчеркиваниями. Из переменной <code class="language-plaintext highlighter-rouge">val</code> с типом <code class="language-plaintext highlighter-rouge">Timestamp</code> получим экземпляр <code class="language-plaintext highlighter-rouge">DateTime</code>. Проще всего это сделать передачей миллисекунд. Метод <code class="language-plaintext highlighter-rouge">getTime</code> класса <code class="language-plaintext highlighter-rouge">Timestamp</code> вернет их из <code class="language-plaintext highlighter-rouge">val</code>; далее передаем их в конструктор <code class="language-plaintext highlighter-rouge">DateTime</code>. Теперь любая дата, выбранная из базы, придет в новом виде. Проверим себя:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">first</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="s">"SELECT current_timestamp AS now"</span><span class="p">))</span><span class="w">
 
@@ -1566,21 +1564,24 @@ u.fname as \"user/fname\",
     </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">java.sql.Timestamp</span><span class="w"> </span><span class="p">(</span><span class="nf">.getMillis</span><span class="w"> </span><span class="nb">val</span><span class="p">))))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Для проверки добавим в таблицу платежей поле с датой:</p>
+<p>Добавим в таблицу платежей поле с датой:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="s">"ALTER TABLE payments ADD COLUMN created_at TIMESTAMP WITH TIME ZONE"</span><span class="p">)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Теперь запишем в нее дату и прочитаем ее:</p>
+<p>Запишем дату, передав экземпляр <code class="language-plaintext highlighter-rouge">DateTime</code>:</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/insert!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:payments</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:sum</span><span class="w"> </span><span class="mi">100</span><span class="w"> </span><span class="no">:created_at</span><span class="w"> </span><span class="p">(</span><span class="nf">DateTime/now</span><span class="p">)})</span><span class="w">
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/insert!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:payments</span><span class="w">
+              </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:sum</span><span class="w"> </span><span class="mi">100</span><span class="w"> </span><span class="no">:created_at</span><span class="w"> </span><span class="p">(</span><span class="nf">DateTime/now</span><span class="p">)})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Теперь можно спокойно читать и писать даты с типом, отличным от <code class="language-plaintext highlighter-rouge">Timestamp</code>. Если понадобится другой тип даты, его легко добавить протоколом. Предположим, вместо пакета JodaTime вы предпочитаете встроенный класс <code class="language-plaintext highlighter-rouge">java.time.Instant</code>. По аналогии расширьте протоколы JDBC для этого класса.</p>
+<p>Теперь любая работа с датами подразумевает Joda Time. Если понадобится другой тип даты, измените протокол. Предположим, вместо Joda Time вы предпочитаете встроенный класс <code class="language-plaintext highlighter-rouge">java.time.Instant</code>. Перепишите код так, чтобы база возвращала и принимала его экземпляры.</p>
 
-<p>Третий протокол ​​ISQLParameter полезен в случаях, когда установка параметра происходит особым образом. По умолчанию JDBC вызывает метод <code class="language-plaintext highlighter-rouge">.setObject</code> подготовленного выражения, чего хватает в большинстве случаев. Однако в будущем мы рассмотрим передачу массива в параметры, где вместо <code class="language-plaintext highlighter-rouge">.setObject</code> должен быть другой метод. Там мы и познакомимся с третьим протоколом.</p>
+<p>Третий протокол <code class="language-plaintext highlighter-rouge">ISQLParameter</code> полезен в случаях, когда установка параметра требует особых действий. По умолчанию JDBC вызывает метод <code class="language-plaintext highlighter-rouge">.setObject</code> подготовленного выражения, чего хватает в большинстве случаев. В будущем мы рассмотрим передачу массива в параметры, где вместо <code class="language-plaintext highlighter-rouge">.setObject</code> должен быть другой метод. Там мы и познакомимся с этим протоколом.</p>
 
 <h3 id="организация-кода">Организация кода</h3>
+
+<!-- edited -->
 
 <p>Расширяйте протокол в отдельном модуле: подобный код не должен переплетаться с логикой приложения. Это глобальное действие, которое затрагивает систему в целом. Кроме того, сопоставление типов базы и языка меняются от проекта к проекту. Для наших дат будет правильно создать отдельные модули <code class="language-plaintext highlighter-rouge">project.time-joda</code> и <code class="language-plaintext highlighter-rouge">project.time-instant</code>. В зависимости от того, какой тип даты мы используем в проекте, подключим нужный модуль.</p>
 
@@ -4172,10 +4173,10 @@ and p.created_at &gt; ..."</span><span class="w">
     </div>
 
     <input required name="path" type="hidden" value="/clj-db/">
-    <input required name="captcha" type="hidden" value="1 &#215; 8">
+    <input required name="captcha" type="hidden" value="9 &#215; 4">
 
     <div class="block">
-        <span class="comment-form-label"><small>1 &#215; 8 = </small></span>
+        <span class="comment-form-label"><small>9 &#215; 4 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 
