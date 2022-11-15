@@ -1581,37 +1581,36 @@ u.fname as \"user/fname\",
 
 <h3 id="организация-кода">Организация кода</h3>
 
-<!-- edited -->
+<p>Расширение протокола не должно переплетаться с бизнес-логикой, поэтому держите его в отдельном модуле. Это глобальное действие, которое затрагивает всю среду исполнения. Сопоставление типов базы и языка меняется от проекта к проекту. В случае с датами будет правильно создать модули <code class="language-plaintext highlighter-rouge">project.time-joda</code> и <code class="language-plaintext highlighter-rouge">project.time-instant</code>. В зависимости от того, какой тип мы используем в проекте, подключим нужный модуль.</p>
 
-<p>Расширяйте протокол в отдельном модуле: подобный код не должен переплетаться с логикой приложения. Это глобальное действие, которое затрагивает систему в целом. Кроме того, сопоставление типов базы и языка меняются от проекта к проекту. Для наших дат будет правильно создать отдельные модули <code class="language-plaintext highlighter-rouge">project.time-joda</code> и <code class="language-plaintext highlighter-rouge">project.time-instant</code>. В зависимости от того, какой тип даты мы используем в проекте, подключим нужный модуль.</p>
-
-<p>Импорт одного из этих модулей должен быть в коде, который загружается всегда, например в <code class="language-plaintext highlighter-rouge">.core</code>-модуле проекта. Будет хорошим тоном добавить комментарий о том, что импорт расширяет протокол:</p>
+<p>Импорт одного из этих модулей должен быть в коде, который загружается всегда, например в <code class="language-plaintext highlighter-rouge">.core</code>-модуле проекта. Добавьте комментарий о том, что импорт расширяет протокол:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">project.core</span><span class="w">
   </span><span class="p">(</span><span class="no">:require</span><span class="w">
    </span><span class="n">project.time-joda</span><span class="w"> </span><span class="c1">;; extends JDBC protocols</span><span class="w">
-
    </span><span class="p">[</span><span class="n">cheshire.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">json</span><span class="p">]</span><span class="w">
    </span><span class="n">...</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Без комментария импорт станет неочевидным. Кажется, что этим модулем когда-то пользовались, но со временем забыли убрать из секции <code class="language-plaintext highlighter-rouge">:require</code>. Ваш коллега может удалить импорт и затем бороться со странным поведением базы. Если вы проверяете код линтером, добавьте пространство имен в особый список. У линтера Joker опция называется <code class="language-plaintext highlighter-rouge">:ignored-unused-namespaces</code>:</p>
+<p>Без комментария импорт станет неочевидным. Кажется, что модулем когда-то пользовались, но со временем забыли убрать из секции <code class="language-plaintext highlighter-rouge">:require</code>. Кто-то удалит импорт и столкнется со странным поведением базы. Если вы проверяете код линтером, добавьте пространство имен в список исключений. У линтера <a href="https://github.com/candid82/joker">Joker</a> опция называется <code class="language-plaintext highlighter-rouge">:ignored-unused-namespaces</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:ignored-unused-namespaces</span><span class="w"> </span><span class="p">[</span><span class="n">project.time-joda</span><span class="w">
                              </span><span class="n">...</span><span class="p">]}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>При запуске линтера вы не получите предупреждения о том, что модуль <code class="language-plaintext highlighter-rouge">project.time-joda</code> подключен, но не используется в коде. Похожая настройка встречается и в других линтерах.</p>
+<p>Теперь вы не получите предупреждения о том, что модуль <code class="language-plaintext highlighter-rouge">project.time-joda</code> подключен, но не используется в коде. Похожая настройка встречается в других линтерах.</p>
 
-<p>В теле <code class="language-plaintext highlighter-rouge">require</code> модули, которые изменяют состояние, обычно помещают без квадратных скобок и псевдонимов (имени после <code class="language-plaintext highlighter-rouge">:as</code>). Полезно отделить их пустой строкой от других модулей, чтобы выделить на общем фоне в секции <code class="language-plaintext highlighter-rouge">ns</code>.</p>
+<p>В теле <code class="language-plaintext highlighter-rouge">:require</code> модули, которые изменяют состояние, обычно помещают без квадратных скобок и псевдонимов (имени после <code class="language-plaintext highlighter-rouge">:as</code>). Полезно отделить их пустой строкой от остальных, чтобы выделить на общем фоне.</p>
 
 <h3 id="поддержка-json">Поддержка JSON</h3>
 
-<p>Как видно из примеров с датами, управлять типами в JDBC нетрудно. Теперь мы пойдем дальше и добавим мощную функциональность: построим связь между JSON-типом в PostgreSQL и Clojure. Но сначала вспомним, в чем особенность этого типа и где он полезен.</p>
+<p>Как видно из примеров с датами, управлять типами в JDBC нетрудно. Теперь мы добавим мощную функциональность: построим связь между типом JSON в PostgreSQL и Clojure. Для начала вспомним, в чем особенность JSON и где его применяют.</p>
 
 <p><a href="https://www.json.org/json-en.html">JSON</a> — это запись данных на языке, близком к JavaScript. Кроме простых типов вроде чисел и строк, стандарт поддерживает коллекции — массивы и объекты — и их произвольную вложенность. С помощью JSON данные передают по сети и хранят в файлах. Формат используют для конфигурации приложений.</p>
 
-<p>Поддержка JSON на уровне базы означает, что отныне это уже не строка, а сложный тип. Для примера запишем один и тот же объект в виде JSON с разным порядком ключей. Если сравнить две строки в лоб, получим ложь из-за отличия в символах:</p>
+<p>JSON полезен, когда у данных сложная структура, например глубокая вложенность. Раскладывать такие данные по таблицам и собирать обратно тяжело. Иногда проще записать JSON одну в колонку и позже восстановить данные в приложении.</p>
+
+<p>Этот сценарий привел к тому, что базы научились работать с JSON своими силами. Для них JSON уже не строка, а сложный тип. Для примера запишем один и тот же объект с разным порядком ключей. Если сравнить две строки в лоб, получим ложь из-за отличия в символах:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="s1">'{"foo": 1, "bar": 2}'</span> <span class="o">=</span> <span class="s1">'{"bar": 2, "foo": 1}'</span><span class="p">;</span>
 <span class="c1">-- false</span>
@@ -1623,17 +1622,20 @@ u.fname as \"user/fname\",
 <span class="c1">-- true</span>
 </code></pre></div></div>
 
-<p>Кроме сравнения, тип json(b) предлагает операторы поиска по отдельному полю, объединения и пересечения объектов и массивов и многое другие. С ними вы можете выполнить SQL-запрос, не прибегая к последующей обработке на Clojure.</p>
+<p>Кроме сравнения, тип <code class="language-plaintext highlighter-rouge">json(b)</code> предлагает поиск по отдельному полю, объединение и пересечение объектов, массивов и многое другое. Почти любую операцию над JSON можно выполнить силами SQL, не прибегая к Clojure.</p>
 
-<p>Предположим, поле attributes товара содержит JSON-объект с характеристиками, которые часто меняются:</p>
+<p>Предположим, поле <code class="language-plaintext highlighter-rouge">attributes</code> товара содержит JSON-объект с характеристиками, которые часто меняются:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">items</span> <span class="p">(</span><span class="n">id</span> <span class="nb">serial</span><span class="p">,</span> <span class="n">title</span> <span class="nb">text</span><span class="p">,</span> <span class="n">attrs</span> <span class="n">jsonb</span><span class="p">);</span>
 
-<span class="k">insert</span> <span class="k">into</span> <span class="n">items</span> <span class="k">values</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s1">'Cap'</span><span class="p">,</span> <span class="s1">'{"size": "XL", "color": "red", "country": "China"}'</span><span class="p">);</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="n">items</span> <span class="k">values</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s1">'Hoodie'</span><span class="p">,</span> <span class="s1">'{"size": "L", "color": "black", "country": "Germany"}'</span><span class="p">);</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">items</span> <span class="k">values</span>
+  <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s1">'Cap'</span><span class="p">,</span> <span class="s1">'{"size": "XL", "color": "red", "country": "China"}'</span><span class="p">);</span>
+
+<span class="k">insert</span> <span class="k">into</span> <span class="n">items</span> <span class="k">values</span>
+  <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s1">'Hoodie'</span><span class="p">,</span> <span class="s1">'{"size": "L", "color": "black", "country": "Germany"}'</span><span class="p">);</span>
 </code></pre></div></div>
 
-<p>Чтобы выбрать товары красного цвета, добавьте условие в запрос как в примере ниже. Оператор <code class="language-plaintext highlighter-rouge">-&gt;&gt;</code> означает извлечь поле color из объекта в виде текста.</p>
+<p>Чтобы выбрать товары красного цвета, добавьте условие в запрос как в примере ниже. Оператор <code class="language-plaintext highlighter-rouge">-&gt;&gt;</code> означает извлечь поле <code class="language-plaintext highlighter-rouge">color</code> из объекта в виде текста.</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">id</span><span class="p">,</span> <span class="n">title</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">attrs</span><span class="o">-&gt;&gt;</span><span class="s1">'color'</span> <span class="o">=</span> <span class="s1">'red'</span><span class="p">;</span>
 
@@ -1642,16 +1644,16 @@ u.fname as \"user/fname\",
   <span class="mi">1</span> <span class="o">|</span> <span class="n">Cap</span>
 </code></pre></div></div>
 
-<p>PostgreSQL поддерживает индексы по отдельным полям JSON. Если вы часто ищете товары цвету, добавьте похожий индекс, и скорость чтения возрастет:</p>
+<p>PostgreSQL поддерживает индексы для полей объектов. Если вы часто ищете товары цвету, добавьте следующий индекс, и скорость поиска возрастет:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">CREATE</span><span class="w"> </span><span class="n">INDEX</span><span class="w"> </span><span class="n">idx_items_color</span><span class="w"> </span><span class="n">ON</span><span class="w"> </span><span class="n">items</span><span class="p">((</span><span class="nf">attrs-&gt;&gt;</span><span class="ss">'color</span><span class="o">'</span><span class="p">))</span><span class="c1">;</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Тип json(b) в PostgreSQL полезен для хранения нечетких данных, то есть таких, чья структура меняется и зависит от многих факторов. Один из примеров мы уже рассмотрели — это характеристики товаров. В зависимости от типа товара (техника, одежда, еда) у него могут быть самые разные характеристики. Если держать их в отдельной таблице, это породит лишние связи и таблицы-мосты, что усложнит запросы. Поэтому иногда дешевле хранить одно JSON-поле и проверять его спекой в Clojure.</p>
+<p>Тип <code class="language-plaintext highlighter-rouge">json(b)</code> полезен для хранения нечетких данных, чья структура меняется или от чего-то зависит. Один из примеров мы уже рассмотрели — это характеристики товаров. В зависимости от типа товара (техника, одежда, еда) у него могут быть самые разные характеристики. Если держать их в отдельной таблице, это породит лишние связи и таблицы-мосты, что усложнит запрос. Порой дешевле хранить их одним JSON-полем и проверять в приложении перед записью.</p>
 
-<p>Другой случай, когда полезен JSON — объемные и сложные документы. Это может быть бухгалтерский договор или история болезни пациента. В виде JSON эти сущности занимают несколько экранов с глубокой вложенностью. Разложить их на отдельные таблицы стоит времени и сил, а также влечет рост числа таблиц в базе. Проще хранить сущность как неделимый объект и изменять его целиком.</p>
+<p>Другой случай, когда полезен JSON — в базе сложные и объемные документы. Это может быть бухгалтерский договор или история болезни. В виде JSON эти сущности занимают несколько экранов с глубокой вложенностью. Разложить их на отдельные таблицы стоит времени и сил; еще больше сил уйдет на запись и обновление. Проще хранить сущность как неделимый объект и изменять его целиком.</p>
 
-<p>База PostgreSQL поддерживает два типа JSON: одноименный (json) и с частичкой “b” на конце (jsonb). Последнее означает binary, двоичный JSON. Разница между типами в их внутреннем устройстве. Тип json работает с данными наивно: он хранит строку в исходном виде (с пробелами и переносами строк) и на каждую операцию разбирает ее. Наоборот, jsonb анализирует строку и хранит ее в двоичном виде, что не требует разбора при обращении. Это несколько снижает запись JSON-данных, но ускоряет выборку. Скорее всего, вам подойдет jsonb: он поддерживает больше операций включая сравнение, что иногда необходимо.</p>
+<p>PostgreSQL поддерживает два типа JSON: одноименный (json) и с частичкой “b” на конце (jsonb). Последнее означает binary, двоичный JSON. Разница между типами в их устройстве. Тип json работает с данными наивно: он хранит исходную строку (с пробелами и переносами строк) и на каждую операцию разбирает ее. Наоборот, jsonb хранит данные в двоичном виде, что не требует разбора при обращении. Это снижает скорость записи, но ускоряет выборку. Скорее всего, вам подойдет jsonb: он поддерживает больше операций включая сравнение, что иногда необходимо.</p>
 
 <p>Если выбрать из базы поле с типом JSON, получим загадочный <code class="language-plaintext highlighter-rouge">PGObject</code>:</p>
 
@@ -1664,7 +1666,7 @@ u.fname as \"user/fname\",
 </span><span class="c1">;; org.postgresql.util.PGobject</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Этот класс служит для данных, специфичных для PostgreSQL. У класса всего для поля: тип значения в базе и значение в виде строки. Исследуем эти данные:</p>
+<p>Он служит для данных, свойственных PostgreSQL. У класса для поля: тип и значение в виде строки. Исследуем их:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">.getType</span><span class="w"> </span><span class="n">attrs</span><span class="p">)</span><span class="w">
 </span><span class="c1">;; "jsonb"</span><span class="w">
@@ -1680,7 +1682,7 @@ u.fname as \"user/fname\",
 </span><span class="p">{</span><span class="no">:ip</span><span class="w"> </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">org.postgresql.util.PGobject</span><span class="w"> </span><span class="mi">0</span><span class="n">x721ff1be</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="p">]}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Разбор <code class="language-plaintext highlighter-rouge">PGObject</code> протекает в два этапа. Во-первых, расширим протокол <code class="language-plaintext highlighter-rouge">IResultSetReadColumn</code>:</p>
+<p>Связь между <code class="language-plaintext highlighter-rouge">PGObject</code> и JDBC состоит из двух шагов. Во-первых, расширим протокол <code class="language-plaintext highlighter-rouge">IResultSetReadColumn</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">extend-protocol</span><span class="w"> </span><span class="n">jdbc/IResultSetReadColumn</span><span class="w">
   </span><span class="n">org.postgresql.util.PGobject</span><span class="w">
@@ -1688,7 +1690,7 @@ u.fname as \"user/fname\",
     </span><span class="n">...</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Пока что не ясно, что писать на месте многоточия. Как мы выяснили, <code class="language-plaintext highlighter-rouge">PGobject</code> служит для разных типов. Поэтому проверим тип поля и для каждого варианта вызовем свой обработчик. Проще всего это сделать оператором <code class="language-plaintext highlighter-rouge">case</code>:</p>
+<p>Пока что не ясно, что следует за многоточием. Как мы выяснили, <code class="language-plaintext highlighter-rouge">PGobject</code> служит для разных типов. Проверим тип поля и для каждого варианта вызовем свой обработчик. Проще всего это сделать оператором <code class="language-plaintext highlighter-rouge">case</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">extend-protocol</span><span class="w"> </span><span class="n">jdbc/IResultSetReadColumn</span><span class="w">
   </span><span class="n">org.postgresql.util.PGobject</span><span class="w">
@@ -1708,7 +1710,7 @@ u.fname as \"user/fname\",
         </span><span class="n">pg-obj</span><span class="p">))))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Обратите внимание, что реализации json и jsonb совпадают, поэтому для них служит одно тело. В данном случае мы парсим значение библиотекой Chesire. Проверим теперь, что типы читаются корректно:</p>
+<p>Обратите внимание, что реализации <code class="language-plaintext highlighter-rouge">json</code> и <code class="language-plaintext highlighter-rouge">jsonb</code> совпадают: в обоих случаях база вернет строку, которую парсим библиотекой <a href="https://github.com/dakrone/cheshire">Chesire</a>. Проверим теперь, что типы читаются верно:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">first</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="s">"SELECT * from items"</span><span class="p">))</span><span class="w">
 
@@ -1722,7 +1724,7 @@ u.fname as \"user/fname\",
 </span><span class="p">{</span><span class="no">:ip</span><span class="w"> </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.net.Inet4Address</span><span class="w"> </span><span class="mi">0</span><span class="n">x38d6ba76</span><span class="w"> </span><span class="s">"/127.0.0.1"</span><span class="p">]}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Форма <code class="language-plaintext highlighter-rouge">case</code> выше не совсем удобна: если понадобится новый тип, придется дописывать тело <code class="language-plaintext highlighter-rouge">case</code>. Возможен более гибкий разбор. Создайте мультиметод <code class="language-plaintext highlighter-rouge">pg-&gt;clojure</code>, чья функция-диспетчер возвращает тип поля:</p>
+<p>Форма <code class="language-plaintext highlighter-rouge">case</code> выше не совсем удобна: если понадобится новый тип, придется дописывать что-то в хвост. Потребители вашего кода не смогут это сделать. Возможен более гибкий подход: мультиметод <code class="language-plaintext highlighter-rouge">pg-&gt;clojure</code>, чья функция-диспетчер возвращает тип поля:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defmulti</span><span class="w"> </span><span class="n">pg-&gt;clojure</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">pg-obj</span><span class="p">]</span><span class="w">
                         </span><span class="p">(</span><span class="nf">.getValue</span><span class="w"> </span><span class="n">pg-obj</span><span class="p">)))</span><span class="w">
@@ -1734,13 +1736,20 @@ u.fname as \"user/fname\",
   </span><span class="p">(</span><span class="nf">pg-&gt;clojure</span><span class="w"> </span><span class="n">pg-obj</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Добавьте реализации мультиметода для json(b); позже вы расширите его другими типами.</p>
+<p>Расширьте мультиметод типами <code class="language-plaintext highlighter-rouge">json</code> и сетевым адресом. Со временем мы добавим в него другие типы.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defmethod</span><span class="w"> </span><span class="n">pg-&gt;clojure</span><span class="w"> </span><span class="s">"json"</span><span class="w">
+  </span><span class="p">[</span><span class="n">pg-obj</span><span class="p">]</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defmethod</span><span class="w"> </span><span class="n">pg-&gt;clojure</span><span class="w"> </span><span class="s">"inet"</span><span class="w">
+  </span><span class="p">[</span><span class="n">pg-obj</span><span class="p">]</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
 
 <h3 id="запись-json">Запись JSON</h3>
 
-<p>Теперь когда мы читаем JSON из базы, позаботимся о записи. Для этого расширим протокол <code class="language-plaintext highlighter-rouge">jdbc/ISQLValue</code> так, чтобы любая коллекция Clojure становилась объектом <code class="language-plaintext highlighter-rouge">PGobject</code>. Но для этого нужно понять, что мы имеем в виду под термином “любая коллекция”.</p>
+<p>Теперь когда мы читаем JSON из базы, позаботимся о записи. Для этого расширим протокол <code class="language-plaintext highlighter-rouge">jdbc/ISQLValue</code> так, чтобы любая коллекция Clojure становилась объектом <code class="language-plaintext highlighter-rouge">PGobject</code>. Но сперва уточним, что имеем в виду под термином “любая коллекция”.</p>
 
-<p>Протоколы в Clojure устроены на базе интерфейсов и иерархии классов. Если мы хотим, чтобы вектор и словарь отзывались на какое-то действие, нужно найти в их родословной общий интерфейс и расширить его протоколом. Чтобы увидеть интерфейсы, которые реализует конкретная коллекция, выполните выражение:</p>
+<p>Протоколы в Clojure устроены на базе интерфейсов и иерархии классов. Если мы хотим, чтобы вектор и словарь отзывались на какое-то действие, нужно найти общий интерфейс и расширить его протоколом. Чтобы увидеть интерфейсы, которые реализует коллекция, выполните выражение:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">supers</span><span class="w"> </span><span class="p">(</span><span class="nf">type</span><span class="w"> </span><span class="p">{}))</span><span class="w">
 
@@ -1751,14 +1760,14 @@ u.fname as \"user/fname\",
   </span><span class="n">clojure.lang.IPersistentCollection</span><span class="p">}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Вы получите множество интерфейсов Java. Среди прочих нас интересует последний элемент, <code class="language-plaintext highlighter-rouge">IPersistentCollection</code>. Вы найдете его в результате supers для типа вектора, списка или ленивой последовательности:</p>
+<p>Вы получите множество интерфейсов Java. Среди прочих нас интересует последний элемент, <code class="language-plaintext highlighter-rouge">IPersistentCollection</code>. Он же встречается в <code class="language-plaintext highlighter-rouge">supers</code> для типа вектора, списка и последовательности:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">supers</span><span class="w"> </span><span class="p">(</span><span class="nf">type</span><span class="w"> </span><span class="p">[]))</span><span class="w">
 </span><span class="p">(</span><span class="nf">supers</span><span class="w"> </span><span class="p">(</span><span class="nf">type</span><span class="w"> </span><span class="p">()))</span><span class="w">
 </span><span class="p">(</span><span class="nf">supers</span><span class="w"> </span><span class="p">(</span><span class="nf">type</span><span class="w"> </span><span class="p">(</span><span class="nb">repeat</span><span class="w"> </span><span class="mi">1</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Расширим <code class="language-plaintext highlighter-rouge">ISQLValue</code> этим протоколом, чтобы любая Clojure-коллекция становилась объектом <code class="language-plaintext highlighter-rouge">PGobject</code> с типом jsonb:</p>
+<p>Расширим <code class="language-plaintext highlighter-rouge">ISQLValue</code> этим протоколом, чтобы Clojure-коллекция становилась объектом <code class="language-plaintext highlighter-rouge">PGobject</code> с типом <code class="language-plaintext highlighter-rouge">jsonb</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">extend-protocol</span><span class="w"> </span><span class="n">jdbc/ISQLValue</span><span class="w">
   </span><span class="n">clojure.lang.IPersistentCollection</span><span class="w">
@@ -1768,7 +1777,7 @@ u.fname as \"user/fname\",
       </span><span class="p">(</span><span class="nf">.setValue</span><span class="w"> </span><span class="p">(</span><span class="nf">json/generate-string</span><span class="w"> </span><span class="nb">val</span><span class="p">)))))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Теперь атрибуты товара можно задать обычным словарем:</p>
+<p>Теперь атрибуты товара можно задать словарем:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/insert!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:items</span><span class="w">
               </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">5</span><span class="w">
@@ -1778,7 +1787,7 @@ u.fname as \"user/fname\",
                        </span><span class="no">:year</span><span class="w"> </span><span class="mi">1951</span><span class="p">}})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>То же самое методом <code class="language-plaintext highlighter-rouge">execute!</code>: поместим словарь в SQL-вектор:</p>
+<p>То же самое методом <code class="language-plaintext highlighter-rouge">execute!</code>: поместим словарь в вектор SQL:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">[</span><span class="s">"INSERT INTO items VALUES (?, ?, ?)"</span><span class="w">
                </span><span class="mi">5</span><span class="w">
@@ -1786,7 +1795,7 @@ u.fname as \"user/fname\",
                </span><span class="p">{</span><span class="no">:year</span><span class="w"> </span><span class="mi">1951</span><span class="w"> </span><span class="no">:genre</span><span class="w"> </span><span class="s">"novel"</span><span class="w"> </span><span class="no">:author</span><span class="w"> </span><span class="s">"J. D. Salinger"</span><span class="p">}])</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Предположим теперь, что мы храним теги товара — короткие строки с его описанием. Проще всего это сделать полем tags с типом jsonb, в который запишем вектор строк:</p>
+<p>Предположим, мы храним теги товара — короткие строки с его описанием. Проще всего это сделать полем <code class="language-plaintext highlighter-rouge">tags</code> с типом <code class="language-plaintext highlighter-rouge">jsonb</code>, в который запишем вектор строк:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">alter</span> <span class="k">table</span> <span class="n">items</span> <span class="k">add</span> <span class="k">column</span> <span class="n">tags</span> <span class="n">jsonb</span><span class="p">;</span>
 </code></pre></div></div>
@@ -1808,9 +1817,9 @@ u.fname as \"user/fname\",
  </span><span class="no">:tags</span><span class="w"> </span><span class="p">(</span><span class="s">"book"</span><span class="w"> </span><span class="s">"novel"</span><span class="p">)}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Технически возможно записать в теги словарь, а в атрибуты — список. С точки зрения базы это будут правильные типы JSON. Чтобы избежать ошибки, проверяйте данные на уровне Clojure до записи в базу. Проще всего это сделать отдельной функцией <code class="language-plaintext highlighter-rouge">insert-item</code>, которая сверяет аргументы по спеке.</p>
+<p>Технически возможно записать в теги словарь, а в атрибуты — список. С точки зрения базы у обоих значений тип json, поэтому ошибки нет. Чтобы этого избежать, проверяйте данные до записи в базу. Проще всего это сделать функцией <code class="language-plaintext highlighter-rouge">insert-item</code>, которая сверяет аргументы по спеке.</p>
 
-<p>Для начала объявим спеку полей таблицы items:</p>
+<p>Для начала объявим спеку полей таблицы <code class="language-plaintext highlighter-rouge">items</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">​​</span><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">clojure.spec.alpha</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">s</span><span class="p">])</span><span class="w">
 
@@ -1819,7 +1828,7 @@ u.fname as \"user/fname\",
           </span><span class="no">:opt-un</span><span class="w"> </span><span class="p">[</span><span class="no">::attrs</span><span class="w"> </span><span class="no">::tags</span><span class="p">]))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Затем расширим необязательные поля атрибутов и тегов:</p>
+<p>Расширим поля атрибутов и тегов:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">s/def</span><span class="w"> </span><span class="no">::attrs</span><span class="w">
   </span><span class="p">(</span><span class="nf">s/map-of</span><span class="w"> </span><span class="nb">keyword?</span><span class="w"> </span><span class="n">any?</span><span class="p">))</span><span class="w">
@@ -1828,19 +1837,19 @@ u.fname as \"user/fname\",
   </span><span class="p">(</span><span class="nf">s/coll-of</span><span class="w"> </span><span class="nb">string?</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>В функции <code class="language-plaintext highlighter-rouge">insert-item</code> мы задали pre-выражение, в котором проверяем поля спекой макросом <code class="language-plaintext highlighter-rouge">s/assert</code>.</p>
+<p>В функции <code class="language-plaintext highlighter-rouge">insert-item</code> мы задали <code class="language-plaintext highlighter-rouge">pre</code>-выражение, в котором проверяем поля спекой макросом <code class="language-plaintext highlighter-rouge">s/assert</code>.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">insert-item</span><span class="w"> </span><span class="p">[</span><span class="n">db</span><span class="w"> </span><span class="n">fields</span><span class="p">]</span><span class="w">
   </span><span class="p">{</span><span class="no">:pre</span><span class="w"> </span><span class="p">[(</span><span class="nf">s/assert</span><span class="w"> </span><span class="no">::item-fields</span><span class="w"> </span><span class="n">fields</span><span class="p">)]}</span><span class="w">
   </span><span class="p">(</span><span class="nf">jdbc/insert!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:items</span><span class="w"> </span><span class="n">fields</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>По умолчанию макрос отключен, потому что предназначен для отладки. Включите его выражением</p>
+<p>По умолчанию <code class="language-plaintext highlighter-rouge">s/assert</code> ничего не делает, потому что предназначен для отладки. Включите его выражением:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">s/check-asserts</span><span class="w"> </span><span class="n">true</span><span class="p">)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>и вызовите функцию с неправильными полями:</p>
+<p>Вызовите функцию с неправильными полями:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">insert-item</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">5</span><span class="w">
                  </span><span class="no">:title</span><span class="w"> </span><span class="s">"The Catcher in the Rye"</span><span class="w">
@@ -1850,30 +1859,30 @@ u.fname as \"user/fname\",
                  </span><span class="no">:tags</span><span class="w"> </span><span class="p">[</span><span class="s">"book"</span><span class="w"> </span><span class="s">"novel"</span><span class="w"> </span><span class="n">nil</span><span class="p">]})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Вы получите ошибку спеки, и запись в базу не произойдет. То же самое можно сделать макросом <code class="language-plaintext highlighter-rouge">fdef</code> и функцией <code class="language-plaintext highlighter-rouge">instrument</code> из модуля спеки. Мы подробно разобрали эти возможности в первой книге во второй главе. Обратитесь к ней, если вам не понятны термины, о которых мы говорим.</p>
+<p>Вы получите ошибку спеки, и записи не произойдет. То же самое можно сделать макросом <code class="language-plaintext highlighter-rouge">fdef</code> и функцией <code class="language-plaintext highlighter-rouge">instrument</code> из модуля спеки. Мы подробно разобрали эти возможности во второй главе первой книги . Обратитесь к ней, если вам не понятны термины, о которых мы говорим.</p>
 
 <h3 id="проблема-nil-в-json">Проблема nil в JSON</h3>
 
-<p>При записи JSON в базу проверяйте значение на <code class="language-plaintext highlighter-rouge">nil</code>. Если этого не делать, произойдет следующее: значение <code class="language-plaintext highlighter-rouge">nil</code> станет строкой <code class="language-plaintext highlighter-rouge">"null"</code> и займет место в базе. Предположим теперь, вы хотите найти записи с пустыми атрибутами. Если выполнить запрос</p>
+<p>При записи JSON проверяйте значение на <code class="language-plaintext highlighter-rouge">nil</code>. Если этого не делать, произойдет следующее: значение <code class="language-plaintext highlighter-rouge">nil</code> станет строкой <code class="language-plaintext highlighter-rouge">"null"</code> и займет место в базе. Это чревато странным поведением в запросах. Предположим, вы ищете записи с пустыми атрибутами. Если выполнить запрос:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">id</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">attrs</span> <span class="k">is</span> <span class="k">null</span>
 </code></pre></div></div>
 
-<p>, вы не получите записи с полем <code class="language-plaintext highlighter-rouge">attrs</code>, равным <code class="language-plaintext highlighter-rouge">"null"</code>, потому что это по-прежнему тип json(b), отличный от <code class="language-plaintext highlighter-rouge">NULL</code>. Другими словами, вы ввели новое пустое значение. Запрос с двойной проверкой выглядит сложнее:</p>
+<p>, в результате не будет строк с полем <code class="language-plaintext highlighter-rouge">attrs</code>, равным <code class="language-plaintext highlighter-rouge">"null"</code>, потому что это значение <code class="language-plaintext highlighter-rouge">json(b)</code>, отличное от <code class="language-plaintext highlighter-rouge">NULL</code>. Другими словами, вы ввели новое пустое значение. С ним проверка выглядит сложнее:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">id</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">attrs</span> <span class="k">is</span> <span class="k">null</span> <span class="k">or</span> <span class="n">attrs</span> <span class="o">=</span> <span class="s1">'null'</span><span class="p">;</span>
 </code></pre></div></div>
 
-<p>Очевидно, одна проверка удобней двух, особенно если json(b) встречается в разных таблицах. Следите за тем, чтобы пустое значение было выражено одним способом. Лучше всего для этого подходит стандартный <code class="language-plaintext highlighter-rouge">NULL</code>. С точки зрения Clojure это значит, что проведение к <code class="language-plaintext highlighter-rouge">PGObject</code> происходит только если исходное значение отлично от <code class="language-plaintext highlighter-rouge">nil</code>.</p>
+<p>Очевидно, первый запрос удобней, особенно если <code class="language-plaintext highlighter-rouge">json(b)</code> встречается в разных таблицах. Следите, чтобы пустое значение было выражено одним способом. Лучше всего для этого подходит стандартный <code class="language-plaintext highlighter-rouge">NULL</code>. С точки зрения Clojure это значит, что функция <code class="language-plaintext highlighter-rouge">-&gt;pg-object</code> возвращает <code class="language-plaintext highlighter-rouge">PGObject</code> только если исходное значение не <code class="language-plaintext highlighter-rouge">nil</code>.</p>
 
-<p>Для начала проверим текущее поведение <code class="language-plaintext highlighter-rouge">-&gt;pg-object</code> в случае <code class="language-plaintext highlighter-rouge">nil</code>:</p>
+<p>Для начала проверим текущее поведение в случае с <code class="language-plaintext highlighter-rouge">nil</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;pg-object</span><span class="w"> </span><span class="n">nil</span><span class="p">)</span><span class="w">
 
 </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">org.postgresql.util.PGobject</span><span class="w"> </span><span class="mi">0</span><span class="n">x7c24e232</span><span class="w"> </span><span class="s">"null"</span><span class="p">]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Получим <code class="language-plaintext highlighter-rouge">PGobject</code> с <code class="language-plaintext highlighter-rouge">"null"</code>, что нас не устраивает. С проверкой на <code class="language-plaintext highlighter-rouge">some?</code> аргумент <code class="language-plaintext highlighter-rouge">nil</code> вернет <code class="language-plaintext highlighter-rouge">nil</code>:</p>
+<p>Получим <code class="language-plaintext highlighter-rouge">PGobject</code> с <code class="language-plaintext highlighter-rouge">"null"</code>, что нас не устраивает. С проверкой аргумента на <code class="language-plaintext highlighter-rouge">some?</code> получим <code class="language-plaintext highlighter-rouge">nil</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">-&gt;pg-object</span><span class="w"> </span><span class="p">[</span><span class="n">data</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="p">(</span><span class="nf">some?</span><span class="w"> </span><span class="n">data</span><span class="p">)</span><span class="w">
@@ -1884,25 +1893,27 @@ u.fname as \"user/fname\",
 </span><span class="p">(</span><span class="nf">-&gt;pg-object</span><span class="w"> </span><span class="n">nil</span><span class="p">)</span><span class="w"> </span><span class="c1">;; nil</span><span class="w">
 </span></code></pre></div></div>
 
+<p>Колонка в базе должна иметь атрибут <code class="language-plaintext highlighter-rouge">NULL</code>, установленный в истину.</p>
+
 <h3 id="типизированные-записи">Типизированные записи</h3>
 
-<p>Мы установили правило: при передаче параметров любая коллекция становится объектом JSON. Однако PostgreSQL предлагает и другие типы данных, например точки, линии и прямоугольники. Рассмотрим, что вернет база данных, если выбрать точку:</p>
+<p>Мы установили правило: при передаче параметров любая коллекция становится объектом JSON. Однако PostgreSQL предлагает другие сложные типы, например точки, линии и прямоугольники. Рассмотрим, что вернет база данных, если выбрать точку:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">first</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="s">"select '(1, 2)'::point"</span><span class="p">))</span><span class="w">
 
 </span><span class="p">{</span><span class="no">:point</span><span class="w"> </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">org.postgresql.geometric.PGpoint</span><span class="w"> </span><span class="mi">0</span><span class="n">x28ebf39e</span><span class="w"> </span><span class="s">"(1.0,2.0)"</span><span class="p">]}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Получим объект класса <code class="language-plaintext highlighter-rouge">PGpoint</code>. Логично привести его в словарю <code class="language-plaintext highlighter-rouge">{:x 1.0, :y 2.0}</code>, чтобы упростить дальнейшую работу. Однако при записи точки в базу такой словарь будет преобразован в JSON, из-за чего получим ошибку типов.</p>
+<p>Получим объект класса <code class="language-plaintext highlighter-rouge">PGpoint</code>. Логично привести его в словарю <code class="language-plaintext highlighter-rouge">{:x 1.0, :y 2.0}</code>, чтобы упростить дальнейшую работу. Однако при записи точки словарь будет преобразован в JSON, из-за чего получим ошибку типов.</p>
 
-<p>Наиболее простое решение в том, чтобы задать типизированную запись, или рекорд. Такая запись повторяет все свойства словаря, но при этом объявляет новый Java-класс. Если расширить протоколы JDBC этим классом, мы сохраним функциональность JSON, потому что класс стоит ниже протокола <code class="language-plaintext highlighter-rouge">IPersistentCollection</code> в цепочке наследников.</p>
+<p>Наиболее простое решение в том, чтобы задать типизированную запись, или рéкорд. Запись повторяет свойства словаря и вдобавок объявляет Java-класс. Если расширить протокол JDBC этим классом, мы сохраним функциональность JSON, потому что класс стоит ниже протокола <code class="language-plaintext highlighter-rouge">IPersistentCollection</code> в цепочке наследников.</p>
 
 <p>Объявим запись с двумя слотами координат:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">defrecord</span><span class="w"> </span><span class="n">Point</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">])</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Расширим протокол <code class="language-plaintext highlighter-rouge">IResultSetReadColumn</code> типом <code class="language-plaintext highlighter-rouge">PGpoint</code>. Импортируем его, чтобы не указывать весь путь. Метод <code class="language-plaintext highlighter-rouge">result-set-read-column</code> вернет экземпляр записи <code class="language-plaintext highlighter-rouge">Point</code> с заполненными слотами:</p>
+<p>Расширим протокол <code class="language-plaintext highlighter-rouge">IResultSetReadColumn</code> типом <code class="language-plaintext highlighter-rouge">PGpoint</code>. Импортируем его, чтобы не указывать весь путь. Метод <code class="language-plaintext highlighter-rouge">result-set-read-column</code> вернет экземпляр <code class="language-plaintext highlighter-rouge">Point</code> с заполненными слотами:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">import</span><span class="w"> </span><span class="ss">'org.postgresql.geometric.PGpoint</span><span class="p">)</span><span class="w">
 
@@ -1919,7 +1930,7 @@ u.fname as \"user/fname\",
 </span><span class="p">{</span><span class="no">:point</span><span class="w"> </span><span class="p">{</span><span class="no">:x</span><span class="w"> </span><span class="mf">1.0</span><span class="n">,</span><span class="w"> </span><span class="no">:y</span><span class="w"> </span><span class="mf">2.0</span><span class="p">}}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Расширим ISQLValue для перевода точки в тип JDBC. Обратите внимание: поскольку запись ведет себя как словарь, мы распаковали поля x и y на уровне сигнатуры.</p>
+<p>Расширим <code class="language-plaintext highlighter-rouge">ISQLValue</code> для перевода точки в тип JDBC. Обратите внимание: поскольку запись ведет себя как словарь, мы распаковали поля <code class="language-plaintext highlighter-rouge">x</code> и <code class="language-plaintext highlighter-rouge">y</code> на уровне сигнатуры.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">extend-protocol</span><span class="w"> </span><span class="n">jdbc/ISQLValue</span><span class="w">
   </span><span class="n">Point</span><span class="w">
@@ -1927,18 +1938,18 @@ u.fname as \"user/fname\",
     </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">PGpoint</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Передать точку в запрос можно несколькими способами. Первый — вызвать конструктор класса оператором new. Второй — преобразовать обычный словарь в запись функций <code class="language-plaintext highlighter-rouge">map-&gt;&lt;RecordName&gt;</code>. Эта функция появится в том же пространстве имен, где объявлена запись. Третий — предварить словарь тегом с полным именем записи. Все три способа вернут экземпляр <code class="language-plaintext highlighter-rouge">Point</code>.</p>
+<p>Передать точку в запрос можно несколькими способами. Первый — вызвать конструктор класса оператором <code class="language-plaintext highlighter-rouge">new</code>. Второй — получить запись из словаря функцией <code class="language-plaintext highlighter-rouge">map-&gt;&lt;RecordName&gt;</code>. Функция находится в том же пространстве имен, где объявлена запись. Третий способ — предварить словарь тегом с полным именем записи. Все три способа вернут экземпляр <code class="language-plaintext highlighter-rouge">Point</code>.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">[</span><span class="s">"select ? as point"</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">Point</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">)])</span><span class="w">
 </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">[</span><span class="s">"select ? as point"</span><span class="w"> </span><span class="p">(</span><span class="nf">map-&gt;Point</span><span class="w"> </span><span class="p">{</span><span class="no">:x</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:y</span><span class="w"> </span><span class="mi">2</span><span class="p">})])</span><span class="w">
 </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">[</span><span class="s">"select ? as point"</span><span class="w"> </span><span class="o">#</span><span class="n">book.db.Point</span><span class="p">{</span><span class="no">:x</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:y</span><span class="w"> </span><span class="mi">2</span><span class="p">}])</span><span class="w">
 </span></code></pre></div></div>
 
-<p>По аналогии легко сопоставить другие типы базы с записями Clojure. В качестве тренировки расширьте протоколы JDBC для работы с линиями и прямоугольниками.</p>
+<p>По аналогии сопоставьте другие типы с записями Clojure, например линии и прямоугольники (<code class="language-plaintext highlighter-rouge">line</code> и <code class="language-plaintext highlighter-rouge">box</code>).</p>
 
 <h2 id="проблемы-sql">Проблемы SQL</h2>
 
-<p>Каждый, кто работает с базой данных, сталкивался с проблемой: SQL в коде затрудняют его чтение. Блоки SQL разрывают логику приложения, и трудно понять, что происходит.</p>
+<p>Каждый, кто работает с базой данных, сталкивается с проблемой: длинный SQL затрудняет чтение кода. Блоки SQL разрывают логику приложения и порождают визуальный шум.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">events</span><span class="w"> </span><span class="p">(</span><span class="nf">get-events</span><span class="w"> </span><span class="n">http-client</span><span class="p">)</span><span class="w">
       </span><span class="n">sql</span><span class="w"> </span><span class="s">"select * from users u
@@ -1949,28 +1960,28 @@ and p.created_at &gt; ..."</span><span class="w">
   </span><span class="n">...</span><span class="p">)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Длинные запросы в коде смотрятся чужеродно. При его чтении нам приходится переключать контекст, чтобы понять, что происходит в запросе. Ситуация ухудшается с копированием: часто необходим такой же запрос, но с небольшими правками. Это усложнит поддержку, ведь однажды критерии выборки могут измениться для всех запросов.</p>
+<p>Большие запросы в коде смотрятся чужеродно. При чтении приходится переключать контекст, чтобы понять, что происходит в запросе. Ситуация ухудшается с копированием: часто необходим такой же запрос, но с небольшими правками. Это усложнит поддержку, ведь однажды критерии выборки могут измениться для всех запросов.</p>
 
-<p>Предположим, в какой-то момент в таблице появился флаг отложенного удаления. Пользователь закрыл учетную запись, и теперь нужно удалить ее из системы. Отныне при выборке пользователя нужно добавить условие “не удален”:</p>
+<p>Предположим, в какой-то момент в таблице появился флаг отложенного удаления. Пользователь закрыл учетную запись, и нужно удалить ее из системы. Теперь при выборке пользователя нужно добавить условие “не удален”:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">SELECT</span><span class="w"> </span><span class="n">...</span><span class="w"> </span><span class="n">FROM</span><span class="w"> </span><span class="n">users</span><span class="w"> </span><span class="n">WHERE</span><span class="w"> </span><span class="n">...</span><span class="w"> </span><span class="n">AND</span><span class="w"> </span><span class="n">NOT</span><span class="w"> </span><span class="n">is_deleted</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Если мы скопировали прежний запрос во многие места, придется искать их вручную и дописывать <code class="language-plaintext highlighter-rouge">AND NOT is_deleted</code>.</p>
+<p>Если запрос многократно копирован по всему проекту, придется искать все случаи и дописывать каждому <code class="language-plaintext highlighter-rouge">AND NOT is_deleted</code>.</p>
 
-<p>SQL-выражения со временем растут. Когда мы только запустили проект, в нем мало сущностей и таблиц, но с развитием бизнеса их число увеличивается. Например, выборка популярных товаров с их категориями и оценками может занять экран. Если вы вставили подобный SQL прямо в код, то навредите проекту: станет тяжелее поддерживать и код, и SQL.</p>
+<p>SQL-выражения со временем растут. На старте проекта в нем мало сущностей и таблиц, но с ростом бизнеса их число увеличивается. Например, выборка популярных товаров с их категориями, оценками и сортировкой может занять экран. Если вставить подобный SQL прямо в код, станет тяжелее поддерживать и код, и SQL.</p>
 
-<p>Мы подводим читателя к вопросу о том, как управлять запросами в промышленных масштабах. В разных языках и фреймворках приняты разные подходы. Наиболее популярен способ с промежуточным слоем, который преобразует данные из базы в объекты. Например, выборка из таблицы users вернет список объектов <code class="language-plaintext highlighter-rouge">User</code>. И наоборот, методы этого класса преобразуются в SQL-запросы. Если изменить поля модели и вызвать условный метод <code class="language-plaintext highlighter-rouge">.save()</code>, сработает запрос <code class="language-plaintext highlighter-rouge">UPDATE</code> (если это текущая запись) или <code class="language-plaintext highlighter-rouge">INSERT</code> (если это новая модель, а не полученная из базы).</p>
+<p>Мы подводим читателя к вопросу о том, как управлять запросами в промышленных масштабах. В разных языках приняты разные подходы. Наиболее популярен способ с промежуточным слоем, который преобразует объекты в записи таблиц. Например, запрос к таблице <code class="language-plaintext highlighter-rouge">users</code> вернет список объектов <code class="language-plaintext highlighter-rouge">User</code>, который еще называют моделью. Если изменить поля модели и вызвать метод <code class="language-plaintext highlighter-rouge">.save()</code>, сработает либо запрос <code class="language-plaintext highlighter-rouge">UPDATE</code> (обновить текущую запись) или <code class="language-plaintext highlighter-rouge">INSERT</code> (добавить новую запись).</p>
 
-<p>Подход с сопоставлением базы и объектов называется <a href="https://ru.wikipedia.org/wiki/ORM">ORM</a> (Object–relational mapping). Также встречается его разновидность ActiveRecord (сокращенно AR). Как правило, любой современный язык предлагает библиотеки для ORM или AR.</p>
+<p>Сопоставление таблиц и объектов называется <a href="https://ru.wikipedia.org/wiki/ORM">ORM</a> (Object–relational mapping). Встречается его разновидность <a href="https://ru.wikipedia.org/wiki/ActiveRecord">ActiveRecord</a> (сокращенно AR). Как правило, любой современный язык предлагает библиотеки для ORM или AR.</p>
 
-<p>Попытки создать ORM были и в Clojure, но они не получили широкого распространения. Практика показывает, что в Clojure легко работать с базой на низкому ровне. Причина в том, что коллекции Clojure обладают важными свойствами: они неизменяемы и на них действуют сотни функций стандартной библиотеки. В Clojure список словарей уже достаточен для дальнейшей работы, и нет смысла приводить их к другим сущностям.</p>
+<p>Попытки создать ORM были и в Clojure, но они не получили широкого распространения. Практика показывает, что в Clojure легко работать с базой на низкому ровне. Причина в том, что коллекции Clojure <em>уже</em> обладают важными свойствами: они неизменяемы и на них действуют сотни функций стандартной библиотеки. В Clojure список словарей достаточен для дальнейшей работы, и нет смысла приводить их к другим сущностям.</p>
 
-<p>Библиотеки, которые упрощают работу с SQL, можно разделить на две группы: шаблоны и построители. Рассмотрим каждую группу, их преимущества и недостатки.</p>
+<p>Все-таки работу с SQL можно облегчить, подключив библиотеки. Мы рассмотрим построители запросов на шаблонах и данных: их особенности, преимущества и недостатки.</p>
 
 <h3 id="шаблоны">Шаблоны</h3>
 
-<p>Подход с шаблоном состоит из двух этапов. Сначала вы создаете файл с расширением <code class="language-plaintext highlighter-rouge">.sql</code> и пишете в нем запросы. Каждый запрос предваряется шапкой из нескольких закомментированных строк. В них указаны имя запроса, описание и характеристики. На месте параметров стоят именованные метки. Пример подобного файла:</p>
+<p>Подход с шаблоном состоит из двух этапов. Сначала создают файл с расширением <code class="language-plaintext highlighter-rouge">.sql</code> и пишут в нем запросы. Каждый запрос предваряется шапкой из нескольких комментариев. В них указаны имя запроса, описание и характеристики. На месте параметров стоят именованные метки. Пример подобного файла:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name list-users :?</span>
 <span class="c1">-- :doc Get all the users</span>
@@ -1982,28 +1993,28 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="p">:</span><span class="n">id</span><span class="p">;</span>
 </code></pre></div></div>
 
-<p>Специальный код читает этот файл. Для каждого запроса он порождает одноименную функцию, которая принимает JDBC-спеку и словарь параметров. Результат функции станет результатом выполнения запроса. Так, для запроса <code class="language-plaintext highlighter-rouge">get-user-by-id</code> получим функцию, вызвав которую с подключением и параметром, увидим результат:</p>
+<p>Специальный код читает этот файл. Для каждого запроса он порождает одноименную функцию, которая принимает JDBC-спеку и словарь параметров. Результат запроса станет результатом функции при вызове. Так, для запроса <code class="language-plaintext highlighter-rouge">get-user-by-id</code> получим функцию, вызвав которую с подключением и параметром, увидим результат:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-user-by-id</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">})</span><span class="w">
 
 </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="no">:fname</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="n">...</span><span class="p">}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Способ с сырым SQL, который порождает функции, несет несколько преимуществ. Прежде всего, в вашем проекте единый источник SQL. Все запросы собраны в одном файле, и не нужно искать их по всему проекту.</p>
+<p>Способ с SQL, который порождает функции, несет несколько преимуществ. Прежде всего, в проекте единый источник SQL. Все запросы собраны в одном файле, и не нужно искать их по всей кодовой базе.</p>
 
-<p>Некоторые фирмы проводят аудит запросов к базам данных, чтобы выявить узкие места. DBA-инженеру будет удобно посмотреть .sql файл и оптимизировать его. Если же вы обращаетесь к базе с помощью ORM, придется искать конечные запросы в логах базы. При этом учтите, что запросы, составленные программой, читаются хуже, чем написанные человеком.</p>
+<p>Некоторые фирмы проводят аудит запросов к базам данных, чтобы выявить узкие места. DBA-инженеру будет удобно посмотреть .sql файл и оптимизировать его. Если же вы обращаетесь к базе с помощью ORM, придется искать конечные запросы в логах базы. При этом запросы, составленные программой, читаются хуже, чем написанные человеком.</p>
 
-<p>Если вам потребуется особый оператор, например слияние JSON-объектов или пересечение интервалов, вы скопируете его из документации в файл. В случае с ORM вам придется расширять классы или прибегать к условному методу .raw, в котором вы напишете тот самый SQL.</p>
+<p>Если потребуется особый оператор, например слияние JSON-объектов или пересечение интервалов, вы напишете его явно. В случае с ORM придется расширить класс или писать какую-то обертку.</p>
 
-<p>Наконец, запросы в исходном виде удобны для отладки. Если вы составили сложный запрос с помощью ORM, то должны убедиться, что получили именно то, что ожидали. Когда вы сразу пишете SQL, этот шаг отпадает. Любой запрос можно выполнить в PGAdmin или схожей программе с минимальными усилиями.</p>
+<p>Запросы в исходном виде удобны для отладки. Если вы написали выборку с помощью ORM, то должны убедиться, что она порождает верный SQL. Нужно вызвать уловный объект <code class="language-plaintext highlighter-rouge">QuerySet</code> и проверить логи базы. С сырым SQL этот шаг отпадает: его можно выполнить в PGAdmin или схожей программе с минимальными усилиями.</p>
 
-<p>Принцип “SQL как шаблон” реализует библиотека <a href="https://www.hugsql.org/">HugSQL</a>. Подключите ее в проект (понадобится свежая версия <code class="language-plaintext highlighter-rouge">tools.reader</code>):</p>
+<p>Принцип “SQL на шаблонах” предлагает библиотека <a href="https://www.hugsql.org/">HugSQL</a>. Подключите ее в проект (понадобится свежая версия <code class="language-plaintext highlighter-rouge">tools.reader</code>):</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">org.clojure/tools.reader</span><span class="w"> </span><span class="s">"1.3.6"</span><span class="p">]</span><span class="w">
 </span><span class="p">[</span><span class="n">com.layerware/hugsql</span><span class="w"> </span><span class="s">"0.5.1"</span><span class="p">]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Будем работать с пользователями. Создайте файл <code class="language-plaintext highlighter-rouge">resources/sql/queries.sql</code> с теми же запросами, что мы рассмотрели:</p>
+<p>Будем работать с пользователями. Создайте файл <code class="language-plaintext highlighter-rouge">resources/sql/queries.sql</code> с запросами:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name list-users :?</span>
 <span class="c1">-- :doc Get all the users</span>
@@ -2015,15 +2026,16 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="p">:</span><span class="n">id</span><span class="p">;</span>
 </code></pre></div></div>
 
-<p>Параметр <code class="language-plaintext highlighter-rouge">:name</code> означает имя будущей функции. По желанию добавьте <code class="language-plaintext highlighter-rouge">:doc</code> с описанием, и тогда редактор покажет справку к функции в месте ее вызова. Особенно интересны параметры <code class="language-plaintext highlighter-rouge">:?</code> и <code class="language-plaintext highlighter-rouge">:1</code>, что указаны после <code class="language-plaintext highlighter-rouge">:name</code>. Это флаги, которые определяют, как обработать запрос и его результат.</p>
+<p>Параметр <code class="language-plaintext highlighter-rouge">:name</code> означает имя будущей функции. По желанию добавьте <code class="language-plaintext highlighter-rouge">:doc</code> с описанием, и тогда редактор покажет справку в месте вызова. Особенно интересны параметры <code class="language-plaintext highlighter-rouge">:?</code> и <code class="language-plaintext highlighter-rouge">:1</code>, что указаны после <code class="language-plaintext highlighter-rouge">:name</code>. Это флаги, которые определяют, как обработать запрос и его результат.</p>
 
-<p>Знак вопроса означает, что SQL-выражение следует выполнить функцией <code class="language-plaintext highlighter-rouge">jdbc/query</code>. Библиотека JDBC отличает чтение от исполнения. Чтение предполагает обработку результата, в то время как для исполнения его может либо не быть, либо он нам не интересен. Поэтому мы указываем <code class="language-plaintext highlighter-rouge">:?</code> в запросах на чтение.</p>
+<p>Знак вопроса означает, что запрос следует выполнить функцией <code class="language-plaintext highlighter-rouge">jdbc/query</code>. Библиотека JDBC отличает чтение от исполнения. Чтение предполагает обработку результата, в то время как для исполнения его может либо не быть, либо он нам не интересен. Поэтому указываем <code class="language-plaintext highlighter-rouge">:?</code> в запросах на чтение.</p>
 
-<p>Флаги <code class="language-plaintext highlighter-rouge">:*</code> и <code class="language-plaintext highlighter-rouge">:1</code> означают сколько записей прочитать из ответа: все или одну. Когда мы ищем заведомо одну запись, логично указать :1, чтобы получить либо ее, либо ничего. В противном случае вам придется оборачивать результат в <code class="language-plaintext highlighter-rouge">(first...)</code>, что неудобно. Если не задана единица, по умолчанию получим все записи.</p>
+<p>Флаги <code class="language-plaintext highlighter-rouge">:*</code> и <code class="language-plaintext highlighter-rouge">:1</code> означают сколько записей прочитать из ответа: все или одну. Когда мы ищем заведомо одну запись, логично указать <code class="language-plaintext highlighter-rouge">:1</code>, чтобы получить либо ее, либо ничего. В противном случае вам придется оборачивать результат в <code class="language-plaintext highlighter-rouge">(first...)</code>, что неудобно. Если не задана единица, по умолчанию получим все записи.</p>
 
-<p>Преобразуем запросы в функции: вызов <code class="language-plaintext highlighter-rouge">def-db-fns</code> принимает путь к файлу и наполняет текущее пространство новыми функциями.</p>
+<p>Преобразуем запросы в функции. Вызов <code class="language-plaintext highlighter-rouge">def-db-fns</code> принимает путь к файлу и наполняет текущее пространство новыми функциями.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">hugsql.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">hugsql</span><span class="p">])</span><span class="w">
+
 </span><span class="p">(</span><span class="nf">hugsql/def-db-fns</span><span class="w"> </span><span class="s">"sql/queries.sql"</span><span class="p">)</span><span class="w">
 </span></code></pre></div></div>
 
@@ -2036,7 +2048,7 @@ and p.created_at &gt; ..."</span><span class="w">
 </span><span class="c1">;; {:id 1 :fname "Ivan", ...}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Теперь подготовим вставку пользователей:</p>
+<p>Подготовим вставку пользователей:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name create-user :i!</span>
 <span class="k">insert</span> <span class="k">into</span> <span class="n">users</span> <span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="n">lname</span><span class="p">,</span> <span class="n">email</span><span class="p">,</span> <span class="n">age</span><span class="p">)</span>
@@ -2045,13 +2057,16 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <p>После изменений в файле сгенерируйте функции еще раз. Появится новая функция <code class="language-plaintext highlighter-rouge">create-user</code>:</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">create-user</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:fname</span><span class="w"> </span><span class="s">"Ioann"</span><span class="w"> </span><span class="no">:lname</span><span class="w"> </span><span class="s">"Smith"</span><span class="w"> </span><span class="no">:email</span><span class="w"> </span><span class="s">"test@test.com"</span><span class="w"> </span><span class="no">:age</span><span class="w"> </span><span class="mi">30</span><span class="p">})</span><span class="w">
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">create-user</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:fname</span><span class="w"> </span><span class="s">"Ioann"</span><span class="w">
+                 </span><span class="no">:lname</span><span class="w"> </span><span class="s">"Smith"</span><span class="w">
+                 </span><span class="no">:email</span><span class="w"> </span><span class="s">"test@test.com"</span><span class="w">
+                 </span><span class="no">:age</span><span class="w"> </span><span class="mi">30</span><span class="p">})</span><span class="w">
 </span><span class="c1">;; {:id 76, :fname "Ioann", ...}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>В примере со вставкой флаг <code class="language-plaintext highlighter-rouge">:i!</code> служит для оператора <code class="language-plaintext highlighter-rouge">INSERT</code>. Он означает вернуть первичные ключи записей, которые произвела база данных. Схожий флаг <code class="language-plaintext highlighter-rouge">:&lt;!</code> работает с выражением вида <code class="language-plaintext highlighter-rouge">INSERT ... RETURNING ...</code>, что значит “вставить и вернуть”. Она полезна, когда полям таблицы заданы значения по умолчанию.</p>
+<p>Флаг <code class="language-plaintext highlighter-rouge">:i!</code> служит для оператора <code class="language-plaintext highlighter-rouge">INSERT</code>. Он означает вернуть первичные ключи записей, которые произвела база данных. Схожий флаг <code class="language-plaintext highlighter-rouge">:&lt;!</code> работает с выражением вида <code class="language-plaintext highlighter-rouge">INSERT ... RETURNING ...</code>, что значит “вставить и вернуть”. Она полезна, когда полям таблицы заданы значения по умолчанию.</p>
 
-<p>Эти и другие флаги служат синтаксическим сахаром для параметра <code class="language-plaintext highlighter-rouge">:command</code>. Если вам трудно запомнить флаги, запишите их в явном виде:</p>
+<p>Эти и другие флаги служат синтаксическим сахаром для параметра <code class="language-plaintext highlighter-rouge">:command</code>. Если вам трудно запомнить флаги, укажите их явно:</p>
 
 <ul>
   <li><code class="language-plaintext highlighter-rouge">:command :query</code></li>
@@ -2060,28 +2075,28 @@ and p.created_at &gt; ..."</span><span class="w">
   <li><code class="language-plaintext highlighter-rouge">:command :returning-execute</code></li>
 </ul>
 
-<p>Если нужно создать несколько записей в транзакции, обернем функции в макрос <code class="language-plaintext highlighter-rouge">with-db-transaction</code> и укажем <code class="language-plaintext highlighter-rouge">tx</code> первым аргументом:</p>
+<p>Чтобы создать несколько записей в транзакции, обернем функции в макрос <code class="language-plaintext highlighter-rouge">with-db-transaction</code> и укажем <code class="language-plaintext highlighter-rouge">tx</code> первым аргументом:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/with-db-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">tx</span><span class="w"> </span><span class="n">db</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nf">create-user</span><span class="w"> </span><span class="n">tx</span><span class="w"> </span><span class="p">{</span><span class="no">:fname</span><span class="w"> </span><span class="s">"User1"</span><span class="w"> </span><span class="n">...</span><span class="p">})</span><span class="w">
   </span><span class="p">(</span><span class="nf">create-user</span><span class="w"> </span><span class="n">tx</span><span class="w"> </span><span class="p">{</span><span class="no">:fname</span><span class="w"> </span><span class="s">"User2"</span><span class="w"> </span><span class="n">...</span><span class="p">}))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>HugSQL упрощает работу с параметрами. JDBC принимает только вектор параметров, и чем их больше, тем сложнее понять, что означает каждый знак вопроса. HugSQL полагается на кейворды и словари в качестве параметров. С ними на один и тот же параметр легко сослаться в разных местах запроса.</p>
+<p>HugSQL упрощает работу с параметрами. JDBC принимает вектор параметров, и чем их больше, тем сложнее понять, что означает каждый. HugSQL полагается на кейворды и словари в качестве параметров. По ключу легко понять семантику значения, и на него можно сослаться в разных местах запроса.</p>
 
-<p>HugSQL предлагает множество полезных функций. Среди прочих отметим сниппеты — повторяющиеся участки кода. Если один и тот же фрагмент SQL встречается много раз, можно задать его отдельно и позже сослаться на него. Предположим, мы хотим контролировать, какие поля пользователя получит клиент. Объявим их тегом :snip:</p>
+<p>HugSQL предлагает множество полезных функций. Среди прочих отметим сниппеты — повторяющиеся участки кода. Если один и тот же фрагмент SQL встречается много раз, его задают отдельно и позже ссылаются на него. Предположим, мы хотим контролировать, какие поля пользователя вернет запрос. Объявим их тегом <code class="language-plaintext highlighter-rouge">:snip</code>:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :snip user-fields</span>
 <span class="n">id</span><span class="p">,</span> <span class="n">fname</span><span class="p">,</span> <span class="n">lname</span>
 </code></pre></div></div>
 
-<p>Запрос на выборку пользователя изменится. На месте звездочки (все поля) укажем <code class="language-plaintext highlighter-rouge">:snip:user-fields</code>:</p>
+<p>Запрос на выборку пользователя изменится. Вместо звездочки (все поля) укажем <code class="language-plaintext highlighter-rouge">:snip:user-fields</code>:</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">--</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="n">get-user-by-id</span><span class="w"> </span><span class="no">:?</span><span class="w"> </span><span class="no">:1</span><span class="w">
-</span><span class="n">--</span><span class="w"> </span><span class="no">:doc</span><span class="w"> </span><span class="n">Get</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">single</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="n">by</span><span class="w"> </span><span class="n">ID</span><span class="w">
-</span><span class="nb">select</span><span class="w"> </span><span class="no">:snip:user-fields</span><span class="w"> </span><span class="n">from</span><span class="w"> </span><span class="n">users</span><span class="w">
-</span><span class="n">where</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="nb">=</span><span class="w"> </span><span class="no">:id</span><span class="c1">;</span><span class="w">
-</span></code></pre></div></div>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name get-user-by-id :? :1</span>
+<span class="c1">-- :doc Get a single user by ID</span>
+<span class="k">select</span> <span class="p">:</span><span class="n">snip</span><span class="p">:</span><span class="k">user</span><span class="o">-</span><span class="n">fields</span> <span class="k">from</span> <span class="n">users</span>
+<span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="p">:</span><span class="n">id</span><span class="p">;</span>
+</code></pre></div></div>
 
 <p>Чтобы выполнить запрос, передайте в параметр <code class="language-plaintext highlighter-rouge">:user-fields</code> вызов сниппета. Так мы получим только те поля, что объявили.</p>
 
@@ -2090,13 +2105,13 @@ and p.created_at &gt; ..."</span><span class="w">
 </span><span class="c1">;; {:id 1, :fname "Ivan", :lname "Petrov"}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>В сниппете может быть что угодно: набор WHERE-условий, постраничная навигация с помощью LIMIT и OFFSET и так далее. Однако помните, что чем больше сниппетов, тем менее декларативен ваш SQL. С ними вы теряете преимущества чистого SQL, о которых мы говорили.</p>
+<p>В сниппете может быть что угодно: набор <code class="language-plaintext highlighter-rouge">WHERE</code>-условий, постраничная навигация с помощью <code class="language-plaintext highlighter-rouge">LIMIT</code> и <code class="language-plaintext highlighter-rouge">OFFSET</code> и так далее. Однако помните, что чем больше взапросе сниппетов, тем менее он декларативен. С ними вы теряете преимущества чистого SQL, о которых мы говорили.</p>
 
 <h3 id="выражения">Выражения</h3>
 
-<p>Другая полезная функция HugSQL — шаблонная система в запросах. С помощью особого синтаксиса в запрос можно добавить код на Clojure, который “склеивает”  отдельные его части. Прием полезен, когда запрос меняется в зависимости от параметров.</p>
+<p>Еще одна важная функция HugSQL — это шаблонная система в запросах. С помощью особого синтаксиса в запрос можно добавить код на Clojure, который “склеивает” его части. Прием полезен, когда запрос меняется в зависимости от параметров.</p>
 
-<p>Предположим, мы пишем поиск пользователей. В поиске участвуют несколько полей: имя, город, год рождения, при этом обязательно только имя. В этом случае мы не можем составить запрос как в примере ниже:</p>
+<p>Предположим, мы пишем поиск пользователей. В отборе участвуют несколько полей: имя, город, год рождения, при этом обязательно только имя. В этом случае мы не можем составить запрос как в примере ниже:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name find-users :?</span>
 <span class="k">SELECT</span> <span class="o">*</span> <span class="k">FROM</span> <span class="n">users</span>
@@ -2110,11 +2125,12 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">find-users</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">})</span><span class="w">
 
-</span><span class="c1">;; Execution error (ExceptionInfo) at hugsql.core/validate-parameters! (core.clj:83).</span><span class="w">
+</span><span class="c1">;; Execution error (ExceptionInfo)</span><span class="w">
+</span><span class="c1">;; at hugsql.core/validate-parameters! (core.clj:83).</span><span class="w">
 </span><span class="c1">;; Parameter Mismatch: :city parameter data not found.</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Очевидно, отбор по опциональным полям должен быть только если их значения не пустые. Версия запроса с условием выглядит так:</p>
+<p>Отбор по необязательным полям должен быть только если значения не пустые. Правильный запрос выглядит так:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name find-users :?</span>
 <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span>
@@ -2124,9 +2140,9 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="k">limit</span> <span class="mi">10</span>
 </code></pre></div></div>
 
-<p>Синтаксис <code class="language-plaintext highlighter-rouge">--~</code> предваряет однострочное выражение на Clojure. Оно должно вернуть строку или <code class="language-plaintext highlighter-rouge">nil</code>. Внутри доступна переменная <code class="language-plaintext highlighter-rouge">params</code> — словарь параметров, которые передали в запрос. Выше мы проверяем: если заданы поля с городом или возрастом, добавить к WHERE отбор по ним.</p>
+<p>Синтаксис <code class="language-plaintext highlighter-rouge">--~</code> предваряет строку с кодом на Clojure. Он должен вернуть строку SQL или <code class="language-plaintext highlighter-rouge">nil</code>. Внутри доступна переменная <code class="language-plaintext highlighter-rouge">params</code> — словарь параметров, которые передали в запрос. Выше мы проверяем: если заданы поля с городом или возрастом, добавить к <code class="language-plaintext highlighter-rouge">WHERE</code> отбор по ним.</p>
 
-<p>Выражение</p>
+<p>Выражение:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">find-users</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:city</span><span class="w"> </span><span class="s">"Chita"</span><span class="p">})</span><span class="w">
 </span></code></pre></div></div>
@@ -2140,8 +2156,6 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="k">parameters</span><span class="p">:</span> <span class="err">$</span><span class="mi">1</span> <span class="o">=</span> <span class="s1">'Ivan'</span><span class="p">,</span> <span class="err">$</span><span class="mi">2</span> <span class="o">=</span> <span class="s1">'Chita'</span>
 </code></pre></div></div>
 
-<p>Обратите внимание, что он в точности совпадает с тем, что мы написали в файле. Это полезно при чтении логов и в отладке.</p>
-
 <p>Кроме однострочных выражений, HugSQL предлагает многострочные по следующим правилам:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cm">/*~ (if ... */</span>
@@ -2151,9 +2165,9 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="cm">/*~ ) ~*/</span>
 </code></pre></div></div>
 
-<p>Форма <code class="language-plaintext highlighter-rouge">/*~*/</code> означает переход к следующей форме Clojure. Обратите внимание, что последняя строка несет закрывающую скобку для верхнего <code class="language-plaintext highlighter-rouge">if</code>. Контроль за скобками остается таким же, как и в остальном коде на Clojure.</p>
+<p>Форма <code class="language-plaintext highlighter-rouge">/*~*/</code> означает переход к следующей форме Clojure, в данном случае от положительной ветви <code class="language-plaintext highlighter-rouge">if</code> к негативной. Обратите внимание, что последняя строка несет закрывающую скобку для <code class="language-plaintext highlighter-rouge">if</code>. Без нее получится ошибка синтаксиса.</p>
 
-<p>Расширим выборку пользователей следующим правилом: если не задан сниппет полей, выберем их все. Для этого проверим параметр <code class="language-plaintext highlighter-rouge">:user-fields</code> на пустоту и подставим либо <code class="language-plaintext highlighter-rouge">:snip:user-fields</code>, либо <code class="language-plaintext highlighter-rouge">*</code>.</p>
+<p>Опробуем условный оператор в действии. Доработаем функцию <code class="language-plaintext highlighter-rouge">get-user-by-id</code> так, что если не задан сниппет полей, вернем их все. Для этого проверим <code class="language-plaintext highlighter-rouge">:user-fields</code> на пустоту и подставим либо <code class="language-plaintext highlighter-rouge">:snip:user-fields</code>, либо <code class="language-plaintext highlighter-rouge">*</code>.</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name get-user-by-id :? :1</span>
 <span class="c1">-- :doc Get a single user by ID</span>
@@ -2170,16 +2184,18 @@ and p.created_at &gt; ..."</span><span class="w">
 <p>Результат:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-user-by-id</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">})</span><span class="w">
-
-</span><span class="c1">;; {:id 1 :fname "Ivan" :lname "Petrov" :email "...", :age ...}</span><span class="w">
-
+</span><span class="c1">;; {:id 1 :fname "Ivan"</span><span class="w">
+</span><span class="c1">;; :lname "Petrov"</span><span class="w">
+</span><span class="c1">;; :email "...",</span><span class="w">
+</span><span class="c1">;; :age ...}</span><span class="w">
 
 </span><span class="p">(</span><span class="nf">get-user-by-id</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:user-fields</span><span class="w"> </span><span class="p">(</span><span class="nf">user-fields</span><span class="p">)})</span><span class="w">
-
-</span><span class="c1">;; {:id 1 :fname "Ivan" :lname "Petrov"}</span><span class="w">
+</span><span class="c1">;; {:id 1</span><span class="w">
+</span><span class="c1">;;  :fname "Ivan"</span><span class="w">
+</span><span class="c1">;;  :lname "Petrov"}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Более сложный пример с шаблонами — связанные таблицы по условию. Предположим, в списке фильтров появилось галочка “только с фотографией”. В базе данных фотографии хранятся в отдельной таблице photos, которая связана с пользователями внешним ключом. Чтобы фильтровать пользователей по фотографии, в запросе должно быть внутреннее соединение таблиц (<code class="language-plaintext highlighter-rouge">INNER JOIN</code>). При этом не всегда, а только если установлен параметр. Все вместе дает нам шаблон:</p>
+<p>Настоящие сложности возникают, когда управляют не отдельными полями, а таблицами. Предположим, в поиске пользователей появилось галочка “только с фотографией”. Снимки хранятся в отдельной таблице <code class="language-plaintext highlighter-rouge">photos</code>, которая связана с пользователями внешним ключом. Чтобы выбрать пользователей по наличию фото, в запросе должно быть внутреннее соединение таблиц (<code class="language-plaintext highlighter-rouge">INNER JOIN</code>). При этом не всегда, а только если установлен параметр. Все вместе дает нам шаблон:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name find-users2 :?</span>
 <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="n">u</span>
@@ -2206,16 +2222,21 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="cm">/*~ ) ~*/</span>
 </code></pre></div></div>
 
-<p>Теперь запрос с флагом вернет все поля. Обратите внимание, что параметр <code class="language-plaintext highlighter-rouge">:root?</code> передан именно снипетту, а не основному запросу. Это гарантирует, что одноименные поля запроса и снипетта не вступят в конфликт.</p>
+<p>Теперь запрос с флагом вернет все поля. Обратите внимание, что параметр <code class="language-plaintext highlighter-rouge">:root?</code> передан именно сниппету, а не основному запросу. Это гарантирует, что одноименные поля запроса и сниппета не вступят в конфликт.</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-user-by-id</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:user-fields</span><span class="w"> </span><span class="p">(</span><span class="nf">user-fields</span><span class="w"> </span><span class="p">{</span><span class="no">:root?</span><span class="w"> </span><span class="n">true</span><span class="p">})})</span><span class="w">
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-user-by-id</span><span class="w">
+  </span><span class="n">db</span><span class="w">
+  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+   </span><span class="no">:user-fields</span><span class="w"> </span><span class="p">(</span><span class="nf">user-fields</span><span class="w"> </span><span class="p">{</span><span class="no">:root?</span><span class="w"> </span><span class="n">true</span><span class="p">})})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>HugSQL предлагает многие другие возможности. Предлагаем ознакомиться с ними на странице проекта.</p>
+<p>HugSQL предлагает многие другие возможности. Ознакомьтесь с ними на странице проекта.</p>
 
-<p>Завершая раздел, отметим похожие библиотеки. <a href="https://github.com/krisajenkins/yesql">Yesql</a> предлагает аналогичный подход: по файлу запросов библиотека порождает функции Clojure. Главное отличие в том, что при генерации вы указываете JDBC-спеку по умолчанию. В этом случае ее не нужно передавать в каждую функцию явно. Для транзакций и особых случаев спеку указывают через словарь опций. Yesql портирована на Python, Ruby, Golang и другие популярные языки.</p>
+<p>Завершая раздел, отметим похожие библиотеки. <a href="https://github.com/krisajenkins/yesql">Yesql</a> предлагает аналогичный подход: по файлу запросов библиотека строит функции Clojure. Отличие в том, что при генерации вы указываете JDBC-спеку по умолчанию. В этом случае ее не нужно передавать в каждую функцию явно. Для транзакций и особых случаев спеку передают в словаре опций. Yesql портирована на Python, Ruby, Golang и другие популярные языки.</p>
 
-<p>Вторая библиотека называется <a href="https://github.com/luminus-framework/conman">Conman</a>. Это обертка над HugSQL с некоторыми упрощениями. Conman входит в состав фреймворка Luminus и является важной его частью. Вы можете использовать Conman в любом проекте, не обязательно построенном на Luminus.</p>
+<p>Еще одна библиотека называется <a href="https://github.com/luminus-framework/conman">Conman</a>. Это обертка над HugSQL с некоторыми упрощениями. Conman входит в состав фреймворка Luminus и является важной его частью. Также его можно использовать отдельно от Luminus в проектах на другом стеке.</p>
+
+<!-- edited -->
 
 <h3 id="построители">Построители</h3>
 
@@ -3620,7 +3641,7 @@ and p.created_at &gt; ..."</span><span class="w">
 </span><span class="c1">;; ("20210831064602-create-profiles-table.up.sql"...)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Каждую миграция выполняется в транзакции. Если изменения прошли без ошибок, одновременно меняется таблица <code class="language-plaintext highlighter-rouge">migrations</code>: в нее попадает идентификатор той миграции, которую только что выполнили. Даже если миграция “упала” где-то на полпути, не останется промежуточных следов ее работы.</p>
+<p>Каждуя миграция выполняется в транзакции. Если изменения прошли без ошибок, одновременно меняется таблица <code class="language-plaintext highlighter-rouge">migrations</code>: в нее попадает идентификатор той миграции, которую только что выполнили. Даже если миграция “упала” где-то на полпути, не останется промежуточных следов ее работы.</p>
 
 <p>При движении в обратную сторону стратегия меняется. Если нужно вернуться к прошлой версии базы, указывают нужный идентификатор, и программа применяет down-файлы, чей идентификатор находится между указанным и текущим. При этом порядок миграций обратный: от новых к старым.</p>
 
@@ -4173,10 +4194,10 @@ and p.created_at &gt; ..."</span><span class="w">
     </div>
 
     <input required name="path" type="hidden" value="/clj-db/">
-    <input required name="captcha" type="hidden" value="4 &#215; 7">
+    <input required name="captcha" type="hidden" value="9 &#215; 1">
 
     <div class="block">
-        <span class="comment-form-label"><small>4 &#215; 7 = </small></span>
+        <span class="comment-form-label"><small>9 &#215; 1 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 
