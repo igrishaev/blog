@@ -169,7 +169,7 @@
           <li><a href="#шаблоны" id="toc-item-pg-to-datomic-шаблоны">Шаблоны</a></li>
           <li><a href="#выражения" id="toc-item-pg-to-datomic-выражения">Выражения</a></li>
           <li><a href="#построители" id="toc-item-pg-to-datomic-построители">Построители</a></li>
-          <li><a href="#локальные-обертки" id="toc-item-pg-to-datomic-локальные-обертки">Локальные обертки</a></li>
+          <li><a href="#служебные-функции" id="toc-item-pg-to-datomic-служебные-функции">Служебные функции</a></li>
           <li><a href="#логирование-и-форматирование" id="toc-item-pg-to-datomic-логирование-и-форматирование">Логирование и форматирование</a></li>
           <li><a href="#расширения" id="toc-item-pg-to-datomic-расширения">Расширения</a></li>
           <li><a href="#сырой-sql" id="toc-item-pg-to-datomic-сырой-sql">Сырой SQL</a></li>
@@ -2234,26 +2234,28 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <p>Завершая раздел, отметим похожие библиотеки. <a href="https://github.com/krisajenkins/yesql">Yesql</a> предлагает аналогичный подход: по файлу запросов библиотека строит функции Clojure. Отличие в том, что при генерации вы указываете JDBC-спеку по умолчанию. В этом случае ее не нужно передавать в каждую функцию явно. Для транзакций и особых случаев спеку передают в словаре опций. Yesql портирована на Python, Ruby, Golang и другие популярные языки.</p>
 
-<p>Еще одна библиотека называется <a href="https://github.com/luminus-framework/conman">Conman</a>. Это обертка над HugSQL с некоторыми упрощениями. Conman входит в состав фреймворка Luminus и является важной его частью. Также его можно использовать отдельно от Luminus в проектах на другом стеке.</p>
-
-<!-- edited -->
+<p>Еще одна библиотека называется <a href="https://github.com/luminus-framework/conman">Conman</a>. Это обертка над HugSQL с некоторыми упрощениями. Conman входит в состав фреймворка Luminus и является важной его частью. Можно использовать его отдельно от Luminus в проектах на другом стеке.</p>
 
 <h3 id="построители">Построители</h3>
 
-<p>Для SQL существует иной подход, известный как Query Builder или построитель запросов. Это объект, который хранит запрос в структурированном виде: список полей, таблиц, условий и так далее. Вызывая условные методы <code class="language-plaintext highlighter-rouge">.addWhere</code>, <code class="language-plaintext highlighter-rouge">.addJoin</code> и другие, мы наполняем состояние запроса. Метод <code class="language-plaintext highlighter-rouge">.toString</code> или <code class="language-plaintext highlighter-rouge">.render</code> построит SQL из его частей. Ниже — пример построителя запросов на Java:</p>
+<p>Существует иной подход к написанию SQL, известный как Query Builder или построитель запросов. Это объект, который хранит структуру запроса: список полей, таблиц, условий и так далее. Вызывая методы <code class="language-plaintext highlighter-rouge">.addWhere</code>, <code class="language-plaintext highlighter-rouge">.addJoin</code> и другие, мы наполняем его состояние. Метод <code class="language-plaintext highlighter-rouge">.toString</code> или <code class="language-plaintext highlighter-rouge">.render</code> построит SQL из накопленных частей. Ниже — пример построителя запросов на Java:</p>
 
 <div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">String</span> <span class="n">sql</span> <span class="o">=</span> <span class="nc">QueryBuilder</span><span class="o">.</span><span class="na">select</span><span class="o">(</span><span class="s">"u.*"</span><span class="o">,</span> <span class="s">"p.*"</span><span class="o">)</span>
   <span class="o">.</span><span class="na">from</span><span class="o">(</span><span class="s">"users"</span><span class="o">,</span> <span class="s">"u"</span><span class="o">)</span>
   <span class="o">.</span><span class="na">join</span><span class="o">(</span><span class="s">"profiles"</span><span class="o">,</span> <span class="s">"p"</span><span class="o">).</span><span class="na">on</span><span class="o">(</span><span class="s">"p.user_id = u.id"</span><span class="o">)</span>
   <span class="o">.</span><span class="na">where</span><span class="o">(</span><span class="s">"not u.is_deleted"</span><span class="o">)</span>
   <span class="o">.</span><span class="na">toString</span><span class="o">();</span>
+
+<span class="c1">// SELECT u*, p* FROM users AS u</span>
+<span class="c1">// JOIN profiles AS p ON p.user_id = u.id</span>
+<span class="c1">// WHERE NOT u.is_deleted</span>
 </code></pre></div></div>
 
 <p>Похоже устроены библиотеки SQLAlchemy и Knex.js в Python и JavaScript.</p>
 
-<p>Принцип работает и в Clojure с той разницей, что вместо объекта используют привычные вектор и словарь. Специальная функция обходит структуру и строит по ней строку SQL. Поскольку данные неизменяемы, каждая операция над запросом вернет новый запрос. За счет этого снижается риск ошибки, что мы случайно изменим запрос, на который ссылается другой код.</p>
+<p>Принцип работает и в Clojure с той разницей, что вместо объекта используют привычный словарь. Специальная функция обходит его и строит SQL. Поскольку данные неизменяемы, каждая операция над словарем вернет новый словарь. Снижается риск ошибки, что мы случайно изменим запрос, на который используется в другом месте.</p>
 
-<p>Библиотека HoneySql работает по принципу “SQL как данные”. Добавьте ее в проект:</p>
+<p>Библиотека <a href="https://github.com/seancorfield/honeysql">HoneySql</a> работает по принципу “SQL как данные”. Добавьте ее в проект:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.seancorfield/honeysql</span><span class="w"> </span><span class="s">"2.0.0-rc5"</span><span class="p">]</span><span class="w">
 </span></code></pre></div></div>
@@ -2266,9 +2268,9 @@ and p.created_at &gt; ..."</span><span class="w">
    </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">]})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Очевидно, ключи <code class="language-plaintext highlighter-rouge">:select</code>, <code class="language-plaintext highlighter-rouge">:from</code> и <code class="language-plaintext highlighter-rouge">:where</code> означают одноименные части SQL. Важно, что переменная query имеет структуру. В нее легко добавить новое поле или условие функциями <code class="language-plaintext highlighter-rouge">assoc-in</code> и <code class="language-plaintext highlighter-rouge">update-in</code>.</p>
+<p>Очевидно, ключи <code class="language-plaintext highlighter-rouge">:select</code>, <code class="language-plaintext highlighter-rouge">:from</code> и <code class="language-plaintext highlighter-rouge">:where</code> означают одноименные части SQL. Важно, что переменная <code class="language-plaintext highlighter-rouge">query</code> имеет структуру. Ей легко добавить новое поле или условие функциями <code class="language-plaintext highlighter-rouge">assoc-in</code> и <code class="language-plaintext highlighter-rouge">update-in</code>.</p>
 
-<p>Функция <code class="language-plaintext highlighter-rouge">sql/format</code> принимает подобный словарь и возвращает SQL-вектор. Первый элемент этого вектора — строка запроса, остальные элементы — параметры. В нашем случае мы получим вектор:</p>
+<p>Функция <code class="language-plaintext highlighter-rouge">sql/format</code> принимает подобный словарь и возвращает SQL-вектор. Первый элемент этого вектора — строка запроса, остальные элементы — параметры. В нашем случае получим вектор:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">honey.sql</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">sql</span><span class="p">])</span><span class="w">
 
@@ -2281,9 +2283,9 @@ and p.created_at &gt; ..."</span><span class="w">
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span> <span class="o">*</span> <span class="k">FROM</span> <span class="n">users</span> <span class="k">WHERE</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">1</span>
 </code></pre></div></div>
 
-<p>Как мы обсуждали в начале главы, внедрение значений в запрос чревата ошибками. Скорей всего, значение 1 пришло со стороны и поэтому может содержать махинации для инъекций.</p>
+<p>Как мы обсуждали в начале главы, значения в запросе чреваты ошибками. Скорей всего, единица приходит извне и может содержать махинации для инъекций.</p>
 
-<p>В HoneySql любое значение, отличное от символа и кейворда, означает параметр. Числа, булево и строки станут параметрами запроса, а в SQL на их месте будет знак вопроса. Позже параметры установит драйвер JDBC, что мы уже обсуждали. Пример со вставкой пользователя:</p>
+<p>В HoneySql любое значение, отличное от символа и кейворда, означает параметр. Числа, булево и строки станут параметрами, а в запросе на их месте будут вопросительные знаки. Параметры установит драйвер JDBC с учетом кавычек, типов и правил безопасности. Пример со вставкой пользователя:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">query</span><span class="w">
   </span><span class="p">{</span><span class="no">:insert-into</span><span class="w"> </span><span class="no">:users</span><span class="w">
@@ -2303,7 +2305,7 @@ and p.created_at &gt; ..."</span><span class="w">
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">(</span><span class="nf">sql/format</span><span class="w"> </span><span class="n">query</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Чтобы сослаться на другое поле в условии, поставьте на его место кейворд или символ. Предположим, мы храним число бонусных баллов пользователя. Очередная покупка прибавляет еще сто баллов. Вот как начислить их пользователю с номером 99:</p>
+<p>Чтобы сослаться на другое поле в условии, поставьте на его место кейворд или символ. Предположим, мы храним бонусные баллы пользователя. Очередная покупка прибавляет сто баллов. Вот как начислить их пользователю с номером 99:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">query</span><span class="w">
   </span><span class="p">{</span><span class="no">:update</span><span class="w"> </span><span class="no">:users</span><span class="w">
@@ -2315,7 +2317,7 @@ and p.created_at &gt; ..."</span><span class="w">
 </span><span class="p">[</span><span class="s">"UPDATE users SET bonus_points = bonus_points + ? WHERE (id = ?)"</span><span class="w"> </span><span class="mi">100</span><span class="w"> </span><span class="mi">99</span><span class="p">]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>По аналогии работают операторы удаления, группировки, <code class="language-plaintext highlighter-rouge">JOIN</code>, <code class="language-plaintext highlighter-rouge">UNION</code> и другие. Для каждого из них служит одноименный ключ словаря, который принимает другой словарь или вектор. Справку по всем операторам вы найдете на странице проекта.</p>
+<p>По аналогии работают операторы удаления, группировки, <code class="language-plaintext highlighter-rouge">JOIN</code>, <code class="language-plaintext highlighter-rouge">UNION</code> и другие. Для каждого из них служит одноименный ключ, который принимает другой словарь или вектор. Справку по всем ключам вы найдете на странице проекта.</p>
 
 <p>Кроме словаря, библиотека предлагает другой способ составить запрос. В модуле <code class="language-plaintext highlighter-rouge">honey.sql.helpers</code> находятся функции, совместимые со стрелочными оператором. Каждая функция принимает предыдущий запрос и возвращает дополненный новым полем. Перепишем пример с бонусными баллами:</p>
 
@@ -2329,32 +2331,31 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <p>Некоторые предпочитают такой способ записи, хотя технически он сводится к наполнению словаря.</p>
 
-<h3 id="локальные-обертки">Локальные обертки</h3>
+<h3 id="служебные-функции">Служебные функции</h3>
 
-<p>Выше мы проделываем одну и ту же работу: получаем SQL-вектор и передаем его в JDBC. Совместим эти действия в функции. Она принимает два словаря — запрос и параметры — и возвращает результат обращения к базе. Напишем функцию <code class="language-plaintext highlighter-rouge">map-query</code>:</p>
+<p>Выше мы проделываем одну и ту же работу: получаем SQL-вектор и передаем в JDBC. Совместим эти шаги в одной функции. Она принимает два словаря — запрос и параметры — и возвращает результат обращения к базе. Назовем ее <code class="language-plaintext highlighter-rouge">map-query</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">map-query</span><span class="w"> </span><span class="p">[</span><span class="n">db-spec</span><span class="w"> </span><span class="n">map-sql</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">[</span><span class="n">map-params</span><span class="p">]]</span><span class="w">
   </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db-spec</span><span class="w"> </span><span class="p">(</span><span class="nf">sql/format</span><span class="w"> </span><span class="n">map-sql</span><span class="w"> </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="n">map-params</span><span class="p">})))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Словарь запроса (параметр <code class="language-plaintext highlighter-rouge">map-sql</code>) слегка отличается от прежней записи:</p>
+<p>Пример с поиском ползователя по номеру:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">query</span><span class="w">
   </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w">
    </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]</span><span class="w">
    </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="no">:?id</span><span class="p">]})</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">map-query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">13</span><span class="p">})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Обратите внимание на параметр <code class="language-plaintext highlighter-rouge">:?id</code>: это кейворд со знаком вопроса впереди. HoneySQL считает его именным параметром. Значение параметра следует в словаре с ключом <code class="language-plaintext highlighter-rouge">:params</code> в аргументах <code class="language-plaintext highlighter-rouge">sql/format</code>. Вот как вызвать новый запрос:</p>
+<p>Обратите внимание на параметр <code class="language-plaintext highlighter-rouge">:?id</code> в секции <code class="language-plaintext highlighter-rouge">:where</code>: это кейворд со знаком вопроса впереди. HoneySQL считает его именным параметром. Значение параметра следует в словаре <code class="language-plaintext highlighter-rouge">:params</code> в аргументах <code class="language-plaintext highlighter-rouge">sql/format</code>.</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">map-query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>С новой функцией код сократился. Поместите сложные запросы в отдельный модуль, чтобы позже ссылаться на них. По аналогии напишите функцию <code class="language-plaintext highlighter-rouge">map-execute</code>, которая выполняет <code class="language-plaintext highlighter-rouge">INSERT</code>, <code class="language-plaintext highlighter-rouge">UPDATE</code> и другие операции, отличные от чтения.</p>
+<p>С новой функцией код сократился. Для большего удобства выносите запросы в отдельный модуль, чтобы позже ссылаться на них. По аналогии напишите функцию <code class="language-plaintext highlighter-rouge">map-execute</code>, которая выполняет <code class="language-plaintext highlighter-rouge">INSERT</code>, <code class="language-plaintext highlighter-rouge">UPDATE</code> и другие операции, отличные от чтения.</p>
 
 <h3 id="логирование-и-форматирование">Логирование и форматирование</h3>
 
-<p>Теперь когда появилась общая точка, через которую проходят все запросы, ее можно доработать. Например, добавить третий необязательный параметр опций, логировать конечные запросы и многое другое.</p>
+<p>Теперь когда появилась общая точка, через которую проходят все запросы, ее можно улучшить. Например, добавить необязательные параметры, логирование и многое другое.</p>
 
 <p>Предположим, в режиме разработки мы бы хотели видеть все запросы, что посылаем к базе. Добавим отладочный лог:</p>
 
@@ -2364,13 +2365,13 @@ and p.created_at &gt; ..."</span><span class="w">
     </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db-spec</span><span class="w"> </span><span class="n">sql-vec</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>В консоли мы увидим запись:</p>
+<p>В консоли увидим запись:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">map-query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">})</span><span class="w">
 </span><span class="c1">;; 2021-08-06 10:29:25,702 INFO  book.db - Query: SELECT * FROM users WHERE id = ?</span><span class="w">
 </span></code></pre></div></div>
 
-<p>К сожалению, HoneySql не поддерживает “красивые” (pretty-printed) запросы с отступами и переносами строк. Для больших запросов это становится проблемой: длинную строку трудно разобрать. На время разработки подключим Java-библиотеку <a href="https://github.com/vertical-blank/sql-formatter">SqlFormatter</a> для форматирования SQL. Добавьте зависимость в проект:</p>
+<p>К сожалению, HoneySql не поддерживает “красивые” запросы с отступами и переносами строк. Для больших запросов это становится проблемой, потому что длинную строку SQL трудно читать. На время разработки подключим Java-библиотеку <a href="https://github.com/vertical-blank/sql-formatter">SqlFormatter</a> для форматирования SQL. Добавьте зависимость в проект:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.vertical-blank/sql-formatter</span><span class="w"> </span><span class="s">"2.0.1"</span><span class="p">]</span><span class="w">
 </span></code></pre></div></div>
@@ -2388,7 +2389,7 @@ and p.created_at &gt; ..."</span><span class="w">
     </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db-spec</span><span class="w"> </span><span class="n">sql-vec</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Теперь в консоли появится оформленный SQL:</p>
+<p>Теперь в консоли появится красиво оформленный SQL:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">map-query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">})</span><span class="w">
 
@@ -2401,9 +2402,11 @@ and p.created_at &gt; ..."</span><span class="w">
 </span><span class="c1">;;  id = ?</span><span class="w">
 </span></code></pre></div></div>
 
-<p>По желанию его можно как-то выделить, например предварить каждую строку угловой скобкой или вертикальной чертой. Однако помните, что форматирование отнимает ресурсы и снижает скорость работы <code class="language-plaintext highlighter-rouge">map-query</code>. Сделайте так, чтобы логирование включалось по требованию или в зависимости от среды, например только при разработке.</p>
+<p>По желанию его можно как-то выделить, например предварить каждую строку угловой скобкой или вертикальной чертой. Помните, что форматирование отнимает ресурсы и снижает скорость <code class="language-plaintext highlighter-rouge">map-query</code>. Сделайте так, чтобы логирование включалось по требованию или в зависимости от среды, например только при разработке.</p>
 
-<p>Доработайте <code class="language-plaintext highlighter-rouge">map-query</code> так, чтобы в опциях можно было задать факт логирования, его уровень, признак форматирования и другое поведение.</p>
+<p>Доработайте <code class="language-plaintext highlighter-rouge">map-query</code> так, чтобы в опциях можно было задать факт логирования, его уровень, признак форматирования и другие параметры.</p>
+
+<!-- edited -->
 
 <h3 id="расширения">Расширения</h3>
 
@@ -4194,10 +4197,10 @@ and p.created_at &gt; ..."</span><span class="w">
     </div>
 
     <input required name="path" type="hidden" value="/clj-db/">
-    <input required name="captcha" type="hidden" value="9 &#215; 1">
+    <input required name="captcha" type="hidden" value="1 &#215; 8">
 
     <div class="block">
-        <span class="comment-form-label"><small>9 &#215; 1 = </small></span>
+        <span class="comment-form-label"><small>1 &#215; 8 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 
