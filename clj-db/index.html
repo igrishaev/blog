@@ -175,12 +175,12 @@
           <li><a href="#сырой-sql" id="toc-item-pg-to-datomic-сырой-sql">Сырой SQL</a></li>
           <li><a href="#повторное-использование-запросов" id="toc-item-pg-to-datomic-повторное-использование-запросов">Повторное использование запросов</a></li>
           <li><a href="#аналоги" id="toc-item-pg-to-datomic-аналоги">Аналоги</a></li>
-          <li><a href="#шаблоны-или-данные" id="toc-item-pg-to-datomic-шаблоны-или-данные">Шаблоны или данные</a></li>
+          <li><a href="#промежуточный-итог" id="toc-item-pg-to-datomic-промежуточный-итог">Промежуточный итог</a></li>
         </ul>
       </li>
       <li><a href="#структура-и-группировка" id="toc-item-pg-to-datomic-структура-и-группировка">Структура и группировка</a>        <ul>
           <li><a href="#выборка-по-слоям" id="toc-item-pg-to-datomic-выборка-по-слоям">Выборка по слоям</a></li>
-          <li><a href="#группировка-результата" id="toc-item-pg-to-datomic-группировка-результата">Группировка результата</a></li>
+          <li><a href="#ручная-группировка" id="toc-item-pg-to-datomic-ручная-группировка">Ручная группировка</a></li>
           <li><a href="#порядок-записей" id="toc-item-pg-to-datomic-порядок-записей">Порядок записей</a></li>
           <li><a href="#итог" id="toc-item-pg-to-datomic-итог">Итог</a></li>
         </ul>
@@ -2406,26 +2406,30 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <p>Доработайте <code class="language-plaintext highlighter-rouge">map-query</code> так, чтобы в опциях можно было задать факт логирования, его уровень, признак форматирования и другие параметры.</p>
 
-<!-- edited -->
-
 <h3 id="расширения">Расширения</h3>
 
-<p>Библиотеку Honeysql легко расширить оператором, которого нет в поставке по умолчанию. Технически это значит вызвать функцию <code class="language-plaintext highlighter-rouge">sql/register-clause!</code>. Она меняет внутреннее состояние библиотеки, где хранятся известные выражения. Функция принимает другую функцию, которая вернет вектор SQL по словарю. Позже этот вектор будет включен в итоговый результат.</p>
+<p>Honeysql легко расширить оператором, которого нет в поставке по умолчанию. Технически это значит вызвать функцию <code class="language-plaintext highlighter-rouge">sql/register-clause!</code>. Она меняет состояние библиотеки, где хранятся известные выражения. Функция принимает другую функцию, которая вернет вектор SQL по словарю.</p>
 
 <p>Приведем пример с выражением <code class="language-plaintext highlighter-rouge">CREATE INDEX</code> для PostgreSQL. Это сложная команда со множеством полей и условий. Вот лишь малая часть ее синтаксиса:</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">CREATE</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="n">UNIQUE</span><span class="w"> </span><span class="p">]</span><span class="w"> </span><span class="n">INDEX</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="n">CONCURRENTLY</span><span class="w"> </span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="n">IF</span><span class="w"> </span><span class="n">NOT</span><span class="w"> </span><span class="n">EXISTS</span><span class="w"> </span><span class="p">]</span><span class="w"> </span><span class="nb">name</span><span class="w"> </span><span class="p">]</span><span class="w"> </span><span class="n">ON</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="n">ONLY</span><span class="w"> </span><span class="p">]</span><span class="w"> </span><span class="n">table</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="n">USING</span><span class="w"> </span><span class="n">method</span><span class="w"> </span><span class="p">]</span><span class="w"> </span><span class="n">...</span><span class="w">
-</span></code></pre></div></div>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">CREATE</span> <span class="p">[</span> <span class="k">UNIQUE</span> <span class="p">]</span> <span class="k">INDEX</span> <span class="p">[</span> <span class="n">CONCURRENTLY</span> <span class="p">]</span>
+    <span class="p">[</span> <span class="p">[</span> <span class="n">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="p">]</span> <span class="n">name</span> <span class="p">]</span>
+    <span class="k">ON</span> <span class="p">[</span> <span class="k">ONLY</span> <span class="p">]</span> <span class="k">table</span>
+    <span class="p">[</span> <span class="k">USING</span> <span class="k">method</span> <span class="p">]</span> <span class="p">...</span>
+</code></pre></div></div>
 
 <p>Наша задача — сделать так, чтобы индекс можно было задать словарем. Этим мы снизим риск ошибки при написании индексов вручную. Например:</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">sql/format</span><span class="w"> </span><span class="p">{</span><span class="no">:create-index</span><span class="w"> </span><span class="p">{</span><span class="no">:if-not-exists?</span><span class="w"> </span><span class="n">true</span><span class="w">
-                            </span><span class="no">:name</span><span class="w"> </span><span class="s">"idx_user_lname"</span><span class="w">
-                            </span><span class="no">:on-table</span><span class="w"> </span><span class="no">:users</span><span class="w">
-                            </span><span class="no">:on-field</span><span class="w"> </span><span class="no">:lname</span><span class="p">}})</span><span class="w">
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">sql/format</span><span class="w">
+  </span><span class="p">{</span><span class="no">:create-index</span><span class="w"> </span><span class="p">{</span><span class="no">:if-not-exists?</span><span class="w"> </span><span class="n">true</span><span class="w">
+                  </span><span class="no">:name</span><span class="w"> </span><span class="s">"idx_user_lname"</span><span class="w">
+                  </span><span class="no">:on-table</span><span class="w"> </span><span class="no">:users</span><span class="w">
+                  </span><span class="no">:on-field</span><span class="w"> </span><span class="no">:lname</span><span class="p">}})</span><span class="w">
+
+</span><span class="c1">;; CREATE INDEX IF NOT EXISTS idx_user_lname ON users (id);</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Сперва учтем только основные поля индекса: его имя, уникальность, имя таблицы и некоторые другие. Ниже — черновая версия кода, которая строит индекс:</p>
+<p>Сперва обработаем главные поля индекса: его имя, уникальность, имя таблицы и некоторые другие. Ниже — черновая версия кода, которая строит индекс:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">sql/register-clause!</span><span class="w">
  </span><span class="no">:create-index</span><span class="w">
@@ -2458,35 +2462,35 @@ and p.created_at &gt; ..."</span><span class="w">
                             </span><span class="no">:on-table</span><span class="w"> </span><span class="no">:users</span><span class="w">
                             </span><span class="no">:on-field</span><span class="w"> </span><span class="no">:lname</span><span class="p">}})</span><span class="w">
 
-</span><span class="p">[</span><span class="s">"CREATE  INDEX IF NOT EXISTS idx_user_lname ON users ( lname )  "</span><span class="p">]</span><span class="w">
+</span><span class="p">[</span><span class="s">"CREATE INDEX IF NOT EXISTS idx_user_lname ON users ( lname )"</span><span class="p">]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Если передать этот вектор в <code class="language-plaintext highlighter-rouge">jdbc/execute!</code>, мы действительно получим новый индекс. Доработайте ключ <code class="language-plaintext highlighter-rouge">:create-index</code> так, чтобы он поддерживал больше полей и условий, в том числе специфичных для некоторых баз данных.</p>
+<p>Если передать этот вектор в <code class="language-plaintext highlighter-rouge">jdbc/execute!</code>, мы действительно получим индекс. Доработайте ключ <code class="language-plaintext highlighter-rouge">:create-index</code> так, чтобы он поддерживал больше полей и условий, в том числе специфичных для некоторых баз данных.</p>
 
-<p>Кроме выражений, HoneySQL можно расширить SQL-функциями и операторами. Например, сделать так, чтобы условие</p>
+<p>Кроме выражений, HoneySQL можно расширить операторами. Например, сделать так, чтобы условие:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="p">[</span><span class="no">:json-&gt;&gt;</span><span class="w"> </span><span class="no">:attributes</span><span class="w"> </span><span class="no">:color</span><span class="p">]</span><span class="w"> </span><span class="s">"red"</span><span class="p">]}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>становилось</p>
+<p>становилось:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="s">"... WHERE attributes -&gt;&gt; 'color' = ?"</span><span class="w"> </span><span class="s">"red"</span><span class="p">]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>С таким подходом у вас будет больше гибкости в запросах. Если вы часто используете нестандартные операторы, зарегистрируйте их в HoneySQL, чтобы не копировать код и оперативно править их в одном месте. Изучите примеры с вызовом <code class="language-plaintext highlighter-rouge">sql/register-fn!</code> и <code class="language-plaintext highlighter-rouge">sql/register-op!</code> из документации проекта.</p>
+<p>С таким подходом запросы становятся гибче. Если вы пользуетесь редкими операторами, зарегистрируйте их в HoneySQL, чтобы не копировать код и оперативно править их в одном месте. Изучите примеры с вызовом <code class="language-plaintext highlighter-rouge">sql/register-fn!</code> и <code class="language-plaintext highlighter-rouge">sql/register-op!</code> из документации библиотеки.</p>
 
 <h3 id="сырой-sql">Сырой SQL</h3>
 
-<p>По умолчанию HoneySql покрывает почти все операторы SQL. Но иногда вам понадобится оператор, которого нет в библиотеке. Для этого служит последнее средство — вкрапление “сырого” SQL. Ключ <code class="language-plaintext highlighter-rouge">:raw</code> принимает произвольный текст и внедряет его в запрос без какой-либо обработки.</p>
+<p>HoneySql покрывает почти все операторы SQL, однако рано или поздно понадобится такой, которого нет в поставке. Для этого служит последнее средство — вкрапление сырого SQL. Ключ <code class="language-plaintext highlighter-rouge">:raw</code> принимает текст или вектор и внедряет его в запрос с минимальной обработкой. Приведем несколько примеров.</p>
 
-<p>Приведем несколько примеров. Пользователи, созданные за последний день:</p>
+<p>Выборка пользователей, созданных за последний день. В поле <code class="language-plaintext highlighter-rouge">:raw</code> следует строка SQL, а именно вычитание дня из текущей даты.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w">
  </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]</span><span class="w">
  </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:&gt;=</span><span class="w"> </span><span class="no">:created_at</span><span class="w"> </span><span class="p">[</span><span class="no">:raw</span><span class="w"> </span><span class="s">"now() - interval '1 day'"</span><span class="p">]]}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Более сложный запрос, где JSON-атрибуты товаров дополняют цветом и размером. Оператор <code class="language-plaintext highlighter-rouge">||</code> объединяет два объекта JSON.</p>
+<p>Более сложный запрос, где атрибуты товаров дополняют цветом и размером. Оператор <code class="language-plaintext highlighter-rouge">||</code> объединяет два объекта JSON.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">map-query</span><span class="w">
  </span><span class="n">db</span><span class="w">
@@ -2496,22 +2500,22 @@ and p.created_at &gt; ..."</span><span class="w">
  </span><span class="p">{</span><span class="no">:new-attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:color</span><span class="w"> </span><span class="s">"red"</span><span class="w"> </span><span class="no">:size</span><span class="w"> </span><span class="s">"XL"</span><span class="p">}})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Обратите внимание, что в ключе <code class="language-plaintext highlighter-rouge">:raw</code> указана не строка, а вектор элементов (тоже строк или векторов), который позже соединяется в строку. С вектором проще поддерживать структуру запроса.</p>
+<p>Во втором варианте в <code class="language-plaintext highlighter-rouge">:raw</code> указана не строка, а вектор элементов (тоже строк или векторов), которые позже объединяются в строку. С вектором проще поддерживать структуру запроса.</p>
 
-<p>Вставляйте сырой SQL только ключом <code class="language-plaintext highlighter-rouge">:raw</code>, но ни в коем случае не конкатенацией строк. Сюда же относятся автозамена, разбиение и другие операции со строками. Все они будут ошибкой</p>
+<p>Будьте особенно осторожны с сырым SQL: не допускайте, чтобы в нем был ввод пользователя. Добавляйте его только ключом <code class="language-plaintext highlighter-rouge">:raw</code>, но ни в коем случае не конкатенацией строк. Сюда же относятся автозамена, разбиение и другие операции со строками. Все они будут ошибкой.</p>
 
 <h3 id="повторное-использование-запросов">Повторное использование запросов</h3>
 
-<p>В разделе про SQL-шаблоны мы выяснили, как повторно использовать части запросов. Для HugSQL мы использовали сниппеты — именованные выражения. В HoneySQL это делается проще, потому что сводится к работе с неизменяемыми коллекциями.</p>
+<p>В разделе про SQL-шаблоны мы выяснили, как повторно использовать части запросов. В HugSQL мы использовали сниппеты — именованные выражения. В HoneySQL это делается проще, потому что сводится к работе с неизменяемыми коллекциями.</p>
 
-<p>Вернемся к таблице пользователей. Приложение часто обращается к ним: читает всех пользователей, ищет по имени или городу, находит конкретного пользователя по номеру. Все эти запросы имеют общую часть: имя таблицы и список полей, которые получат клиенты. Вынесем общую часть в переменную, чтобы позже ссылаться на ее. Переменную еще называют “тушкой” запроса:</p>
+<p>Вернемся к таблице пользователей. Приложение часто обращается к ним: читает всех пользователей, ищет по имени или городу, находит конкретного человека по номеру. У этих запросов общая часть: имя таблицы и список полей, которые получит клиент. Вынесем ее в переменную, на которую позже будем ссылаться. По-другому ее называют “тушкой” запроса:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">user-base</span><span class="w">
   </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w">
    </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Если выполнить “тушку”, мы просто получим всех пользователей. Чтобы задать отбор по имени и ограничение на длину выборки, добавим эти критерии с помощью <code class="language-plaintext highlighter-rouge">assoc</code>:</p>
+<p>Если выполнить “тушку”, получим всех пользователей. Чтобы задать отбор по имени и ограничить длину выборки, добавим эти критерии с помощью <code class="language-plaintext highlighter-rouge">assoc</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">map-query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="n">user-base</span><span class="w">
                      </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:fname</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">]</span><span class="w">
@@ -2522,11 +2526,11 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <p>Усложним задачу поиском по многим полям. В зависимости от того, заполнено поле или нет, мы должны добавить его в <code class="language-plaintext highlighter-rouge">WHERE</code>. Обратимся к макросу <code class="language-plaintext highlighter-rouge">cond-&gt;</code>, который отлично справится с задачей. Он пропускает данные через серию предикатов и форм, при этом каждая форма получает результат предыдущей.</p>
 
-<p>Предположим, при поиске пользователя его имя обязательно для заполнения, а почта и возраст не обязательны. В этом случае мы составим запрос query на основе <code class="language-plaintext highlighter-rouge">user-base</code> с отбором по имени. Затем, если заданы почта и возраст, наполним секцию <code class="language-plaintext highlighter-rouge">WHERE</code>:</p>
+<p>Предположим, при поиске пользователя имя обязательно для заполнения, а почта и возраст – нет. В этом случае составим запрос <code class="language-plaintext highlighter-rouge">query</code> на основе <code class="language-plaintext highlighter-rouge">user-base</code> с отбором по имени. Затем, если заданы почта и возраст, дополним секцию <code class="language-plaintext highlighter-rouge">WHERE</code>:</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">q-fname</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="c1">;; from params</span><span class="w">
-      </span><span class="n">q-email</span><span class="w"> </span><span class="s">"test@test.com"</span><span class="w"> </span><span class="c1">;; from params</span><span class="w">
-      </span><span class="n">q-age</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="c1">;; from params</span><span class="w">
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">q-fname</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w">          </span><span class="c1">;; (get params :name)</span><span class="w">
+      </span><span class="n">q-email</span><span class="w"> </span><span class="s">"test@test.com"</span><span class="w"> </span><span class="c1">;; (get params :email)</span><span class="w">
+      </span><span class="n">q-age</span><span class="w"> </span><span class="n">nil</span><span class="w">               </span><span class="c1">;; (get params :age)</span><span class="w">
 
       </span><span class="n">query</span><span class="w">
       </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="n">user-base</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:and</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:fname</span><span class="w"> </span><span class="n">q-fname</span><span class="p">]])]</span><span class="w">
@@ -2551,8 +2555,8 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <p>Похоже работает условное соединение таблиц. Если задан флаг “с фотографией”, добавим в запрос ключ <code class="language-plaintext highlighter-rouge">:join</code> с таблицей <code class="language-plaintext highlighter-rouge">photos</code>:</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">q-fname</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="c1">;; from params</span><span class="w">
-      </span><span class="n">with-photo?</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="c1">;; from params</span><span class="w">
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">q-fname</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w">   </span><span class="c1">;; (get params :name)</span><span class="w">
+      </span><span class="n">with-photo?</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="c1">;; (get params :with_photo)</span><span class="w">
 
       </span><span class="n">query</span><span class="w">
       </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="n">user-base</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:and</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:fname</span><span class="w"> </span><span class="n">q-fname</span><span class="p">]])]</span><span class="w">
@@ -2570,33 +2574,33 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="k">WHERE</span> <span class="p">(</span><span class="n">fname</span> <span class="o">=</span> <span class="s1">'Ivan'</span><span class="p">)</span>
 </code></pre></div></div>
 
-<p>До сих пор мы использовали только равенство, но на практике нас интересуют диапазоны и частичные совпадения. Например, цена от и до при поиске товара или вхождение слова в полное название. Доработайте код так, чтобы для возраста можно было задать границы. Теперь мы ожидаем не одно, а два поля: <code class="language-plaintext highlighter-rouge">age__min</code> и <code class="language-plaintext highlighter-rouge">age__max</code>. Обратите внимание на двойное подчеркивание: оно отделяет имя поля (<code class="language-plaintext highlighter-rouge">age</code>) от оператора сравнения (<code class="language-plaintext highlighter-rouge">min</code>, больше или <code class="language-plaintext highlighter-rouge">max</code>, меньше). Для почты, города и других строковый полей напишите оператор вхождения: <code class="language-plaintext highlighter-rouge">name__contains</code>, <code class="language-plaintext highlighter-rouge">city__contains</code> и другие.</p>
+<p>Усложним поиск еще больше. До сих пор мы использовали равенство по полю, но на практике применяют диапазоны и частичные совпадения. Например, цена от и до при поиске товара или вхождение слова в полное название. Доработайте код так, чтобы для возраста можно было задать границы. Теперь мы ожидаем не одно, а два поля: <code class="language-plaintext highlighter-rouge">age__min</code> и <code class="language-plaintext highlighter-rouge">age__max</code>. Обратите внимание на двойное подчеркивание: оно отделяет имя поля (<code class="language-plaintext highlighter-rouge">age</code>) от оператора сравнения (<code class="language-plaintext highlighter-rouge">min</code>, больше или <code class="language-plaintext highlighter-rouge">max</code>, меньше). Для почты, города и других строковых полей напишите оператор вхождения <code class="language-plaintext highlighter-rouge">contains</code>: <code class="language-plaintext highlighter-rouge">name__contains</code>, <code class="language-plaintext highlighter-rouge">city__contains</code> и другие.</p>
 
 <h3 id="аналоги">Аналоги</h3>
 
-<p>Коротко перечислим аналоги HoneySQL. Это SQLingvo, Korma, Lobos, Toucan и другие. Все они так или иначе выражают SQL с помощью данных или макросов, которые позже становятся строкой. Познакомившись HoneySQL, вы без труда освоите библиотеки с тем же подходом, где запросы строят из структур данных.</p>
+<p>Коротко перечислим аналоги HoneySQL. Это <a href="https://github.com/r0man/sqlingvo">SQLingvo</a>, <a href="https://github.com/metabase/toucan">Toucan</a>, Korma и другие. Все они так или иначе выражают SQL с помощью данных, которые позже становятся строкой. Познакомившись HoneySQL, вы без труда освоите эти библиотеки, потому что в них принят тот же подход.</p>
 
-<p>Отдельно стоит отметить Korma: эта библиотека делает шаг в сторону ORM. В ней вы объявляете сущности базы данных, по которым позже библиотека строит запросы. Korma будет интересна тем, кто работал с фреймворками Django или Rails и теперь ищет что-то похожее.</p>
+<p>Отдельно отметим фреймворк <a href="https://github.com/korma/Korma">Korma</a>: он делает шаг в сторону ORM. Вы объявляете сущности базы данных, по которым позже строятся запросы. Korma понравится тем, кто работал с фреймворками Django или Rails и теперь ищет что-то похожее.</p>
 
-<h3 id="шаблоны-или-данные">Шаблоны или данные</h3>
+<h3 id="промежуточный-итог">Промежуточный итог</h3>
 
-<p>Мы рассмотрели два способа работы с SQL: с шаблонами и с помощью данных. В первом случае в файле пишут сырой SQL, и позже он становится функциями. Во втором случае запросы строят из словарей и списков. Что выбрать?</p>
+<p>Мы рассмотрели два способа работы с SQL: шаблоны и данные. В первом случае в файле пишут сырой SQL, который позже становится функциями. Во втором случае запросы получают из словарей и списков. Что выбрать?</p>
 
-<p>Вариант с шаблонами хорош тем, что мысленно вы остаетесь на уровне базы данных. Запрос легко скопировать в PGAdmin, выполнить и оценить результат. Затем там же отладить его и перенести обратно с минимальными усилиями. Если в фирме есть специалист по базам данных, он проведет аудит ваших запросов: найдет медленные выражения, не оптимальные операторы WHERE или JOIN.</p>
+<p>Вариант с шаблонами хорош тем, что мысленно вы остаетесь на уровне базы. Запрос легко скопировать в PGAdmin, выполнить и оценить результат; там же отладить его и перенести обратно с минимальными усилиями. Если в фирме есть специалист по базам данных, он сделает аудит запросов: найдет медленные выражения, не оптимальные операторы <code class="language-plaintext highlighter-rouge">WHERE</code> и <code class="language-plaintext highlighter-rouge">JOIN</code>.</p>
 
-<p>Наоборот, если запросы описаны словарями, за ними плохо видна логика SQL. Для больших и сложных запросов это становится проблемой. Иногда такие запросы пишут в исходном (сыром) виде, долго тестируют и только затем приводят к “кложурному” виду. Получается двойная работа.</p>
+<p>Наоборот, когда запросы описаны словарями, за ними плохо видна логика SQL. Для больших и сложных запросов это становится проблемой. Иногда запросы пишут в исходном виде, долго тестируют и только затем приводят к “кложурному” виду. Получается двойная работа.</p>
 
-<p>С другой стороны, запросы в виде данных легче использовать повторно. Если в нескольких запросах повторяется одно выражение, легко вынести его в переменную. Словари и списки удобней наращивать формами <code class="language-plaintext highlighter-rouge">assoc-in</code> и <code class="language-plaintext highlighter-rouge">cond-&gt;</code>, нежели добавлять Clojure-код в шаблоны SQL.</p>
+<p>С другой стороны, запросы в виде данных легче использовать повторно. Если в нескольких запросах повторяется одно выражение, легко вынести его в переменную. Словари и списки удобней наращивать формами <code class="language-plaintext highlighter-rouge">assoc-in</code> и <code class="language-plaintext highlighter-rouge">cond-&gt;</code>, нежели добавлять код на Clojure в шаблоны SQL.</p>
 
-<p>Оба способа равнозначны, и нельзя с уверенностью сказать, что лучше. Чтобы определиться, испытайте оба подхода на практике.</p>
+<p>Оба способа равнозначны, и нельзя с уверенностью сказать, что лучше. Чтобы определиться, испытайте то и другое на практике.</p>
 
 <h2 id="структура-и-группировка">Структура и группировка</h2>
 
-<p>Техники, что мы рассмотрели выше, только составляют запрос, но не влияют на его обработку. Независимо от того, предпочитаете ли вы SQL в шаблонах или в виде коллекций, вы столкнетесь с тем, что недостаточно только составить и выполнить запрос. Часто ответ базы данных нуждается в обработке из-за вложенных данных. Рассмотрим, что это за проблема и как ее решить.</p>
+<p>Библиотеки, что мы рассмотрели выше, только составляют запрос, но не влияют на его обработку. Независимо от того, что вы предпочитаете – шаблоны или данные – вы столкнетесь с тем, что выполнить запрос еще не достаточно. Часто ответ базы нуждается в обработке из-за вложенных данных. Рассмотрим, что это за проблема и как ее решить.</p>
 
-<p>В сердце реляционных баз данных лежит модель отношений между таблицами. Почти все операции над таблицами возвращают таблицы. Прибегая к аналогии, можно сказать, что из прямоугольных блоков можно выложить только прямоугольные формы, но не треугольные или круглые. В общем случае база хранит плоские данные и не может построить из них дерево.</p>
+<p>В сердце реляционных баз данных лежат отношения между таблицами. Почти все операции над таблицами возвращают таблицы. Прибегая к аналогии, можно сказать, что из прямоугольных блоков можно выложить только прямоугольные формы, но не треугольные или круглые. В общем случае база хранит плоские данные и не может построить из них дерево.</p>
 
-<p>На практике мы имеем дело с подчиненными сущностями. Например, у организации несколько филиалов, а в каждом из них департаменты. У автора несколько статей, к статьям пишут комментарии. Товары делятся на категории и подкатегории, заказ состоит из этапов и так далее. Это значит, не достаточно просто выбрать сущности по типу, например отдельно авторов и статьи:</p>
+<p>На практике мы имеем дело с подчиненными сущностями. Например, у организации несколько филиалов и в каждом из них департаменты. У автора несколько статей, а к статьям пишут комментарии. Товары делятся на категории и подкатегории, заказ состоит из этапов и так далее. Это значит, не достаточно просто выбрать сущности по типу, например отдельно авторов и статьи:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; authors</span><span class="w">
 </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan Petrov"</span><span class="p">}</span><span class="w">
@@ -2621,9 +2625,9 @@ and p.created_at &gt; ..."</span><span class="w">
            </span><span class="no">:author-id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]}]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>На этом месте реляционные базы вступают в конфликт с нашими требованиями. Без особых ухищрений нельзя получить ответ базы именно в том виде, что в примере выше. Проверим это на практике: создадим таблицы и выберем из них данные.</p>
+<p>На этом месте реляционные базы вступают в конфликт с требованиями. Без особых ухищрений нельзя получить ответ как в примере выше. Проверим это на практике: создадим таблицы и выберем из них данные.</p>
 
-<p>Первый шаг, таблицы:</p>
+<p>Первый шаг, таблицы авторов и статей:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">authors</span> <span class="p">(</span>
   <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
@@ -2637,7 +2641,7 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="p">);</span>
 </code></pre></div></div>
 
-<p>На втором шаге добавим минимальный набор данных. Для каждого автора по две статьи:</p>
+<p>Добавим минимальный набор данных. У каждого автора по две статьи:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">authors</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span> <span class="k">VALUES</span>
   <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s1">'Ivan Petrov'</span><span class="p">),</span>
@@ -2650,7 +2654,7 @@ and p.created_at &gt; ..."</span><span class="w">
   <span class="p">(</span><span class="mi">40</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="s1">'Working on my pet project'</span><span class="p">);</span>
 </code></pre></div></div>
 
-<p>Третий шаг: напишем запрос на выборку авторов и их статей:</p>
+<p>Третий шаг: запрос на выборку авторов и их статей:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span> <span class="o">*</span>
 <span class="k">FROM</span> <span class="n">authors</span> <span class="n">a</span>
@@ -2686,13 +2690,11 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <p>Ситуация ухудшается, если у дочерних записей есть другие дочерние, например оценки или комментарии. Это приведет к еще большему дублированию родителей.</p>
 
-<p>Проблема прямоугольника, как ее называет автор, не так проста, как кажется на первый взгляд. Она может серьезно задержать разработку. Как правило, когда мы формируем данные для клиента, от нас ожидают вложенную структуру. Клиент не должен перестраивать данные перед выводом, иначе это замедлит его работу.</p>
-
-<p>Очевидно, требуется общий подход к решению проблемы. Мы рассмотрим несколько способов: на уровне кода и базы данных.</p>
+<p>Проблема структуры не так проста, какой кажется на первый взгляд. Она может серьезно задержать разработку. Как правило, клиенты ожидают вложенные данные, чтобы не перестраивать их перед выводом. Требуется общий подход к решению задачи. Мы рассмотрим несколько способов: на уровне кода и базы данных.</p>
 
 <h3 id="выборка-по-слоям">Выборка по слоям</h3>
 
-<p>Наиболее простой способ в том, чтобы выбрать главную сущность и подчиненные по отдельности. Предположим, мы знаем номер автора, которого нужно найти. Тогда первый запрос вернет его по первичному ключу:</p>
+<p>Наиболее простой способ в том, чтобы выбрать главную и подчиненные сущности по отдельности. Предположим, мы знаем номер автора, которого нужно найти. Тогда первый запрос вернет его по первичному ключу:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">author-id</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w">
 
@@ -2708,7 +2710,7 @@ and p.created_at &gt; ..."</span><span class="w">
  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">20</span><span class="n">,</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"Thoughts on LISP"</span><span class="n">,</span><span class="w"> </span><span class="no">:author_id</span><span class="w"> </span><span class="mi">1</span><span class="p">})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Осталось соединить результаты, и ответ готов:</p>
+<p>Соедининим результаты, и ответ готов:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">author-id</span><span class="w"> </span><span class="mi">1</span><span class="w">
       </span><span class="n">author</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-by-id</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
@@ -2718,7 +2720,7 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <p>Хоть это и наивное решение, оно имеет право на жизнь. Мы производим строго два запроса, что не нагрузит базу данных. При желании их можно запустить параллельно.</p>
 
-<p>Отдельные запросы неудобны в случаях, когда записи ищут не по первичным ключам, а более общим признакам: имени, городу. В этом случае сперва выберем родительские записи (их будет несколько), а затем дочерние, что на них ссылаются.</p>
+<p>Номер сущности известен не всегда. Порой записи ищут не по первичным ключам, а более общим признакам: имени, городу. В этом случае сперва выберем родительские записи (их будет несколько), а затем дочерние, что на них ссылаются.</p>
 
 <p>Поиск авторов по имени:</p>
 
@@ -2735,46 +2737,49 @@ and p.created_at &gt; ..."</span><span class="w">
     </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="n">author</span><span class="w"> </span><span class="no">:posts</span><span class="w"> </span><span class="n">posts</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>, мы произведем столько запросов, что и родителей. Это неэффективно: с ростом выборки число запросов будет расти линейно. Если запрос по имени вернул тысячу авторов, мы тысячу раз обратимся к базе.</p>
+<p>, мы произведем столько запросов, сколько авторов. Это неэффективно: с ростом выборки число запросов будет расти линейно. Если запрос по имени вернул тысячу авторов, мы тысячу раз обратимся к базе.</p>
 
-<p>Другой способ в том, чтобы выбрать номера авторов и составить запрос вида:</p>
+<p>Другой способ в том, чтобы получить номера авторов и составить запрос вида:</p>
 
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">...</span><span class="k">FROM</span> <span class="n">posts</span> <span class="k">WHERE</span> <span class="n">author_id</span> <span class="k">IN</span> <span class="p">(</span><span class="o">?</span><span class="p">,</span> <span class="o">?</span><span class="p">,</span> <span class="p">...)</span>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">...</span> <span class="k">FROM</span> <span class="n">posts</span> <span class="k">WHERE</span> <span class="n">author_id</span> <span class="k">IN</span> <span class="p">(</span><span class="o">?</span><span class="p">,</span> <span class="o">?</span><span class="p">,</span> <span class="p">...)</span>
 </code></pre></div></div>
 
 <p>, где знаков вопроса столько же, сколько авторов. Получится один запрос к базе. Если добавить индекс на поле <code class="language-plaintext highlighter-rouge">posts.author_id</code>, это ускорит выборку.</p>
 
-<p>Заметим, что выражение <code class="language-plaintext highlighter-rouge">IN (...)</code> требует особых усилий в построении запроса. Это не один, а несколько параметров, разделенных запятой. При этом их позиция должна совпадать с позицией значения в векторе SQL. Если поиск по имени нашел десять авторов, вот как будет выглядеть вектор SQL с поиском статей:</p>
+<p>Заметим, что выражение <code class="language-plaintext highlighter-rouge">IN (...)</code> требует усилий в построении запроса. Это не один, а несколько параметров, разделенных запятой. Их позиция должна совпадать с позицией значения в векторе SQL. Если поиск по имени нашел десять авторов, вот как будет выглядеть вектор SQL с поиском статей:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">[</span><span class="s">"SELECT * FROM posts WHERE author_id IN (?,?,?,?,?,?,?,?,?,?)"</span><span class="w">
                 </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="mi">3</span><span class="n">,</span><span class="w"> </span><span class="mi">4</span><span class="n">,</span><span class="w"> </span><span class="mi">5</span><span class="n">,</span><span class="w"> </span><span class="mi">6</span><span class="n">,</span><span class="w"> </span><span class="mi">7</span><span class="n">,</span><span class="w"> </span><span class="mi">8</span><span class="n">,</span><span class="w"> </span><span class="mi">9</span><span class="n">,</span><span class="w"> </span><span class="mi">10</span><span class="p">])</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Библиотеки предлагают разные способы облегчить подобную запись. В HugSQL для этого служит оператор <code class="language-plaintext highlighter-rouge">where id in (:v*:ids)</code> — частичка <code class="language-plaintext highlighter-rouge">:v*</code> означает вектор параметров с именем <code class="language-plaintext highlighter-rouge">ids</code>. HoneySQL предлагает форму <code class="language-plaintext highlighter-rouge">:in</code> с похожей семантикой.</p>
+<p>Библиотеки пытаются облегчить подобную запись. В HugSQL для этого служит оператор <code class="language-plaintext highlighter-rouge">where id in (:v*:ids)</code> — частичка <code class="language-plaintext highlighter-rouge">:v*</code> означает вектор параметров с именем <code class="language-plaintext highlighter-rouge">ids</code>. HoneySQL предлагает форму <code class="language-plaintext highlighter-rouge">:in</code> с похожей семантикой.</p>
 
-<p>В современных ORM такая выборка называется fetch related, извлечь связанные записи. Например, в Django ORM у объекта QuerySet есть одноименный метод <code class="language-plaintext highlighter-rouge">prefetch_related</code>. С его помощью данные извлекают послойно: сперва сущности первого порядка, затем те, что ссылаются на них, затем потомки потомков и так далее. Вы можете управлять глубиной вложенности, типом сущностей и другими параметрами.</p>
+<p>В современных ORM такая выборка называется fetch related, извлечь связанные записи. Например, в Django ORM у объекта QuerySet есть одноименный метод <code class="language-plaintext highlighter-rouge">prefetch_related</code>. С его помощью данные извлекают послойно: сперва сущности первого порядка, затем те, что ссылаются на них, затем потомки потомков и так далее. Вы можете управлять глубиной вложенности и другими параметрами.</p>
 
-<p>Несложно написать универсальную функцию на Clojure, которая выбирает данные схожим образом. Она ожидает подключение к базе, таблицу, имя внешнего ключа и список их значений.</p>
-
-<!-- TODO -->
+<p>Напишем функцию на Clojure, которая выбирает данные схожим образом. Она ожидает подключение к базе, таблицу, имя внешнего ключа и список их значений.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">fetch-related</span><span class="w">
   </span><span class="p">[</span><span class="n">db-spec</span><span class="w"> </span><span class="n">table</span><span class="w"> </span><span class="n">fk-name</span><span class="w"> </span><span class="n">fk-vals</span><span class="p">]</span><span class="w">
-  </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w">
+   </span><span class="n">db-spec</span><span class="w">
+   </span><span class="p">(</span><span class="nf">sql/format</span><span class="w">
+   </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w">
+    </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="n">table</span><span class="p">]</span><span class="w">
+    </span><span class="no">:where</span><span class="w"> </span><span class="p">[[</span><span class="no">:in</span><span class="w"> </span><span class="n">fk-name</span><span class="w"> </span><span class="n">fk-vals</span><span class="p">]]})))</span><span class="w">
 </span></code></pre></div></div>
 
 <p>Пример ее вызова:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">fetch-related</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:posts</span><span class="w"> </span><span class="no">:author_id</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="n">..10</span><span class="p">])</span><span class="w">
+</span><span class="c1">;; ["SELECT * FROM posts WHERE</span><span class="w">
+</span><span class="c1">;;   (author_id IN (?, ?, ...))" 1 2 ...]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Последний параметр — номера авторов — получим формой <code class="language-plaintext highlighter-rouge">(mapv :id authors)</code> из предыдущего результата. В свободное время напишите функцию <code class="language-plaintext highlighter-rouge">fetch-related</code> самостоятельно.</p>
+<p>Номера авторов получим формой <code class="language-plaintext highlighter-rouge">(mapv :id authors)</code> из предыдущего результата.</p>
 
-<!-- TODO -->
+<p>Будьте осторожны с оператором <code class="language-plaintext highlighter-rouge">IN</code>. Когда параметров много, это плохо сказывается на производительности. Поиск авторов может вернуть сто тысяч записей, что породит запрос с таким же числом параметров. Трудно обозначить конкретный порог для <code class="language-plaintext highlighter-rouge">IN</code>, потому что он зависит от окружения. В одном из проектов, над которым работал автор, таким порогом было число 100. Другими словами, в оператор <code class="language-plaintext highlighter-rouge">WHERE ... IN (...)</code> разрешалось передать не более ста параметров.</p>
 
-<p>Будьте осторожны с оператором <code class="language-plaintext highlighter-rouge">IN</code>. Когда параметров много, это плохо сказывается на производительности. Поиск авторов может вернуть сто тысяч записей, что породит запрос с таким же числом параметров. Трудно обозначить конкретный порог для IN, потому что он зависит от настроек базы данных и окружения. В одном из проектов, над которым работал автор, таким порогом было число 100. Другими словами, в запрос с оператором <code class="language-plaintext highlighter-rouge">WHERE id IN (...)</code> разрешалось передать не более ста параметров.</p>
-
-<p>Это условие слегка меняет код. Мы не знаем заранее, сколько ключей получим из базы, поэтому приходиться делать запросы в цикле. Для этого разбиваем список ключей по сотням и наполняем единый результат. Очевидно, должна быть универсальная функция, которая проходит цикл. Если каждый раз копировать код, вы не избежите ошибок.</p>
+<p>Это условие меняет код. Мы не знаем заранее, сколько ключей получим из базы, поэтому приходиться делать запросы в цикле. Для этого разбиваем список ключей по сотням и наполняем единый результат. Очевидно, должна быть универсальная функция, которая проходит цикл. Если каждый раз копировать код, вы не избежите ошибок.</p>
 
 <p>Проще всего сделать выборку через <code class="language-plaintext highlighter-rouge">loop</code> или <code class="language-plaintext highlighter-rouge">reduce</code>:</p>
 
@@ -2789,13 +2794,16 @@ and p.created_at &gt; ..."</span><span class="w">
  </span><span class="p">(</span><span class="nf">by-chunks</span><span class="w"> </span><span class="n">ids-all</span><span class="w"> </span><span class="mi">100</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Попробуйте также выборку в наполовину параллельном режиме через <code class="language-plaintext highlighter-rouge">pmap</code>. Функция строит ленивую коллекцию футур, которые срабатывают по мере чтения последовательности. Окно такой коллекции <code class="language-plaintext highlighter-rouge">(chunk size)</code> равно числу ядер компьютера, умноженному на два.</p>
+<p>Опробуйте выборку в полупараллельном режиме через <code class="language-plaintext highlighter-rouge">pmap</code>. Функция строит ленивую коллекцию футур, которые выполняются по мере ее чтения. Окно коллекции (chunk size) равно числу ядер компьютера, умноженному на два.</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">ids-chunks</span><span class="w"> </span><span class="p">(</span><span class="nf">by-chunks</span><span class="w"> </span><span class="n">ids-all</span><span class="w"> </span><span class="mi">100</span><span class="p">)</span><span class="w">
-      </span><span class="n">futs</span><span class="w"> </span><span class="p">(</span><span class="nb">doall</span><span class="w">
-            </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[</span><span class="n">ids-chunk</span><span class="w"> </span><span class="n">ids-chunks</span><span class="p">]</span><span class="w">
-              </span><span class="p">(</span><span class="nf">future</span><span class="w">
-                </span><span class="p">(</span><span class="nf">fetch-related</span><span class="w"> </span><span class="n">...</span><span class="w"> </span><span class="n">ids-chunk</span><span class="p">))))]</span><span class="w">
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">ids-chunks</span><span class="w">
+      </span><span class="p">(</span><span class="nf">by-chunks</span><span class="w"> </span><span class="n">ids-all</span><span class="w"> </span><span class="mi">100</span><span class="p">)</span><span class="w">
+
+      </span><span class="n">futs</span><span class="w">
+      </span><span class="p">(</span><span class="nf">pmap</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">ids-chunk</span><span class="p">]</span><span class="w">
+              </span><span class="p">(</span><span class="nf">fetch-related</span><span class="w"> </span><span class="n">...</span><span class="w"> </span><span class="n">ids-chunk</span><span class="p">))</span><span class="w">
+            </span><span class="n">ids-chunks</span><span class="p">)]</span><span class="w">
+
   </span><span class="p">(</span><span class="nb">reduce</span><span class="w">
    </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">result</span><span class="w"> </span><span class="n">fut</span><span class="p">]</span><span class="w">
      </span><span class="p">(</span><span class="nb">into</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">@</span><span class="n">fut</span><span class="p">))</span><span class="w">
@@ -2803,7 +2811,7 @@ and p.created_at &gt; ..."</span><span class="w">
    </span><span class="n">futs</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Еще один способ оптимизировать оператор <code class="language-plaintext highlighter-rouge">IN</code> — записать его в виде условия <code class="language-plaintext highlighter-rouge">ANY</code> с массивом. Этот синтаксис читается как “поле <code class="language-plaintext highlighter-rouge">id</code> равно хотя бы одному элементу”:</p>
+<p>Оператор <code class="language-plaintext highlighter-rouge">IN</code> можно записать в виде условия <code class="language-plaintext highlighter-rouge">ANY</code> с массивом. Синтаксис читается как “поле <code class="language-plaintext highlighter-rouge">id</code> равно хотя бы одному элементу”:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">SELECT</span><span class="w"> </span><span class="nb">*</span><span class="w"> </span><span class="n">FROM</span><span class="w"> </span><span class="n">authors</span><span class="w"> </span><span class="n">WHERE</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="nb">=</span><span class="w"> </span><span class="n">ANY</span><span class="p">(</span><span class="o">'</span><span class="p">{</span><span class="mi">1</span><span class="n">,2,3,4,5</span><span class="p">}</span><span class="o">'</span><span class="p">)</span><span class="c1">;</span><span class="w">
 </span></code></pre></div></div>
@@ -2820,7 +2828,7 @@ and p.created_at &gt; ..."</span><span class="w">
   </span><span class="p">(</span><span class="nf">.createArrayOf</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"INTEGER"</span><span class="w"> </span><span class="p">(</span><span class="nf">object-array</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="mi">5</span><span class="p">])))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Чтобы установить массив в параметр, расширим протокол <code class="language-plaintext highlighter-rouge">ISQLParameter</code> для типа <code class="language-plaintext highlighter-rouge">java.sql.Array</code>. По умолчанию при установке параметра JDBC вызывает метод <code class="language-plaintext highlighter-rouge">.setObject</code>, что не подходит для массива. Реализуем метод <code class="language-plaintext highlighter-rouge">set-parameter</code> так, что у подготовленного выражения вызывается метод <code class="language-plaintext highlighter-rouge">.setArray</code>:</p>
+<p>Чтобы установить массив в параметр, расширим протокол <code class="language-plaintext highlighter-rouge">ISQLParameter</code> для типа <code class="language-plaintext highlighter-rouge">java.sql.Array</code>. По умолчанию JDBC вызывает метод <code class="language-plaintext highlighter-rouge">.setObject</code>, что не подходит для массива. Реализуем метод <code class="language-plaintext highlighter-rouge">set-parameter</code> так, что у подготовленного выражения вызывается метод <code class="language-plaintext highlighter-rouge">.setArray</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">extend-protocol</span><span class="w"> </span><span class="n">jdbc/ISQLParameter</span><span class="w">
   </span><span class="n">java.sql.Array</span><span class="w">
@@ -2828,7 +2836,7 @@ and p.created_at &gt; ..."</span><span class="w">
     </span><span class="p">(</span><span class="nf">.setArray</span><span class="w"> </span><span class="n">stmt</span><span class="w"> </span><span class="n">ix</span><span class="w"> </span><span class="nb">val</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>После всех подготовок выполните запрос с массивом. Теперь он будет правильно передан в запрос.</p>
+<p>После всех подготовок выполните запрос с массивом. Он будет правильно передан в запрос:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">array</span><span class="w">
   </span><span class="p">(</span><span class="nf">.createArrayOf</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"INTEGER"</span><span class="w"> </span><span class="p">(</span><span class="nf">object-array</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="mi">5</span><span class="p">])))</span><span class="w">
@@ -2838,7 +2846,7 @@ and p.created_at &gt; ..."</span><span class="w">
 </span><span class="c1">;; ({:id 1 :name "Ivan Petrov"} {:id 2 :name "Ivan Rublev"})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Код выше можно сократить за счет служебных функций, например условной <code class="language-plaintext highlighter-rouge">make-db-array</code>. По спеке, типу и вектору значений эта функция вернет экземпляр <code class="language-plaintext highlighter-rouge">java.sql.Array</code>:</p>
+<p>Сократим код при помощи служебной функции <code class="language-plaintext highlighter-rouge">make-db-array</code>. По спеке, типу и вектору значений она вернет экземпляр <code class="language-plaintext highlighter-rouge">java.sql.Array</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">make-db-array</span><span class="w"> </span><span class="p">[</span><span class="n">db-spec</span><span class="w"> </span><span class="n">db-type</span><span class="w"> </span><span class="n">values</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">db</span><span class="p">)]</span><span class="w">
@@ -2850,7 +2858,9 @@ and p.created_at &gt; ..."</span><span class="w">
 </span><span class="c1">;; #object[org.postgresql.jdbc.PgArray 0x7d1d3233 "{\"1\",\"2\",\"3\"}"]</span><span class="w">
 </span></code></pre></div></div>
 
-<h3 id="группировка-результата">Группировка результата</h3>
+<!-- edited -->
+
+<h3 id="ручная-группировка">Ручная группировка</h3>
 
 <p>Другой способ работы со вложенными данными заключается в операторе <code class="language-plaintext highlighter-rouge">JOIN</code>. С ним мы получим данные одним запросом. Так поступают, чтобы снизить нагрузку на базу данных, особенно когда у нее много клиентов. В этом случае наша задача — как можно быстрее забрать данные и освободить базу другим потребителям. Даже если данные не совпадают с ожидаемой структурой, их приводят к нужному виду последующей обработкой.</p>
 
@@ -4197,10 +4207,10 @@ and p.created_at &gt; ..."</span><span class="w">
     </div>
 
     <input required name="path" type="hidden" value="/clj-db/">
-    <input required name="captcha" type="hidden" value="1 &#215; 8">
+    <input required name="captcha" type="hidden" value="4 &#215; 3">
 
     <div class="block">
-        <span class="comment-form-label"><small>1 &#215; 8 = </small></span>
+        <span class="comment-form-label"><small>4 &#215; 3 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 
