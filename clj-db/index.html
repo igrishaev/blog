@@ -2946,7 +2946,7 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <p>Можно отдать эти данные клиенту в виде JSON. Заметим, мы выполнили только один обход функцией <code class="language-plaintext highlighter-rouge">reduce</code>, что немаловажно. Если алгоритм требует два и более обходов выборки, с ее ростом код замедлится.</p>
 
-<p>Расширим алгоритм под тройную вложенность. Предположим, к статьям оставляют комментарии и мы бы хотели видеть несколько последних. Для начала добавим несколько комментариев в базу:</p>
+<p>Расширим алгоритм под тройную вложенность. Предположим, к статьям оставляют комментарии и мы бы хотели видеть несколько последних. Для начала добавим комментарии в базу:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">comments</span> <span class="p">(</span>
   <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
@@ -3097,11 +3097,9 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <h3 id="порядок-записей">Порядок записей</h3>
 
-<!-- edited -->
+<p>У нашего обхода один недостаток. Поскольку мы группируем сущности в словаре, теряется порядок их следования в выборке. Иногда порядок неважен, но в некоторых случаях критичен. Например, авторы должны следовать в алфавитном порядке, их статьи — по дате публикации, а комментарии — по оценке пользователями. Если мы обяжем клиентов сортировать данные, это замедлит их.</p>
 
-<p>У нашего обхода один недостаток. Поскольку мы группируем сущности в словаре по ключу, мы теряем порядок их следования в выборке. Иногда порядок неважен, но в некоторых случая критичен. Например, авторы должны следовать в алфавитном порядке, их статьи — по дате публикации, а комментарии — по их оценке пользователями. Если мы обяжем клиентов сортировать данные, это замедлит их.</p>
-
-<p>Одно из решений в том, чтобы каждая сущность помнила номер записи, в которой она появилась. Для этого назначим сущности поле <code class="language-plaintext highlighter-rouge">:db/index</code> — ее позицию в выборке. Чтобы знать индекс на каждом шаге итерации, напишем служебную функцию enumerate. Она превращает коллекцию в список пар, где первый элемент — индекс от нуля:</p>
+<p>Одно из решений в том, чтобы каждая сущность помнила свою позицию в выборке. Для этого назначим ей поле <code class="language-plaintext highlighter-rouge">:db/index</code> с числом. Чтобы знать индекс на каждом шаге итерации, напишем служебную функцию <code class="language-plaintext highlighter-rouge">enumerate</code>. Она превращает коллекцию в список пар, где первый элемент — индекс от нуля:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">enumerate</span><span class="w">
   </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="n">map-indexed</span><span class="w"> </span><span class="nb">vector</span><span class="p">))</span><span class="w">
@@ -3110,7 +3108,7 @@ and p.created_at &gt; ..."</span><span class="w">
 </span><span class="c1">;; ([0 "a"] [1 "b"] [2 "c"])</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Группировка сущностей тоже изменится: теперь она принимает индекс и добавляет его к каждой сущности.</p>
+<p>Группировка сущностей тоже изменится: теперь она принимает индекс и добавляет к каждой сущности.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">row-&gt;entities</span><span class="w"> </span><span class="p">[</span><span class="n">idx</span><span class="w"> </span><span class="n">db-row</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nf">reduce-kv</span><span class="w">
@@ -3132,7 +3130,7 @@ and p.created_at &gt; ..."</span><span class="w">
  </span><span class="s">"author"</span><span class="w"> </span><span class="p">{</span><span class="no">:author/id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:db/index</span><span class="w"> </span><span class="mi">3</span><span class="p">}}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Обход выборки из базы отличается тем, что reduce принимает результат <code class="language-plaintext highlighter-rouge">enumerate</code>. Индекс каждой записи передается в <code class="language-plaintext highlighter-rouge">row-&gt;entities</code>:</p>
+<p>Новый обход выборки отличается тем, что <code class="language-plaintext highlighter-rouge">reduce</code> принимает результат <code class="language-plaintext highlighter-rouge">enumerate</code>. Индекс каждой записи передается в <code class="language-plaintext highlighter-rouge">row-&gt;entities</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">reduce</span><span class="w">
  </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">result</span><span class="w"> </span><span class="p">[</span><span class="n">idx</span><span class="w"> </span><span class="n">row</span><span class="p">]]</span><span class="w">
@@ -3160,7 +3158,7 @@ and p.created_at &gt; ..."</span><span class="w">
                 </span><span class="no">:comment/post-id</span><span class="w"> </span><span class="mi">10</span><span class="p">}}}}}}}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Видим, что в каждой сущности появилось поле <code class="language-plaintext highlighter-rouge">:db/index</code>. Изменим дерево так, чтобы словари сущностей стали вектором, упорядоченным по этому полю. Проще всего это сделать функциями из пакета <code class="language-plaintext highlighter-rouge">clojure.walk</code>. Подготовим проверку на элемент словаря:</p>
+<p>Видим, что в каждой сущности появилось поле <code class="language-plaintext highlighter-rouge">:db/index</code>. Изменим дерево так, чтобы словари сущностей стали вектором, упорядоченным по этому полю. Проще всего это сделать модулем <code class="language-plaintext highlighter-rouge">clojure.walk</code>. Подготовим проверку на элемент словаря:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">entry?</span><span class="w">
   </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="nb">instance?</span><span class="w"> </span><span class="n">clojure.lang.MapEntry</span><span class="p">))</span><span class="w">
@@ -3172,7 +3170,7 @@ and p.created_at &gt; ..."</span><span class="w">
   </span><span class="o">#</span><span class="p">{</span><span class="no">:authors</span><span class="w"> </span><span class="no">:author/posts</span><span class="w"> </span><span class="no">:post/comments</span><span class="p">})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Вот как выглядит функция “ремаппинга” сущностей. Мы используем префикс remap вместо sort потому, что функция не только сортирует сущности, но и меняет их структуру со словаря на вектор.</p>
+<p>Вот как выглядит “ремаппинг” сущностей. Мы используем префикс <code class="language-plaintext highlighter-rouge">remap-</code> вместо <code class="language-plaintext highlighter-rouge">sort-</code> потому, что функция не только сортирует сущности, но и меняет структуру со словаря на вектор.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">remap-entities</span><span class="w">
   </span><span class="p">[</span><span class="n">form</span><span class="p">]</span><span class="w">
@@ -3184,7 +3182,7 @@ and p.created_at &gt; ..."</span><span class="w">
     </span><span class="n">form</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Подключим модуль <code class="language-plaintext highlighter-rouge">clojure.walk</code> и вызовем функцию <code class="language-plaintext highlighter-rouge">prewalk</code>:</p>
+<p>Подключим модуль <code class="language-plaintext highlighter-rouge">clojure.walk</code> и вызовем <code class="language-plaintext highlighter-rouge">prewalk</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">clojure.walk</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">walk</span><span class="p">])</span><span class="w">
 
@@ -3234,9 +3232,11 @@ and p.created_at &gt; ..."</span><span class="w">
     </span><span class="no">:post/author-id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]}]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Эта структура в точности устроит клиентов, и ее можно отправить в теле JSON. Разве что поле <code class="language-plaintext highlighter-rouge">:db/index</code> не нужно клиенту, поэтому удалите его после того, как сущности отсортировали. Доработайте <code class="language-plaintext highlighter-rouge">remap-entities</code> так, чтобы после <code class="language-plaintext highlighter-rouge">(sort-by :db/index)</code> шла форма с удалением этого поля. Искушенные читатели могут объединить сортировку и удаление в трансдьюсер.</p>
+<p>Эти данные подходят клиентам, разве что поле <code class="language-plaintext highlighter-rouge">:db/index</code> уже не нужно. Доработайте <code class="language-plaintext highlighter-rouge">remap-entities</code> так, чтобы после <code class="language-plaintext highlighter-rouge">(sort-by :db/index)</code> шла форма с удалением <code class="language-plaintext highlighter-rouge">:db/index</code>. Искушенные читатели могут объединить сортировку и удаление в трансдьюсер.</p>
 
-<p>Еще одно замечание насчет сортировки. Мы добавили ее из того расчета, что группирующий словарь не обещает порядка добавленных в него ключей. Другими словами, при итерации по словарю порядок сущностей будет не таким, как в оригинальной выборке. С одной оговоркой: словарь сохраняет порядок, если число ключей в нем не превышает восьми элементов. Это легко проверить:</p>
+<!-- edited -->
+
+<p>Еще одно замечание насчет сортировки. Мы добавили ее из расчета, что группирующий словарь не обещает порядка добавленных в него ключей. Другими словами, при итерации по словарю порядок сущностей будет не таким, как в оригинальной выборке. С одной оговоркой: словарь сохраняет порядок, если число ключей в нем не превышает восьми элементов. Это легко проверить:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">into</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="p">(</span><span class="nb">range</span><span class="w"> </span><span class="mi">8</span><span class="p">)]</span><span class="w">
            </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="n">x</span><span class="p">]))</span><span class="w">
@@ -4214,10 +4214,10 @@ and p.created_at &gt; ..."</span><span class="w">
     </div>
 
     <input required name="path" type="hidden" value="/clj-db/">
-    <input required name="captcha" type="hidden" value="5 &#215; 4">
+    <input required name="captcha" type="hidden" value="9 &#215; 5">
 
     <div class="block">
-        <span class="comment-form-label"><small>5 &#215; 4 = </small></span>
+        <span class="comment-form-label"><small>9 &#215; 5 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 
