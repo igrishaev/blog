@@ -538,9 +538,9 @@ The reason is, to collect the options you need a map. Then you turn it into a fl
 
 Since Clojure 1.11 or something both types of functions work with a map, but honestly, it's a compromise to end the stand between the two approaches. Someone may still want to use your code with Clojure below 1.11, so it's better to not rely on this automatic solver.
 
-## Destruction
+## Destructuring
 
-When destructing a map on variables, don't go deeper than one level at once. This code is OK:
+When destructuring a map on variables, don't go deeper than one level at once. This code is OK:
 
 ~~~clojure
 (def response
@@ -599,7 +599,7 @@ If you transform this map into JSON with Cheshire, you'll get the keys `user/nam
 
 **2.** When using namespaces, you never know for sure what is the right key: `:name` or `:user/name`. That's especially annoying when working with JDBC.next result. By default, it adds namespaces to the selected keys which takes an extra query. For performance, we often pass the `rs/as-unqualified-kebab-maps` parameter to skip the namespaces. But when you edit someone else's code, you've got to scroll up and check what row function was passed to the query. That's quite annoying and really slows down the development.
 
-**3.** Maps with namespaces are hard to destruct. Imagine from the map mentioned above, we need to fetch both name of a user and a name of the party. Since the name parts are the same, we cannot use the `:<ns>/keys` syntax as the second clause shadows the first one:
+**3.** Maps with namespaces are hard to destructure. Imagine from the map mentioned above, we need to fetch both name of a user and a name of the party. Since the name parts are the same, we cannot use the `:<ns>/keys` syntax as the second clause shadows the first one:
 
 ~~~clojure
 (let [{:user/keys [name]
@@ -608,7 +608,7 @@ If you transform this map into JSON with Cheshire, you'll get the keys `user/nam
 ;; Party
 ~~~
 
-We have to destruct manually, which is boring:
+We have to destructure manually, which is boring:
 
 ~~~clojure
 (let [{user-name :user/name
@@ -1513,7 +1513,7 @@ And
        acc []]
   (if (= i limit)
     acc
-    (reduce (inc 0) (conj acc (get-item)))))
+    (recur (inc 0) (conj acc (get-item)))))
 ~~~
 
 becomes:
@@ -1523,7 +1523,7 @@ becomes:
        acc! (transient [])]
   (if (= i limit)
     (persistent! acc!)
-    (reduce (inc 0) (conj! acc! (get-item)))))
+    (recur (inc 0) (conj! acc! (get-item)))))
 ~~~
 
 In general, avoid laziness. Although the idea of lazy computation is great, often it's better to get an exception right now rather than in further computations. Thus, prepend `for` macro with `vec`. `Mapv`, `filterv` are also great as they rely on transient vectors:
