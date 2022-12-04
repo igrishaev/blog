@@ -733,7 +733,7 @@ That's completely fine to use `transactionInfo` and `userName` keys in your code
 
 ## Type hints
 
-Always enable reflection warning by setting the `*warn-on-reflection*` global variable to true. This can be easily done with lein:
+Always enable reflection warnings by setting the `*warn-on-reflection*` global variable to true. This can be easily done with lein:
 
 ~~~clojure
 {:global-vars {*warn-on-reflection* true
@@ -751,7 +751,7 @@ Alternatively, put that map into your local profile to enable warnings in all yo
                 *print-meta* false}}}
 ~~~
 
-Reflections significantly slow down the code. Every time you see a warning, put a type hint to it even if it's out of the scope of your task.
+Reflections significantly slow down the code. Every time you see a warning, put a type hint even if it's out of the scope of the current task.
 
 When building an uberjar, set warnings to true as well and redirect the output into a file. Then `grep` it for "Reflection warning" and terminate the pipeline if anything is found.
 
@@ -769,7 +769,7 @@ A common rule of naming a function with side effects is to add an exclamation ma
   ...)
 ~~~
 
-In fact, it depends on the context. The mark by itself is needed to highlight something special among the ordinary stuff. Thus, if there are plenty of functions that change something, don't use ! in the end, otherwise, the code becomes too noisy. When you highlight everything, nothing in fact is highlighted. The code below is completely fine:
+In fact, it depends on the context. The mark by itself is needed to highlight something special among the ordinary things. Thus, if there are plenty of functions that change something, don't use ! in the end, otherwise, the code becomes too noisy. When you highlight everything, nothing in fact is highlighted. The code below is completely fine:
 
 ~~~clojure
 (defn create-user [db fields]
@@ -782,7 +782,7 @@ In fact, it depends on the context. The mark by itself is needed to highlight so
   ...)
 ~~~
 
-Keep in mind that the exclamation mark is not a part of the word. When selecting such a function by calling `M-x mark-word` or double-clicking on it, the "!" character is usually out of the selection and you have to press some extra buttons to include it.
+Keep in mind that the exclamation mark is not a part of the word. When selecting such a function by calling `M-x mark-word` or double-clicking on it, the "!" character stays out of the selection and you have to press some extra buttons to include it.
 
 The name of a function ideally starts with a verb: `get-`, `set-`, `process-`, `make-`, and so on:
 
@@ -791,7 +791,7 @@ The name of a function ideally starts with a verb: `get-`, `set-`, `process-`, `
   ...)
 ~~~
 
-Another good pattern is to use what->what naming there the first what is the input data and the second is the result. For example:
+Another good pattern is to use `what->what` naming where the first `what` is the input data and the second one is the result. For example:
 
 ~~~clojure
 (defn orders->total [orders]
@@ -882,19 +882,30 @@ Some arguments might have a prefix like `map-`, `coll-`, `int-`, `str-` to stres
   ...)
 ~~~
 
-Type hints also help with the semantics of the arguments even if there are no reflection warnings.
+Type hints and pre- conditions also help to understand what's behind an argument:
+
+~~~clojure
+(defn process-events [events ^Integer limit ^String notice]
+  ...)
+
+(defn process-events [events limit notice]
+  {:pre [(vector? events) (int? limit) (string? notice)]}
+  ...)
+~~~
 
 Don't use one-letter naming for the "obvious" — as you might think — cases. If you know that "p" is for the profile and "u" is for the user, it doesn't mean everyone is aware. Use "profile" and "user":
 
 ~~~clojure
+;; so-so
 (defn process-user [u p]
   ...)
 
+;; better
 (defn process-user [user profile]
   ...)
 ~~~
 
-The core Clojure namespace uses its own naming rules. For example, `f` for a function, `m` for a map, `k` for a key and so on. This is not an excuse for using the same way in your code. Leave the clojure.core namespace alone and use more sensible names.
+The core Clojure namespace uses its own naming rules. For example, `f` is for a function, `m` is for a map, `k` is for a key and so on. This is not an excuse for using the same way in your code. Leave the clojure.core namespace alone and use more sensible names.
 
 In let, never shadow the `clojure.core` stuff. It's quite common when a map has a key `:name`, and you shadow the `name` function:
 
@@ -922,7 +933,7 @@ As a result, to destruct the name of the entity, do it manually:
 
 ## Lines and indentation
 
-Most of the time, use two spaces for indentation in your code. If you use Emacs and Cider, there is nothing to worry about: everything is held by the standard settings. Just press RET and TAB and the code is aligned as it should be:
+Most of the time, use two spaces for indentation in your code. If you use Emacs and Cider, there is nothing to worry about: everything is held by the standard settings. Just press RET and TAB and the code is aligned automatically:
 
 ~~~clojure
 (defn some-function [a b]
@@ -932,7 +943,7 @@ Most of the time, use two spaces for indentation in your code. If you use Emacs 
         (println "hello")))))
 ~~~
 
-When moving the second argument to the new line, keep the full indentation like this:
+When splitting the arguments on multiple lines, keep the full indentation like this:
 
 ~~~clojure
 (calling-a-func-with-args "arg one"
@@ -952,9 +963,9 @@ but not this:
   true)
 ~~~
 
-Empty lines in code are crucial. Too often, the code is hard to read just because the whole logic collapses into a huge dump of text. Empty lines play the same role that paragraphs do in text. Imagine a book without a single paragraph: an endless monolithic feed of characters impossible to read. Paragraphs give your brain a bit of a second to take a breath before you proceed to the next thought. Empty lines in code do the same thing: just before you move to the next step of computation, give your readers some rest.
+Empty lines in code are crucial. Too often, the code is hard to read just because the whole logic collapses into a huge dump of text. Empty lines play the same role that paragraphs do in text. Imagine a book without a single paragraph: an endless monolithic feed of characters impossible to read. Paragraphs give your brain a moment to take a breath before proceed to the next thought. Empty lines in code act the same: they give your readers some rest before moving to the next step.
 
-Use empty lines to split logical parts. For example, you have a long let binding and then you compute something. Add an empty line between a binding vector and the body:
+Use empty lines to split logical parts. For example, you have a long `let` binding and then you compute something. Add an empty line between the binding vector and the body:
 
 ~~~clojure
 (defn some-long-function [a b c d]
@@ -1013,7 +1024,7 @@ Adding a line after the arguments makes them clearer especially when there are a
     ...))
 ~~~
 
-The same applies to for, doseq and other forms. Adding just one extra line makes them much more readable:
+The same applies to `for`, `doseq` and other forms. Adding just one extra line makes them much more readable:
 
 ~~~clojure
 (doseq [item items
@@ -1028,12 +1039,12 @@ Separate top-level def and defn forms with two empty lines. That really helps on
 ~~~clojure
 (defn create-user []
   ...)
-
-
+                     ;; 1
+                     ;; 2
 (defn udpate-user []
   ...)
-
-
+                     ;; 1
+                     ;; 2
 (defn get-user []
   ...)
 ~~~
@@ -1045,13 +1056,13 @@ But inside a definition, use only a single line, not two:
 (defn some-func [arg1 arg2]
   (let [x 1
         y 2]
-              ;; that's
-              ;; too much space
+                  ;; that's
+                  ;; too much space
     (println ...)))
 ~~~
 
 
-Empty lines look odd in GitHub's web interface because of weird CSS. The distance between lines is higher than most desktop editors have by default. Be aware of this: code that looks good on the web might look bad in the editor.
+Empty lines look odd in GitHub's web interface because of CSS. The distance between the lines is higher than most desktop editors have by default. Be aware of this: code that looks good in web might look bad in the editor.
 
 ## Maps
 
@@ -1085,7 +1096,7 @@ These gaps look ugly to me. What I usually prefer is to reorder a map manually. 
  :number-of-orders 232}
 ~~~
 
-Another trick is to group the keys by lengths with an empty line, then align each group:
+Another trick is to keep the longest keys apart from normal ones, then align each group:
 
 ~~~clojure
 {:id      9
@@ -1099,16 +1110,16 @@ Another trick is to group the keys by lengths with an empty line, then align eac
 
 ## Let
 
-The let macro is special in Clojure. It's the most used form in general. Most often, a function consists of a single `let` form where you prepare something and then compose a final result.
+The `let` macro is special in Clojure. It's the most used form in general. Most often, a function consists of a single `let` form where you prepare something and then compose a final result.
 
-What is important about let, the way you format it really affects the whole codebase. Thus, I've come up with some rules about let which I consider highly important.
+What is important about `let`, the way you format it really affects the whole codebase. Thus, I've come up with some rules about `let` which I consider highly important.
 
-Let suffers from the same problem we mentioned about maps. If you don't alight key-value pairs, they become hard to read:
+`Let` suffers from the same problem we mentioned about maps. If you don't alight key-value pairs, they become hard to read:
 
 ~~~clojure
 (let [id (:id item)
-      accounts-to-delete (jdbc/query db ["select ..." 42])
-      profiles (rest/get-pending-profiles api "/...")]
+      accounts-to-delete (jdbc/query db ["select * from accounts where something" 42])
+      profiles (rest/get-pending-profiles api "/api/v1/profiles/")]
   ...)
 ~~~
 
@@ -1116,8 +1127,8 @@ But if you align them, ugly gaps appear:
 
 ~~~clojure
 (let [id                 (:id item)
-      accounts-to-delete (jdbc/query db ["select ..." 42])
-      profiles           (rest/get-pending-profiles api "/...")]
+      accounts-to-delete (jdbc/query db ["select * from accounts where something" 42])
+      profiles           (rest/get-pending-profiles api "/api/v1/profiles/")]
   ...)
 ~~~
 
@@ -1128,10 +1139,10 @@ Both writings are difficult to read. Thus, put the value on the next line after 
       (:id item)
 
       accounts-to-delete
-      (jdbc/query db ["select ..." 42])
+      (jdbc/query db ["select * from accounts where something" 42])
 
       profiles
-      (rest/get-pending-profiles api "/...")]
+      (rest/get-pending-profiles api "/api/v1/profiles/")]
 
   (process-all-of-that id
                        accounts-to-delete
@@ -1161,7 +1172,7 @@ The same syntax applies to the `case` and `cond` forms. Since they accept key-va
   (default-case ...))
 ~~~
 
-Now compare it to the "standard" way of writing: which is easier to read?
+Now compare it to the standard way of writing: which is easier to read?
 
 ~~~clojure
 (cond
@@ -1175,7 +1186,7 @@ Now compare it to the "standard" way of writing: which is easier to read?
 
 ## Macros indentation
 
-When writing a macro, keep in mind whether it is mostly used with a threading operator (->) or not. Sometimes, it affects the styling/indent parameter. For example, you made a then macro to pipe a value through a set of forms. This macro takes a previous form, a binding symbol and an arbitrary body:
+When writing a macro, keep in mind whether it is mostly used with the first threading operator (`->`) or not. Sometimes, it affects the styling/indent parameter. For example, you made a then macro to pipe a value through a set of forms. This macro takes a previous form, a binding symbol and an arbitrary body:
 
 ~~~clojure
 (defmacro then
@@ -1208,7 +1219,7 @@ It works correctly when the macro is called without any other macro:
   (inc x))
 ~~~
 
-But with `->`, the indentation fails because the macro gets 1 parameter and thus the indentation fails:
+But with `->`, the indentation fails because the macro gets one parameter:
 
 ~~~clojure
 (-> 1
@@ -1263,9 +1274,9 @@ One day you can improve this namespace by introducing ClojureScript support on t
 
 ## Java-like classes
 
-Everyone who ever worked on vast Clojure projects is familiar with something called "map hell". This is when a function accepts three or four maps and you're completely no idea what is inside them. Although tests and REPL might help, still it's a challenge to get on with such code. Maps, maps are everywhere (buzz-lighter.jpeg).
+Everyone who ever worked on vast Clojure projects is familiar with something called "map hell". This is when a function accepts three or four maps and you have no idea what is inside them. Although tests and REPL might help, still it's a challenge to get on with such code. Maps, maps are everywhere (buzz-lighter.jpeg).
 
-If you're tired of maps, try the Java approach: classes. Conseal maps in a deftype instance and provide a protocol to access their fields. In one project I had three maps which completed each other and acted like a source of truth for something. It was really a mess to get one piece of data from map1, then fetch the second piece from map2 and so on. Instead, I made an interface:
+If you're tired of maps, try the Java approach: classes. Conseal maps in a `deftype` instance and provide a protocol to access their fields. In one project I had three maps which completed each other and acted like a source of truth for something. It was really a mess to get one piece of data from map1, then fetch the second piece from map2 and so on. Instead, I made an interface:
 
 ~~~clojure
 (defprotocol IStorage
@@ -1326,20 +1337,19 @@ Java VM brings plenty of things that have been developed for years. Not using th
 - manual URL encoding and decoding;
 - poor IO based on `spit` and `slurp` functions rather than input/output streams and readers/writers;
 - lack of knowledge of built-in Java collections (ArrayList, Stack);
-- unoptimized processing of byte arrays;
+- poor processing of byte arrays;
 
 Even if Java is not a language you came from, it's definitely worth investing your time in it just to write better Clojure code.
 
 ## Systems and Components
 
-To manage a global state like various data sources, cron jobs, background tasks and so on use systems and components. Pick one of three good, well-known libraries: Component, Integrant, and Mount. The first two will be a good option. Mount is a bit questionable as it relies on global variables which brings some difficulties to testing; still, it's better than inventing your own way of state management.
+To manage a global state with various data sources, cron jobs, background tasks and so on use systems and components. Pick one of three good, well-known libraries: Component, Integrant, or Mount. The first two will be a good option. Mount is a bit questionable as it relies on global variables which brings some difficulties to testing; still, it's better than inventing your own way of state management.
 
 Once you picked a certain library, stick with it to the end. What I mean here, I often see code like this:
 
 ~~~clojure
 (defn -main [& args]
-  (let [config
-        (read-config ...)]
+  (let [config (read-config ...)]
     (initiate-sytem config)
     (start-system)
 
@@ -1348,7 +1358,9 @@ Once you picked a certain library, stick with it to the end. What I mean here, I
     (etc ...))))
 ~~~
 
-Here, a programmer initiates and starts a system, but then he or she also starts some background tasks for cronjobs or similar. It doesn't have to be like this. The cronjob task must be a component that spawns a scheduler and which knows how to stop it. There is no way to reuse the -main function in tests because you have no control over the background tasks. Instead, when everything is held by a system, that's extremely easy to tune it and write tests for it. For example, for tests, you just remove the cronjob component from the system as it's useless for testing.
+Here, a programmer initiates and starts a system, but then he or she also starts some additional background stuff like cronjobs or similar. It doesn't have to be like this. A cronjob must be a component that spawns a scheduler and knows how to stop it. There is no way to reuse the `-main` function in tests because you have no control over the background tasks.
+
+Instead, when everything is held by a system, that's extremely easy to tune it and write tests for it. For example, you just remove the cronjob component from the system as it's useless for testing.
 
 ~~~clojure
 (defn fixture-system [t]
@@ -1392,9 +1404,9 @@ Now that you have these two, write a function that takes a config map and:
 - Travers on the first map passing the corresponding config values into the constructors;
 - Travers on the second map to supply initiated components with dependencies.
 
-Wrap the result into the System class, then start it, and you're fine.
+Wrap the result into the `System` class, then start it, and you're fine.
 
-Having a system being run, never reach its components using get, get-in or similar. This is a gross violation of the system design. Instead, pass only required components into the functions. For the same reason don't store a system in a global variable. That can only be an excuse when listening for SIGTERM or other signals to safely shut down the system. A variable that holds a system must be private.
+Having a system being run, never reach its components using `get`, `get-in` or similar. This is a gross violation of the system design. Instead, pass only required components into the functions. For the same reason don't store a system in a global variable. That can only be an excuse when listening for SIGTERM or other signals to safely shut down the system. A variable that holds a system must be private.
 
 ## Collections
 
@@ -1402,7 +1414,7 @@ Don't use long `->` and `->>` threading chains. Having more than 3-4 tears, they
 
 ~~~clojure
 (let [what-is-it?
-      (-> 42                  ;; int id
+      (-> 42                  ;; long
           db/get-user-by-id   ;; a map
           :password           ;; a string field
           .getBytes           ;; byte array
@@ -1410,7 +1422,7 @@ Don't use long `->` and `->>` threading chains. Having more than 3-4 tears, they
           String.)])          ;; string
 ~~~
 
-Instead, split the chain into several intermediate steps to make it easier for debugging.
+Instead, split the chain on several intermediate steps to make it easier for debugging.
 
 ~~~clojure
 (defn encode-password ^String [^String password]
@@ -1419,9 +1431,11 @@ Instead, split the chain into several intermediate steps to make it easier for d
       (codec/b64-encode)
       (String.)))
 
-(let [password
-      (:password
-       (db/get-user-by-id 42))
+(let [user
+      (db/get-user-by-id 42)
+
+      password
+      (:password user)
 
       password-encoded
       (encode-password password)]
@@ -1429,7 +1443,7 @@ Instead, split the chain into several intermediate steps to make it easier for d
   ...)
 ~~~
 
-The `->>` macro is mostly used for processing collections because map, filter and similar functions accept a collection at the second argument. The problem with `->>` is, it's read less easily than `->` so use it only when it's completely clear what's happening.
+The `->>` macro is mostly used for processing collections because `map`, `filter` and similar functions accept a collection at the second argument. The problem with `->>` is, it's read less easily than `->` so use it only when it's completely clear what's happening.
 
 The `->>` macro becomes a mess when used with vast anonymous predicates:
 
@@ -1450,9 +1464,9 @@ The `->>` macro becomes a mess when used with vast anonymous predicates:
      (process-data! task-id resource-type end-cursor))
 ~~~
 
-Reading such code takes a while. Either transform the predicate into a top-level function or declare it in let above.
+Reading such code takes a while. Either transform a predicate into a top-level function or declare it in `let`.
 
-The general idea of using `->` and `->>` is: chaining stuff by itself doesn't mean clearness of the code. Most of the times, you've got to split the things.
+The general idea of using `->` and `->>` is: chaining stuff by itself doesn't mean clearness of the code. Most of the times, you've got to split the things for better reading and debugging.
 
 Don't use `as->` macro which is a mixture of `->` and `->>`. Use separate `->` and `->>` forms for that.
 
@@ -1470,7 +1484,7 @@ Don't use a collection as a function because if a collection is a nil, you'll ge
 (filter #{:active :inactive} statuses)
 ~~~
 
-Loop or reduce is a good place for transient collections which work faster. It's quite simple to rewrite an immutable version of loop/recur to the transient one:
+`Loop` and `reduce` are good places for transient collections which work faster. It's quite simple to turn an immutable version of `loop/recur` into the transient one:
 
 ~~~clojure
 (reduce
@@ -1492,7 +1506,7 @@ becomes:
   items))
 ~~~
 
-and
+And
 
 ~~~clojure
 (loop [i 0
@@ -1502,7 +1516,7 @@ and
     (reduce (inc 0) (conj acc (get-item)))))
 ~~~
 
-becomes
+becomes:
 
 ~~~clojure
 (loop [i 0
@@ -1512,7 +1526,7 @@ becomes
     (reduce (inc 0) (conj! acc! (get-item)))))
 ~~~
 
-In general, avoid laziness. Although the idea of lazy computation is great, often it's better to get an exception right now rather than in further computations. Thus, prepend for macro with vec. Mapv, filterv are also great as they rely on transient vectors:
+In general, avoid laziness. Although the idea of lazy computation is great, often it's better to get an exception right now rather than in further computations. Thus, prepend `for` macro with `vec`. `Mapv`, `filterv` are also great as they rely on transient vectors:
 
 ~~~clojure
 (mapv :user-name coll-users)
@@ -1521,7 +1535,7 @@ In general, avoid laziness. Although the idea of lazy computation is great, ofte
        (get-something ...)))
 ~~~
 
-Obviously, this is not the case for infinite collections or collections that fetch data from network. Turning them into vectors would occupy too many resources or saturate bandwidth.
+Obviously, this is not the case for infinite collections or collections that fetch their data from network. Turning them into vectors would occupy too many resources or saturate bandwidth.
 
 ~~~clojure
 ;; never vec/doall this
@@ -1531,7 +1545,9 @@ Obviously, this is not the case for infinite collections or collections that fet
 
 ## Clojure.spec
 
-Writing function definitions with `fdef` is a good habit. Using the Orchestra Clojure library you can enable instrumentation for the whole project while testing it. The only thing that deserves to be mentioned here is to keep the specs in a separate file. When functions mix with their fdefs, the code becomes noisy and difficult to read.
+[orchestra]: https://github.com/jeaye/orchestra
+
+Writing function definitions with `fdef` is a good habit. Using the [Orchestra library][orchestra] you can enable instrumentation for the whole project while testing it. The only thing that deserves to be mentioned here is to keep the specs in a separate file. When functions mix with their `fdef`s, the code becomes noisy and difficult to read.
 
 ~~~clojure
 (s/fdef process-user
@@ -1546,7 +1562,7 @@ Writing function definitions with `fdef` is a good habit. Using the Orchestra Cl
 
 ## Types & Records
 
-Always provide a constructor for a deftype or defrecord definition. It must be a function with a docstring that accepts only the required slots and initiates a class. Without a constructor that's unclear how to initiate it, what slots are required and so on.
+Always provide a constructor for a `deftype` or `defrecord` definition. It must be a function with a docstring that accepts only the required slots and initiates a class. Without a constructor that's unclear how to initiate it, what slots are required and so on.
 
 ~~~clojure
 (defrecord SomeComponent
@@ -1576,7 +1592,7 @@ Without grouping, it's difficult to guess what is what.
 
 ## Named sections
 
-Avoid using wide commented sections in your file like following below:
+Avoid using wide commented sections in your file like the following below:
 
 ~~~
 ;; --------------------------
@@ -1592,15 +1608,15 @@ or
 ;; <><><><><><><><><><><><><>
 ~~~
 
-They consume the lines but do nothing. The very presence of such sections clearly shows the file should have split into two or three. For example, routing.clj, handlers.clj, server.clj and so on. People who put sections will leave the project one day. Other programmers most likely will push the new stuff to the end of a file skipping all that sectioning.
+They consume space but do nothing. The very presence of such sections proves the file should have been split on two or three. For example, `routing.clj`, `handlers.clj`, `server.clj` and so on. People who put sections will leave the project one day. Other programmers most likely will push the new stuff to the end of a file skipping all that sectioning.
 
-Needless to say, non-ASCII characters like check marks, fat dots and similar are strictly prohibited for section titles as they attract too much attention.
+Needless to say, non-ASCII characters like check marks, fat dots and similar are strictly prohibited in sections as they attract too much attention.
 
 ## Comments
 
-Comments are fine when used thriftily. Consider a comment as the last resort to deliver your intentions to the reader. In rare cases, the logic is complicated and full of tricks indeed so you have to leave a hint for other developers. It's quite annoying to realize that the previous developer knew something extraordinary about the logic but did nothing to let you know.
+Comments are fine when used thriftily. Consider a comment as the last resort to deliver your intentions to the reader. In rare cases, the logic is complicated and full of tricks indeed so you have to leave a hint for other developers. It's quite annoying to realize that a previous developer knew something extraordinary about the logic but did't let you know.
 
-Long comments are another extreme. They rot in time and no one reads them. Don't pollute the code with long explanations of why it made such and such nor what must be done next. Create an issue or any kind of document and dump all your mind there, but not in the code. A link to that document or its short name like "FOO-123" is enough.
+Long comments are another extreme. They rot in time and no one reads them. Don't pollute the code with long explanations of why it made such and such nor what must be done next. Create an issue or a document and dump all your mind there, but not in the code. A link to that document or its short name like "FOO-123" is enough.
 
 ## Trailing spaces
 
@@ -1625,8 +1641,7 @@ There cannot be an excuse for having commented lines in your code:
 ;;   ...)
 ~~~
 
-Whenever you see it, drop it immediately. People who're interested will find it in the git history. The only exception for commented code is when it's a dev section at the bottom of a file put into the comment macro:
-
+Whenever you see it, drop it immediately. People who're interested will find it in the git history. The only exception is a dev section at the bottom of a file wrapped with a `comment` macro:
 
 ~~~clojure
 (comment
@@ -1638,13 +1653,13 @@ Whenever you see it, drop it immediately. People who're interested will find it 
     (jdbc/execute -db "select 1")))
 ~~~
 
-This code, though never compiled, still can be evaluated in REPL. Dev sections are useful and it's a good trait to have and maintain them.
+This code, though never compiled, still can be evaluated in REPL. Having long dev sections is controversial: they become stale in time, they rely on personal credentials and so on. Keep them short.
 
 ## Tests
 
-The standard `clojure.test` framework is good enough for all kinds of testing: unit-, integration-, smoke- and so on. There hardly can be a reason to drive the tests with another third-party library. Often, people just don't know how to organize their tests properly. Invest your time in `clojure.test`, especially fixtures.
+The standard `clojure.test` framework is good enough for all kinds of testing: unit, integration, smoke and so on. There hardly can be a reason to drive the tests with another third-party library. Often, people just don't know how to organize their tests properly. Invest your time in `clojure.test`, especially fixtures.
 
-Name your tests with test- prefix to distinguish them from ordinary functions in the table of contents of a file:
+Name your tests with a `test-` prefix to distinguish them from ordinary functions in the table of contents of a file (when using `imenu` or similar in Emacs):
 
 ~~~clojure
 (deftest test-user-auth-ok
@@ -1663,7 +1678,7 @@ The same about fixtures: use the `fix-` or `fixture-` prefix to stress this is a
   (delete-the-data *db*))
 ~~~
 
-Tests must be placed in a separate directory, usually test in the root of a project. Don't  follow the Python approach when each module has a test one next to it:
+Tests must be placed in a separate directory, usually test in the root of a project. Don't follow the Python approach when each module has a test one in the same directory:
 
 ~~~
 user.clj
@@ -1672,7 +1687,22 @@ order.clj
 order_test.clj
 ~~~
 
-Tagging tests is a good practice to optimize the CI pipeline. For example, first, you run unit tests and then, if everything is OK, bootstrap docker-compose and run integration tests.
+Tagging tests is a good practice to optimize the CI pipeline. For example, first you run unit tests that don't require an environment:
+
+~~~bash
+lein test :unit
+# or
+lein test # default selector
+~~~
+
+If everything went fine, bootstrap Docker and run integration tests.
+
+~~~
+docker-compose up -d
+lein test :integration
+~~~
+
+Here is how selectors look in code:
 
 ~~~clojure
 (deftest ^:unit test-some-pure-function
@@ -1682,8 +1712,7 @@ Tagging tests is a good practice to optimize the CI pipeline. For example, first
   ...)
 ~~~
 
-
-There is a hint: instead of marking each test in a namespace, mark just the namespace so its tags will apply to each test:
+A hint: instead of marking each test in a namespace, mark just the namespace so its tags are applied to each test:
 
 ~~~clojure
 (ns ^:unit project.pure-function-tests
@@ -1693,7 +1722,7 @@ There is a hint: instead of marking each test in a namespace, mark just the name
   ...)
 ~~~
 
-Avoid using `with-redefs` macro in the tests as most likely it indicates problems in the code. The less you monkey-patch in a test session, the better and more stable your code is. If the code you're testing needs a file, make that file in a fixture. If it needs a database, MQ, Kafka, cache, or whatever — run it in docker-compose and aim the settings to "localhost". If a test reaches some HTTP API, make a fixture that runs a local Ring server that responds with JSON from a file.
+Avoid using `with-redefs` macro in the tests as most likely it indicates problems. The less you monkey-patch in a test session, the better and more stable your code is. If the code you're testing needs a file, make that file in a fixture. If it needs a database, MQ, Kafka, cache, or whatever — run it in docker-compose and aim the settings to "localhost". If a test reaches some HTTP API, make a fixture that runs a local Ring server that serves JSON from a file.
 
 ~~~clojure
 (defmacro with-local-http
@@ -1715,13 +1744,13 @@ Avoid using `with-redefs` macro in the tests as most likely it indicates problem
     (run-function-that-calls-the-api ...)))
 ~~~
 
-All of these are much better than the dull usage of `with-redefs`. It gives your only a vision the tests have passed whereas local services in Docker prove it.
+All of these are much better than a dull usage of `with-redefs`. It gives you only a vision that the tests have passed whereas local services in Docker prove it.
 
 ## Core.async
 
-Before plugging in `clojure.core.async` into the project, first ensure you've tried simpler solutions like agents, `pmap`, thread pool executors and so on. Bringing async to the scene changes the paradigm of data processing so delay this step while it's possible.
+Before introducing `clojure.core.async` to the project, first ensure you've tried simpler solutions like `agent`s, `pmap`, thread pool executors and so on. Bringing async to the scene changes the paradigm of data processing so delay this step while it's possible.
 
-Core.async should never be a part of a library. If the library processes messages, let your consumers decide which bus type to use. Use dependency injection pattern: your code accepts an instance of `IBus` protocol with `send-` and `get-message` abstract methods. Then provide a sub-library which extends the protocol with core.async. Some of your clients may use `manifold`, Kafka or whatever they want rather than core.async.
+Core.async should never be a part of a library. If the library processes messages, let your consumers decide which bus type to use. Use dependency injection pattern: your code relies on an instance of `IBus` protocol with `send-` and `get-message` abstract methods. Then provide a sub-library which extends the protocol with `core.async`. Some of your clients may use `manifold`, Kafka or whatever they want for the bus rather than `core.async`.
 
 ## Amazonica
 
@@ -1740,4 +1769,4 @@ Although the readme file of Amazonica mentions that case, it's placed almost at 
 
 ## Libraries
 
-Whenever you start a new project, use the standard, well-known libraries. These are Ring, HTTP-kip, JDBC.next, Migratus and so on. Don't invent your own routing, ORM or template system, encryption library or whatever else. If a company develops their own framework, one day it must publish it and let the community decide whether it's useful or not.
+Whenever you start a new project, use the standard, well-known libraries. These are Ring, HTTP-kip, JDBC.next, Migratus and so on. Don't invent your own routing, ORM or template system, encryption library or whatever else. If a company develops their own framework, one day they must publish it and let the community decide whether it's useful or not.
