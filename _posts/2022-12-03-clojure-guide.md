@@ -685,19 +685,20 @@ Of course, there are systems that require namespaces. These are Clojure.spec, Da
 
 ## Keyword processing
 
-<!-- edited -->
-
 The second thought about keywords is, never re-process them. By reprocessing, I mean changing the registry and replacing underscores with hyphens. Briefly, always process the data as is in its original form. Namely, not like this:
 
+~~~clojure
 (walk/postwalk
  (fn [x]
    (if (map?)
      (update-keys x ->lower-cebab-case)
      x))
  data)
+~~~
 
 But this:
 
+~~~clojure
 (let [{:keys [user_id
               user_name]} db-row]
   (println user_id user_name))
@@ -710,6 +711,7 @@ But this:
       ResponseError]
 
   (println Code Category ResponseMessage))
+~~~
 
 It's better to get rid of those libraries to convert screaming/kabab/whatever keys.
 
@@ -717,44 +719,55 @@ Here is the explanation. First, you waste resources on transforming the keys. Wa
 
 Second and much more important: transformed keys are out of the documentation. One day I worked with AppStore API which returns keys in lower camel case, for example, userName, initialTransaction and so on. So I do:
 
+~~~clojure
 (get-in body [:transactionInfo :userName])
+~~~
 
-against the JSON response and got nil. Why? Thanks to our HTTP client, it transformed the keys into :transaction-info and :user-name, and I was unaware of it. That's especially terrible after you've done with a cURL and jq session and now moving to Clojure.
+against the JSON response and got nil. Why? Thanks to our HTTP client, it transformed the keys into `:transaction-info` and `:user-name`, and I was unaware of it. That's especially terrible after you've done with a `curl` and `jq` session and now moving to Clojure.
 
 That's completely fine to destruct foreign data and use transactionInfo and userName names in your code. Such naming signals that they came from the outer world. But please don't transform keywords back and forth when reaching the database, Kafka or whatever else. All you do is waste CPU time.
 
-Type hints
+## Type hints
 
-Always enable reflection warning by setting the *warn-on-reflection* global variable to true. This can be easily done with lein:
+Always enable reflection warning by setting the `*warn-on-reflection*` global variable to true. This can be easily done with lein:
 
+~~~clojure
 {:global-vars {*warn-on-reflection* true
                *assert* true
                *print-meta* false}}
+~~~
 
 Alternatively, put that map into your local profile to enable warnings in all your Clojure projects:
 
+~~~clojure
 # ~/.lein/profiles.clj
 {:user
  {:global-vars {*warn-on-reflection* true
                 *assert* true
                 *print-meta* false}}}
+~~~
 
 Reflections significantly slow down the code. Every time you see a warning, put a type hint to it even if it's out of the scope of your task.
 
-When building an uberjar, set warnings to true as well and redirect the output into a file. Then grep it for "Reflection warning" and terminate the pipeline if anything is found.
+When building an uberjar, set warnings to true as well and redirect the output into a file. Then `grep` it for "Reflection warning" and terminate the pipeline if anything is found.
 
+~~~bash
 lein uberjar > uberjar.log
 ! grep -i 'Reflection warning' uberjar.log
+~~~
 
-Naming
+## Naming
 
 A common rule of naming a function with side effects is to add an exclamation mark at the end:
 
+~~~clojure
 (defn upsert-user! [db fields]
   ...)
+~~~
 
 In fact, it depends on the context. The mark by itself is needed to highlight something special among the ordinary stuff. Thus, if there are plenty of functions that change something, don't use ! in the end, otherwise, the code becomes too noisy. When you highlight everything, nothing in fact is highlighted. The code below is completely fine:
 
+~~~clojure
 (defn create-user [db fields]
   ...)
 
@@ -763,65 +776,83 @@ In fact, it depends on the context. The mark by itself is needed to highlight so
 
 (defn update-user [db fields]
   ...)
+~~~
 
-Keep in mind that the exclamation mark is not a part of the word. When selecting such a function by calling M-x mark-word or double-clicking on it, the "!" character is usually out of the selection and you have to press some extra buttons to include it.
+Keep in mind that the exclamation mark is not a part of the word. When selecting such a function by calling `M-x mark-word` or double-clicking on it, the "!" character is usually out of the selection and you have to press some extra buttons to include it.
 
-The name of a function ideally starts with a verb: get-, set-, process-, make-, and so on:
+The name of a function ideally starts with a verb: `get-`, `set-`, `process-`, `make-`, and so on:
 
+~~~clojure
 (defn get-last-task [db client-id]
   ...)
+~~~
 
 Another good pattern is to use what->what naming there the first what is the input data and the second is the result. For example:
 
+~~~clojure
 (defn orders->total [orders]
   ...)
 
 (defn datetime->date [dt]
   ...)
+~~~
 
 It is only a case for a function that takes a single argument. If there are two and more, don't use the following naming:
 
+~~~clojure
 (defn orders+clients->total [orders clients]
   ...)
+~~~
 
 For the reader, it looks machine-generated and thus weird.
 
 A question mark at the end is OK for predicates or boolean values:
 
+~~~clojure
 (defn is-active? [user]
   ...)
 
 (let [active? (is-active? user)]
   ...)
+~~~
 
-Don't put ? in front of the name as it is confusing and mixes with Datalog:
+Don't put `?` in front of the name as it is confusing and mixes with Datalog:
 
+~~~clojure
 (let [?active (is-active? user)]
   ...)
+~~~
 
 As far as you can, provide hints on the function arguments. Don't use common words like data or similar. In fact, everything is data, so naming this way is useless.
 
+~~~clojure
 (defn process-stats [data]
   ...)
+~~~
 
 Add plural "s" at the end of vectors or sequences:
 
+~~~clojure
 (defn process-stats [orders users]
   ...)
 
 (process-stats [{:order-id 1 ...} {:order-id 2 ...}]
                [{:user-id 10 ...} {:user-id 20 ...}])
+~~~
 
-Names like id->user is a good choice for maps:
+Names like `id->user` is a good choice for maps:
 
+~~~clojure
 (defn process-users [id->user]
   ...)
 
 (process-users {1 {:user-id 1 ...},
                 2 {:user-id 2 ...}})
+~~~
 
 It also applies to the nested maps, for example:
 
+~~~clojure
 (def verb->path->response
   {:get {"/" {:status 200 :body ...}
          "/help" {:status 200 :body ...}}
@@ -829,79 +860,99 @@ It also applies to the nested maps, for example:
 
 (with-http-server verb->path->response
   ...)
+~~~
 
 If a function accepts a function, name it with the `fn-` prefix:
 
+~~~clojure
 (defn error-handler [e]
   ...)
 
 (connect db {:fn-on-error error-handler})
+~~~
 
-Some arguments might have a prefix like map-, coll-, int-, str- to stress the type. Use them wisely: don't blindly add prefixes to all the vars and arguments because otherwise, the code becomes too noisy:
+Some arguments might have a prefix like `map-`, `coll-`, `int-`, `str-` to stress the type. Use them wisely: don't blindly add prefixes to all the vars and arguments because otherwise, the code becomes too noisy:
 
+~~~clojure
 (defn process-events [vec-events int-limit str-notice]
   ...)
+~~~
 
 Type hints also help with the semantics of the arguments even if there are no reflection warnings.
 
-Don't use one-letter naming for the "obvious" — as you might think — cases. If you know that "p" is for the profile and "u" is for the user, it doesn't mean everyone is aware. Use profile and user:
+Don't use one-letter naming for the "obvious" — as you might think — cases. If you know that "p" is for the profile and "u" is for the user, it doesn't mean everyone is aware. Use "profile" and "user":
 
+~~~clojure
 (defn process-user [u p]
   ...)
 
 (defn process-user [user profile]
   ...)
+~~~
 
-The core Clojure namespace uses its own naming rules. For example, f for function, m for map and so on. This is not an excuse for using the same way in your code. Leave the clojure.core namespace alone and use more sensible names.
+The core Clojure namespace uses its own naming rules. For example, `f` for a function, `m` for a map, `k` for a key and so on. This is not an excuse for using the same way in your code. Leave the clojure.core namespace alone and use more sensible names.
 
-In let, never shadow the clojure.core stuff. It's quite common when a map has a field "name", and you shadow the name function:
+In let, never shadow the `clojure.core` stuff. It's quite common when a map has a key `:name`, and you shadow the `name` function:
 
+~~~clojure
 (def user {:name "Ivan"})
 
 (let [{:keys [name]} user]
   (println name))
+~~~
 
-The same applies to key, val, namespace and similar functions. One day the field would change to full-name but you would forget to fix the underlying code as it compiles with no errors. It will provide something weird or crash:
+The same applies to `key`, `val`, `namespace` and similar functions. One day the field would change to `:full-name` but you would forget to fix the underlying code as it compiles with no errors. It will provide something weird or crash:
 
+~~~clojure
 (let [{:keys [full-name]} user]
   (println name))
 ;; #function[clojure.core/name]
+~~~
 
 As a result, to destruct the name of the entity, do it manually:
 
+~~~clojure
 (let [{user-name :name} user]
   (println name))
+~~~
 
-Lines and indentation
+## Lines and indentation
 
 Most of the time, use two spaces for indentation in your code. If you use Emacs and Cider, there is nothing to worry about: everything is held by the standard settings. Just press RET and TAB and the code is aligned as it should be:
 
+~~~clojure
 (defn some-function [a b]
   (with-some-macro {:foo 42}
     (let [x (+ a b)]
       (dotimes [_ 99]
         (println "hello")))))
+~~~
 
 When moving the second argument to the new line, keep the full indentation like this:
 
+~~~clojure
 (calling-a-func-with-args "arg one"
                           {:some {:nested "map"}}
                           some-variable
                           [1 2 3]
                           true)
+~~~
 
 but not this:
 
+~~~clojure
 (calling-a-func-with-args "arg one"
   {:some {:nested "map"}}
   some-variable
   [1 2 3]
   true)
+~~~
 
 Empty lines in code are crucial. Too often, the code is hard to read just because the whole logic collapses into a huge dump of text. Empty lines play the same role that paragraphs do in text. Imagine a book without a single paragraph: an endless monolithic feed of characters impossible to read. Paragraphs give your brain a bit of a second to take a breath before you proceed to the next thought. Empty lines in code do the same thing: just before you move to the next step of computation, give your readers some rest.
 
 Use empty lines to split logical parts. For example, you have a long let binding and then you compute something. Add an empty line between a binding vector and the body:
 
+~~~clojure
 (defn some-long-function [a b c d]
   (let [calc-this
         (some-vast-function a c)
@@ -914,12 +965,14 @@ Use empty lines to split logical parts. For example, you have a long let binding
 
         events
         (some-http-request ...)]
-                                  ;; <- take a break!
+                                  ;; <-
     (for [user users]
       ...)))
+~~~
 
 When a function has multiple forms, again, separate them with an empty line. Otherwise, they're quite difficult to read. Compare these two forms:
 
+~~~clojure
 (defn error!
   ([message]
    (throw (ex-info message {})))
@@ -928,6 +981,8 @@ When a function has multiple forms, again, separate them with an empty line. Oth
   ([message data cause]
    (throw (ex-info message data cause))))
 
+;; vs
+
 (defn error!
 
   ([message]
@@ -938,29 +993,35 @@ When a function has multiple forms, again, separate them with an empty line. Oth
 
   ([message data cause]
    (throw (ex-info message data cause))))
+~~~
 
 Adding a line after the arguments makes them clearer especially when there are a docstring, pre- and post- checks, meta and so on. All of that must be separated from the body:
 
+~~~clojure
 (defn some-complex-func
   "This function does this and that..."
   [users limit some-arg]
   {:pre [(seq users) (int? limit)]
    :post [(map? %)]}
-                     ;; <- !!!
+                     ;; <-
   (let [events
         (get-events ...)]
     ...))
+~~~
 
 The same applies to for, doseq and other forms. Adding just one extra line makes them much more readable:
 
+~~~clojure
 (doseq [item items
         :let [{:keys [id title]} item]
         :when (some? id)]
-                           ;; <- !!!
+                           ;; <-
   (process-item ...))
+~~~
 
 Separate top-level def and defn forms with two empty lines. That really helps one's eyes to navigate through them.
 
+~~~clojure
 (defn create-user []
   ...)
 
@@ -971,48 +1032,58 @@ Separate top-level def and defn forms with two empty lines. That really helps on
 
 (defn get-user []
   ...)
+~~~
 
 
 But inside a definition, use only a single line, not two:
 
+~~~clojure
 (defn some-func [arg1 arg2]
   (let [x 1
         y 2]
               ;; that's
               ;; too much space
     (println ...)))
+~~~
 
 
 Empty lines look odd in GitHub's web interface because of weird CSS. The distance between lines is higher than most desktop editors have by default. Be aware of this: code that looks good on the web might look bad in the editor.
 
-Maps
+## Maps
 
 Some developers align maps this way:
 
+~~~clojure
 {:name    "John Smith"
  :active? true
  :email   "john@test.com"}
+~~~
 
-Editors do that manually, for example, Emacs fixes the indentation within the M-x ... command.
+Editors do that manually, for example, Emacs fixes the indentation within the `M-x clojure-align` command.
 
 Personally, I see a problem with this approach. Too often, when a map consists of short keys, suddenly here comes a long one and vice versa: a map with long keys obtains a short one. Now if you align an updated map you'll get:
 
+~~~clojure
 {:name             "John Smith"
  :id               9
  :active?          true
  :email            "john@test.com"
  :number-of-orders 232}
+~~~
 
 These gaps look ugly to me. What I usually prefer is to reorder a map manually. I put short keys on top of it and long ones below.
 
+~~~clojure
 {:id 9
  :name "John Smith"
  :email "john@test.com"
  :active? true
  :number-of-orders 232}
+~~~
 
 Another trick is to group the keys by lengths with an empty line, then align each group:
 
+~~~clojure
 {:id      9
  :name    "John Smith"
  :email   "john@test.com"
@@ -1020,29 +1091,35 @@ Another trick is to group the keys by lengths with an empty line, then align eac
 
  :another-long-field {...}
  :number-of-orders   232}
+~~~
 
-Let
+## Let
 
-The let macro is special in Clojure. It's the most used form in general. Most often, a function consists of a single let form where you prepare something and then compose a final result.
+The let macro is special in Clojure. It's the most used form in general. Most often, a function consists of a single `let` form where you prepare something and then compose a final result.
 
 What is important about let, the way you format it really affects the whole codebase. Thus, I've come up with some rules about let which I consider highly important.
 
 Let suffers from the same problem we mentioned about maps. If you don't alight key-value pairs, they become hard to read:
 
+~~~clojure
 (let [id (:id item)
       accounts-to-delete (jdbc/query db ["select ..." 42])
       profiles (rest/get-pending-profiles api "/...")]
   ...)
+~~~
 
 But if you align them, ugly gaps appear:
 
+~~~clojure
 (let [id                 (:id item)
       accounts-to-delete (jdbc/query db ["select ..." 42])
       profiles           (rest/get-pending-profiles api "/...")]
   ...)
+~~~
 
 Both writings are difficult to read. Thus, put the value on the next line after the name and separate pairs with an empty line:
 
+~~~clojure
 (let [id
       (:id item)
 
@@ -1055,13 +1132,15 @@ Both writings are difficult to read. Thus, put the value on the next line after 
   (process-all-of-that id
                        accounts-to-delete
                        profiles))
+~~~
 
 This syntax, although looks strange the first time, proves the best traits through time. It's clear and easy to read as the items are separated. It's free from gaps. It grows down but not to the right. It's always easy to extend it.
 
-Case, cond
+## Case, cond
 
-The same syntax applies to the case and cond(...) forms. Since they accept key-value pairs, put the second item under the first and separate with an empty line:
+The same syntax applies to the `case` and `cond` forms. Since they accept key-value pairs, put the second item under the first and separate with an empty line:
 
+~~~clojure
 (cond
   (check-this? ...)
   (process-that ...)
@@ -1076,9 +1155,11 @@ The same syntax applies to the case and cond(...) forms. Since they accept key-v
 
   :else
   (default-case ...))
+~~~
 
 Now compare it to the "standard" way of writing: which is easier to read?
 
+~~~clojure
 (cond
   (check-this? ...) (process-that ...)
   (now-check-that? ...) (let [a 1]
@@ -1086,54 +1167,68 @@ Now compare it to the "standard" way of writing: which is easier to read?
                             (jdbc/execute tx ...)))
   (one-more-case? ...) (something ...)
   :else (default-case ...))
+~~~
 
-Macros indentation
+## Macros indentation
 
 When writing a macro, keep in mind whether it is mostly used with a threading operator (->) or not. Sometimes, it affects the styling/indent parameter. For example, you made a then macro to pipe a value through a set of forms. This macro takes a previous form, a binding symbol and an arbitrary body:
 
+~~~clojure
 (defmacro then
   [value [bind] & body]
   `(let [~bind ~value]
      ~@body))
+~~~
 
 A quick example:
 
+~~~clojure
 (-> 1
     (then [x] (inc x))
     (then [x] (* x x))
     (then [x] (println x) x)) => 4
+~~~
 
-Since the macro takes two parameters, most likely you specify {:style/indent 2} as follows:
+Since the macro takes two parameters, most likely you specify `{:style/indent 2}` as follows:
 
+~~~clojure
 (defmacro then
   {:style/indent 2}
   ...)
+~~~
 
 It works correctly when the macro is called without any other macro:
 
+~~~clojure
 (then 1 [x]
   (inc x))
+~~~
 
-But with ->, the indentation fails because the macro gets 1 parameter and thus the indentation fails:
+But with `->`, the indentation fails because the macro gets 1 parameter and thus the indentation fails:
 
+~~~clojure
 (-> 1
     (then [x]
         (inc x))
     (then [x]
         (* x x)))
+~~~
 
-What you need to do is to set {:style/indent 1} for the macro. With this change, the automatic indentation looks correct:
+What you need to do is to set `{:style/indent 1}` for the macro. With this change, the automatic indentation looks correct:
 
+~~~clojure
 (-> 1
     (then [x]
       (inc x))
     (then [x]
       (* x x)))
+~~~
 
-Java interop
+## Java interop
 
-Try to keep Java interop in a separate namespace. When there is too much interop, the code becomes noisy and "Javish". Provide clean and Clojure-friendly API to cooperate with Java stuff. For example, a dedicated namespace for codecs (Base64 encode, decode), cryptography (ordinary hashes and hash-hmac), dates and so on.
+Try to keep Java interop in a separate namespace. When there is too much interop, the code becomes noisy and "Javish". Provide clean and Clojure-friendly API to cooperate with Java stuff. For example, a dedicated namespace for codecs (Base64 encode, decode), cryptography (ordinary hashes and Hash-HMAC), dates and so on.
 
+~~~clojure
 (ns project.codec
   (:import
    java.text.Normalizer
@@ -1148,30 +1243,36 @@ Try to keep Java interop in a separate namespace. When there is too much interop
 
 (defn normalize-nfc [^String string]
   (Normalizer/normalize string Normalizer$Form/NFC))
+~~~
 
 Then:
 
+~~~clojure
 (ns project.core
   (:require
    [project.codec :as codec]))
 
 (codec/b64-decode (some-bytes ...))
+~~~
 
 One day you can improve this namespace by introducing ClojureScript support on top of other underlying classes.
 
-Java-like classes
+## Java-like classes
 
 Everyone who ever worked on vast Clojure projects is familiar with something called "map hell". This is when a function accepts three or four maps and you're completely no idea what is inside them. Although tests and REPL might help, still it's a challenge to get on with such code. Maps, maps are everywhere (buzz-lighter.jpeg).
 
 If you're tired of maps, try the Java approach: classes. Conseal maps in a deftype instance and provide a protocol to access their fields. In one project I had three maps which completed each other and acted like a source of truth for something. It was really a mess to get one piece of data from map1, then fetch the second piece from map2 and so on. Instead, I made an interface:
 
+~~~clojure
 (defprotocol IStorage
   (get-this-field [this])
   (get-another-field [this])
   (get-item-by-idx [this idx]))
+~~~
 
 then a type that holds the maps and implements the interface:
 
+~~~clojure
 (deftype Storage
   [map1 map2 map3]
 
@@ -1187,14 +1288,18 @@ then a type that holds the maps and implements the interface:
   (get-item-by-idx [this idx]
     {:id (get-in map1 some-path)
      :title (get-in map2 another-path)}))
+~~~
 
 A final step would be to provide a constructor function:
 
+~~~clojure
 (defn make-storage [map1 map2 map3]
   (new Storage map1 map2 map3))
+~~~
 
-Now that you have all of that, operate on the instance of Storage but not the raw maps:
+Now that you have all of that, operate on the instance of `Storage` but not the raw maps:
 
+~~~clojure
 (let [storage
       (storage/make-storage m1 m2 m3)
 
@@ -1205,22 +1310,25 @@ Now that you have all of that, operate on the instance of Storage but not the ra
       (storage/get-item-by-idx storage 9)]
 
   ...)
+~~~
 
-Moreover, add the ^Storage type hint to the argument so everyone knows it's an instance of a class with its own API but not an ordinary Clojure collection. This approach, although looks slightly foreign, really pays off in vast projects.
+Moreover, add the `^Storage` type hint to the argument so everyone knows it's an instance of a class with its own API but not an ordinary Clojure collection. This approach, although looks slightly foreign, really pays off in vast projects.
 
-Reuse Java classes
+## Reuse Java classes
 
 Java VM brings plenty of things that have been developed for years. Not using them in favour of writing your own code is usually a bad idea. Often, I found some code written just because a programmer was not aware of existing JVM functionality. Most likely this code is poorly tested and doesn't take into account plenty of corner cases. Here are some examples:
 
--manual URL parsing and building
--manual URL encoding and decoding
--poor IO based on spit and slurp functions rather than IO/streams and readers/writers
--lack of knowledge of built-in Java collections (ArrayList, Stack)
--unoptimized processing of byte arrays
+- manual URL parsing and building;
+- manual URL encoding and decoding;
+- poor IO based on `spit` and `slurp` functions rather than input/output streams and readers/writers;
+- lack of knowledge of built-in Java collections (ArrayList, Stack);
+- unoptimized processing of byte arrays;
 
 Even if Java is not a language you came from, it's definitely worth investing your time in it just to write better Clojure code.
 
-Systems and Components
+## Systems and Components
+
+<!-- edited -->
 
 To manage a global state like various data sources, cron jobs, background tasks and so on use systems and components. Pick one of three good, well-known libraries: Component, Integrant, and Mount. The first two will be a good option. Mount is a bit questionable as it relies on global variables which brings some difficulties to testing; still, it's better than inventing your own way of state management.
 
