@@ -1149,7 +1149,7 @@ Both writings are difficult to read. Thus, put the value on the next line after 
                        profiles))
 ~~~
 
-This syntax, although looks strange the first time, proves the best traits through time. It's clear and easy to read as the items are separated. It's free from gaps. It grows down but not to the right. It's always easy to extend it.
+This syntax, although looks strange at first glance, proves the best traits through time. It's clear and easy to read as the items are separated. It's free from gaps. It grows down but not to the right. It's always easy to extend it.
 
 ## Case, cond
 
