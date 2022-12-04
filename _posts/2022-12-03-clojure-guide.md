@@ -290,10 +290,10 @@ The `storage!` name is in line with the functions that operate on atoms: `swap!`
 Talking more generally, an exclamation mark is a good option to highlight *any mutable type*, for example, a transient collection. Their functions also end with !:
 
 ~~~clojure
-(let [rows! (transient [])]
-  (doseq ...
-    (conj! rows! item))
-  (persistent! rows!))
+(loop [acc! (transient [])]
+  (if ...
+    (persistent! acc!)
+    (recur (conj! acc item))))
 ~~~
 
 ## Exceptions
