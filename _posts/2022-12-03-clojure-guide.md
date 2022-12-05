@@ -597,7 +597,7 @@ First, avoid using namespaces in keywords. Instead of `:user/name` or `:book/tit
 
 If you transform this map into JSON with Cheshire, you'll get the keys `user/name` and `event/name`. That's difficult to work with such keys in JavaScript on the client side. In wider terms, your clients can handle namespaces only if they use Clojure or ClojureScript. Any other language like Python has problems with processing keys like `user/name`. There is no an easy way to split such a map on variables with the standard destructuring syntax.
 
-**2.** When using namespaces, you never know for sure what is the right key: `:name` or `:user/name`. That's especially annoying when working with JDBC.next result. By default, it adds namespaces to the selected keys which takes an extra query. For performance, we often pass the `rs/as-unqualified-kebab-maps` parameter to skip the namespaces. But when you edit someone else's code, you've got to scroll up and check what row function was passed to the query. That's quite annoying and really slows down the development.
+**2.** When using namespaces, you never know for sure what is the right key: `:name` or `:user/name`. That's especially annoying when working with JDBC.next result. By default, it adds namespaces to the selected keys which takes an extra query. For performance, we often pass the `rs/as-unqualified-kebab-maps` parameter to skip the namespaces. But when you edit someone else's code, you've got to scroll up and check what row function was passed to the query. That really slows down the development.
 
 **3.** Maps with namespaces are hard to destructure. Imagine from the map mentioned above, we need to fetch both name of a user and a name of the party. Since the name parts are the same, we cannot use the `:<ns>/keys` syntax as the second clause shadows the first one:
 
@@ -1614,7 +1614,7 @@ Needless to say, non-ASCII characters like check marks, fat dots and similar are
 
 ## Comments
 
-Comments are fine when used thriftily. Consider a comment as the last resort to deliver your intentions to the reader. In rare cases, the logic is complicated and full of tricks indeed so you have to leave a hint for other developers. It's quite annoying to realize that a previous developer knew something extraordinary about the logic but did't let you know.
+Comments are fine when used thriftily. Consider a comment as the last resort to deliver your intentions to the reader. In rare cases, the logic is complicated and full of tricks indeed so you have to leave a hint for other developers. It's quite annoying to realize that a previous developer knew something extraordinary about the logic but didn't let you know.
 
 Long comments are another extreme. They rot in time and no one reads them. Don't pollute the code with long explanations of why it made such and such nor what must be done next. Create an issue or a document and dump all your mind there, but not in the code. A link to that document or its short name like "FOO-123" is enough.
 
