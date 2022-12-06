@@ -363,7 +363,12 @@ The example below takes less code and is more readable:
 
 ~~~clojure
 (when-not user
-  (e/error! "User not found" {:id user-id}))
+  (error/error! "User not found" {:id user-id}))
+
+# or when the error! function was :refer-red
+
+(when-not user
+  (error! "User not found" {:id user-id}))
 ~~~
 
 Having a bottleneck that all the exceptions pass through, you can adjust it in the future. Say, add more data into the context map (time, host, type, the namespace, etc). Introduce this error module as soon as possible and stick with it through the whole code base.
@@ -406,7 +411,7 @@ Never use the `#(...)` syntax for anonymous functions since they're really diffi
 ~~~clojure
 (filter #(= (:id %) product-id) products)
 ;; or
-(update :body #(json/parse-string % ->kebab-case-keyword))
+(update :body #(json/parse-string % keyword))
 ~~~
 
 Yes:
@@ -416,7 +421,7 @@ Yes:
           (= (:id product) product-id))
         products)
 ;; or
-(update :body json/parse-string ->kebab-case-keyword)
+(update :body json/parse-string keyword)
 ~~~
 
 What is really bad with `#(...)`, the arguments have no names and thus lack semantics. The `(fn ...)` form can be easily put on the top level of a module and transformed into `defn`, so it can be tested in REPL or unit tests.
@@ -640,6 +645,24 @@ What is the point to put the same namespace everywhere? The following writing is
        :active? true}]
   ...)
 ~~~
+
+Of course, it's possible to shorten it with the `#:<ns>{...}` syntax:
+
+~~~clojure
+(let [user #:user{:name "Ivan"
+                  :email "test@test.com"
+                  :dob "1985-12-31"
+                  :active? true}]
+  ...)
+~~~
+
+Which, anyway, leads do something like this:
+
+~~~clojure
+(get :user/email user)
+~~~
+
+Since I already know it's a user, why should I use `:user/email` instead of just `:email`?
 
 **2.** There are two and more namespaces in a single map:
 
