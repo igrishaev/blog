@@ -1669,7 +1669,7 @@ There cannot be an excuse for having commented lines in your code:
 ;;   ...)
 ~~~
 
-Whenever you see it, drop it immediately. People who're interested will find it in the git history. The only exception is a dev section at the bottom of a file wrapped with a `comment` macro:
+Whenever you see it, drop it immediately. People who're interested will find it in the git history. The only exception is a dev section at the bottom of a file wrapped into a `comment` macro:
 
 ~~~clojure
 (comment
@@ -1706,7 +1706,7 @@ The same about fixtures: use the `fix-` or `fixture-` prefix to stress this is a
   (delete-the-data *db*))
 ~~~
 
-Tests must be placed in a separate directory, usually test in the root of a project. Don't follow the Python approach when each module has a test one in the same directory:
+Tests must be placed in a separate directory, usually test in the root of a project. Don't follow the Python approach when each module has a test one next to it in the same directory:
 
 ~~~
 user.clj
@@ -1750,14 +1750,14 @@ A hint: instead of marking each test in a namespace, mark just the namespace so 
   ...)
 ~~~
 
-Avoid using `with-redefs` macro in the tests as most likely it indicates problems. The less you monkey-patch in a test session, the better and more stable your code is. If the code you're testing needs a file, make that file in a fixture. If it needs a database, MQ, Kafka, cache, or whatever — run it in docker-compose and aim the settings to "localhost". If a test reaches some HTTP API, make a fixture that runs a local Ring server that serves JSON from a file.
+Avoid using `with-redefs` macro in the tests as most likely it indicates problems. The less you monkey-patch in a test session, the better and more stable your code is. If the code you're testing needs a file, prepare that file in a fixture and then delete it. If it needs a database, MQ, Kafka, cache, or whatever — run it in docker-compose and aim the settings to "localhost". If a test reaches some HTTP API, make a fixture that runs a local Ring server that serves JSON from a file.
 
 ~~~clojure
 (defmacro with-local-http
   [[port verb->path->response] & body]
   `(let [handler#
          (fn [request]
-           (get-response-from-mapping))
+           (get-response-from-the-mapping ...))
 
          server#
          (jetty/run-jetty handler#)]
@@ -1772,7 +1772,7 @@ Avoid using `with-redefs` macro in the tests as most likely it indicates problem
     (run-function-that-calls-the-api ...)))
 ~~~
 
-All of these are much better than a dull usage of `with-redefs`. It gives you only a vision that the tests have passed whereas local services in Docker prove it.
+All of these are much better than a dull usage of `with-redefs`. It gives you only a vision that the tests have passed whereas local HTTP and Docker prove it.
 
 ## Core.async
 
