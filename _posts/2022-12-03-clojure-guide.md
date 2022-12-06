@@ -1493,12 +1493,14 @@ The general idea of using `->` and `->>` is: chaining stuff by itself doesn't me
 
 Don't use `as->` macro which is a mixture of `->` and `->>`. Use separate `->` and `->>` forms for that.
 
-Prefer `vec` over `(into [] ...)`. It's faster and shorter:
+Prefer `vec` over `(into [] ...)` just because it's shorter and clearer:
 
 ~~~clojure
-(vec
- (for [item items]
-   ...))
+(vec (for [item items]
+       ...))
+
+(into [] (for [item items]
+           ...))
 ~~~
 
 Don't use a collection as a function because if a collection is a nil, you'll get NPE. The only good example of this might be a hardcoded set for filtering:
