@@ -924,7 +924,7 @@ The same applies to `key`, `val`, `namespace` and similar functions. One day the
 ;; #function[clojure.core/name]
 ~~~
 
-As a result, to destruct the name of the entity, do it manually:
+As a result, to destructure the name of the entity, do it manually:
 
 ~~~clojure
 (let [{user-name :name} user]
