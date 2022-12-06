@@ -121,11 +121,15 @@ Instead, use `string`, `walk`, `edn`, and similar. By the way, the `str` alias i
 (str/starts-with? ...)
 ~~~
 
-Never use the `:use` clause in the namespace form. The use form acts like the `import *` clause in Python or `import foo.bar.*` in Java. Both two are considered bad practices as the code becomes confusing. The same works for Clojure: without an alias, it's unobvious where a certain function comes from:
+Never use the `:use` clause in the namespace form. The `:use` form acts like the `import *` clause in Python or `import foo.bar.*` in Java. Both two are considered bad practices as the code becomes confusing. The same works for Clojure: without an alias, it's unobvious where a certain function comes from:
 
 ~~~clojure
 (ns some.ns
-  (:use clojure.walk))
+  (:use clojure.walk clojure.string))
+
+...
+
+(stringify-keys ...) ;; .walk or .string?
 ~~~
 
 That's a good idea to group imports by their semantics, namely:
@@ -365,8 +369,7 @@ The example below takes less code and is more readable:
 (when-not user
   (error/error! "User not found" {:id user-id}))
 
-# or when the error! function was :refer-red
-
+;;  or when the error! function was :refer-red
 (when-not user
   (error! "User not found" {:id user-id}))
 ~~~
@@ -550,7 +553,7 @@ When destructuring a map on variables, don't go deeper than one level at once. T
 ~~~clojure
 (def response
   {:status 200
-   :headers {,,,}
+   :headers {...}
    :body {:user {:email "test@test.com"
                  :full-name "Ivan"}}})
 
@@ -659,10 +662,10 @@ Of course, it's possible to shorten it with the `#:<ns>{...}` syntax:
 Which, anyway, leads do something like this:
 
 ~~~clojure
-(get :user/email user)
+(get user :user/email)
 ~~~
 
-Since I already know it's a user, why should I use `:user/email` instead of just `:email`?
+Since I already know it's a user, why should I use `:user/email` instead of plain `:email`?
 
 **2.** There are two and more namespaces in a single map:
 
@@ -740,7 +743,7 @@ But this:
   (println Code Category ResponseMessage))
 ~~~
 
-It's better to get rid of libraries that convert screaming/kabab/whatever keys.
+It's better to get rid of libraries that convert screaming/kebab/whatever keys.
 
 Here is the explanation. First, you waste resources on transforming the keys. Walking through a nested structure was never cheap. So you traverse on it and for each keyword, convert it into a string, match/replace using a regexp and then transform it to a keyword again. It takes CPU time.
 
@@ -928,9 +931,9 @@ Don't use one-letter naming for the "obvious" — as you might think — cases. 
   ...)
 ~~~
 
-The core Clojure namespace uses its own naming rules. For example, `f` is for a function, `m` is for a map, `k` is for a key and so on. This is not an excuse for using the same way in your code. Leave the clojure.core namespace alone and use more sensible names.
+The core Clojure namespace uses its own naming rules. For example, `f` is for a function, `m` is for a map, `k` is for a key and so on. This is not an excuse for using the same way in your code. Leave the `clojure.core` namespace alone and use more sensible names.
 
-In let, never shadow the `clojure.core` stuff. It's quite common when a map has a key `:name`, and you shadow the `name` function:
+In `let`, never shadow the `clojure.core` stuff. It's quite common when a map has a key `:name`, and you shadow the `name` function:
 
 ~~~clojure
 (def user {:name "Ivan"})
@@ -1297,7 +1300,7 @@ One day you can improve this namespace by introducing ClojureScript support on t
 
 ## Java-like classes
 
-Everyone who ever worked on vast Clojure projects is familiar with something called "map hell". This is when a function accepts three or four maps and you have no idea what is inside them. Although tests and REPL might help, still it's a challenge to get on with such code. Maps, maps are everywhere (buzz-lighter.jpeg).
+Everyone who ever worked on vast Clojure projects is familiar with something called "map hell". This is when a function accepts three or four maps and you have no idea what is inside them. Although tests and REPL might help, still it's a challenge to get on with such code. "Maps, maps are everywhere" (buzz-lighter.jpeg).
 
 If you're tired of maps, try the Java approach: classes. Conseal maps in a `deftype` instance and provide a protocol to access their fields. In one project I had three maps which completed each other and acted like a source of truth for something. It was really a mess to get one piece of data from map1, then fetch the second piece from map2 and so on. Instead, I made an interface:
 
@@ -1425,7 +1428,7 @@ Declare a second map which specifies dependencies:
 Now that you have these two, write a function that takes a config map and:
 
 - Travers on the first map passing the corresponding config values into the constructors;
-- Travers on the second map to supply initiated components with dependencies.
+- Travers on the second map to specify dependencies with `(using ...)`.
 
 Wrap the result into the `System` class, then start it, and you're fine.
 
