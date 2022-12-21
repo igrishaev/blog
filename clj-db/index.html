@@ -188,8 +188,8 @@
       <li><a href="#группировка-в-базе" id="toc-item-pg-to-datomic-группировка-в-базе">Группировка в базе</a></li>
       <li><a href="#миграции" id="toc-item-pg-to-datomic-миграции">Миграции</a>        <ul>
           <li><a href="#migratus" id="toc-item-pg-to-datomic-migratus">Migratus</a></li>
-          <li><a href="#синтаксис" id="toc-item-pg-to-datomic-синтаксис">Синтаксис</a></li>
-          <li><a href="#тонкая-настройка" id="toc-item-pg-to-datomic-тонкая-настройка">Тонкая настройка</a></li>
+          <li><a href="#несколько-запросов-в-миграции" id="toc-item-pg-to-datomic-несколько-запросов-в-миграции">Несколько запросов в миграции</a></li>
+          <li><a href="#миграции-с-профилями" id="toc-item-pg-to-datomic-миграции-с-профилями">Миграции с профилями</a></li>
           <li><a href="#параметры-подключения" id="toc-item-pg-to-datomic-параметры-подключения">Параметры подключения</a></li>
           <li><a href="#миграции-в-коде" id="toc-item-pg-to-datomic-миграции-в-коде">Миграции в коде</a></li>
           <li><a href="#программные-миграции" id="toc-item-pg-to-datomic-программные-миграции">Программные миграции</a></li>
@@ -3097,9 +3097,9 @@ and p.created_at &gt; ..."</span><span class="w">
 
 <h3 id="порядок-записей">Порядок записей</h3>
 
-<p>У нашего обхода один недостаток. Поскольку мы группируем сущности в словаре, теряется порядок их следования в выборке. Иногда порядок неважен, но в некоторых случаях критичен. Например, авторы должны следовать в алфавитном порядке, их статьи — по дате публикации, а комментарии — по оценке пользователями. Если мы обяжем клиентов сортировать данные, это замедлит их.</p>
+<p>У нашего обхода один недостаток. Предположим, мы выбрали данные из базы в особом порядке: авторы по алфавиту, статьи — по дате публикации, комментарии — по оценке пользователями. Поскольку мы группируем сущности в словарях, порядок записей теряется. Если отправить данные из примера выше клиенту, он будет вынужден сортировать их заново, что неудобно.</p>
 
-<p>Одно из решений в том, чтобы каждая сущность помнила свою позицию в выборке. Для этого назначим ей поле <code class="language-plaintext highlighter-rouge">:db/index</code> с числом. Чтобы знать индекс на каждом шаге итерации, напишем служебную функцию <code class="language-plaintext highlighter-rouge">enumerate</code>. Она превращает коллекцию в список пар, где первый элемент — индекс от нуля:</p>
+<p>Чтобы клиент был доволен, после группировки мы должны восстановить порядок записей. В техническом плане поля <code class="language-plaintext highlighter-rouge">:authors</code>, <code class="language-plaintext highlighter-rouge">:author/posts</code> и <code class="language-plaintext highlighter-rouge">:post/comments</code> должны стать списками, элементы которых идут в той же последовательности, что и в запросе. Для этого назначим сущностям поле <code class="language-plaintext highlighter-rouge">:db/index</code> с числом – позицию в выборке. Чтобы знать индекс на каждом шаге, напишем служебную функцию <code class="language-plaintext highlighter-rouge">enumerate</code>. Она превращает коллекцию в список пар, где первый элемент — индекс от нуля:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">enumerate</span><span class="w">
   </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="n">map-indexed</span><span class="w"> </span><span class="nb">vector</span><span class="p">))</span><span class="w">
@@ -3108,7 +3108,7 @@ and p.created_at &gt; ..."</span><span class="w">
 </span><span class="c1">;; ([0 "a"] [1 "b"] [2 "c"])</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Группировка сущностей тоже изменится: теперь она принимает индекс и добавляет к каждой сущности.</p>
+<p>Группировка сущностей тоже изменится: теперь она принимает индекс и добавляет его к каждой сущности.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">row-&gt;entities</span><span class="w"> </span><span class="p">[</span><span class="n">idx</span><span class="w"> </span><span class="n">db-row</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nf">reduce-kv</span><span class="w">
@@ -3158,7 +3158,7 @@ and p.created_at &gt; ..."</span><span class="w">
                 </span><span class="no">:comment/post-id</span><span class="w"> </span><span class="mi">10</span><span class="p">}}}}}}}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Видим, что в каждой сущности появилось поле <code class="language-plaintext highlighter-rouge">:db/index</code>. Изменим дерево так, чтобы словари сущностей стали вектором, упорядоченным по этому полю. Проще всего это сделать модулем <code class="language-plaintext highlighter-rouge">clojure.walk</code>. Подготовим проверку на элемент словаря:</p>
+<p>Видим, что в каждой сущности появилось поле <code class="language-plaintext highlighter-rouge">:db/index</code>. Изменим дерево так, чтобы некоторые словари стали вектором, упорядоченным по этому полю. Проще всего это сделать модулем <code class="language-plaintext highlighter-rouge">clojure.walk</code>. Подготовим проверку на элемент словаря:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">entry?</span><span class="w">
   </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="nb">instance?</span><span class="w"> </span><span class="n">clojure.lang.MapEntry</span><span class="p">))</span><span class="w">
@@ -3170,7 +3170,7 @@ and p.created_at &gt; ..."</span><span class="w">
   </span><span class="o">#</span><span class="p">{</span><span class="no">:authors</span><span class="w"> </span><span class="no">:author/posts</span><span class="w"> </span><span class="no">:post/comments</span><span class="p">})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Вот как выглядит “ремаппинг” сущностей. Мы используем префикс <code class="language-plaintext highlighter-rouge">remap-</code> вместо <code class="language-plaintext highlighter-rouge">sort-</code> потому, что функция не только сортирует сущности, но и меняет структуру со словаря на вектор.</p>
+<p>Вот как выглядит “ремаппинг” сущностей. Если текущая форма – элемент словаря, а ключ – один из тех, что нуждается в сортировке, то значение (вложенный словарь) приводится к вектору, элементы которого – значения вложенного словаря, упорядоченные по <code class="language-plaintext highlighter-rouge">:db/index</code>.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">remap-entities</span><span class="w">
   </span><span class="p">[</span><span class="n">form</span><span class="p">]</span><span class="w">
@@ -3182,7 +3182,7 @@ and p.created_at &gt; ..."</span><span class="w">
     </span><span class="n">form</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Подключим модуль <code class="language-plaintext highlighter-rouge">clojure.walk</code> и вызовем <code class="language-plaintext highlighter-rouge">prewalk</code>:</p>
+<p>Мы используем префикс <code class="language-plaintext highlighter-rouge">remap-</code> вместо <code class="language-plaintext highlighter-rouge">sort-</code> потому, что функция не только сортирует сущности, но и меняет структуру данных. Подключим модуль <code class="language-plaintext highlighter-rouge">clojure.walk</code> и вызовем <code class="language-plaintext highlighter-rouge">prewalk</code> с новой функцией и результатом группировки:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">clojure.walk</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">walk</span><span class="p">])</span><span class="w">
 
@@ -3232,71 +3232,29 @@ and p.created_at &gt; ..."</span><span class="w">
     </span><span class="no">:post/author-id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]}]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Эти данные подходят клиентам, разве что поле <code class="language-plaintext highlighter-rouge">:db/index</code> уже не нужно. Доработайте <code class="language-plaintext highlighter-rouge">remap-entities</code> так, чтобы после <code class="language-plaintext highlighter-rouge">(sort-by :db/index)</code> шла форма с удалением <code class="language-plaintext highlighter-rouge">:db/index</code>. Искушенные читатели могут объединить сортировку и удаление в трансдьюсер.</p>
-
-<!-- edited -->
-
-<p>Еще одно замечание насчет сортировки. Мы добавили ее из расчета, что группирующий словарь не обещает порядка добавленных в него ключей. Другими словами, при итерации по словарю порядок сущностей будет не таким, как в оригинальной выборке. С одной оговоркой: словарь сохраняет порядок, если число ключей в нем не превышает восьми элементов. Это легко проверить:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">into</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="p">(</span><span class="nb">range</span><span class="w"> </span><span class="mi">8</span><span class="p">)]</span><span class="w">
-           </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="n">x</span><span class="p">]))</span><span class="w">
-
-</span><span class="p">{</span><span class="mi">0</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">3</span><span class="n">,</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="mi">4</span><span class="n">,</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="mi">5</span><span class="n">,</span><span class="w"> </span><span class="mi">6</span><span class="w"> </span><span class="mi">6</span><span class="n">,</span><span class="w"> </span><span class="mi">7</span><span class="w"> </span><span class="mi">7</span><span class="p">}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Когда элементов больше, порядок нарушается:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">into</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="p">(</span><span class="nb">range</span><span class="w"> </span><span class="mi">9</span><span class="p">)]</span><span class="w">
-           </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="n">x</span><span class="p">]))</span><span class="w">
-
-</span><span class="p">{</span><span class="mi">0</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">7</span><span class="w"> </span><span class="mi">7</span><span class="n">,</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="mi">4</span><span class="n">,</span><span class="w"> </span><span class="mi">6</span><span class="w"> </span><span class="mi">6</span><span class="n">,</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">3</span><span class="n">,</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="mi">5</span><span class="n">,</span><span class="w"> </span><span class="mi">8</span><span class="w"> </span><span class="mi">8</span><span class="p">}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Так происходит потому, что в зависимости от числа элементов Clojure использует классы <code class="language-plaintext highlighter-rouge">ArrayMap</code> и <code class="language-plaintext highlighter-rouge">HashMap</code>. Они основаны на разных структурах данных и поэтому различаются в порядке обхода. Сейчас мы не будет углубляться в детали реализации. Важно то, что если сущностей не более восьми, их не нужно сортировать: мы и так добавляем их в порядке появления в выборке.</p>
-
-<p>Технически это значит, что в функции <code class="language-plaintext highlighter-rouge">remap-entities</code> появится условие: если <code class="language-plaintext highlighter-rouge">(-&gt; v vals count)</code> больше восьми, то следующая форма <code class="language-plaintext highlighter-rouge">(sort-by...)</code> пропускается. Доработайте <code class="language-plaintext highlighter-rouge">remap-entities</code> и проверьте ее на малых и больших выборках. Помните, что подход зависит от внутреннего устройства коллекций в Clojure и со временем может измениться. Добавить комментарий о том, зачем вы проверяете длину коллекции, и напишите тесты.</p>
-
-<p>Сохранить порядок записей можно в том числе при помощи словаря из библиотеки <a href="https://github.com/clj-commons/ordered">Ordered</a>. Функция <code class="language-plaintext highlighter-rouge">ordered-map</code> порождает упорядоченный словарь, который помнит, в каком порядке в него добавили ключи. Подключим библиотеку и проверим, так ли это:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">org.flatland/ordered</span><span class="w"> </span><span class="s">"1.5.9"</span><span class="p">]</span><span class="w">              </span><span class="c1">;; project</span><span class="w">
-</span><span class="p">[</span><span class="n">flatland.ordered.map</span><span class="w"> </span><span class="no">:refer</span><span class="w"> </span><span class="p">[</span><span class="n">ordered-map</span><span class="p">]]</span><span class="w"> </span><span class="c1">;; ns</span><span class="w">
-
-</span><span class="p">(</span><span class="nb">into</span><span class="w"> </span><span class="p">(</span><span class="nf">ordered-map</span><span class="p">)</span><span class="w">
-      </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="p">(</span><span class="nb">range</span><span class="w"> </span><span class="mi">16</span><span class="p">)]</span><span class="w">
-        </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="n">x</span><span class="p">]))</span><span class="w">
-
-</span><span class="p">{</span><span class="mi">0</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="n">...</span><span class="w"> </span><span class="mi">13</span><span class="w"> </span><span class="mi">13</span><span class="n">,</span><span class="w"> </span><span class="mi">14</span><span class="w"> </span><span class="mi">14</span><span class="n">,</span><span class="w"> </span><span class="mi">15</span><span class="w"> </span><span class="mi">15</span><span class="p">}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Действительно, порядок сохраняется. Подумайте, как изменить обход записей, чтобы сортировка с помощью <code class="language-plaintext highlighter-rouge">clojure.walk</code> не понадобилась. Подсказка: доработайте то место, где при помощи <code class="language-plaintext highlighter-rouge">update-in</code> мы дополняем итоговый словарь. По умолчанию <code class="language-plaintext highlighter-rouge">update-in</code> порождает обычные словари для несуществующих ключей. Возможно, понадобится своя версия <code class="language-plaintext highlighter-rouge">update-in*</code>, которая использует <code class="language-plaintext highlighter-rouge">assoc*</code>. Определим <code class="language-plaintext highlighter-rouge">assoc*</code> с помощью <code class="language-plaintext highlighter-rouge">fnil</code>: если первый аргумент <code class="language-plaintext highlighter-rouge">nil</code> (нет ключа), вернем пустой сортированный словарь, а не обычный.</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">assoc*</span><span class="w">
-  </span><span class="p">(</span><span class="nf">fnil</span><span class="w"> </span><span class="nb">assoc</span><span class="w"> </span><span class="p">(</span><span class="nf">ordered-map</span><span class="p">)))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Идея в том, чтобы расставить сортированные словари в ключи <code class="language-plaintext highlighter-rouge">:authors</code>, <code class="language-plaintext highlighter-rouge">:author/posts</code> и <code class="language-plaintext highlighter-rouge">:post/comments</code>. Как только это сделано, вы можете использовать <code class="language-plaintext highlighter-rouge">update-in</code> и <code class="language-plaintext highlighter-rouge">assoc-in</code> для насыщения результата, при этом порядок сохранится.</p>
-
-<p>Заметим, что для сохранения порядка на клиенте мы должны заменить словари сущностей на массивы. Если этого не сделать, сортированный словарь будет записан в JSON и прочитан в JavaScript-объект, который не гарантирует порядка ключей. Поэтому даже с ordered-map вам понадобится обход для изменения структуры.</p>
+<p>Эти данные устроят клиента, поскольку не нуждаются в обработке на стороне браузера. Разве что поле <code class="language-plaintext highlighter-rouge">:db/index</code> можно удалить: это технический артефакт, в котором больше нет смысла. Доработайте <code class="language-plaintext highlighter-rouge">remap-entities</code> так, чтобы после <code class="language-plaintext highlighter-rouge">(sort-by :db/index)</code> шла форма с удалением <code class="language-plaintext highlighter-rouge">:db/index</code>. Искушенные читатели могут объединить сортировку и удаление в трансдьюсер.</p>
 
 <h3 id="итог">Итог</h3>
 
-<p>Подход fetch related означает, что связанные записи извлекают слоями. Сперва находят основные сущности, затем те, что ссылаются на них и так далее. Подобные запросы содержат оператор <code class="language-plaintext highlighter-rouge">IN</code> с набором первичных ключей. Чтобы случайно не передать огромное их количество, дочерние записи собирают в цикле с шагом в сто элементов. Для вашего проекта это число может быть другим.</p>
+<p>Подход fetch related означает, что записи извлекают по слоям. Сперва находят основные сущности, затем те, что ссылаются на них и так далее. Подобные запросы содержат оператор <code class="language-plaintext highlighter-rouge">IN</code> с набором первичных ключей. Чтобы не передать их огромное количество, дочерние записи накапливают в цикле с шагом в сто элементов. Для вашего проекта это число может быть другим.</p>
 
-<p>Способ, когда из базы выбирают все за раз, называется select related. Одноименный метод в некоторых ORM означает, что в запрос добавляют оператор <code class="language-plaintext highlighter-rouge">(LEFT) JOIN</code> с дочерними таблицами, которые ссылаются на основную. Позже, когда вы обращаетесь к полям-ссылкам, система находит их из выборки без обращения к базе.</p>
+<p>Способ, когда из базы выбирают все за раз, называется select related. Одноименный метод в ORM добавляет в запрос оператор <code class="language-plaintext highlighter-rouge">(LEFT) JOIN</code> с дочерними таблицами, которые ссылаются на основную. Позже, когда вы обращаетесь к полям-ссылкам, система находит их из выборки без обращения к базе.</p>
 
-<p>Каждый подход несет преимущества и недостатки. С select related снижается число обращений к базе. Это важно, потому что, как правило, база данных одна, а экземпляров приложения несколько. В отличии от базы, их число легко увеличить и тем самым распределить работу по обработке результата между многими машинами.</p>
+<p>Каждый подход несет преимущества и недостатки. Select related снижает число обращений к базе, но требует код, который приведет плоскую выборку к дереву. Как правило, содержание базы стоит дороже, поэтому если можно снизить на нее нагрузку, создав больше приложений, так и поступают.</p>
 
-<p>Для select related легче писать тесты. Обработка выборки — это чистая функция, которая принимает список записей и возвращает их в другом виде. Тест для этой функции не требует соединения с базой данных. Можно измерить быстродействие алгоритма на больших выборках и доработать его.</p>
+<p>С другой стороны, желание выбрать все за раз может обернуться медленным запросом, особенно если участвуют много таблиц с оператором <code class="language-plaintext highlighter-rouge">JOIN</code>. В нагруженных проектах это даже невозможно из-за того, что таблицы разносят по разным базам. В этом случае подход fetch related остается одним вариантом.</p>
+
+<p>Очевидно, нельзя сказать, какой способ предпочтительней. Важно понимать достоинства и недостатки каждого и верно применять их в текущих условиях.</p>
 
 <h2 id="группировка-в-базе">Группировка в базе</h2>
 
-<p>Рассмотрим третий способ сгруппировать данные — сделать это запросом на уровне базы. С помощью функций <code class="language-plaintext highlighter-rouge">json(b)_agg</code> и <code class="language-plaintext highlighter-rouge">json(b)_object_agg</code> мы получим вложенные записи. Тип результата будет <code class="language-plaintext highlighter-rouge">json(b)</code>. Если расширить протоколы JDBC типом JSON, как мы делали выше, вызов <code class="language-plaintext highlighter-rouge">jdbc/query</code> вернет привычные коллекции Clojure.</p>
+<p>Рассмотрим третий способ группировать данные — делать это запросом на уровне базы. С помощью функций <code class="language-plaintext highlighter-rouge">json(b)_agg</code> и <code class="language-plaintext highlighter-rouge">json(b)_object_agg</code> можно превратить часть полей во вложенный массив с типом <code class="language-plaintext highlighter-rouge">json(b)</code>. Если расширить протоколы JDBC типом JSON, как описано выше, вызов <code class="language-plaintext highlighter-rouge">jdbc/query</code> вернет привычные коллекции Clojure.</p>
 
-<p>Агрегация JSON не входит в стандарт SQL и поэтому реализована не во всех базах. Однако спрос на эту возможность привел к тому, что в том или ином виде она доступна не только в PostgreSQL, но и в MySQL или Sqlite. Далее по тексту мы будем работать именно с PostgreSQL.</p>
+<p>Агрегация JSON не входит в стандарт SQL и поэтому доступна не во всех базах. Однако спрос на эту возможность привел к тому, что в том или ином виде она работает не только в PostgreSQL, но и в MySQL или Sqlite. Уточним, что далее по тексту речь идет именно о PostgreSQL; для других баз синтаксис будет иным.</p>
 
-<p>Очевидно, группировка в базе несет как преимущества, так и недостатки. Запрос можно составить так, что данным не понадобится последующая обработка — они сразу готовы к отправке. За счет этого уходит код, что мы писали для обхода и группировки. С другой стороны, база тратит больше ресурсов на запрос с группировкой, что может не подойти для нагруженных проектов. Усложняется синтаксис SQL: когда в нем больше двух уровней вложенности, его трудно читать и поддерживать.</p>
+<p>Агрегация в базе несет преимущества и недостатки. Запрос можно составить так, что данным не нужна обработка — они сразу готовы к отправке. За счет этого уходит код, что мы писали для обхода и группировки. С другой стороны, агрегация занимает ресурсы базы, что может не подойти для нагруженных проектов. Усложняется синтаксис SQL: когда уровней вложенности больше двух, его трудно читать и поддерживать.</p>
 
-<p>Функция <code class="language-plaintext highlighter-rouge">jsonb_agg</code> принимает колонку и возвращает массив JSON, где каждое значение так же приведено к типу jsonb. Еще одна функция <code class="language-plaintext highlighter-rouge">row_to_json</code> принимает произвольную запись и возвращает объект JSON, где ключи — имена полей записи. В сочетании эти функции способны группировать целые таблицы и подзапросы, а не только колонки.</p>
+<p>Функция <code class="language-plaintext highlighter-rouge">jsonb_agg</code> принимает колонку и возвращает массив jsonb со значениями этих колонок. Еще одна функция <code class="language-plaintext highlighter-rouge">row_to_json</code> принимает произвольную запись и возвращает JSON, где ключи — имена полей записи. Вместе эти функции группируют целые таблицы и подзапросы, а не только колонки.</p>
 
 <p>Вернемся к примеру с авторами, статьями и комментариями. Для начала выберем статьи с комментариями:</p>
 
@@ -3320,11 +3278,11 @@ and p.created_at &gt; ..."</span><span class="w">
       40 | Working on my pet project   |              2 |
 </code></pre></div></div>
 
-<p>Обратите внимание, что статья, у которой нет комментариев, осталась в выборке. Поле <code class="language-plaintext highlighter-rouge">post/comments</code> носит тип json; внутри него массив объектов, где каждый объект представляет запись таблицы comments.</p>
+<p>Статья, у которой нет комментариев, осталась в выборке. Поле <code class="language-plaintext highlighter-rouge">post/comments</code> носит тип json; внутри него массив объектов, где каждый объект представляет запись таблицы <code class="language-plaintext highlighter-rouge">comments</code>.</p>
 
-<p>Выражение <code class="language-plaintext highlighter-rouge">FILTER</code> после <code class="language-plaintext highlighter-rouge">json_agg</code> нужно для того, чтобы отсечь <code class="language-plaintext highlighter-rouge">NULL</code>. Если этого не сделать, получим массив с одним элементом <code class="language-plaintext highlighter-rouge">NULL</code>, что семантически неверно.</p>
+<p>Выражение <code class="language-plaintext highlighter-rouge">FILTER</code> после <code class="language-plaintext highlighter-rouge">json_agg</code> отсекает пустые элементы. Если этого не сделать, получим массив с одним элементом <code class="language-plaintext highlighter-rouge">NULL</code>, что семантически неверно.</p>
 
-<p>То, что мы получили — на самом часть более общего запроса. Теперь выберем авторов и присоединим к ним запрос выше со статьями и комментариями. Поместим его в подзапрос и сгруппируем еще раз по авторам:</p>
+<p>Теперь выберем авторов и присоединим к ним запрос выше со статьями и комментариями. Поместим его в подзапрос и сгруппируем еще раз по авторам. При наборе подобного SQL важны отступы, чтобы не запутаться с логическим уровнем.</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span>
   <span class="n">a</span><span class="p">.</span><span class="n">id</span>                         <span class="k">as</span> <span class="nv">"author/id"</span><span class="p">,</span>
@@ -3345,9 +3303,7 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="k">GROUP</span> <span class="k">BY</span> <span class="n">a</span><span class="p">.</span><span class="n">id</span><span class="p">;</span>
 </code></pre></div></div>
 
-<p>Этот запрос выглядит сложнее. При его наборе важны отступы, чтобы не запутаться с логическим уровнем, и свертка вложенных частей на уровне редактора.</p>
-
-<p>Если поместить запрос в переменную и выполнить <code class="language-plaintext highlighter-rouge">jdbc/query</code>, получим:</p>
+<p>Если выполнить запрос, получим данные как в примере ниже. Они готовы к отправке клиенту; не требуется сортировка или дополнительный обход.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="o">#</span><span class="no">:author</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
           </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan Petrov"</span><span class="w">
@@ -3374,11 +3330,9 @@ and p.created_at &gt; ..."</span><span class="w">
                          </span><span class="no">:comments</span><span class="w"> </span><span class="n">nil</span><span class="p">}]}]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Результат готов к отправке клиенту: ему не требуется ни сортировка, ни обработка полей, ни что бы то еще.</p>
+<p>Библиотеки HugSQL и HoneySQL помогают строить подобные запросы по частям. В обоих случаях можно вынести внутреннюю часть (статьи и комментарии) в отдельную сущность и сослаться на нее. В HugSQL мы бы вынесли подзапрос в сниппет, а в HoneySQL поместили бы его в переменную. С таким подходом главный запрос выглядит чище и удобней для чтения.</p>
 
-<p>Библиотеки HugSQL и HoneySQL помогают строить сложные запросы по частям. В обоих случаях можно вынести внутреннюю часть (статьи и комментарии) в отдельную сущность и позже сослаться на нее. Например, в HugSQL мы бы вынесли подзапрос в сниппет, а в HoneySQL поместили бы его в переменную. С таким подходом главный запрос выглядит чище и удобней для чтения.</p>
-
-<p>Рассмотрим другой пример группировки. Предположим, таблица хранит данные о товарах: артикул, название и так далее. У каждого товара могут быть десятки характеристик: жанр книги, размер талии для одежды и разъем питания для техники. Чтобы бесконечно не добавлять столбцы к товарам, вынесем характеристики в отдельную таблицу с именем характеристики, ее значением и ссылкой на товар.</p>
+<p>Рассмотрим другой пример группировки. Предположим, таблица хранит данные о товарах: артикул, название и так далее. У каждого товара могут быть десятки характеристик: жанр книги, размер талии или разъем питания. Чтобы бесконечно не добавлять столбцы к товарам, вынесем характеристики в отдельную таблицу с именем характеристики, значением и ссылкой на товар.</p>
 
 <p>Подготовим таблицы:</p>
 
@@ -3395,7 +3349,7 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="p">);</span>
 </code></pre></div></div>
 
-<p>Добавим данные для тестов — несколько товаров с характеристиками:</p>
+<p>Добавим несколько товаров с характеристиками:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">goods</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">title</span><span class="p">)</span>
 <span class="k">VALUES</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s1">'iPhone 99x'</span><span class="p">),</span>
@@ -3409,9 +3363,9 @@ and p.created_at &gt; ..."</span><span class="w">
        <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="s1">'book.genre'</span><span class="p">,</span> <span class="s1">'"dystopia"'</span><span class="p">);</span>
 </code></pre></div></div>
 
-<p>Обратите внимание, что значение характеристики носит тип <code class="language-plaintext highlighter-rouge">jsonb</code>. Это значит, нам доступно все богатство его типов. Например, можно указать размер одежды буквой (L, M); количество портов натуральным числом (2, 3); поддержку протокола (истина или ложь); список ссылок на сторонние ресурсы (массив строк).</p>
+<p>Обратите внимание, что значение характеристики носит тип <code class="language-plaintext highlighter-rouge">jsonb</code>. Это значит, нам доступно все богатство его типов. Например, можно указать размер одежды буквой (L, M); число портов натуральным числом (2, 3); поддержку протокола (истина или ложь); список ссылок на сторонние ресурсы (массив строк).</p>
 
-<p>Хотелось бы извлечь товары одним запросом так, чтобы получить структуру:</p>
+<p>Хотелось бы извлечь товары одним запросом, чтобы получить структуру:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
   </span><span class="no">:title</span><span class="w"> </span><span class="s">"iPhone 99x"</span><span class="w">
@@ -3426,9 +3380,9 @@ and p.created_at &gt; ..."</span><span class="w">
           </span><span class="no">:book.pages</span><span class="w"> </span><span class="mi">215</span><span class="p">}}]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Однако при выборке в лоб через JOIN двух таблица получим задвоение товаров, что потребует обработки результата.</p>
+<p>Однако при выборке в лоб через JOIN получим задвоение товаров, что требует обработки результата.</p>
 
-<p>Функция <code class="language-plaintext highlighter-rouge">json_object_agg</code> принимает списки ключей и значений и строит словарь (в терминах JSON и JavaScript — объект). Напишем вложенный запрос, который группирует колонки <code class="language-plaintext highlighter-rouge">attr</code> и <code class="language-plaintext highlighter-rouge">val</code> таблицы <code class="language-plaintext highlighter-rouge">good_attrs</code>:</p>
+<p>Функция <code class="language-plaintext highlighter-rouge">json_object_agg</code> принимает списки ключей и значений и строит словарь (в терминах JSON — объект). Напишем вложенный запрос, который группирует колонки <code class="language-plaintext highlighter-rouge">attr</code> и <code class="language-plaintext highlighter-rouge">val</code> таблицы <code class="language-plaintext highlighter-rouge">good_attrs</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">SELECT</span><span class="w">
   </span><span class="n">ga.good_id,</span><span class="w">
@@ -3445,7 +3399,7 @@ and p.created_at &gt; ..."</span><span class="w">
        1 | {"phone.display.diag": 145, "phone.wifi.support": true}
 </code></pre></div></div>
 
-<p>Теперь поместим его в подзапрос и присоединим при помощи <code class="language-plaintext highlighter-rouge">LEFT JOIN</code> к товарам:</p>
+<p>Поместим его в подзапрос и присоединим к товарам при помощи <code class="language-plaintext highlighter-rouge">LEFT JOIN</code>:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span>
   <span class="k">g</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
@@ -3469,11 +3423,11 @@ and p.created_at &gt; ..."</span><span class="w">
   3 | G. Orwell 1984 | {"book.genre": "dystopia", "book.pages": 215}
 </code></pre></div></div>
 
-<p>Обратите внимание, что товар, у которого нет характеристик, остался в выборке. Если передать итоговый запрос в <code class="language-plaintext highlighter-rouge">jdbc/query</code>, получим именно ту структуру данных Clojure, что мы приводили.</p>
+<p>Товар, у которого нет характеристик, остался в выборке. Если передать итоговый запрос в <code class="language-plaintext highlighter-rouge">jdbc/query</code>, получим именно ту структуру данных Clojure, на которую рассчитывали.</p>
 
-<p>В этом преимущество <code class="language-plaintext highlighter-rouge">json(b)</code>: PostgreSQL предлагает много функций над этим типом, в том числе для группировки. Любой json(b)-результат будет прочитан в Clojure за счет протокола. Это может быть массив, словарь и любая комбинация их вложенности.</p>
+<p>В этом преимущество <code class="language-plaintext highlighter-rouge">json(b)</code>: PostgreSQL предлагает множество функций для этого типа, в том числе группировку. Любое поле <code class="language-plaintext highlighter-rouge">json(b)</code> будет прочитано в Clojure за счет протокола. Это может быть массив, словарь и любая их комбинация.</p>
 
-<p>Еще один прием, связанный с группировкий — использовать <code class="language-plaintext highlighter-rouge">row_to_json</code> в сочетании с оператором <code class="language-plaintext highlighter-rouge">UNION</code>. Этот оператор объединяет несколько запросов по вертикали. При этом обязательно, чтобы состав полей (их число и типы) был одинаков во всех запросах.</p>
+<p>Еще один прием, связанный с группировкий — использовать <code class="language-plaintext highlighter-rouge">row_to_json</code> в сочетании с оператором <code class="language-plaintext highlighter-rouge">UNION</code>. Он объединяет несколько запросов по вертикали, при этом обязательно, чтобы состав полей (их число и типы) был одинаков во всех запросах. Пример с числом и строкой:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="mi">1</span> <span class="k">as</span> <span class="n">id</span><span class="p">,</span> <span class="s1">'foo'</span> <span class="k">as</span> <span class="n">name</span>
 <span class="k">UNION</span>
@@ -3486,7 +3440,7 @@ and p.created_at &gt; ..."</span><span class="w">
   2 | bar
 </code></pre></div></div>
 
-<p>Иногда в проекте бывает несколько схожих сущностей в разных таблицах. Например, отдельно бухгалтерские и юридические документы; администраторы и пользователи; крупные и малые поставщики. Из-за разной структуры их нельзя объединить в один запрос. Но поскольку функция <code class="language-plaintext highlighter-rouge">row_to_json</code> приводит любую запись к типу json, можно объединить ее результаты, полученные от любых записей.</p>
+<p>Иногда в проекте бывает несколько похожих сущностей в разных таблицах. Например, договоры с юрлицами и населением; администраторы и пользователи; крупные и малые поставщики. Из-за разной структуры их нельзя объединить в один запрос. Но поскольку функция <code class="language-plaintext highlighter-rouge">row_to_json</code> приводит запись к json, можно объединить результаты любых записей.</p>
 
 <p>Покажем это на примере. Предположим, администраторы системы хранятся отдельно от пользователей, но в какой-то момент нужно увидеть и тех, и других. Создадим таблицу администраторов:</p>
 
@@ -3504,7 +3458,7 @@ and p.created_at &gt; ..."</span><span class="w">
        <span class="p">(</span><span class="s1">'Oleg Ivanov'</span><span class="p">,</span> <span class="s1">'oleg@test.com'</span><span class="p">);</span>
 </code></pre></div></div>
 
-<p>Ниже — запрос, который выберет обе сущности. Обратите внимание на поля <code class="language-plaintext highlighter-rouge">id</code> и <code class="language-plaintext highlighter-rouge">type</code> в обеих частях. Первичный ключ (<code class="language-plaintext highlighter-rouge">id</code>) нужен настолько часто, что логично вынести его на верхний уровень запроса. Поле type содержит постоянную строку с типом сущности: “user” для пользователя и “admin” для администратора. По этому полю легко понять, что находится в <code class="language-plaintext highlighter-rouge">entity</code>.</p>
+<p>Ниже — запрос, который выберет обе сущности. Обратите внимание на поля <code class="language-plaintext highlighter-rouge">id</code> и <code class="language-plaintext highlighter-rouge">type</code> в обеих частях. Первичный ключ (<code class="language-plaintext highlighter-rouge">id</code>) нужен настолько часто, что логично вынести его на верхний уровень запроса. Поле <code class="language-plaintext highlighter-rouge">type</code> содержит строку с типом сущности: “user” для пользователя и “admin” для администратора. По этому полю легко понять, что находится в <code class="language-plaintext highlighter-rouge">entity</code>.</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span>
   <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="k">AS</span> <span class="n">id</span><span class="p">,</span>
@@ -3521,7 +3475,7 @@ and p.created_at &gt; ..."</span><span class="w">
   <span class="n">admins</span> <span class="n">a</span><span class="p">;</span>
 </code></pre></div></div>
 
-<p>Результат в консоли psql:</p>
+<p>Результат в консоли <code class="language-plaintext highlighter-rouge">psql</code>:</p>
 
 <div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code> id | type  |                                                                           entity
 ----+-------+------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -3567,7 +3521,7 @@ and p.created_at &gt; ..."</span><span class="w">
            </span><span class="no">:email</span><span class="w"> </span><span class="s">"oleg@test.com"</span><span class="p">}}]</span><span class="w">
 </span></code></pre></div></div>
 
-<p>При обходе выборки проверяйте поле type оператором <code class="language-plaintext highlighter-rouge">case</code>:</p>
+<p>При обходе выборки проверим поле <code class="language-plaintext highlighter-rouge">type</code> оператором <code class="language-plaintext highlighter-rouge">case</code> и вызовем нужный обработчик:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">doseq</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">id</span><span class="w"> </span><span class="n">type</span><span class="w"> </span><span class="n">entity</span><span class="p">]}</span><span class="w"> </span><span class="n">result</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="nf">case</span><span class="w"> </span><span class="n">type</span><span class="w">
@@ -3575,9 +3529,7 @@ and p.created_at &gt; ..."</span><span class="w">
     </span><span class="s">"admin"</span><span class="w"> </span><span class="p">(</span><span class="nf">process-admin</span><span class="w"> </span><span class="n">...</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>и в зависимости от типа вызывайте нужный обработчик записи.</p>
-
-<p>Еще одно замечание касается оператора <code class="language-plaintext highlighter-rouge">UNION</code>. Обратите внимание, что мы использовали его <code class="language-plaintext highlighter-rouge">-ALL</code> версию. Если опустить частицу <code class="language-plaintext highlighter-rouge">ALL</code> после <code class="language-plaintext highlighter-rouge">UNION</code>, база попытается убрать дубликаты записей. Чтобы проверить запись на повтор, ее сравнивают с уже накопленными записями. А поскольку тип json не поддерживает сравнение, вы получите ошибку:</p>
+<p>Еще одно замечание касается оператора <code class="language-plaintext highlighter-rouge">UNION</code>. Обратите внимание, что мы использовали его <code class="language-plaintext highlighter-rouge">-ALL</code> версию. Если опустить частицу <code class="language-plaintext highlighter-rouge">ALL</code> после <code class="language-plaintext highlighter-rouge">UNION</code>, база попытается убрать дубликаты записей. Чтобы проверить запись на повтор, ее сравнивают с уже накопленными записями. А поскольку тип json не поддерживает сравнение, получим ошибку:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span>
   <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="k">AS</span> <span class="n">id</span><span class="p">,</span>
@@ -3597,21 +3549,21 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="c1">-- LINE 4:   row_to_json(u) AS entity</span>
 </code></pre></div></div>
 
-<p>В нашем случае пользователи и администраторы очевидно не пересекаются, поэтому нет смысла убирать дубликаты обычным <code class="language-plaintext highlighter-rouge">UNION</code>. Но если вам действительно нужно отсечь дубликаты, используйте <code class="language-plaintext highlighter-rouge">to_jsonb</code> вместо <code class="language-plaintext highlighter-rouge">row_to_json</code>. Эта функция вернет результат с типом <code class="language-plaintext highlighter-rouge">jsonb</code>, который поддерживает сравнение. Как следствие, оператор <code class="language-plaintext highlighter-rouge">UNION ALL</code> не вызовет ошибку для этого типа.</p>
+<p>Чтобы отсечь дубликаты, используйте <code class="language-plaintext highlighter-rouge">to_jsonb</code> вместо <code class="language-plaintext highlighter-rouge">row_to_json</code>. Эта функция вернет результат с типом <code class="language-plaintext highlighter-rouge">jsonb</code>, который поддерживает сравнение. Как следствие, оператор <code class="language-plaintext highlighter-rouge">UNION ALL</code> не вызовет ошибку для поля этого типа.</p>
 
-<p>Группировка в базе может быть удачным решением, которое сэкономит время и код. Однако она зависит от объема данных и их структуры. Обязательно опробуйте выборку на больших данных (сотни тысяч и больше) и оцените время и план исполнения. Если данных нет, сгенерируйте их спекой. В первой книге о Clojure мы рассмотрели, как это сделать модулем <code class="language-plaintext highlighter-rouge">gen</code>.</p>
+<p>Группировка в базе может быть удачным решением, которое сэкономит время и код. Однако она зависит от объема данных и их структуры. Опробуйте выборку на больших данных (сотни тысяч записей) и оцените время и план исполнения. Если данных нет, сгенерируйте их спекой. В первой книге о Clojure мы рассмотрели, как это сделать модулем <code class="language-plaintext highlighter-rouge">gen</code>.</p>
 
 <h2 id="миграции">Миграции</h2>
 
-<p>С развитием проекта в базе появляются новые таблицы, перечисления и индексы. Чтобы автоматизировать изменения в базе, придумана концепция миграций. В этом разделе мы рассмотрим ее общие принципы и как они работают в Clojure.</p>
+<p>С развитием проекта в базе появляются новые таблицы, индексы, триггеры. Чтобы контролировать изменения в базе, придумана концепция миграций. В этом разделе мы рассмотрим ее общие принципы и как они работают в Clojure.</p>
 
-<p>Технически миграция выглядят как .sql-файл. В нем находится код, который создает таблицы и другие сущности базы. Различают up и down миграции, они же прямые и обратные. Как правило, прямые служат для создания сущностей, например, создают таблицу и индексы для нее. Down-миграция описывает обратное действие: удаление индекса и таблицы. В редких случаях отмена не требуется, и тогда миграция состоит только из up-части.</p>
+<p>Технически миграция выглядят как .sql-файл. В нем находится код, который создает таблицы и другие сущности базы. Различают up- и down-миграции, они же прямые и обратные. Как правило, прямые описывают новые сущности, например создают таблицу и индексы для нее. Down-миграция совершает обратное: удаляет индекс и таблицу. В редких случаях отмена не требуется, и тогда миграция состоит только из up-части.</p>
 
-<p>Каждая миграция имеет уникальный идентификатор. Чаще всего это дата в формате ISO или время Unix. Идентификатор должен поддаваться сортировке, чтобы однозначно определить порядок миграций. По этой причине на роль идентификатора не подойдет строка UUID.</p>
+<p>Каждая миграция имеет уникальный идентификатор. Чаще всего это дата в формате ISO или время Unix. Идентификатор должен поддаваться сортировке, чтобы однозначно определить порядок миграций.</p>
 
 <p>Миграции похожи на дерево коммитов: с ними базу можно “накатить” или “откатить” до определенной версии. Подобно тому, как с помощью git мы переключаемся на нужную версию кода, базу данных переключают на нужное состояние. Для этого нужно знать, какая миграция текущая и в какую сторону двигаться.</p>
 
-<p>Сведения о миграциях хранится в самой базе. Как правило, движок миграций создает таблицу <code class="language-plaintext highlighter-rouge">migrations</code> примерно такой структуры:</p>
+<p>Сведения о миграциях хранится в базе. Как правило, движок миграций создает таблицу <code class="language-plaintext highlighter-rouge">migrations</code> примерно такой структуры:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">migrations</span> <span class="p">(</span>
   <span class="n">migration_id</span> <span class="nb">text</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
@@ -3620,7 +3572,7 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="p">);</span>
 </code></pre></div></div>
 
-<p>Таблица запоминает, какие миграции и когда мы применили. При запуске миграций программа читает эту таблицу и сканирует файлы на диске. Файлы называют по принципу <code class="language-plaintext highlighter-rouge">&lt;time/id&gt;-&lt;description&gt;.&lt;up/down&gt;.sql</code>. Объясним значения в угловых скобках:</p>
+<p>Таблица запоминает, какие миграции и когда мы применили. При запуске миграций программа читает таблицу и сканирует файлы на диске. Файлы называют по принципу <code class="language-plaintext highlighter-rouge">&lt;time/id&gt;-&lt;description&gt;.&lt;up/down&gt;.sql</code>. Объясним значения в угловых скобках:</p>
 
 <ul>
   <li><code class="language-plaintext highlighter-rouge">&lt;time/id&gt;</code> — время или идентификатор, по которому сортируются миграции;</li>
@@ -3637,7 +3589,7 @@ and p.created_at &gt; ..."</span><span class="w">
 20210831064602-create-profiles-table.down.sql
 </code></pre></div></div>
 
-<p>Движок миграции группирует файлы в примерно такую структуру:</p>
+<p>Движок группирует файлы примерно в такую структуру:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">migrations</span><span class="w">
   </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">20210830075251</span><span class="w">
@@ -3650,42 +3602,45 @@ and p.created_at &gt; ..."</span><span class="w">
     </span><span class="no">:down</span><span class="w"> </span><span class="s">"20210831064602-create-profiles-table.down.sql"</span><span class="p">}])</span><span class="w">
 </span></code></pre></div></div>
 
-<p>В зависимости от того, какая версия базы сейчас и что мы хотим сделать, включаются разные способы применения миграций. Наиболее частый сценарий — migrate forward, то есть применить все те миграции, что еще не были обработаны. В этом случае библиотека применяет только те прямые (up) мигации, чей идентификатор больше прочитанного из базы. Технически это значит отфильтровать список миграций по id и выбрать имена up-файлов (переменная <code class="language-plaintext highlighter-rouge">last-db-id</code> означает текущий идентификатор):</p>
+<p>В зависимости от того, какая версия базы сейчас и что мы хотим сделать, сработают разные алгоритмы. Наиболее частый сценарий — migrate forward, то есть применить миграции, что еще не были обработаны. Технически это значит отфильтровать список миграций по id и выбрать файлы с частичкой <code class="language-plaintext highlighter-rouge">up</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="n">migrations</span><span class="w">
      </span><span class="p">(</span><span class="nb">filter</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">id</span><span class="p">]}]</span><span class="w">
-               </span><span class="p">(</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="n">last-db-id</span><span class="p">)))</span><span class="w">
+               </span><span class="p">(</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="n">current-id</span><span class="p">)))</span><span class="w">
      </span><span class="p">(</span><span class="nb">sort-by</span><span class="w"> </span><span class="no">:id</span><span class="p">)</span><span class="w">
      </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="no">:up</span><span class="p">))</span><span class="w">
 
 </span><span class="c1">;; ("20210831064602-create-profiles-table.up.sql"...)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Каждуя миграция выполняется в транзакции. Если изменения прошли без ошибок, одновременно меняется таблица <code class="language-plaintext highlighter-rouge">migrations</code>: в нее попадает идентификатор той миграции, которую только что выполнили. Даже если миграция “упала” где-то на полпути, не останется промежуточных следов ее работы.</p>
+<p>Каждуя миграция выполняется в транзакции. Если изменения прошли без ошибок, в таблицу <code class="language-plaintext highlighter-rouge">migrations</code> попадает номер миграции, которую только что выполнили. Даже если миграция “упала” где-то на полпути, не останется ее промежуточных следов.</p>
 
 <p>При движении в обратную сторону стратегия меняется. Если нужно вернуться к прошлой версии базы, указывают нужный идентификатор, и программа применяет down-файлы, чей идентификатор находится между указанным и текущим. При этом порядок миграций обратный: от новых к старым.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="n">migrations</span><span class="w">
      </span><span class="p">(</span><span class="nb">filter</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">id</span><span class="p">]}]</span><span class="w">
                </span><span class="p">(</span><span class="nb">and</span><span class="w"> </span><span class="p">(</span><span class="nb">&gt;=</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="n">target_id</span><span class="p">)</span><span class="w">
-                    </span><span class="p">(</span><span class="nb">&lt;</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="n">current-db-id</span><span class="p">))))</span><span class="w">
+                    </span><span class="p">(</span><span class="nb">&lt;</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="n">current-id</span><span class="p">))))</span><span class="w">
      </span><span class="p">(</span><span class="nb">sort-by</span><span class="w"> </span><span class="no">:id</span><span class="p">)</span><span class="w">
      </span><span class="p">(</span><span class="nb">reverse</span><span class="p">)</span><span class="w">
      </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="no">:down</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Миграции несут следующие преимущества. Прежде всего, это автоматизация. Если у вас несколько баз, подключаться к каждой из них и добавлять колонку вручную утомительно. Вы не избежите случаев, когда нужно локально работать с разными версиями кода и, соответственно, с разной версией базы. Переключать базу должно быть так же удобно, как и ветку в git.</p>
+<p>У миграций несколько преимуществ. Прежде всего, это автоматизация. Не нужно подключаться к базе и добавлять колонку вручную. Достаточно вызвать прогон миграций на удаленной машине.</p>
 
-<p>Случается, что изменения в программе были неудачны, и это выяснилось после запуска в проде. Тогда изменения в базе открывают обратной миграцией. Наконец, когда схема базы описана в файле, это означает контроль за ней. Новичкам будет проще понять структуру базы по этим файлам.</p>
+<p>При разработке приходится работать с разными версиями кода и, соответственно, базы. Переключать базу должно быть так же удобно, как и ветку в git.</p>
+
+<p>Случается, что изменения в таблицах были неудачны, и это выяснилось после запуска в бою. В этом случае изменения открывают обратной миграцией. Конечно, лучше всего избежать этой ситуации, но иметь средство тоже не помешает.</p>
+
+<p>Наконец, когда схема базы описана в файле, это означает контроль за ней. Проект легче запустить локально, а новичкам проще понять систему таблиц.</p>
 
 <p>Clojure предлагает несколько библиотек для миграций. Мы рассмотрим две из них: Migratus и Ragtime.</p>
 
 <h3 id="migratus">Migratus</h3>
 
-<p>Проект <a href="https://github.com/yogthos/migratus">Migratus</a> состоит из двух частей: самой библиотеки и плагина к lein. Проще всего начать работу при помощи плагина. Добавьте его в проект:</p>
+<p>Проект <a href="https://github.com/yogthos/migratus">Migratus</a> состоит из двух частей: библиотеки и плагина к lein. Проще всего начать работу при помощи плагина. Добавьте его в проект:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="no">:plugins</span><span class="w"> </span><span class="p">[</span><span class="n">...</span><span class="w"> </span><span class="p">[</span><span class="n">migratus-lein</span><span class="w"> </span><span class="s">"0.7.3"</span><span class="p">]]</span><span class="w">
-</span><span class="no">:dependencies</span><span class="w"> </span><span class="p">[</span><span class="n">...</span><span class="w"> </span><span class="p">[</span><span class="n">migratus</span><span class="w"> </span><span class="s">"1.3.5"</span><span class="p">]]</span><span class="w">
 </span></code></pre></div></div>
 
 <p>Напишем несколько миграций. В папке <code class="language-plaintext highlighter-rouge">resources/migrations</code> создайте пока что пустые файлы:</p>
@@ -3697,7 +3652,7 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="nb">touch </span>20210830075251-create-users-table.down.sql
 </code></pre></div></div>
 
-<p>Теперь наполним файлы. Содержимое up-миграции:</p>
+<p>Теперь наполним их. Содержимое up-миграции:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">CREATE</span> <span class="k">TYPE</span> <span class="n">user_status</span> <span class="k">AS</span> <span class="nb">ENUM</span> <span class="p">(</span><span class="s1">'active'</span><span class="p">,</span> <span class="s1">'pending'</span><span class="p">,</span> <span class="s1">'blocked'</span><span class="p">);</span>
 
@@ -3715,7 +3670,7 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="k">CREATE</span> <span class="k">INDEX</span> <span class="n">idx_users_name</span> <span class="k">ON</span> <span class="n">users</span><span class="p">(</span><span class="n">name</span><span class="p">);</span>
 </code></pre></div></div>
 
-<p>Это прямая (up) половина первой миграции. Она создает тип-перечисление, таблицу users и индекс на имя пользователя. Чтобы откатить эти шаги, поместите в down-файл следующий код:</p>
+<p>Это прямая (up) половина первой миграции. Она создает тип-перечисление, таблицу <code class="language-plaintext highlighter-rouge">users</code> и индекс на имя пользователя. Чтобы откатить эти шаги, поместите в down-файл следующий код:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">DROP</span> <span class="k">INDEX</span> <span class="n">idx_users_name</span><span class="p">;</span>
 
@@ -3728,9 +3683,9 @@ and p.created_at &gt; ..."</span><span class="w">
 <span class="k">DROP</span> <span class="k">TYPE</span> <span class="n">user_status</span><span class="p">;</span>
 </code></pre></div></div>
 
-<p>Обратите внимание, что порядок удаления сущностей обратный. Нельзя удалить индекс и тип-перечисление, пока на него ссылается таблица.</p>
+<p>Обратите внимание, что порядок удаления сущностей обратный. Нельзя удалить индекс и тип-перечисление, пока существует таблица.</p>
 
-<p>Когда миграции готовы, применим их к базе. Для этого сперва укажем параметры подключения. В файле <code class="language-plaintext highlighter-rouge">project.clj</code> добавьте ключ <code class="language-plaintext highlighter-rouge">:migratus</code> со словарем:</p>
+<p>Когда миграции готовы, применим их к базе. Для этого укажем параметры подключения. В файле <code class="language-plaintext highlighter-rouge">project.clj</code> добавьте ключ <code class="language-plaintext highlighter-rouge">:migratus</code> со словарем:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:store</span><span class="w"> </span><span class="no">:database</span><span class="w">
  </span><span class="no">:migration-dir</span><span class="w"> </span><span class="s">"migrations"</span><span class="w">
@@ -3741,102 +3696,113 @@ and p.created_at &gt; ..."</span><span class="w">
       </span><span class="no">:password</span><span class="w"> </span><span class="s">"book"</span><span class="p">}}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Ключ <code class="language-plaintext highlighter-rouge">:migration-dir</code> указывает папку относительно ресурсов, в которой хранятся миграции. В нашем случае это <code class="language-plaintext highlighter-rouge">resources/migrations</code>. В поле <code class="language-plaintext highlighter-rouge">:db</code> записана знакомая нам JDBC-спека. Выполните в терминале:</p>
+<p>Ключ <code class="language-plaintext highlighter-rouge">:migration-dir</code> указывает папку относительно ресурсов, в которой хранятся миграции. В нашем случае это <code class="language-plaintext highlighter-rouge">resources/migrations</code>. В поле <code class="language-plaintext highlighter-rouge">:db</code> находится знакомая вам JDBC-спека. Выполните в терминале:</p>
 
 <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;</span> lein migratus migrate
 </code></pre></div></div>
 
-<p>Вы увидите список миграций, которые плагин применил к базе данных. Проверьте содержимое базы с помощью psql или другой утилиты — появится таблица <code class="language-plaintext highlighter-rouge">users</code>. Кроме того, исследуйте таблицу миграций под именем <code class="language-plaintext highlighter-rouge">schema_migrations</code>:</p>
+<p>Вы увидите список миграций, которые плагин применил к базе данных. Подключитесь к ней с помощью <code class="language-plaintext highlighter-rouge">psql</code> или другой утилиты — появится таблица <code class="language-plaintext highlighter-rouge">users</code>. Кроме того, исследуйте таблицу миграций под названием <code class="language-plaintext highlighter-rouge">schema_migrations</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">SELECT</span><span class="w"> </span><span class="nb">*</span><span class="w"> </span><span class="n">FROM</span><span class="w"> </span><span class="n">schema_migrations</span><span class="c1">;</span><span class="w">
 </span></code></pre></div></div>
 
-<p>В ней должна быть запись с датой и именем миграции.</p>
+<p>В ней окажется запись с датой и именем миграции:</p>
 
 <div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>         id     |         applied         |      description
 ----------------+-------------------------+-----------------------
  20210830075251 | 2021-08-28 09:28:26.911 | create-users-table
 </code></pre></div></div>
 
-<p>Повторный запуск команды в терминале ничего не даст, потому что плагин пропустит миграции, которые уже обработал. Чтобы откатить изменения, выполните команду:</p>
+<p>Повторный запуск миграций ничего не даст, потому что миграция <code class="language-plaintext highlighter-rouge">20210830075251</code> уже обработана, а новых не появилось. Чтобы откатить изменения, выполните команду <code class="language-plaintext highlighter-rouge">rollback</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">&gt;</span><span class="w"> </span><span class="n">lein</span><span class="w"> </span><span class="n">migratus</span><span class="w"> </span><span class="n">rollback</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Действие rollback означает откатить последнюю транзакцию. После нее у нас не останется таблицы users и связанных с ней сущностей. Из таблицы <code class="language-plaintext highlighter-rouge">schema_migrations</code> исчезнут сведения о миграции <code class="language-plaintext highlighter-rouge">20210830075251</code>, и ее можно будет применить снова. Применение и откат миграций можно повторять сколько угодно раз. Конечно, при условии, что откат удаляет все изменения прямой части.</p>
+<p>Это действие означает откатить последнюю транзакцию. После нее не останется таблицы <code class="language-plaintext highlighter-rouge">users</code> и связанных с ней сущностей. Из таблицы <code class="language-plaintext highlighter-rouge">schema_migrations</code> исчезнут сведения о миграции <code class="language-plaintext highlighter-rouge">20210830075251</code>, и ее можно будет применить снова. Применение и откат миграций можно повторять сколько угодно раз при условии, что откат удаляет все изменения прямой части.</p>
 
-<h3 id="синтаксис">Синтаксис</h3>
+<h3 id="несколько-запросов-в-миграции">Несколько запросов в миграции</h3>
 
-<p>Обратите внимание на выражение <code class="language-plaintext highlighter-rouge">--;;</code>, которое разделяет запросы в файлах миграций. С точки зрения SQL это обычный комментарий. Однако мы поставили его не для красоты, а с умыслом.</p>
+<p>Обратите внимание на строку <code class="language-plaintext highlighter-rouge">--;;</code> между запросами в файлах. С точки зрения SQL это обычный комментарий, однако здесь у него особая роль.</p>
 
-<p>По умолчанию Migratus рассматривает файл как запрос, который нужно выполнить с помощью <code class="language-plaintext highlighter-rouge">jdbc/execute!</code>. Но миграция редко укладывается в одно SQL-выражение, и выражение <code class="language-plaintext highlighter-rouge">--;;</code> служит разделителем запросов. Migratus разбивает прочитанный файл разделителем и выполняет полученные части в одной транзакции. За счет этого миграция может состоять из нескольких запросов, и нам не придется создавать их несколько по принципу “один файл — один запрос”.</p>
+<p>По умолчанию Migratus рассматривает файл как единый запрос и выполняет его с помощью <code class="language-plaintext highlighter-rouge">jdbc/execute!</code>. Но не всегда миграцию можно описать одним запросом. В примере выше понадобилось три выражения, чтобы создать перечисление, таблицу и индекс.</p>
 
-<h3 id="тонкая-настройка">Тонкая настройка</h3>
+<p>Для таких случаев строка <code class="language-plaintext highlighter-rouge">--;;</code> служит разделителем запросов. Migratus разбивает файл и выполняет запросы по одному в транзакции. За счет этого не нужно создавать несколько файлов на каждый запрос.</p>
 
-<p>При запуске миграций через <code class="language-plaintext highlighter-rouge">lein</code> вам доступны все опции этого инструмента, в том числе профили. Вынесем Migratus в <code class="language-plaintext highlighter-rouge">dev</code>-зависимости, чтобы при сборке проекта он не стал его частью:</p>
+<p>О разделителе часто забывают новички. Это тот случай, который придется запомнить.</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="no">:profiles</span><span class="w">
-</span><span class="p">{</span><span class="no">:dev</span><span class="w"> </span><span class="p">{</span><span class="no">:dependencies</span><span class="w"> </span><span class="p">[[</span><span class="n">migratus</span><span class="w"> </span><span class="s">"1.3.5"</span><span class="p">]]}}</span><span class="w">
-</span></code></pre></div></div>
+<h3 id="миграции-с-профилями">Миграции с профилями</h3>
 
-<p>Это логично, потому что миграции относятся к инфраструктуре, а не к логике приложения. Соберите uberjar и убедитесь, что в нем нет следов библиотеки.</p>
+<p>При запуске миграций в <code class="language-plaintext highlighter-rouge">lein</code> доступны все опции этого инструмента, в том числе профили. С их помощью легко нацелить Migratus на другую базу или папку с файлами. Например, по умолчанию команда</p>
 
-<p>Еще один трюк с профилями — миграции, которые видны только во время тестов. В них помещают данные, необходимые для проверки действий с базой. При обычном запуске эти миграции не видны Migratus.</p>
-
-<p>Создайте структуру папок <code class="language-plaintext highlighter-rouge">env/test/resources/migrations</code>. Это так называемая <code class="language-plaintext highlighter-rouge">env</code>-директория, о который мы говорили в первой книге. Ее первый уровнь — имя профиля (по аналогии с <code class="language-plaintext highlighter-rouge">test</code> у вас могут быть папки <code class="language-plaintext highlighter-rouge">dev</code>, <code class="language-plaintext highlighter-rouge">uberjar</code> и другие). Укажите профилю test дополнительный путь миграций:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="no">:profiles</span><span class="w">
-</span><span class="p">{</span><span class="no">:test</span><span class="w"> </span><span class="p">{</span><span class="no">:resource-paths</span><span class="w"> </span><span class="p">[</span><span class="s">"env/test/resources"</span><span class="p">]}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Теперь создайте в env-директории <code class="language-plaintext highlighter-rouge">migrations</code> файл</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="mi">20210830075415</span><span class="n">-add-test-data.up.sql</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Поместим в него нескольких пользователей для тестов:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">users</span><span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">status</span><span class="p">,</span> <span class="n">email</span><span class="p">)</span> <span class="k">VALUES</span>
-<span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s1">'Test1'</span><span class="p">,</span> <span class="s1">'active'</span><span class="p">,</span>  <span class="s1">'test1@test.com'</span><span class="p">),</span>
-<span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s1">'Test2'</span><span class="p">,</span> <span class="s1">'pending'</span><span class="p">,</span> <span class="s1">'test2@test.com'</span><span class="p">),</span>
-<span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="s1">'Test3'</span><span class="p">,</span> <span class="s1">'blocked'</span><span class="p">,</span> <span class="s1">'test3@test.com'</span><span class="p">);</span>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;</span> lein migratus migrate
 </code></pre></div></div>
 
-<p>Обратная миграция просто очистит таблицу:</p>
+<p>работает с локальной базой, но с профилем <code class="language-plaintext highlighter-rouge">staging</code> подключается к удаленной тестовой машине:</p>
 
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">DELETE</span> <span class="k">FROM</span> <span class="n">users</span><span class="p">;</span>
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;</span> lein with-profile staging migratus migrate
 </code></pre></div></div>
 
-<p>Теперь запустите migratus с параметром <code class="language-plaintext highlighter-rouge">with-profile +test</code> (плюс означает добавить профиль к текущему):</p>
+<p>Для этого задайте иные настройки <code class="language-plaintext highlighter-rouge">:migratus</code> в профиле <code class="language-plaintext highlighter-rouge">:staging</code>. Обратите внимание, что необязательно копировать их все. Профили <code class="language-plaintext highlighter-rouge">lein</code> подлежат глубокому слиянию, поэтому достаточно только отличия от корневых настроек <code class="language-plaintext highlighter-rouge">:migratus</code>.</p>
 
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;</span> lein with-profile +test migratus migrate
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:profiles</span><span class="w">
+ </span><span class="p">{</span><span class="no">:staging</span><span class="w">
+  </span><span class="p">{</span><span class="no">:migratus</span><span class="w">
+   </span><span class="p">{</span><span class="no">:db</span><span class="w"> </span><span class="p">{</span><span class="no">:dbname</span><span class="w"> </span><span class="s">"prod_db"</span><span class="w">
+         </span><span class="no">:host</span><span class="w"> </span><span class="o">~</span><span class="p">(</span><span class="nf">System/getenv</span><span class="w"> </span><span class="s">"DB_HOST"</span><span class="p">)</span><span class="w">
+         </span><span class="no">:user</span><span class="w"> </span><span class="o">~</span><span class="p">(</span><span class="nf">System/getenv</span><span class="w"> </span><span class="s">"DB_USER"</span><span class="p">)</span><span class="w">
+         </span><span class="no">:password</span><span class="w"> </span><span class="o">~</span><span class="p">(</span><span class="nf">System/getenv</span><span class="w"> </span><span class="s">"DB_PASSWORD"</span><span class="p">)}}}}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Когда приложение “выкатывают” на тестовой машине, в базе должны быть минимальные данные для проверки. Обычно это пользователь с известным паролем, несколько товаров, покупок и так далее. Поместим их в миграцию, которая выполняется только на удаленной машине. Создайте каталог <code class="language-plaintext highlighter-rouge">env/staging/resources/migrations</code> и файл в нем:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- 20210830075415-add-test-data.up.sql</span>
+
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">users</span><span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">status</span><span class="p">,</span> <span class="n">email</span><span class="p">,</span> <span class="p">...)</span>
+<span class="k">VALUES</span>
+ <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s1">'Test1'</span><span class="p">,</span> <span class="s1">'active'</span><span class="p">,</span>  <span class="s1">'test1@test.com'</span><span class="p">,</span> <span class="p">...),</span>
+ <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s1">'Test2'</span><span class="p">,</span> <span class="s1">'pending'</span><span class="p">,</span> <span class="s1">'test2@test.com'</span><span class="p">,</span> <span class="p">...),</span>
+ <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="s1">'Test3'</span><span class="p">,</span> <span class="s1">'blocked'</span><span class="p">,</span> <span class="s1">'test3@test.com'</span><span class="p">,</span> <span class="p">...);</span>
 </code></pre></div></div>
 
-<p>В списке миграций вы увидите новую тестовую. Ее откат работает аналогично командой rollback с указанием профиля. Без параметра <code class="language-plaintext highlighter-rouge">with-profile</code> эта миграция не появится в списке доступных.</p>
+<p>Укажите профилю <code class="language-plaintext highlighter-rouge">:staging</code> дополнительный путь ресурсов. Он заменит текущий <code class="language-plaintext highlighter-rouge">resources</code>, и папка <code class="language-plaintext highlighter-rouge">migrations</code> будет взята из нового пути.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:resource-paths</span><span class="w"> </span><span class="p">[</span><span class="s">"env/staging/resources"</span><span class="p">]}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Важно понимать, что Migratus ищет файлы только в одной папке: невозможно сделать так, чтобы использовались одновременно <code class="language-plaintext highlighter-rouge">resources/migrations</code> и <code class="language-plaintext highlighter-rouge">env/staging/resources/migrations</code>. Поэтому миграции накатывают в два этапа: в первый раз основные, во второй – специфичные для текущего окружения, если это необходимо.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;</span> lein migratus migrate
+<span class="o">&gt;</span> lein with-profile staging migratus migrate
+</code></pre></div></div>
 
 <h3 id="параметры-подключения">Параметры подключения</h3>
 
-<p>В наших примерах мы явно указали подключение к базе в файле <code class="language-plaintext highlighter-rouge">project.clj</code>. Это подойдет для локальной разработки, но не промышленного запуска. Чтобы запустить миграции на боевой базе, передайте ее параметры в переменных среды. Для этого изменим ключ <code class="language-plaintext highlighter-rouge">:migratus</code> так, чтобы имя и пользователь базы приходили из среды:</p>
+<p>До сих пор мы указывали подключение к базе явно. Это подойдет для локальной разработки, но не промышленного запуска. Чтобы запустить миграции на удаленной базе, передайте ее параметры в переменных среды. Для этого изменим значения словаря <code class="language-plaintext highlighter-rouge">:db</code> на формы <code class="language-plaintext highlighter-rouge">~(System/getenv ...)</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:store</span><span class="w"> </span><span class="no">:database</span><span class="w">
  </span><span class="no">:migration-dir</span><span class="w"> </span><span class="s">"migrations"</span><span class="w">
  </span><span class="no">:db</span><span class="w"> </span><span class="p">{</span><span class="no">:dbtype</span><span class="w"> </span><span class="s">"postgresql"</span><span class="w">
-      </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"migration_test"</span><span class="w">
-      </span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+      </span><span class="no">:dbname</span><span class="w"> </span><span class="o">~</span><span class="p">(</span><span class="nf">System/getenv</span><span class="w"> </span><span class="s">"DB_NAME"</span><span class="p">)</span><span class="w">
+      </span><span class="no">:host</span><span class="w"> </span><span class="o">~</span><span class="p">(</span><span class="nf">System/getenv</span><span class="w"> </span><span class="s">"DB_HOST"</span><span class="p">)</span><span class="w">
       </span><span class="no">:user</span><span class="w"> </span><span class="o">~</span><span class="p">(</span><span class="nf">System/getenv</span><span class="w"> </span><span class="s">"DB_USER"</span><span class="p">)</span><span class="w">
       </span><span class="no">:password</span><span class="w"> </span><span class="o">~</span><span class="p">(</span><span class="nf">System/getenv</span><span class="w"> </span><span class="s">"DB_PASSWORD"</span><span class="p">)}}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Синтаксис <code class="language-plaintext highlighter-rouge">~&lt;form&gt;</code> работает внутри <code class="language-plaintext highlighter-rouge">defproject</code>, потому что это макрос. Чтобы запустить миграции, укажите переменные процессу <code class="language-plaintext highlighter-rouge">lein</code>:</p>
+<p>Синтаксис <code class="language-plaintext highlighter-rouge">~&lt;form&gt;</code> внутри макроса <code class="language-plaintext highlighter-rouge">defproject</code> означет вычислить форму. При запуске <code class="language-plaintext highlighter-rouge">lein</code> на месте <code class="language-plaintext highlighter-rouge">~(System/getenv "ENV_NAME")</code> окажется значение одноименной переменной. Чтобы запустить миграции, укажите переменные процессу <code class="language-plaintext highlighter-rouge">lein</code>:</p>
 
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;</span> <span class="nv">DB_USER</span><span class="o">=</span>book <span class="nv">DB_PASSWORD</span><span class="o">=</span><span class="k">****</span> lein migratus migrate
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;</span> <span class="nv">DB_USER</span><span class="o">=</span>book <span class="nv">DB_PASSWORD</span><span class="o">=</span>secret lein migratus migrate
 </code></pre></div></div>
 
-<p>Мы подробно разбирали конфигурацию системы и переменные среды в пятой главе первой книги.</p>
+<p>Мы подробно разобрали конфигурацию и переменные среды в пятой главе первой книги.</p>
 
 <h3 id="миграции-в-коде">Миграции в коде</h3>
 
-<p>Иногда миграциями управляют не командой <code class="language-plaintext highlighter-rouge">lein</code>, а кодом на Clojure. Для этого Migratus должен быть основных, а не <code class="language-plaintext highlighter-rouge">dev</code>-зависимостях. Приведем минимальный код, чтобы запустить миграции в коде:</p>
+<p>Иногда миграциями управляют не командой <code class="language-plaintext highlighter-rouge">lein</code>, напрямую из Clojure. Для этого Migratus должен быть подключен не виде плагина к <code class="language-plaintext highlighter-rouge">lein</code>, а библиотекой:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:dependencies</span><span class="w"> </span><span class="p">[[</span><span class="n">migratus</span><span class="w"> </span><span class="s">"1.3.5"</span><span class="p">]]}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Приведем минимальный код, чтобы запустить миграции в коде:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">...</span><span class="w">
   </span><span class="p">(</span><span class="no">:require</span><span class="w">
@@ -3845,7 +3811,7 @@ and p.created_at &gt; ..."</span><span class="w">
 </span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
   </span><span class="p">{</span><span class="no">:store</span><span class="w"> </span><span class="no">:database</span><span class="w">
    </span><span class="no">:migration-dir</span><span class="w"> </span><span class="s">"migrations"</span><span class="w">
-   </span><span class="no">:db</span><span class="w"> </span><span class="n">db</span><span class="p">})</span><span class="w">
+   </span><span class="no">:db</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}})</span><span class="w">
 
 </span><span class="p">(</span><span class="nf">migratus/init</span><span class="w"> </span><span class="n">config</span><span class="p">)</span><span class="w">
 
@@ -3853,19 +3819,19 @@ and p.created_at &gt; ..."</span><span class="w">
 </span><span class="p">(</span><span class="nf">migratus/rollback</span><span class="w"> </span><span class="n">config</span><span class="p">)</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Код сводится к простым шагам: объявить конфигурацию, инициировать библиотеку и вызывать функции <code class="language-plaintext highlighter-rouge">migrate</code> или <code class="language-plaintext highlighter-rouge">rollback</code> с конфигурацией.</p>
+<p>Процесс сводится к простым шагам: объявить конфигурацию, инициировать библиотеку и вызывать функции <code class="language-plaintext highlighter-rouge">migrate</code> или <code class="language-plaintext highlighter-rouge">rollback</code> с конфигурацией.</p>
 
-<p>Ручной запуск миграций помещают в начало работы программы. Это гарантирует, что при запуске программа получит последнюю версию базы. Если серверная программа запущена на нескольких машинах, выполнять миграции должна только одна из них. Проще всего задать этот признак в переменной среды: всем ложь и только одной машине — истину.</p>
+<p>Запуск миграций помещают в начало работы программы. Если приложение запущено на нескольких машинах, выполнять миграции должен только один экземпляр. Проще всего задать этот признак переменной среды: всем ложь и только одной машине — истину.</p>
 
-<p>Если ваш проект основан на компонентах (библиотеки Component и Integrant), создайте компонент, который зависит от базы данных. При запуске (метод <code class="language-plaintext highlighter-rouge">start</code> или <code class="language-plaintext highlighter-rouge">init-key</code>) он вызывает <code class="language-plaintext highlighter-rouge">migratus/migrate</code> с конфигурацией. В поле <code class="language-plaintext highlighter-rouge">:db</code> конфигурации помещают компонент базы.</p>
+<p>Если проект основан на системе (библиотеки Component и Integrant), создайте компонент <code class="language-plaintext highlighter-rouge">Migration</code>, который зависит от базы данных. При запуске (метод <code class="language-plaintext highlighter-rouge">start</code> или <code class="language-plaintext highlighter-rouge">init-key</code>) он вызывает <code class="language-plaintext highlighter-rouge">migratus/migrate</code> с конфигурацией. В поле <code class="language-plaintext highlighter-rouge">:db</code> конфигурации указывают компонент базы.</p>
 
 <h3 id="программные-миграции">Программные миграции</h3>
 
 <p>Как правило, изменения в базе данных описывают на языке SQL. Однако не все действия можно выполнить с его помощью. Предположим, нужно заполнить колонку данными из стороннего источника. В этом случае помогут программные миграции.</p>
 
-<p>Технические подобные миграции — это EDN файлы со словарем. Ключи <code class="language-plaintext highlighter-rouge">:up</code> и <code class="language-plaintext highlighter-rouge">:down</code> указывают на функции Clojure. Эти функции принимают один параметр — конфигурацию — и выполняют действия с базой. Код функции остается на ваше усмотрение. С помощью сторонних библиотек вы можете читать данные из сети или файлов и записывать их в базу. Обратная программная миграция должна удалить то, что внесла ее прямая часть.</p>
+<p>Технические подобные миграции — это файлы .edn со словарем. Ключи <code class="language-plaintext highlighter-rouge">:up</code> и <code class="language-plaintext highlighter-rouge">:down</code> указывают на функции Clojure. Функции принимают один параметр — конфигурацию — и выполняют действия с базой. Код функции остается на ваше усмотрение. С помощью библиотек вы можете читать данные из сети или файлов и записывать в базу. Обратная программная миграция удаляет то, что внесла ее прямая часть.</p>
 
-<p>Пример: в таблице запросов оседают данные о просмотрах страниц. У нас есть только IP-адрес пользователя, но хотелось бы знать его страну, город и другие данные. Исходная таблица:</p>
+<p>Пусть таблица <code class="language-plaintext highlighter-rouge">requests</code> собирает сведения о просмотрах страниц. У нас есть только IP-адрес пользователя, но хотелось бы знать страну, город и другие данные. Исходные поля таблицы:</p>
 
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span> <span class="o">*</span> <span class="k">FROM</span> <span class="n">requests</span><span class="p">;</span>
 </code></pre></div></div>
@@ -3876,16 +3842,16 @@ and p.created_at &gt; ..."</span><span class="w">
   2 | 187.33.237.120 |
 </code></pre></div></div>
 
-<p>Создайте файл <code class="language-plaintext highlighter-rouge">20210831070224-update-country-by-ip.edn</code> со следующим словарем внутри:</p>
+<p>Создайте файл <code class="language-plaintext highlighter-rouge">20210831070224-update-country-by-ip.edn</code> со словарем внутри:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:ns</span><span class="w"> </span><span class="n">book.migrations.update-country</span><span class="w">
  </span><span class="no">:up-fn</span><span class="w"> </span><span class="n">migrate-up</span><span class="w">
  </span><span class="no">:down-fn</span><span class="w"> </span><span class="n">migrate-down</span><span class="p">}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Поле <code class="language-plaintext highlighter-rouge">:ns</code> указывает на пространство, а <code class="language-plaintext highlighter-rouge">:up-fn</code> и <code class="language-plaintext highlighter-rouge">:down-fn</code> — на функции прямой и обратной миграций. Технически возможно держать несколько миграций в одном Clojure-модуле, но лучше резделять их.</p>
+<p>Поле <code class="language-plaintext highlighter-rouge">:ns</code> указывает на пространство, а <code class="language-plaintext highlighter-rouge">:up-fn</code> и <code class="language-plaintext highlighter-rouge">:down-fn</code> — на функции прямой и обратной миграций. Технически возможно держать несколько миграций в одном Clojure-модуле, но лучше резделить их.</p>
 
-<p>В файл <code class="language-plaintext highlighter-rouge">book/migrations/update_country.clj</code> поместим модуль миграции. Начнем с ее шапки:</p>
+<p>В файл <code class="language-plaintext highlighter-rouge">book/migrations/update_country.clj</code> поместим модуль миграции. Начнем с шапки:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">book.migrations.update-country</span><span class="w">
   </span><span class="p">(</span><span class="no">:require</span><span class="w">
@@ -3893,7 +3859,7 @@ and p.created_at &gt; ..."</span><span class="w">
    </span><span class="p">[</span><span class="n">clj-http.client</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">client</span><span class="p">]))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Код страны мы получим с помощью сервиса <a href="https://iplocation.com">IPLocation</a> по HTTP API. Сервис принимает POST-запрос с адресом и выдает JSON с информацией о нем. Обернем это действие функцию:</p>
+<p>Код страны получим с помощью сервиса <a href="https://iplocation.com">IPLocation</a> по HTTP API. Сервис принимает POST-запрос с адресом и выдает JSON с информацией о нем. Напишем функцию:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">get-ip-info</span><span class="w"> </span><span class="p">[</span><span class="n">ip</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="no">:body</span><span class="w">
@@ -3902,7 +3868,7 @@ and p.created_at &gt; ..."</span><span class="w">
                  </span><span class="no">:as</span><span class="w"> </span><span class="no">:json</span><span class="p">})))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Прямая миграция выбирает записи с пустым кодом страны и обходит их в цикле. Для каждого IP-адреса она выполняет HTTP-запрос и обновляет запись с найденным кодом.</p>
+<p>Прямая миграция выбирает записи с пустым кодом страны и обходит в цикле. Для каждого IP-адреса она выполняет HTTP-запрос и обновляет запись с найденным кодом.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">migrate-up</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">db</span><span class="p">]}]</span><span class="w">
   </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">rows</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="s">"select id, ip from requests where country_code is null"</span><span class="p">)]</span><span class="w">
@@ -3921,7 +3887,7 @@ and p.created_at &gt; ..."</span><span class="w">
                 </span><span class="p">[</span><span class="s">"true"</span><span class="p">]))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Запустите миграции в терминале. По окончании в таблице requests появятся коды стран:</p>
+<p>Запустите миграции в терминале. По окончании в таблице <code class="language-plaintext highlighter-rouge">requests</code> появятся коды стран:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">SELECT</span><span class="w"> </span><span class="nb">*</span><span class="w"> </span><span class="n">FROM</span><span class="w"> </span><span class="n">requests</span><span class="c1">;</span><span class="w">
 </span></code></pre></div></div>
@@ -3932,43 +3898,39 @@ and p.created_at &gt; ..."</span><span class="w">
   2 | 187.33.237.120 | BR
 </code></pre></div></div>
 
-<p>При откате миграции коды пропадут из таблицы.</p>
+<p>При откате коды пропадут из таблицы.</p>
 
 <p>Код миграции можно улучшить: добавить логирование и перехват ошибок, вести запросы параллельно при помощи <code class="language-plaintext highlighter-rouge">pmap</code>. В запрос <code class="language-plaintext highlighter-rouge">SELECT</code> дописать оператор <code class="language-plaintext highlighter-rouge">FOR UPDATE</code>, чтобы заблокировать запись на время транзакции. Предлагаем читателю поработать над кодом в свободное время.</p>
 
 <h3 id="ragtime">Ragtime</h3>
 
-<p>Коротко рассмотрим вторую библиотеку миграций под названием <a href="https://github.com/weavejester/ragtime">Ragtime</a>. Она во многом повторяет Migratus, но все же имеет особенности, которые могут быть полезны.</p>
+<p>Коротко рассмотрим вторую библиотеку под названием <a href="https://github.com/weavejester/ragtime">Ragtime</a>. Ее принцип такой же, что мы рассмотрели выше. Это .sql-файлы в папке, их чтение и обход, таблица с именами обработанных миграций. В отличие от Migratus, Ragtime более гибок: если первый привязан к драйверу JDBC, то Ragtime основан на протоколах, которые легко адаптировать под любую базу, не обязательно реляционную.</p>
 
-<p>Общий принцип библиотеки тот же, что мы рассмотрели выше. Это .sql-файлы с кодом на изменение базы, их чтение и обход, таблица с именами обработанных миграций. Но в отличие от Migratus, у Ragtime более гибкий дизайн. Если первый привязан к реляционным базам данных и JDBC-драйверу, то Ragtime основан на протоколах, которые легко адаптировать под нужды любой базы.</p>
+<p>Протоколы <code class="language-plaintext highlighter-rouge">DataStore</code> и <code class="language-plaintext highlighter-rouge">Migration</code> описывают хранилище данных и миграцию. Встроенный пакет <code class="language-plaintext highlighter-rouge">ragtime.jdbc</code> расширяет их для JDBC-совместимых баз, как это делает Migratus. За счет этого Ragtime можно применить к разным базам, например Cassandra, MongoDB или Datomic. Работая в Exoscale, автор написал библиотеку миграций для Cassandra на базе Ragtime. Присмотритесь к этой библиотеке, если в проекте участвуют не только JDBC-совместимые базы.</p>
 
-<p>Дизайн Ragtime состоит из двух уровней. Первый — абстрактные протоколы DataStore и Migration, которые описывают хранилище данных и миграцию. Второй — реализация протоколов под конкретную базу данных. Встроенный пакет ragtime.jdbc расширяет их для JDBC-совместимых баз, как это делает Migratus.</p>
-
-<p>За счет столь гибкого дизайна Ragtime можно применить к самым разным базам, в том числе не реляционным. Например, к Cassandra, MongoDB или Datomic. Работая в Exoscale, автор написал библиотеку для миграций Cassandra на базе Ragtime. Присмотритесь к этой библиотеке, если в проекте участвуют не только JDBC-совместимые базы.</p>
-
-<p>Мы не будем рассматривать Ragtime так же подробно, как делали это с Migratus. Полагаем, к этому моменту читатель уже достаточно опытен, чтобы разобраться с библиотекой самостоятельно. Отложим знакомство с Ragtime на будущее: в главе про Datomic мы построим систему миграций на ее основе.</p>
+<p>Мы не будем рассматривать Ragtime столь же подробно, как Migratus. К этому моменту читатель достаточно опытен, чтобы разобраться с библиотекой самостоятельно.</p>
 
 <h2 id="nextjdbc">Next.JDBC</h2>
 
 <p>Библиотека <a href="https://github.com/seancorfield/next-jdbc">Next.JDBC</a> — это следующий этап в адаптации JDBC для Clojure. Проект ставит следующие цели:</p>
 
 <ul>
-  <li>ускорить обработку результата запроса. Автор считает неоптимальным то число действий, что совершает <code class="language-plaintext highlighter-rouge">clojure.java.jdbc</code> с объектом <code class="language-plaintext highlighter-rouge">ResultSet</code>. На больших выборках его обработка действительно замедляется.</li>
+  <li>ускорить обработку выборки. Автор считает неоптимальным текущее проеобразование <code class="language-plaintext highlighter-rouge">ResultSet</code> в коллекцию Clojure. На больших результатах алгоритм действительно замедляется.</li>
 </ul>
 
 <ul>
   <li>
-    <p>Обеспечить более тесную связь с Clojure за счет <a href="https://clojure.github.io/clojure/branch-master/clojure.datafy-api.html">протокола Datafy</a>. Этот протокол появился в Clojure 1.11 и служит для того, чтобы переводить объекты Java в данные Clojure. Он упростит связь между классами JDBC и данными.</p>
+    <p>Обеспечить более тесную связь с Clojure за счет <a href="https://clojure.github.io/clojure/branch-master/clojure.datafy-api.html">протокола Datafy</a>. Протокол появился в Clojure 1.11 и служит посредником между сущностями Java и Clojure.</p>
   </li>
   <li>
-    <p>Предложить более простой и понятный API. Прежняя библиотека различает функции query, execute!, db-do-commands и другие; вдобавок она обязывает помнить об их особенностях. Next.JDBC планирует сократить разнообразие API.</p>
+    <p>Предложить более простой и понятный API. Прежняя библиотека различает функции <code class="language-plaintext highlighter-rouge">query</code>, <code class="language-plaintext highlighter-rouge">execute!</code>, <code class="language-plaintext highlighter-rouge">db-do-commands</code> и другие; вдобавок она обязывает помнить об их особенностях. Next.JDBC планирует сократить разнообразие API.</p>
   </li>
 </ul>
 
 <p>Коротко опробуем библиотеку. Подключим ее к проекту:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; project.clj</span><span class="w">
-</span><span class="p">[</span><span class="n">com.github.seancorfield/next.jdbc</span><span class="w"> </span><span class="s">"1.2.709"</span><span class="p">]</span><span class="w"> </span><span class="c1">;; project.clj</span><span class="w">
+</span><span class="p">[</span><span class="n">com.github.seancorfield/next.jdbc</span><span class="w"> </span><span class="s">"1.2.709"</span><span class="p">]</span><span class="w">
 
 </span><span class="c1">;; module.clj</span><span class="w">
 </span><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">...</span><span class="w">
@@ -3979,16 +3941,16 @@ and p.created_at &gt; ..."</span><span class="w">
    </span><span class="p">[</span><span class="n">next.jdbc.result-set</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">jdbc.rs</span><span class="p">]))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>В отличии от предшественника, Next.JDBC не следует правилу “все в одном модуле”. Смысловые части библиотеки разнесены по отдельным файлам.</p>
+<p>В отличии от предшественника, Next.JDBC не следует правилу “все в одном файле”. Смысловые части разнесены по отдельным модулям.</p>
 
-<p>Роль источника данных играет объект <code class="language-plaintext highlighter-rouge">datasource</code>, который получают из JDBC-спеки. Однажды получив, его передают в остальные функции первым аргументом.</p>
+<p>Роль источника данных играет объект <code class="language-plaintext highlighter-rouge">datasource</code>, который получают из JDBC-спеки. Однажды получив, его передают в функции первым аргументом.</p>
 
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:dbtype</span><span class="w"> </span><span class="s">"postgresql"</span><span class="w"> </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="w"> </span><span class="n">...</span><span class="p">})</span><span class="w">
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">db-spec</span><span class="w"> </span><span class="p">{</span><span class="no">:dbtype</span><span class="w"> </span><span class="s">"postgresql"</span><span class="w"> </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="w"> </span><span class="n">...</span><span class="p">})</span><span class="w">
 
-</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">ds</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-datasource</span><span class="w"> </span><span class="n">db</span><span class="p">))</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">ds</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-datasource</span><span class="w"> </span><span class="n">db-spec</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Объект <code class="language-plaintext highlighter-rouge">datasource</code> хранит открытое соединение с базой данных. Next.JDBC не будет открывать новое соединение на каждый запрос: это нежелательное поведение, которое легко допустить в обычной <code class="language-plaintext highlighter-rouge">clojure.java.jdbc</code>. Содержимое <code class="language-plaintext highlighter-rouge">datasource</code> легко проверить функцией <code class="language-plaintext highlighter-rouge">bean</code>:</p>
+<p>Объект <code class="language-plaintext highlighter-rouge">datasource</code> хранит открытое соединение и не порождает новое на каждый запрос. Подобную ошибку легко совершить в <code class="language-plaintext highlighter-rouge">clojure.java.jdbc</code>, когда JDBC-спека не содержит поля <code class="language-plaintext highlighter-rouge">:datasource</code> или <code class="language-plaintext highlighter-rouge">:connection</code>, и обращение к базе замедляется на порядок. Содержимое <code class="language-plaintext highlighter-rouge">datasource</code> легко проверить функцией <code class="language-plaintext highlighter-rouge">bean</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">bean</span><span class="w"> </span><span class="n">ds</span><span class="p">)</span><span class="w">
 
@@ -3997,7 +3959,7 @@ and p.created_at &gt; ..."</span><span class="w">
  </span><span class="no">:loginTimeout</span><span class="w"> </span><span class="mi">0</span><span class="p">}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Прочитаем знакомую нам таблицу пользователей:</p>
+<p>Прочитаем таблицу пользователей:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">first</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">ds</span><span class="w"> </span><span class="p">[</span><span class="s">"SELECT * FROM users"</span><span class="p">]))</span><span class="w">
 
@@ -4009,9 +3971,7 @@ and p.created_at &gt; ..."</span><span class="w">
         </span><span class="no">:created_at</span><span class="w"> </span><span class="o">#</span><span class="n">inst</span><span class="w"> </span><span class="s">"2021-08-10T07:36:03.934029000-00:00"</span><span class="p">}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Обратите внимание, что ключи словарей квалифицированы, то есть содержат пространство с именем таблицы. За счет пространств легко понять, какой сущности принадлежит поле. Такие словари удобней в дальнейшей работе в Clojure.</p>
-
-<p>Пространства работают в том числе для связанных таблиц. Убедимся в этом на примере соединения с таблицей профилей:</p>
+<p>Обратите внимание, что ключи словарей квалифицированы, то есть содержат пространство с именем таблицы. За счет пространств легко понять, какой таблице принадлежит поле. Пространства работают в том числе для связанных таблиц. Убедимся в этом на примере соединения с профилями:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">first</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">ds</span><span class="w"> </span><span class="p">[</span><span class="s">"SELECT * FROM users u, profiles p WHERE p.user_id = u.id"</span><span class="p">]))</span><span class="w">
 
@@ -4031,6 +3991,8 @@ and p.created_at &gt; ..."</span><span class="w">
 <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span>
   <span class="n">u</span><span class="p">.</span><span class="n">id</span>     <span class="k">AS</span> <span class="nv">"user/id"</span><span class="p">,</span>
   <span class="n">u</span><span class="p">.</span><span class="n">fname</span>  <span class="k">AS</span> <span class="nv">"user/fname"</span><span class="p">,</span>
+  <span class="p">...</span>
+  <span class="n">p</span><span class="p">.</span><span class="n">id</span>     <span class="k">AS</span> <span class="nv">"profile/id"</span><span class="p">,</span>
   <span class="p">...</span>
 </code></pre></div></div>
 
@@ -4069,7 +4031,7 @@ and p.created_at &gt; ..."</span><span class="w">
  32824 |      1 | id         | users    | public  | t        | t
 </code></pre></div></div>
 
-<p>Если данный подход кажется вам расточительным, отключите квалификацию полей параметром <code class="language-plaintext highlighter-rouge">builder-fn</code>:</p>
+<p>Если подход кажется вам расточительным, отключите квалификацию полей параметром <code class="language-plaintext highlighter-rouge">builder-fn</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w">
  </span><span class="n">ds</span><span class="w">
@@ -4077,9 +4039,9 @@ and p.created_at &gt; ..."</span><span class="w">
  </span><span class="p">{</span><span class="no">:builder-fn</span><span class="w"> </span><span class="n">jdbc.rs/as-unqualified-maps</span><span class="p">})</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Кроме функции <code class="language-plaintext highlighter-rouge">as-unqualified-maps</code>, вам доступна <code class="language-plaintext highlighter-rouge">as-arrays</code> для выборки векторов и некоторые другие обработчики <code class="language-plaintext highlighter-rouge">ResultSet</code>.</p>
+<p>Кроме функции <code class="language-plaintext highlighter-rouge">as-unqualified-maps</code>, вам доступны <code class="language-plaintext highlighter-rouge">as-arrays</code> для векторов и другие обработчики.</p>
 
-<p>Вспомогательные функции <code class="language-plaintext highlighter-rouge">get-by-id</code>, <code class="language-plaintext highlighter-rouge">find-by-keys</code>, <code class="language-plaintext highlighter-rouge">update!</code>, <code class="language-plaintext highlighter-rouge">insert!</code> и аналоги переместились в модуль <code class="language-plaintext highlighter-rouge">next.jdbc.sql</code>. Они отличаются только тем, что принимают первым параметром <code class="language-plaintext highlighter-rouge">datasource</code>:</p>
+<p>Вспомогательные функции <code class="language-plaintext highlighter-rouge">get-by-id</code>, <code class="language-plaintext highlighter-rouge">find-by-keys</code>, <code class="language-plaintext highlighter-rouge">update!</code>, <code class="language-plaintext highlighter-rouge">insert!</code> и аналоги перешли в модуль <code class="language-plaintext highlighter-rouge">next.jdbc.sql</code>. Они отличаются только тем, что принимают первым параметром <code class="language-plaintext highlighter-rouge">datasource</code>:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc.sql/get-by-id</span><span class="w"> </span><span class="n">ds</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w">
 
@@ -4088,7 +4050,7 @@ and p.created_at &gt; ..."</span><span class="w">
 </span><span class="p">(</span><span class="nf">jdbc.sql/query</span><span class="w"> </span><span class="n">ds</span><span class="w"> </span><span class="p">[</span><span class="s">"select * from users"</span><span class="p">])</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Макрос <code class="language-plaintext highlighter-rouge">with-transaction</code> тоже почти не изменился. Он принимает вектор, где первый элемент — символ, а второй — текущий datasource. С первым символом будет связан новый <code class="language-plaintext highlighter-rouge">datasource</code>, внутри которого транзакционное соединение. В примере ниже мы открываем транзакцию с двумя запросами. Первый добавляет товар, второй записывает для него скидку 33%.</p>
+<p>Макрос <code class="language-plaintext highlighter-rouge">with-transaction</code> тоже почти не изменился. Он принимает вектор, где первый элемент — символ, а второй — текущий <code class="language-plaintext highlighter-rouge">datasource</code>. С первым символом будет связан новый <code class="language-plaintext highlighter-rouge">datasource</code> с транзакционным соединением. В примере ниже мы открываем транзакцию с двумя запросами. Первый добавляет товар, второй записывает для него скидку 33%.</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">tx</span><span class="w"> </span><span class="n">ds</span><span class="p">]</span><span class="w">
   </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[{</span><span class="no">:items/keys</span><span class="w"> </span><span class="p">[</span><span class="n">id</span><span class="p">]}</span><span class="w">
@@ -4118,7 +4080,7 @@ and p.created_at &gt; ..."</span><span class="w">
     </span><span class="p">(</span><span class="nf">pg-&gt;clj</span><span class="w"> </span><span class="n">v</span><span class="p">)))</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Обратите внимание, что у протокола два метода: получить поле по индексу и имени. В нашем случае реализации совпадают. При чтении колонки с типом json(b) получим коллекцию Clojure:</p>
+<p>Обратите внимание, что у протокола два метода: получить поле по индексу и имени. В нашем случае реализации совпадают. При чтении колонки с типом <code class="language-plaintext highlighter-rouge">json(b)</code> получим коллекцию Clojure:</p>
 
 <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">first</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc.sql/query</span><span class="w"> </span><span class="n">ds</span><span class="w"> </span><span class="p">[</span><span class="s">"select * from items"</span><span class="p">]))</span><span class="w">
 
@@ -4152,29 +4114,29 @@ and p.created_at &gt; ..."</span><span class="w">
         </span><span class="no">:attrs</span><span class="w"> </span><span class="p">{</span><span class="no">:size</span><span class="w"> </span><span class="s">"XXL"</span><span class="w"> </span><span class="no">:brand</span><span class="w"> </span><span class="s">"Abibas"</span><span class="p">}}</span><span class="w">
 </span></code></pre></div></div>
 
-<p>Как видите, интерфейс Next.JDBC в целом похож на предшественника. Большинство функций ведут себя так же, но дают больше контроля за происходящим. Если у вас долгий опыт работы с clojure.java.jdbc, перейти на Next.JDBC будет несложно. Тонкости перехода описаны в <a href="https://github.com/seancorfield/next-jdbc/blob/develop/doc/migration-from-clojure-java-jdbc.md">Wiki-документации</a> проекта. Там же вы узнаете о других возможностях JDBC.next.</p>
+<p>Как видно, интерфейс Next.JDBC в целом похож на предшественника. Функции ведут себя так же, но дают больше контроля за происходящим. Если у вас долгий опыт работы с <code class="language-plaintext highlighter-rouge">clojure.java.jdbc</code>, перейти на Next.JDBC будет несложно. Тонкости перехода описаны в <a href="https://github.com/seancorfield/next-jdbc/blob/develop/doc/migration-from-clojure-java-jdbc.md">Wiki-документации</a> проекта. Там же вы узнаете о других возможностях JDBC.next.</p>
 
 <h2 id="заключение">Заключение</h2>
 
-<p>Реляционные базы данных основаны на модели реляционной алгебры. Модель определяет отношения между сущностями и операции над ними: проекция, пересечение, объединение и другие. В базах данных эта модель представлена таблицами и операторами SQL. Как правило, оператор принимает несколько таблиц и возвращает табличный результат.</p>
+<p>Реляционные базы данных основаны на модели реляционной алгебры. Модель описывает отношения между сущностями и операции над ними: проекция, пересечение, объединение и другие. В базах данных модель представлена таблицами и операторами SQL. Как правило, оператор принимает несколько таблиц и возвращает табличный результат.</p>
 
-<p>SQL — строго декларативный язык: в нем нет циклов, переменных и прочих возможностей, доступных в языках программирования. Говорят, что SQL не полон по Тьюрингу. Существуют несколько стандартов SQL, датированных годами: 92, 99, 2008 и другие. Кроме стандартных возможностей, современные базы предлагают расширенные операторы и типы данных.</p>
+<p>SQL — строго декларативный язык: в нем нет циклов, переменных и прочих возможностей, доступных в языках программирования. Говорят, что SQL не полон по Тьюрингу. Существуют несколько стандартов SQL, датированных годами: 92, 99, 2008 и другие. Кроме обычных возможностей, современные базы предлагают расширенные операторы и типы данных.</p>
 
 <p>В мире Java доступ к базам обеспечивает библиотека JDBC. Это универсальный интерфейс, который учитывает особенности каждой базы и приводит их к общему виду. JDBC нуждается в драйвере — библиотеке для конкретной базы данных, которая связывает высокоуровневый API с вводом-выводом. JDBC-драйверы доступны не только для классических баз PostgreSQL или MySQL, но и экзотических решений вроде файлов CSV и Excel.</p>
 
-<p>Clojure предлагает легковесную обертку над JDBC — пакет <code class="language-plaintext highlighter-rouge">clojure.java.jdbc</code>. С ней вам доступны емкие и удобные функции для выборки, вставки и других операций с базой. Макросы помогают сократить код, но при этом не упустить важные моменты вроде установки и отката свойства autocommit. Библиотека содержит функции для типовых случаев: найти по id, найти по ключам, вставить запись по словарю и другие.</p>
+<p>Clojure предлагает легковесную обертку над JDBC — пакет <code class="language-plaintext highlighter-rouge">clojure.java.jdbc</code>. В ней доступны емкие и удобные функции для выборки, вставки и других операций с базой. Макрос <code class="language-plaintext highlighter-rouge">with-transaction</code> радикально упрощает работу с транзакциями. Библиотека содержит функции для типовых случаев: найти запись по <code class="language-plaintext highlighter-rouge">id</code>, по ключам, вставить из словаря и другие.</p>
 
-<p>Чтобы связать типы данных базы и Clojure, расширьте протоколы. С их помощью легко сделать так, чтобы тип <code class="language-plaintext highlighter-rouge">Timestamp</code>, считанный из базы, был преобразован в <code class="language-plaintext highlighter-rouge">DateTime</code> из пакета JodaTime. Еще важнее обеспечить бесшовную связь с JSON, потому что этот тип несет колоссальные преимущества. Связь типов работает в обе стороны. Для установки параметров служит отдельный протокол, которые переводит типы Clojure в <code class="language-plaintext highlighter-rouge">PGObject</code> и другие объекты, известные JDBC.</p>
+<p>Чтобы связать типы Clojure с типами базы, расширьте протоколы. С их помощью сделают так, чтобы значение <code class="language-plaintext highlighter-rouge">Timestamp</code> из базы становилось <code class="language-plaintext highlighter-rouge">DateTime</code> из пакета JodaTime. Полезно обеспечить бесшовную связь с JSON, потому что этот тип несет колоссальные преимущества. Связь типов работает в обе стороны. Для установки параметров служит отдельный протокол, которые приводит типы Clojure в <code class="language-plaintext highlighter-rouge">PGObject</code> и другие объекты, известные JDBC.</p>
 
 <p>Наибольшая опасность в SQL исходит от инъекций. Так называют прием, когда в запрос попадает вредоносный текст, например чтение системных таблиц или всегда истинное условие. Вероятность инъекции высока, если вы строите запросы конкатенацией (“склейкой”) строк, а также внедряете параметры в тело запроса. Тем же опасен и текст с кавычками: их умелая расстановка может нарушить логику запроса. Чтобы обезопасить запрос от кавычек, библиотеки экранируют их на этапе установки параметров.</p>
 
-<p>В боевых проектах вы столкнетесь с тем, что запросы занимают много места и затрудняют поддержку кода. Кроме того, SQL неудобно строить по условию, когда заранее неизвестно, нужно ли делать отбор по некоторому полю или нет. Здесь вам помогут библиотеки. Некоторые из них выносят запросы в файл и порождают функции, которые исполняют одноименные запросы. Другие строят SQL из коллекций — комбинаций списков и словарей.</p>
+<p>В боевых проектах вы столкнетесь с тем, что запросы занимают много места и затрудняют чтение кода. Кроме того, SQL неудобно строить по условию, когда заранее неизвестно, нужно ли делать отбор по некоторому полю или нет. Здесь вам помогут библиотеки. Некоторые из них выносят запросы в файл и порождают функции, которые выполняют эти запросы. Другие строят SQL из коллекций — комбинаций списков и словарей.</p>
 
-<p>Как правило, реляционные базы возвращают данные в виде прямоугольных таблиц. На практике нас интересуют вложенные данные, например магазин и его товары, публикации и комментарии к ним. Существует два способа сгруппировать данные. Первый — получить плоский ответ базы и обработать на стороне Clojure. Второй — выполнить группировку в базе функциями <code class="language-plaintext highlighter-rouge">array_agg</code> или аналогами. Выбор способа зависит от окружения, объема данных и ваших навыков: в какой среде вы чувствуете себя уверенней.</p>
+<p>Как правило, реляционные базы возвращают данные в виде плоских таблиц. На практике нас интересуют вложенные данные, например магазин и его товары, публикации и комментарии к ним. Существует два способа сгруппировать данные. Первый — получить плоский ответ и обработать на стороне Clojure. Второй — выполнить группировку в базе функциями <code class="language-plaintext highlighter-rouge">array_agg</code> или аналогами. Выбор способа зависит от окружения, объема данных и ваших навыков: в какой среде вы чувствуете себя уверенней.</p>
 
-<p>Миграциями называют историю изменений базы. Как правило, это sql-файлы, которые добавляют таблицы, поля или индексы. Специальный код обходит эти файлы и применяет к базе. Отдельная таблица хранит имена обработанных миграций, чтобы не выполнять их повторно. Миграции автоматизируют рутину, позволяют оперативно откатить неудачные изменения. В локальной разработке ими переключают схему в соответствии с версией кода.</p>
+<p>Миграциями называют историю изменений базы. Как правило, это sql-файлы, которые добавляют таблицы, поля или индексы. Специальный код обходит эти файлы и применяет к базе. Отдельная таблица хранит имена обработанных миграций, чтобы не выполнить их повторно. Миграции автоматизируют рутину, позволяют оперативно откатить неудачные изменения. В локальной разработке ими переключают схему в соответствии с версией кода.</p>
 
-<p>Библиотека <code class="language-plaintext highlighter-rouge">clojure.java.jdbc</code> — не единственная для работы с базой данных в Clojure. Обратите внимание на ее преемника JDBC.next. Новая библиотека работает с ответом базы более эффективно, что заметно на больших выборках. JDBC.next тесно связана с Clojure за счет встроенного протокола Datafy. Ее функции дают больше контроля за тем, что происходит с базой.</p>
+<p>Библиотека <code class="language-plaintext highlighter-rouge">clojure.java.jdbc</code> — не единственная для работы с базой данных в Clojure. Обратите внимание на ее преемника JDBC.next. Новая библиотека работает с данными эффективней, что заметно на больших выборках. JDBC.next тесно связана с Clojure за счет встроенного протокола Datafy. Ее функции дают больше контроля за тем, что происходит с базой.</p>
 
   </div>
 
@@ -4214,10 +4176,10 @@ and p.created_at &gt; ..."</span><span class="w">
     </div>
 
     <input required name="path" type="hidden" value="/clj-db/">
-    <input required name="captcha" type="hidden" value="6 &#215; 4">
+    <input required name="captcha" type="hidden" value="7 &#215; 6">
 
     <div class="block">
-        <span class="comment-form-label"><small>6 &#215; 4 = </small></span>
+        <span class="comment-form-label"><small>7 &#215; 6 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 
