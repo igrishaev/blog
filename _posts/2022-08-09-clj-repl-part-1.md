@@ -1292,3 +1292,11 @@ ArithmeticException Divide by zero
 Эти и другие возможности пригодятся вам в долгих сеансах REPL. Ознакомьтесь с ними [в документации][clojure.repl] к модулю clojure.repl.
 
 {% include repl-ru-toc.md %}
+
+<!--
+Local Variables:
+ispell-local-dictionary: "ru"
+fill-column: 99999
+truncate-lines: nil
+End:
+-->
