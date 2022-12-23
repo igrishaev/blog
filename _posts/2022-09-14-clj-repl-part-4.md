@@ -795,7 +795,8 @@ Some features will not be available without it!
 Комментария заслуживает вызов `(update ...)`, где поле `:handler` превращается в функцию комбинацией `resolve` и `deref`. Это нужно затем, что `:handler` содержит символ, указывающий на функцию:
 
 ~~~clojure
-{:handler 'handler cider.nrepl/cider-nrepl-handler}
+;; config.edn
+{:handler cider.nrepl/cider-nrepl-handler}
 ~~~
 
 Почему бы не передать сразу функцию, а не символ? Дело в том, что конфигурацию часто хранят в *.edn-файле, в котором нельзя сослаться на объект Clojure. При чтении файла мы получим символ; далее компонент получит из символа функцию.
