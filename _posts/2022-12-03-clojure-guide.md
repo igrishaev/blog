@@ -430,7 +430,7 @@ Yes:
 What is really bad with `#(...)`, the arguments have no names and thus lack semantics. The `(fn ...)` form can be easily put on the top level of a module and transformed into `defn`, so it can be tested in REPL or unit tests.
 
 ~~~clojure
-(fn [product]
+(defn this-product? [product]
   (= (:id product) product-id))
 ~~~
 
