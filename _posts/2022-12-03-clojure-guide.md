@@ -801,10 +801,10 @@ In fact, it depends on the context. The mark by itself is needed to highlight so
 (defn create-user [db fields]
   ...)
 
-(defn delete-user [db fields]
+(defn delete-user [db id]
   ...)
 
-(defn update-user [db fields]
+(defn update-user [db id fields]
   ...)
 ~~~
 
