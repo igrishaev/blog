@@ -56,3 +56,10 @@ wget-github:
 
 # !\[(.*)\]\((https://user-images.githubusercontent.com/(.*?))\)
 # {% include static.html path="$3" title="$1" %}
+
+
+slug ?= $(error Please specify the slug=... argument)
+post_date = $(shell date +'%Y-%m-%d')
+
+new-post:
+	touch _posts/${post_date}-${slug}.md
