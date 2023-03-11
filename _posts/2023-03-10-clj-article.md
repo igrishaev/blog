@@ -276,10 +276,38 @@ Clojure предлагает мощные коллекции и функции �
 
 ## Ссылки и ресурсы
 
+[rationale]: https://clojure.org/about/rationale
+[getting_started]: https://clojure.org/guides/getting_started
+
 - Документация
+  - [Официальный сайт][clojure] и его разделы:
+    - [Rationale][rationale]
+    - [Getting Started][getting_started]
 
 - Книги
+  - [«Программирование на Clojure»][clojure-dmk]
+  - [«Clojure на производстве»][clojure-in-prod]
+  - [Clojure for Brave and True][braveclojure]
+  - [The Joy of Clojure][the-joy-of-clojure]
 
-- Вакансии
+[planet-clojure]: https://planet.clojure.in/
+[ask-clojure]: https://ask.clojure.org/
+
+- Веб-ресурсы
+  - [Planet Clojure][planet-clojure] - агрегатор блогов на тему Clojure
+  - [Ask Clojure][ask-clojure] - сайт вопросов и ответов
+
+[ClojureTV]: https://www.youtube.com/@ClojureTV/videos
+[simple-made-easy]:https://www.youtube.com/watch?v=LKtk3HCgTa8
+[history]: https://www.youtube.com/watch?v=nD-QHbRWcoM
+[inside-clojure]: https://www.youtube.com/watch?v=wASCH_gPnDw
+
+- Видео
+  - Канал [ClojureTV][ClojureTV] на Ютубе
+  - [Simple Made Easy][simple-made-easy] by Rich Hickey (2011)
+  - [A History of Clojure][history] by Rich Hickey with Q&A
+  - [Inside Clojure][inside-clojure] - Rich Hickey and Brian Beckman
 
 - Сообщества
+  - Чат [@clojure_ru][clojure_ru] в Телеграме
+  - Группа [Clojurians][clojurians] в Slack
