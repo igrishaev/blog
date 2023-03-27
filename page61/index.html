@@ -100,6 +100,159 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/2012/08/09/4/">Работаем с Твиттером</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2012-08-09T23:19:39+00:00">
+        Aug 9, 2012
+    </time>
+
+    <a href="/tag/twitter/" rel="tag">twitter</a>, <a href="/tag/python/" rel="tag">python</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/oauth/" rel="tag">oauth</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Как по-быстому связать приложение на Питоне с Твиттером?</p>
+
+<p>Ответ — подключить библиотеку
+<a href="http://code.google.com/p/oauth-python-twitter2/">oauthtwitter</a>.</p>
+
+<p>Почему не <a href="http://code.google.com/p/python-twitter/">python-twitter</a>?
+Потому что первая гораздо меньше по объему кода и числу зависимостей
+от дополнительных модулей: <strong>300 строк кода против 4000!</strong></p>
+
+<p>Установим необходимые библиотеки:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>pip install ouath2
+pip install httplib2
+pip install simplejson
+</code></pre></div></div>
+
+<p>Для работы с Твиттером нужно
+<a href="https://dev.twitter.com/apps/new">зарегистрировать приложение</a>. Твиттер
+позволяет указывать ссылки вида <code class="language-plaintext highlighter-rouge">localhost</code> или <code class="language-plaintext highlighter-rouge">127.0.0.1</code> в поле
+«Callback URL», что очень полезно при разработке на локальной машине.</p>
+
+<p><img src="/assets/static/app.png" alt="screenshot" /></p>
+
+<p><strong>Consumer key</strong> — это открытый ключ приложения, что-то
+вроде логина. <strong>Consumer secret</strong> — закрытый ключ, которым
+подписываются запросы к Твиттеру. Если вы где-то опубликовали его,
+немедленно смените в настройках приложения.</p>
+
+<p>Авторизация в Твиттере проходит в несколько шагов.</p>
+
+<p><strong>Шаг 1: запрос на авторизацию</strong></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">oauthtwitter</span>
+
+<span class="n">CONSUMER_KEY</span> <span class="o">=</span> <span class="s">"key"</span>
+<span class="n">SECRET_KEY</span> <span class="o">=</span> <span class="s">"secret"</span>
+
+<span class="c1"># Инициализация клиента по ключам
+</span><span class="k">def</span> <span class="nf">sign_init</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="n">client</span> <span class="o">=</span> <span class="n">oauthtwitter</span><span class="p">.</span><span class="n">OAuthApi</span><span class="p">(</span><span class="n">CONSUMER_KEY</span><span class="p">,</span> <span class="n">SECRET_KEY</span><span class="p">)</span>
+
+    <span class="c1"># Уникальный токен, действительный только для одной авторизации
+</span>    <span class="n">request_token</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="n">getRequestToken</span><span class="p">()</span>
+
+    <span class="c1"># Сохраняем токен в сессию пользователя. Можно сохранить на диск или в БД
+</span>    <span class="n">request</span><span class="p">.</span><span class="n">session</span><span class="p">[</span><span class="s">"request_token"</span><span class="p">]</span> <span class="o">=</span> <span class="n">request_token</span>
+
+    <span class="c1"># Получаем уникальный адрес авторизации на основе токена
+</span>    <span class="n">url</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="n">getAuthorizationURL</span><span class="p">(</span><span class="n">request_token</span><span class="p">)</span>
+
+    <span class="c1"># Перенаправляем пользователя на страницу ввода пароля
+</span>    <span class="k">return</span> <span class="n">redirect</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p><strong>Шаг 2: ввод логина и пароля на стороне Твиттера</strong></p>
+
+<p><img src="/assets/static/auth.png" alt="screenshot" /></p>
+
+<p><strong>Шаг 3: возврат пользователя на ваш сайт</strong></p>
+
+<p>После авторизации пользователь будет направлен обратно на ваш сайт.
+Напомню, что в приложении на стадии тестирования у нас указано что-то
+вроде <code class="language-plaintext highlighter-rouge">http://localhost:8080/twitter/callback</code> По этому адресу должен
+быть обработчик, который завершит процесс авторизации.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">sign_callback</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="c1"># Извлекаем сохраненный ранее в сессии токен.
+</span>    <span class="c1"># Если токена нет, то пусть начинает всё с начала.
+</span>    <span class="n">request_token</span> <span class="o">=</span> <span class="n">request</span><span class="p">.</span><span class="n">session</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"request_token"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">request_token</span><span class="p">:</span>
+        <span class="n">add_message</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">ERROR</span><span class="p">,</span> <span class="sa">u</span><span class="s">"Request token not found."</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">redirect</span><span class="p">(</span><span class="n">frontpage</span><span class="p">)</span>
+
+    <span class="c1"># Ключ валидации запроса из командной строки.
+</span>    <span class="n">oauth_verifier</span> <span class="o">=</span> <span class="n">request</span><span class="p">.</span><span class="n">GET</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"oauth_verifier"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">oauth_verifier</span><span class="p">:</span>
+        <span class="n">add_message</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">ERROR</span><span class="p">,</span> <span class="sa">u</span><span class="s">"OAuth verifier not found."</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">redirect</span><span class="p">(</span><span class="n">frontpage</span><span class="p">)</span>
+
+    <span class="c1"># Снова инициализируем клиента
+</span>    <span class="n">client</span> <span class="o">=</span> <span class="n">oauthtwitter</span><span class="p">.</span><span class="n">OAuthApi</span><span class="p">(</span><span class="n">CONSUMER_KEY</span><span class="p">,</span> <span class="n">SECRET_KEY</span><span class="p">)</span>
+
+    <span class="c1"># Извлечени параметров доступа
+</span>    <span class="n">access_token</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="n">getAccessToken</span><span class="p">(</span><span class="n">request_token</span><span class="p">,</span> <span class="n">oauth_verifier</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">access_token</span>
+    <span class="o">&gt;&gt;&gt;</span>
+    <span class="p">{</span>
+        <span class="s">'oauth_token_secret'</span><span class="p">:</span> <span class="s">'xTbNbG0IcUGgng9pyNdy******************'</span><span class="p">,</span>
+        <span class="s">'user_id'</span><span class="p">:</span> <span class="s">'123123123'</span><span class="p">,</span>
+        <span class="s">'oauth_token'</span><span class="p">:</span> <span class="s">'78741204-cLgfThwKXuqudeXGTQP***********************'</span><span class="p">,</span>
+        <span class="s">'screen_name'</span><span class="p">:</span> <span class="s">'username'</span>
+    <span class="p">}</span>
+</code></pre></div></div>
+
+<p>Отлично! Как видно, access_token представляет из себя словарь со всеми
+нужными данными: идентификатором и именем пользователя, открытым и
+закрытым ключами доступа.</p>
+
+<p>Дальнейший сценарий зависит от архитектуры вашего
+приложения. Например, на основании screen_name заводится новый
+пользователь (или извлекается имеющийся). Оба ключа записываются в
+профиль пользователя. Теперь можно работать с Твиттером:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Инициализация клиента с ключами приложения и пользователя
+</span><span class="n">client</span> <span class="o">=</span> <span class="n">oauthtwitter</span><span class="p">.</span><span class="n">OAuthApi</span><span class="p">(</span><span class="n">CONSUMER_KEY</span><span class="p">,</span> <span class="n">SECRET_KEY</span><span class="p">,</span>
+                    <span class="n">user_oauth_token</span><span class="p">,</span> <span class="n">user_oauth_token_secret</span><span class="p">)</span>
+
+<span class="c1"># Извлечение твитов пользователя
+</span><span class="n">timeline</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="n">GetUserTimeline</span><span class="p">()</span>
+
+<span class="c1"># Твитнуть сообщение
+</span><span class="n">client</span><span class="p">.</span><span class="n">UpdateStatus</span><span class="p">(</span><span class="s">"Python testing"</span><span class="p">)</span>
+
+<span class="c1"># Получить фолловеров
+</span><span class="n">timeline</span> <span class="o">=</span> <span class="n">client</span><span class="p">.</span><span class="n">GetFollowers</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>И так далее, список всех методов ищите в коде класса. Очень доволен
+этой библиотекой, использую ее в двух проектах.</p>
+
+<h4 id="комментарии-из-старого-блога">Комментарии из старого блога</h4>
+
+<p><strong>02/11/13 Майя Любимая:</strong> я ничего не понимаю</p>
+
+<p><strong>02/20/13 Иван Гришаев:</strong> То же самое могу сказать о вашем
+  комментарии.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/2012/08/09/3/">Создание файлов Excel</a>
             </h2>
 
