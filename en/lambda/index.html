@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Clojure + GraalVM framework for AWS Lambda</title>
+  <meta name="description" content="">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/en/lambda/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img src="/assets/static/photo-round-small.png" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Clojure + GraalVM framework for AWS Lambda</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-04-07T00:00:00+00:00">
+        Apr 7, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/lambda/" rel="tag">lambda</a>, <a href="/tag/graalvm/" rel="tag">graalvm</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    
+<p><a href="https://github.com/igrishaev/lambda">Lambda</a> is a small framework to run AWS Lambdas compiled with Native Image.</p>
+
+<h3 id="motivation--benefits">Motivation &amp; Benefits</h3>
+
+<p>There are a lot of Lambda Clojure libraries so far: a <a href="https://clojars.org/search?q=lambda">quick search</a> on
+Clojars gives several screens of them. What is the point of making a new one?
+Well, because none of the existing libraries covers my requirements, namely:</p>
+
+<ul>
+  <li>I want a framework free from any Java SDK, but pure Clojure only.</li>
+  <li>I want it to compile into a single binary file so no environment is needed.</li>
+  <li>The deployment process must be extremely simple.</li>
+</ul>
+
+<p>As the result, <em>this</em> framework:</p>
+
+<ul>
+  <li>Depends only on Http Kit and Cheshire to interact with AWS;</li>
+  <li>Provides an endless loop that consumes events from AWS and handles them. You
+only submit a function that processes an event.</li>
+  <li>Provides a Ring middleware that turns HTTP events into a Ring handler. Thus,
+you can easily serve HTTP requests with Ring stack.</li>
+  <li>Has a built-in logging facility.</li>
+  <li>Provides a bunch of Make commands to build a zipped bootstrap file.</li>
+</ul>
+
+<h3 id="installation">Installation</h3>
+
+<p>Leiningen/Boot:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[com.github.igrishaev/lambda "0.1.1"]
+</code></pre></div></div>
+
+<p>Clojure CLI/deps.edn:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>com.github.igrishaev/lambda {:mvn/version "0.1.1"}
+</code></pre></div></div>
+
+<!-- more -->
+
+<h3 id="writing-your-lambda">Writing Your Lambda</h3>
+
+<h4 id="prepare-the-code">Prepare The Code</h4>
+
+<p>Create a core module with the following code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">demo.core</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">lambda.log</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">log</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">lambda.main</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">main</span><span class="p">])</span><span class="w">
+  </span><span class="p">(</span><span class="no">:gen-class</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">handler</span><span class="w"> </span><span class="p">[</span><span class="n">event</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">log/infof</span><span class="w"> </span><span class="s">"Event is: %s"</span><span class="w"> </span><span class="n">event</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">process-event</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">{</span><span class="no">:result</span><span class="w"> </span><span class="p">[</span><span class="mi">42</span><span class="p">]})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">-main</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="n">_</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">main/run</span><span class="w"> </span><span class="n">handler</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">handler</code> function takes a single argument which is a parsed Lambda
+payload. The <code class="language-plaintext highlighter-rouge">lambda.log</code> namespace provides <code class="language-plaintext highlighter-rouge">debugf</code>, <code class="language-plaintext highlighter-rouge">infof</code>, and <code class="language-plaintext highlighter-rouge">errorf</code>
+macros for logging. In the <code class="language-plaintext highlighter-rouge">-main</code> function you start an endless cycle by
+calling the <code class="language-plaintext highlighter-rouge">run</code> function.</p>
+
+<p>On each step of this cycle, the framework fetches a new event, processes it with
+the passed handler and submits the result to AWS. Should the handler fail, it
+catches an exception and reports it as well without interrupt the cycle. Thus,
+you don’t need to <code class="language-plaintext highlighter-rouge">try/catch</code> in your handler.</p>
+
+<h4 id="compile-it">Compile It</h4>
+
+<p>Once you have the code, compile it with GraalVM and Native image. The <code class="language-plaintext highlighter-rouge">Makefile</code>
+of this repository has all the targets you need. You can borrow them with slight
+changes. Here are the basic definitions:</p>
+
+<div class="language-make highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">NI_TAG</span> <span class="o">=</span> ghcr.io/graalvm/native-image:22.2.0
+
+<span class="nv">JAR</span> <span class="o">=</span> target/uberjar/bootstrap.jar
+
+<span class="nv">PWD</span> <span class="o">=</span> <span class="nf">$(</span><span class="nb">shell</span> <span class="nb">pwd</span><span class="nf">)</span>
+
+<span class="nv">NI_ARGS</span> <span class="o">=</span> <span class="se">\</span>
+	<span class="nt">--initialize-at-build-time</span> <span class="se">\</span>
+	<span class="nt">--report-unsupported-elements-at-runtime</span> <span class="se">\</span>
+	<span class="nt">--no-fallback</span> <span class="se">\</span>
+	<span class="nt">-jar</span> <span class="nv">${JAR}</span> <span class="se">\</span>
+	<span class="nt">-J-Dfile</span>.encoding<span class="o">=</span>UTF-8 <span class="se">\</span>
+	<span class="nt">--enable-http</span> <span class="se">\</span>
+	<span class="nt">--enable-https</span> <span class="se">\</span>
+	<span class="nt">-H</span>:+PrintClassInitialization <span class="se">\</span>
+	<span class="nt">-H</span>:+ReportExceptionStackTraces <span class="se">\</span>
+	<span class="nt">-H</span>:Log<span class="o">=</span>registerResource <span class="se">\</span>
+	<span class="nt">-H</span>:Name<span class="o">=</span>bootstrap
+
+<span class="nl">uberjar</span><span class="o">:</span>
+	lein &lt;...&gt; uberjar
+
+<span class="nl">bootstrap-zip</span><span class="o">:</span>
+	zip <span class="nt">-j</span> bootstrap.zip bootstrap
+</code></pre></div></div>
+
+<p>Pay attention to the following:</p>
+
+<ul>
+  <li>Ensure the jar name is set to <code class="language-plaintext highlighter-rouge">bootstrap.jar</code> in your project. This might be
+done by setting these in your <code class="language-plaintext highlighter-rouge">project.clj</code>:</li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:target-path</span><span class="w"> </span><span class="s">"target/uberjar"</span><span class="w">
+ </span><span class="no">:uberjar-name</span><span class="w"> </span><span class="s">"bootstrap.jar"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<ul>
+  <li>The <code class="language-plaintext highlighter-rouge">NI_ARGS</code> might be extended with resources, e.g. if you want an EDN config
+file baked into the binary file.</li>
+</ul>
+
+<p>Then compile the project either on Linux natively or with Docker.</p>
+
+<h5 id="linux-local-build">Linux (Local Build)</h5>
+
+<p>On Linux, add the following Make targets:</p>
+
+<div class="language-make highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">graal-build</span><span class="o">:</span>
+	native-image <span class="nv">${NI_ARGS}</span>
+
+<span class="nl">build-binary-local</span><span class="o">:</span> <span class="nf">${JAR} graal-build</span>
+
+<span class="nl">bootstrap-local</span><span class="o">:</span> <span class="nf">uberjar build-binary-local bootstrap-zip</span>
+</code></pre></div></div>
+
+<p>Run <code class="language-plaintext highlighter-rouge">make bootstrap-local</code>. You’ll get a file called <code class="language-plaintext highlighter-rouge">bootstrap.zip</code> with a single binary file <code class="language-plaintext highlighter-rouge">bootstrap</code> inside.</p>
+
+<h5 id="on-macos-docker">On MacOS (Docker)</h5>
+
+<p>On MacOS, add these targets:</p>
+
+<div class="language-make highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nl">build-binary-docker</span><span class="o">:</span> <span class="nf">${JAR}</span>
+	docker run <span class="nt">-it</span> <span class="nt">--rm</span> <span class="nt">-v</span> <span class="nv">${PWD}</span>:/build <span class="nt">-w</span> /build <span class="nv">${NI_TAG}</span> <span class="nv">${NI_ARGS}</span>
+
+<span class="nl">bootstrap-docker</span><span class="o">:</span> <span class="nf">uberjar build-binary-docker bootstrap-zip</span>
+</code></pre></div></div>
+
+<p>Then run <code class="language-plaintext highlighter-rouge">make bootstrap-docker</code> to get the same file but compiled in a Docker
+image.</p>
+
+<h4 id="create-a-lambda-in-aws">Create a Lambda in AWS</h4>
+
+<p>Create a Lambda function in AWS. For the runtime, choose a custom one called
+<code class="language-plaintext highlighter-rouge">provided.al2</code> which is based on Amazon Linux 2. The architecture (x86_64/arm64)
+should match the architecture of your machine. For example, as I build the
+project on Mac M1, I choose arm64.</p>
+
+<h3 id="deploy-and-test-it">Deploy and Test It</h3>
+
+<p>Upload the <code class="language-plaintext highlighter-rouge">bootstrap.zip</code> file from your machine to the lambda. With no
+compression, the <code class="language-plaintext highlighter-rouge">bootstrap</code> file takes 25 megabytes. In zip, it’s about 9
+megabytes so you can skip uploading it to S3 first.</p>
+
+<p>Test you Lambda in the console to ensure it works.</p>
+
+<h3 id="ring-handler-for-http-requests">Ring Handler for HTTP Requests</h3>
+
+<p>The framework can turn HTTP events into Ring maps. There is a middleware that
+transforms a your handler into a Ring handler. In the example below, pay
+attention to the <code class="language-plaintext highlighter-rouge">ring/wrap-ring-event</code> middleware on top of the stack. It’s
+responsible for turning an event map into Ring and back. Right after
+<code class="language-plaintext highlighter-rouge">ring/wrap-ring-event</code>, feel free to add any Ring middleware for POST
+parameters, JSON, and so on.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">demo.core</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">lambda.ring</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">ring</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">lambda.main</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">main</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">ring.middleware.json</span><span class="w"> </span><span class="no">:refer</span><span class="w"> </span><span class="p">[</span><span class="n">wrap-json-body</span><span class="w"> </span><span class="n">wrap-json-response</span><span class="p">]]</span><span class="w">
+   </span><span class="p">[</span><span class="n">ring.middleware.keyword-params</span><span class="w"> </span><span class="no">:refer</span><span class="w"> </span><span class="p">[</span><span class="n">wrap-keyword-params</span><span class="p">]]</span><span class="w">
+   </span><span class="p">[</span><span class="n">ring.middleware.params</span><span class="w"> </span><span class="no">:refer</span><span class="w"> </span><span class="p">[</span><span class="n">wrap-params</span><span class="p">]])</span><span class="w">
+  </span><span class="p">(</span><span class="no">:gen-class</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">handler</span><span class="w"> </span><span class="p">[</span><span class="n">request</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">request-method</span><span class="w">
+                </span><span class="n">uri</span><span class="w">
+                </span><span class="n">headers</span><span class="w">
+                </span><span class="n">body</span><span class="p">]}</span><span class="w">
+        </span><span class="n">request</span><span class="p">]</span><span class="w">
+
+    </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w">
+     </span><span class="no">:body</span><span class="w"> </span><span class="p">{</span><span class="no">:some</span><span class="w"> </span><span class="p">{</span><span class="no">:data</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]}}}))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">fn-event</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">handler</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-keyword-params</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-params</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-json-body</span><span class="w"> </span><span class="p">{</span><span class="no">:keywords?</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-json-response</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">ring/wrap-ring-event</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">-main</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="n">_</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">main/run</span><span class="w"> </span><span class="n">fn-event</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="sharing-the-state-between-events">Sharing the State Between Events</h3>
+
+<p>In AWS, a Lambda can process several events if they happen in series. Thus, it’s
+useful to preserve the state between the handler calls. A state can be a config
+map read from a resource or an open connection to some resource.</p>
+
+<p>An easy way to share the state is to close your handler function over some
+variables. In this case, the handler is not a plain function but a function that
+returns a function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">process-event</span><span class="w"> </span><span class="p">[</span><span class="n">db</span><span class="w"> </span><span class="n">event</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">tx</span><span class="w"> </span><span class="n">db</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">jdbc/insert!</span><span class="w"> </span><span class="n">tx</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">jdbc/delete!</span><span class="w"> </span><span class="n">tx</span><span class="w"> </span><span class="n">...</span><span class="p">)))</span><span class="w">
+
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">make-handler</span><span class="w"> </span><span class="p">[]</span><span class="w">
+
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">config</span><span class="w">
+        </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"config.edn"</span><span class="w">
+            </span><span class="n">io/resource</span><span class="w">
+            </span><span class="n">aero/read-config</span><span class="p">)</span><span class="w">
+
+        </span><span class="n">db</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="p">(</span><span class="no">:db</span><span class="w"> </span><span class="n">config</span><span class="p">))]</span><span class="w">
+
+    </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">event</span><span class="p">]</span><span class="w">
+      </span><span class="p">(</span><span class="nf">process-event</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="n">event</span><span class="p">))))</span><span class="w">
+
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">-main</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="n">_</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">handler</span><span class="w"> </span><span class="p">(</span><span class="nf">make-handler</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">main/run</span><span class="w"> </span><span class="n">handler</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">make-handler</code> call builds a function closed over the <code class="language-plaintext highlighter-rouge">db</code> variable which
+holds a persistent connection to a database. Under the hood, it calls the
+<code class="language-plaintext highlighter-rouge">process-event</code> function which accepts the <code class="language-plaintext highlighter-rouge">db</code> as an argument. The connection
+stays persistent and won’t be created from scratch every time you process an
+event. This, of course, applies only to a case when you have multiple events
+served in series.</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/en/lambda/">
+    <input required name="captcha" type="hidden" value="9 &#215; 2">
+
+    <div class="block">
+        <span class="comment-form-label"><small>9 &#215; 2 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
