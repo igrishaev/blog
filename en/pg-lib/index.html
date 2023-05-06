@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>PG: Postgres-related libraries for Clojure</title>
+  <meta name="description" content="">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/en/pg-lib/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img src="/assets/static/photo-round-small.png" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">PG: Postgres-related libraries for Clojure</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-05-06T00:00:00+00:00">
+        May 6, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    
+<p>The <a href="https://github.com/igrishaev/pg">PG project</a> holds a set of packages related to PostgreSQL. This is a
+breakdown of my unsuccessful attempt to write a PostgreSQL client in pure
+Clojure (stored in the <code class="language-plaintext highlighter-rouge">_</code> directory). Although I didn’t achieve the goal, some
+parts of the code are now shipped as separated packages and might be useful for
+someone.</p>
+
+<p>At the moment, the most interesting modules are <code class="language-plaintext highlighter-rouge">pg-copy</code> and <code class="language-plaintext highlighter-rouge">pg-copy-jdbc</code>
+that <code class="language-plaintext highlighter-rouge">COPY</code> the data using the binary Postgres format which is faster than CSV.</p>
+
+<h2 id="table-of-contents">Table of Contents</h2>
+
+<h2>
+
+    
+
+</h2>
+
+<ul id="toc-item-pg-lib-en">
+  <li><a href="#table-of-contents" id="toc-item-pg-lib-en-table-of-contents">Table of Contents</a>    <ul>
+      <li><a href="#pg-common" id="toc-item-pg-lib-en-pg-common">pg-common</a>        <ul>
+          <li><a href="#installation" id="toc-item-pg-lib-en-installation">Installation</a></li>
+          <li><a href="#usage" id="toc-item-pg-lib-en-usage">Usage</a></li>
+        </ul>
+      </li>
+      <li><a href="#pg-encode" id="toc-item-pg-lib-en-pg-encode">pg-encode</a>        <ul>
+          <li><a href="#installation-1" id="toc-item-pg-lib-en-installation-1">Installation</a></li>
+          <li><a href="#usage-1" id="toc-item-pg-lib-en-usage-1">Usage</a></li>
+          <li><a href="#type-specific-encoding" id="toc-item-pg-lib-en-type-specific-encoding">Type-specific encoding</a></li>
+          <li><a href="#table-of-supported-types-and-oids" id="toc-item-pg-lib-en-table-of-supported-types-and-oids">Table of supported types and OIDs</a></li>
+          <li><a href="#extending-the-encoding-rules" id="toc-item-pg-lib-en-extending-the-encoding-rules">Extending the encoding rules</a></li>
+          <li><a href="#default-oids" id="toc-item-pg-lib-en-default-oids">Default OIDs</a></li>
+        </ul>
+      </li>
+      <li><a href="#pg-joda-time" id="toc-item-pg-lib-en-pg-joda-time">pg-joda-time</a>        <ul>
+          <li><a href="#installation-2" id="toc-item-pg-lib-en-installation-2">Installation</a></li>
+          <li><a href="#usage-2" id="toc-item-pg-lib-en-usage-2">Usage</a></li>
+          <li><a href="#table-of-types-and-oids" id="toc-item-pg-lib-en-table-of-types-and-oids">Table of Types and OIDs</a></li>
+        </ul>
+      </li>
+      <li><a href="#pg-copy" id="toc-item-pg-lib-en-pg-copy">pg-copy</a>        <ul>
+          <li><a href="#installation-3" id="toc-item-pg-lib-en-installation-3">Installation</a></li>
+          <li><a href="#usage-3" id="toc-item-pg-lib-en-usage-3">Usage</a></li>
+          <li><a href="#oid-hints" id="toc-item-pg-lib-en-oid-hints">OID hints</a></li>
+          <li><a href="#hints-in-metadata" id="toc-item-pg-lib-en-hints-in-metadata">Hints in metadata</a></li>
+          <li><a href="#working-with-maps" id="toc-item-pg-lib-en-working-with-maps">Working with maps</a></li>
+          <li><a href="#other-functions" id="toc-item-pg-lib-en-other-functions">Other functions</a></li>
+        </ul>
+      </li>
+      <li><a href="#pg-copy-jdbc" id="toc-item-pg-lib-en-pg-copy-jdbc">pg-copy-jdbc</a>        <ul>
+          <li><a href="#installation-4" id="toc-item-pg-lib-en-installation-4">Installation</a></li>
+          <li><a href="#usage-4" id="toc-item-pg-lib-en-usage-4">Usage</a></li>
+          <li><a href="#parallel-copy" id="toc-item-pg-lib-en-parallel-copy">Parallel COPY</a></li>
+          <li><a href="#measurements" id="toc-item-pg-lib-en-measurements">Measurements</a>            <ul>
+              <li><a href="#plain-copy" id="toc-item-pg-lib-en-plain-copy">Plain COPY</a></li>
+              <li><a href="#parallel-copy-1" id="toc-item-pg-lib-en-parallel-copy-1">Parallel COPY</a></li>
+              <li><a href="#summary" id="toc-item-pg-lib-en-summary">Summary</a></li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<!-- more -->
+
+<h3 id="pg-common">pg-common</h3>
+
+<p>A set of common modules with utilities and constants. The most important
+namespace is <code class="language-plaintext highlighter-rouge">pg.oid</code> which is a registry of builtin OIDs in Postgres. It has
+been generated out directly from the <code class="language-plaintext highlighter-rouge">pg_type.dat</code> file stored in the official
+Postgres repository.</p>
+
+<h4 id="installation">Installation</h4>
+
+<p>Leiningen/Boot:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-common</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Clojure CLI/deps.edn:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">com.github.igrishaev/pg-common</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="usage">Usage</h4>
+
+<p>That’s unlikely you’ll need that package directly.</p>
+
+<h3 id="pg-encode">pg-encode</h3>
+
+<p>A module to encode Clojure values into Postgres counterparts, both text and
+binary. At the moment, supports only the binary format for primitives, UUIDs and
+date/time types.</p>
+
+<h4 id="installation-1">Installation</h4>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-encode</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Clojure CLI/deps.edn:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">com.github.igrishaev/pg-encode</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="usage-1">Usage</h4>
+
+<p>Import the package:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="ss">'pg.encode.bin</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nb">in-ns</span><span class="w"> </span><span class="ss">'pg.encode.bin</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">encode</code> function, in its simple case, takes a value and returns a byte
+array which represents that value in a Postgres-friendly binary format:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w">
+</span><span class="p">[</span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">1</span><span class="p">]</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">type</span><span class="w"> </span><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="mi">1</span><span class="p">))</span><span class="w">
+</span><span class="p">[</span><span class="n">B</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="n">true</span><span class="p">)</span><span class="w">
+</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="n">false</span><span class="p">)</span><span class="w">
+</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="s">"hello"</span><span class="p">)</span><span class="w">
+</span><span class="p">[</span><span class="mi">104</span><span class="n">,</span><span class="w"> </span><span class="mi">101</span><span class="n">,</span><span class="w"> </span><span class="mi">108</span><span class="n">,</span><span class="w"> </span><span class="mi">108</span><span class="n">,</span><span class="w"> </span><span class="mi">111</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Complex types like <code class="language-plaintext highlighter-rouge">Date</code> and <code class="language-plaintext highlighter-rouge">UUID</code> are supported as well:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">java.util.Date</span><span class="p">))</span><span class="w">
+</span><span class="p">[</span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="mi">-99</span><span class="n">,</span><span class="w"> </span><span class="mi">-97</span><span class="n">,</span><span class="w"> </span><span class="mi">-61</span><span class="n">,</span><span class="w"> </span><span class="mi">76</span><span class="n">,</span><span class="w"> </span><span class="mi">-42</span><span class="n">,</span><span class="w"> </span><span class="mi">-104</span><span class="p">]</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="p">(</span><span class="nf">random-uuid</span><span class="p">))</span><span class="w">
+</span><span class="p">[</span><span class="mi">-89</span><span class="n">,</span><span class="w"> </span><span class="mi">69</span><span class="n">,</span><span class="w"> </span><span class="mi">-70</span><span class="n">,</span><span class="w"> </span><span class="mi">4</span><span class="n">,</span><span class="w"> </span><span class="mi">-61</span><span class="n">,</span><span class="w"> </span><span class="mi">-17</span><span class="n">,</span><span class="w"> </span><span class="mi">71</span><span class="n">,</span><span class="w"> </span><span class="mi">112</span><span class="n">,</span><span class="w"> </span><span class="mi">-94</span><span class="n">,</span><span class="w"> </span><span class="mi">-57</span><span class="n">,</span><span class="w"> </span><span class="mi">-6</span><span class="n">,</span><span class="w"> </span><span class="mi">47</span><span class="n">,</span><span class="w"> </span><span class="mi">-42</span><span class="n">,</span><span class="w"> </span><span class="mi">41</span><span class="n">,</span><span class="w"> </span><span class="mi">24</span><span class="n">,</span><span class="w"> </span><span class="mi">62</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="type-specific-encoding">Type-specific encoding</h4>
+
+<p>Sometimes you need precise on control on encoding. Say, a Long value 1 gets
+encoded to int8 but you want it to be int4. The second argument of the <code class="language-plaintext highlighter-rouge">encode</code>
+function takes an integer OID that specifies a column type. You can reach the
+built-in OIDs using the <code class="language-plaintext highlighter-rouge">pg.oid</code> module.</p>
+
+<p>Thus, to encode Long 1 as int4, do this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">pg.oid/int4</span><span class="p">)</span><span class="w">
+</span><span class="p">[</span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">1</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To encode an integer as int8, do:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">i</span><span class="w"> </span><span class="p">(</span><span class="nb">int</span><span class="w"> </span><span class="mi">42</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="n">pg.oid/int8</span><span class="p">))</span><span class="w">
+</span><span class="p">[</span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">42</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The same applies to Float and Double types. Float gets encoded to float4 by
+default and Double does to float8. Passing explicit OIDs corrects the output
+types.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="mf">1.01</span><span class="w"> </span><span class="n">pg.oid/float4</span><span class="p">)</span><span class="w">
+</span><span class="p">[</span><span class="mi">63</span><span class="n">,</span><span class="w"> </span><span class="mi">-127</span><span class="n">,</span><span class="w"> </span><span class="mi">71</span><span class="n">,</span><span class="w"> </span><span class="mi">-82</span><span class="p">]</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="mf">1.01</span><span class="w"> </span><span class="n">pg.oid/float8</span><span class="p">)</span><span class="w">
+</span><span class="p">[</span><span class="mi">63</span><span class="n">,</span><span class="w"> </span><span class="mi">-16</span><span class="n">,</span><span class="w"> </span><span class="mi">40</span><span class="n">,</span><span class="w"> </span><span class="mi">-11</span><span class="n">,</span><span class="w"> </span><span class="mi">-62</span><span class="n">,</span><span class="w"> </span><span class="mi">-113</span><span class="n">,</span><span class="w"> </span><span class="mi">92</span><span class="n">,</span><span class="w"> </span><span class="mi">41</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="table-of-supported-types-and-oids">Table of supported types and OIDs</h4>
+
+<p>At the moment of writing this, the module has the following mapping between
+Clojure types and Postgres OIDs.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Clojure</th>
+      <th>Postgres</th>
+      <th>Default</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Symbol</td>
+      <td>text, varchar</td>
+      <td>text</td>
+    </tr>
+    <tr>
+      <td>String</td>
+      <td>text, varchar, uuid</td>
+      <td>text</td>
+    </tr>
+    <tr>
+      <td>Character</td>
+      <td>text, varchar</td>
+      <td>text</td>
+    </tr>
+    <tr>
+      <td>Long</td>
+      <td>int8, int4, int2</td>
+      <td>int8</td>
+    </tr>
+    <tr>
+      <td>Integer</td>
+      <td>int8, int4, int2</td>
+      <td>int4</td>
+    </tr>
+    <tr>
+      <td>Short</td>
+      <td>int8, int4, int2</td>
+      <td>int2</td>
+    </tr>
+    <tr>
+      <td>Boolean</td>
+      <td>bool</td>
+      <td>bool</td>
+    </tr>
+    <tr>
+      <td>Float</td>
+      <td>float4, float8</td>
+      <td>float4</td>
+    </tr>
+    <tr>
+      <td>Double</td>
+      <td>float4, float8</td>
+      <td>float8</td>
+    </tr>
+    <tr>
+      <td>UUID</td>
+      <td>uuid, text</td>
+      <td>uuid</td>
+    </tr>
+    <tr>
+      <td>j.u.Date</td>
+      <td>timestamp, date</td>
+      <td>timestamp</td>
+    </tr>
+    <tr>
+      <td>j.t.Instant</td>
+      <td>timestamp, date</td>
+      <td>timestamp</td>
+    </tr>
+    <tr>
+      <td>j.t.LocalDate</td>
+      <td>date</td>
+      <td>date</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="extending-the-encoding-rules">Extending the encoding rules</h4>
+
+<p>Encoding a type that is missing the table above leads to an exception:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="mi">42</span><span class="p">}</span><span class="w"> </span><span class="n">pg.oid/json</span><span class="p">)</span><span class="w">
+
+</span><span class="n">Execution</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="p">(</span><span class="nf">ExceptionInfo</span><span class="p">)</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="n">pg.error/error!</span><span class="w"> </span><span class="p">(</span><span class="nf">error.clj</span><span class="no">:14</span><span class="p">)</span><span class="nb">.</span><span class="w">
+</span><span class="n">Cannot</span><span class="w"> </span><span class="n">binary</span><span class="w"> </span><span class="n">encode</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">value</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:value</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="mi">42</span><span class="p">}</span><span class="n">,</span><span class="w"> </span><span class="no">:oid</span><span class="w"> </span><span class="mi">114</span><span class="n">,</span><span class="w"> </span><span class="no">:opt</span><span class="w"> </span><span class="n">nil</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>But it can easily fixed by extending the <code class="language-plaintext highlighter-rouge">-encode</code> multimethod from the
+<code class="language-plaintext highlighter-rouge">pg.encode.bin</code> namespace. Its dispatch function takes a vector where the first
+item is a type of the value and the second is OID:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defmethod</span><span class="w"> </span><span class="n">-encode</span><span class="w"> </span><span class="p">[</span><span class="n">UUID</span><span class="w"> </span><span class="n">oid/uuid</span><span class="p">]</span><span class="w">
+  </span><span class="p">[</span><span class="o">^</span><span class="n">UUID</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="n">oid</span><span class="w"> </span><span class="n">opt</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">most-bits</span><span class="w"> </span><span class="p">(</span><span class="nf">.getMostSignificantBits</span><span class="w"> </span><span class="n">value</span><span class="p">)</span><span class="w">
+        </span><span class="n">least-bits</span><span class="w"> </span><span class="p">(</span><span class="nf">.getLeastSignificantBits</span><span class="w"> </span><span class="n">value</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">byte-array</span><span class="w">
+     </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[]</span><span class="w">
+         </span><span class="p">(</span><span class="nb">into</span><span class="w"> </span><span class="p">(</span><span class="nf">array/arr64</span><span class="w"> </span><span class="n">most-bits</span><span class="p">))</span><span class="w">
+         </span><span class="p">(</span><span class="nb">into</span><span class="w"> </span><span class="p">(</span><span class="nf">array/arr64</span><span class="w"> </span><span class="n">least-bits</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To extend the encoder with a map such that it becomes JSON in Postgres, use
+something like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defmethod</span><span class="w"> </span><span class="n">-encode</span><span class="w"> </span><span class="p">[</span><span class="n">clojure.lang.IPersistentMap</span><span class="w"> </span><span class="n">pg.oid/json</span><span class="p">]</span><span class="w">
+    </span><span class="p">[</span><span class="n">mapping</span><span class="w"> </span><span class="n">_</span><span class="w"> </span><span class="n">_</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">mapping</span><span class="w">
+        </span><span class="p">(</span><span class="nf">cheshire.core/generate-string</span><span class="w"> </span><span class="p">)</span><span class="w">
+        </span><span class="p">(</span><span class="nf">.getBytes</span><span class="w"> </span><span class="s">"UTF-8"</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="mi">42</span><span class="p">}</span><span class="w"> </span><span class="n">pg.oid/json</span><span class="p">)</span><span class="w">
+</span><span class="p">[</span><span class="mi">123</span><span class="n">,</span><span class="w"> </span><span class="mi">34</span><span class="n">,</span><span class="w"> </span><span class="mi">102</span><span class="n">,</span><span class="w"> </span><span class="mi">111</span><span class="n">,</span><span class="w"> </span><span class="mi">111</span><span class="n">,</span><span class="w"> </span><span class="mi">34</span><span class="n">,</span><span class="w"> </span><span class="mi">58</span><span class="n">,</span><span class="w"> </span><span class="mi">52</span><span class="n">,</span><span class="w"> </span><span class="mi">50</span><span class="n">,</span><span class="w"> </span><span class="mi">125</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Let’s try the opposite: copy the output and restore the origin string:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="mi">123</span><span class="n">,</span><span class="w"> </span><span class="mi">34</span><span class="n">,</span><span class="w"> </span><span class="mi">102</span><span class="n">,</span><span class="w"> </span><span class="mi">111</span><span class="n">,</span><span class="w"> </span><span class="mi">111</span><span class="n">,</span><span class="w"> </span><span class="mi">34</span><span class="n">,</span><span class="w"> </span><span class="mi">58</span><span class="n">,</span><span class="w"> </span><span class="mi">52</span><span class="n">,</span><span class="w"> </span><span class="mi">50</span><span class="n">,</span><span class="w"> </span><span class="mi">125</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">byte-array</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">String.</span><span class="w"> </span><span class="s">"UTF-8"</span><span class="p">))</span><span class="w">
+
+</span><span class="s">"{\"foo\":42}"</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="default-oids">Default OIDs</h4>
+
+<p>When no OID is passed, it’s nil. Thus, you must specify one more method for the
+<code class="language-plaintext highlighter-rouge">[Type, nil]</code> pair. This method is used when the <code class="language-plaintext highlighter-rouge">encode</code> function is called
+with only one argument.</p>
+
+<p>To keep the code short, there is a shortcut <code class="language-plaintext highlighter-rouge">set-default</code> in <code class="language-plaintext highlighter-rouge">pg.encode.bin</code>
+that takes a type, an OID and clones the method declared for this pair into the
+<code class="language-plaintext highlighter-rouge">[Type nil]</code> pair. The corresponding <code class="language-plaintext highlighter-rouge">[Type OID]</code> method should be declared in
+advance or you’ll get an exception.</p>
+
+<p>Here is an example for the Integer type. It has tree pairs for int8, int4 and
+int2, and the int4 case is set as default.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defmethod</span><span class="w"> </span><span class="n">-encode</span><span class="w"> </span><span class="p">[</span><span class="n">Integer</span><span class="w"> </span><span class="n">oid/int8</span><span class="p">]</span><span class="w">
+  </span><span class="p">[</span><span class="n">value</span><span class="w"> </span><span class="n">oid</span><span class="w"> </span><span class="n">opt</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">-encode</span><span class="w"> </span><span class="p">(</span><span class="nb">long</span><span class="w"> </span><span class="n">value</span><span class="p">)</span><span class="w"> </span><span class="n">oid</span><span class="w"> </span><span class="n">opt</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defmethod</span><span class="w"> </span><span class="n">-encode</span><span class="w"> </span><span class="p">[</span><span class="n">Integer</span><span class="w"> </span><span class="n">oid/int4</span><span class="p">]</span><span class="w">
+  </span><span class="p">[</span><span class="n">value</span><span class="w"> </span><span class="n">oid</span><span class="w"> </span><span class="n">opt</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">array/arr32</span><span class="w"> </span><span class="n">value</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defmethod</span><span class="w"> </span><span class="n">-encode</span><span class="w"> </span><span class="p">[</span><span class="n">Integer</span><span class="w"> </span><span class="n">oid/int2</span><span class="p">]</span><span class="w">
+  </span><span class="p">[</span><span class="n">value</span><span class="w"> </span><span class="n">oid</span><span class="w"> </span><span class="n">opt</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">-encode</span><span class="w"> </span><span class="p">(</span><span class="nb">short</span><span class="w"> </span><span class="n">value</span><span class="p">)</span><span class="w"> </span><span class="n">oid</span><span class="w"> </span><span class="n">opt</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">set-default</span><span class="w"> </span><span class="n">Integer</span><span class="w"> </span><span class="n">oid/int4</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="pg-joda-time">pg-joda-time</h3>
+
+<p>Extends the encoding protocols with <a href="https://www.joda.org/joda-time/">Joda Time</a> types.</p>
+
+<h4 id="installation-2">Installation</h4>
+
+<p>Leiningen/Boot:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-joda-time</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Clojure CLI/deps.edn:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">com.github.igrishaev/pg-joda-time</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="usage-2">Usage</h4>
+
+<p>Import the <code class="language-plaintext highlighter-rouge">pg.joda-time</code> namespace to extend the <code class="language-plaintext highlighter-rouge">-encode</code> protocol mentioned
+above.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">encode</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">org.joda.time.DateTime</span><span class="p">))</span><span class="w">
+</span><span class="p">[</span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="mi">-99</span><span class="n">,</span><span class="w"> </span><span class="mi">-79</span><span class="n">,</span><span class="w"> </span><span class="mi">88</span><span class="n">,</span><span class="w"> </span><span class="mi">15</span><span class="n">,</span><span class="w"> </span><span class="mi">48</span><span class="n">,</span><span class="w"> </span><span class="mi">-128</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="table-of-types-and-oids">Table of Types and OIDs</h4>
+
+<table>
+  <thead>
+    <tr>
+      <th>Clojure</th>
+      <th>Postgres</th>
+      <th>Default</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>o.j.t.LocalDate</td>
+      <td>date</td>
+      <td>date</td>
+    </tr>
+    <tr>
+      <td>o.j.t.LocalTime</td>
+      <td>time</td>
+      <td>time</td>
+    </tr>
+    <tr>
+      <td>o.j.t.DateTime</td>
+      <td>timestamp</td>
+      <td>timestamp</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 id="pg-copy">pg-copy</h3>
+
+<p>A module to prepare an InputStream to be <code class="language-plaintext highlighter-rouge">COPY</code>ied into the database. Uses the
+binary format and thus is a bit faster than CSV.</p>
+
+<h4 id="installation-3">Installation</h4>
+
+<p>Leiningen/Boot:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-copy</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Clojure CLI/deps.edn:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">com.github.igrishaev/pg-copy</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="usage-3">Usage</h4>
+
+<p>The <code class="language-plaintext highlighter-rouge">pg.copy</code> namespace provides a set of functions related to the <code class="language-plaintext highlighter-rouge">COPY</code>
+Postgres operator.</p>
+
+<p>The main <code class="language-plaintext highlighter-rouge">data-&gt;input-stream</code> function takes data and returns an input stream
+that is passed to <code class="language-plaintext highlighter-rouge">CopyManager</code>. The data must be a sequence of sequences each
+of the same size. The stream contains a binary payload that Postgres knows how
+to parse. Assuming you have a table with <code class="language-plaintext highlighter-rouge">bigint</code>, <code class="language-plaintext highlighter-rouge">text</code> and <code class="language-plaintext highlighter-rouge">bool</code> fields,
+here is how building an input stream looks like:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">data</span><span class="w">
+  </span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="s">"User 1"</span><span class="w"> </span><span class="n">true</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="s">"User 2"</span><span class="w"> </span><span class="n">false</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="s">"User 3"</span><span class="w"> </span><span class="n">nil</span><span class="p">]])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">input</span><span class="w">
+  </span><span class="p">(</span><span class="nf">data-&gt;input-stream</span><span class="w"> </span><span class="n">data</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">sql-copy</span><span class="w">
+  </span><span class="s">"COPY users(id, name, active) FROM STDIN WITH BINARY"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">copy-mgr</span><span class="w">
+  </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">CopyManager</span><span class="w"> </span><span class="n">&lt;tcp-conn&gt;</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">.copyIn</span><span class="w"> </span><span class="n">copy-mgr</span><span class="w"> </span><span class="n">sql-copy</span><span class="w"> </span><span class="n">input</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If the data matches the table, you can skip the columns in the COPY expression
+ans type just <code class="language-plaintext highlighter-rouge">COPY users FROM</code>. But they are mandatory when you insert a
+partial subset of columns in another order:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">data</span><span class="w">
+  </span><span class="p">[[</span><span class="s">"User 1"</span><span class="w"> </span><span class="mi">1</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="s">"User 2"</span><span class="w"> </span><span class="mi">2</span><span class="p">]])</span><span class="w">
+
+</span><span class="n">...</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">sql-copy</span><span class="w">
+  </span><span class="s">"COPY users(name, id) FROM STDIN WITH BINARY"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="oid-hints">OID hints</h4>
+
+<p>Imagine you have a column of <code class="language-plaintext highlighter-rouge">integer</code> in a table. This type consists from 4
+bytes whereas the standard Long type in Java consists from 8 bytes. If you
+encode a Long value and COPY it into Postgres, it will argue on the payload
+saying it’s incorrect.</p>
+
+<p>To solve the problem, either you coerce a Long value to Integer or, which is
+better and simpler, specify that the Long column must be encoded as
+Integer. This is know as OID hints.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">data-&gt;input-stream</code> function accepts a map of options. The <code class="language-plaintext highlighter-rouge">:oids</code> field
+might be either a vector or a map of Postgres OIDs:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">oids</span><span class="w"> </span><span class="p">[</span><span class="n">oid/int4</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">data</span><span class="w">
+  </span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="s">"User 1"</span><span class="w"> </span><span class="n">true</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="s">"User 2"</span><span class="w"> </span><span class="n">false</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="s">"User 3"</span><span class="w"> </span><span class="n">nil</span><span class="p">]])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">input</span><span class="w">
+  </span><span class="p">(</span><span class="nf">data-&gt;input-stream</span><span class="w"> </span><span class="n">data</span><span class="w"> </span><span class="p">{</span><span class="no">:oids</span><span class="w"> </span><span class="n">oids</span><span class="p">}))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, we specify that the first column (Long values 1, 2, 3) must be encoded as
+4-byte integers.</p>
+
+<p>It’s not necessary to specify OIDs for all columns. Internally, the vector is
+passed into the <code class="language-plaintext highlighter-rouge">(get oids i)</code> form where the <code class="language-plaintext highlighter-rouge">i</code> is an index of a column. A nil
+OID stands for the default encoding rule.</p>
+
+<p>Another example where you specify the type the third column:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">oids</span><span class="w"> </span><span class="p">[</span><span class="n">nil</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="n">oid/int4</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">data</span><span class="w">
+  </span><span class="p">[[</span><span class="s">"User 1"</span><span class="w"> </span><span class="n">true</span><span class="w">  </span><span class="mi">1</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="s">"User 2"</span><span class="w"> </span><span class="n">false</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="s">"User 3"</span><span class="w"> </span><span class="n">nil</span><span class="w">   </span><span class="mi">3</span><span class="p">]])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>You can also use a map of index → OID where the index starts from zero:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">oids</span><span class="w"> </span><span class="p">{</span><span class="mi">2</span><span class="w"> </span><span class="n">oid/int4</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">data</span><span class="w">
+  </span><span class="p">[[</span><span class="s">"User 1"</span><span class="w"> </span><span class="n">true</span><span class="w">  </span><span class="mi">1</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="s">"User 2"</span><span class="w"> </span><span class="n">false</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="s">"User 3"</span><span class="w"> </span><span class="n">nil</span><span class="w">   </span><span class="mi">3</span><span class="p">]])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Finally, OID hints might carry not integer OIDs but their names as well, for
+example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">nil</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="s">"int4"</span><span class="p">]</span><span class="w">
+
+</span><span class="p">{</span><span class="mi">2</span><span class="w"> </span><span class="s">"int4"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>See the <code class="language-plaintext highlighter-rouge">pg.oid</code> for their names and values.</p>
+
+<h4 id="hints-in-metadata">Hints in metadata</h4>
+
+<p>When the <code class="language-plaintext highlighter-rouge">:oids</code> field is not passed, the library makes an attempt to fetch the
+hints from the metadata of a matrix. Their field is <code class="language-plaintext highlighter-rouge">:pg/oids</code>. There is a
+function <code class="language-plaintext highlighter-rouge">with-oids</code> that supplies a matrix with the type hints as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">data</span><span class="w">
+  </span><span class="p">(</span><span class="nf">with-oids</span><span class="w">
+    </span><span class="p">[[</span><span class="s">"User 1"</span><span class="w"> </span><span class="n">true</span><span class="w">  </span><span class="mi">1</span><span class="p">]</span><span class="w">
+     </span><span class="p">[</span><span class="s">"User 2"</span><span class="w"> </span><span class="n">false</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+     </span><span class="p">[</span><span class="s">"User 3"</span><span class="w"> </span><span class="n">nil</span><span class="w">   </span><span class="mi">3</span><span class="p">]]</span><span class="w">
+    </span><span class="p">{</span><span class="mi">2</span><span class="w"> </span><span class="n">oid/int4</span><span class="p">}))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Then you passed the data into the <code class="language-plaintext highlighter-rouge">data-&gt;input-stream</code> function without the
+<code class="language-plaintext highlighter-rouge">:oids</code> option.</p>
+
+<h4 id="working-with-maps">Working with maps</h4>
+
+<p>The code shown above works with matrices although most often we deal with
+maps. The former might be transformed to the latter with a helper function
+called <code class="language-plaintext highlighter-rouge">maps-&gt;data</code>. It takes a seq of maps, the keys to select, and,
+optionally, a map of key =&gt; OID for encoding.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">rows</span><span class="w">
+  </span><span class="p">[{</span><span class="no">:name</span><span class="w"> </span><span class="s">"User 1"</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="p">}</span><span class="w">
+   </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"User 2"</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">false</span><span class="p">}</span><span class="w">
+   </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"User 3"</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">nil</span><span class="p">}])</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">maps-&gt;data</span><span class="w"> </span><span class="n">rows</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="p">])</span><span class="w">
+
+</span><span class="p">([</span><span class="mi">1</span><span class="w"> </span><span class="s">"User 1"</span><span class="p">]</span><span class="w">
+ </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="s">"User 2"</span><span class="p">]</span><span class="w">
+ </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="s">"User 3"</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>An example with the third argument produces the same result but with an
+additional field in its metadata:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">maps-&gt;data</span><span class="w"> </span><span class="n">rows</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="s">"int4"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">meta</span><span class="w"> </span><span class="n">*1</span><span class="p">)</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:pg/oids</span><span class="w"> </span><span class="p">[</span><span class="s">"int4"</span><span class="w"> </span><span class="n">nil</span><span class="p">]}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Since the matrix is already charged with OID hints, there is no need to pass
+them into the <code class="language-plaintext highlighter-rouge">:oids</code> option.</p>
+
+<h4 id="other-functions">Other functions</h4>
+
+<p><code class="language-plaintext highlighter-rouge">data-&gt;bytes</code> acts the same but dumps the payload into a byte array:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">data-&gt;bytes</span><span class="w"> </span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="s">"User 1"</span><span class="w"> </span><span class="n">true</span><span class="p">]])</span><span class="w">
+
+</span><span class="p">[</span><span class="mi">80</span><span class="n">,</span><span class="w"> </span><span class="mi">71</span><span class="n">,</span><span class="w"> </span><span class="mi">67</span><span class="n">,</span><span class="w"> </span><span class="mi">79</span><span class="n">,</span><span class="w"> </span><span class="mi">80</span><span class="n">,</span><span class="w"> </span><span class="mi">89</span><span class="n">,</span><span class="w"> </span><span class="mi">10</span><span class="n">,</span><span class="w"> </span><span class="mi">-1</span><span class="n">,</span><span class="w"> </span><span class="mi">13</span><span class="n">,</span><span class="w"> </span><span class="mi">10</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">3</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w">
+ </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">8</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">6</span><span class="n">,</span><span class="w"> </span><span class="mi">85</span><span class="n">,</span><span class="w"> </span><span class="mi">115</span><span class="n">,</span><span class="w"> </span><span class="mi">101</span><span class="n">,</span><span class="w"> </span><span class="mi">114</span><span class="n">,</span><span class="w"> </span><span class="mi">32</span><span class="n">,</span><span class="w"> </span><span class="mi">49</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w">
+ </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="mi">-1</span><span class="n">,</span><span class="w"> </span><span class="mi">-1</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">data-&gt;file</code> saves the binary payload into a file:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">data-&gt;file</span><span class="w"> </span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="s">"User 1"</span><span class="w"> </span><span class="n">true</span><span class="p">]]</span><span class="w"> </span><span class="s">"out.bin"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;</span> <span class="nb">od</span> <span class="nt">-c</span> out.bin
+
+0000000    P   G   C   O   P   Y  <span class="se">\n</span> 377  <span class="se">\r</span>  <span class="se">\n</span>  <span class="se">\0</span>  <span class="se">\0</span>  <span class="se">\0</span>  <span class="se">\0</span>  <span class="se">\0</span>  <span class="se">\0</span>
+0000020   <span class="se">\0</span>  <span class="se">\0</span>  <span class="se">\0</span>  <span class="se">\0</span> 001  <span class="se">\0</span>  <span class="se">\0</span>  <span class="se">\0</span> 001 001  <span class="se">\0</span> 001  <span class="se">\0</span>  <span class="se">\0</span>  <span class="se">\0</span> 001
+0000040   <span class="se">\0</span>  <span class="se">\0</span> 001 377 377 377 377 377 377
+</code></pre></div></div>
+
+<p>A more general function <code class="language-plaintext highlighter-rouge">data-&gt;input-stream</code> redirects the payload into an
+instance of an <code class="language-plaintext highlighter-rouge">OutputStream</code>.</p>
+
+<p>All the functions accept an additional map of options with the <code class="language-plaintext highlighter-rouge">:oids</code> field.</p>
+
+<h3 id="pg-copy-jdbc">pg-copy-jdbc</h3>
+
+<p>A wrapper on top of <code class="language-plaintext highlighter-rouge">pg-copy</code> that performs the <code class="language-plaintext highlighter-rouge">COPY</code> command using the
+Postgres driver. Depends on <code class="language-plaintext highlighter-rouge">[org.postgresql/postgresql "42.2.18"]</code>.</p>
+
+<h4 id="installation-4">Installation</h4>
+
+<p>Leiningen/Boot:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-copy-jdbc</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Clojure CLI/deps.edn:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">com.github.igrishaev/pg-copy-jdbc</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="usage-4">Usage</h4>
+
+<p>The <code class="language-plaintext highlighter-rouge">pg.copy.jdbc</code> namespace carries a function <code class="language-plaintext highlighter-rouge">copy-in</code> that takes a
+connection, a SQL expression with COPY, the data to load and the options. The
+connection must be an instance of <code class="language-plaintext highlighter-rouge">org.postgresql.jdbc.PgConnection</code> but not a
+Clojure map. You can easily get that connection using <code class="language-plaintext highlighter-rouge">next.jdbc</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">db-spec</span><span class="p">)]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The function returns a number of records have been loaded:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">sql-copy</span><span class="w">
+  </span><span class="s">"COPY users (id, name) FROM STDIN WITH BINARY"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">data</span><span class="w">
+  </span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="s">"User 1"</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="s">"User 2"</span><span class="p">]])</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">copy-in</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">sql-copy</span><span class="w"> </span><span class="n">data</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; 2</span><span class="w">
+</span></code></pre></div></div>
+
+<p>All the said above about OID hints applies here as well. Say, if the <code class="language-plaintext highlighter-rouge">id</code>
+column is of the <code class="language-plaintext highlighter-rouge">integer</code> type but not <code class="language-plaintext highlighter-rouge">bigint</code>, specify the hint:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">copy-in</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">sql-copy</span><span class="w"> </span><span class="n">data</span><span class="w"> </span><span class="p">{</span><span class="no">:oids</span><span class="w"> </span><span class="p">[</span><span class="s">"int4"</span><span class="p">]})</span><span class="w">
+</span><span class="c1">;; or</span><span class="w">
+</span><span class="p">(</span><span class="nf">copy-in</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">sql-copy</span><span class="w"> </span><span class="p">(</span><span class="nf">copy/with-oids</span><span class="w"> </span><span class="n">data</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="w"> </span><span class="n">oid/int4</span><span class="p">}))</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="parallel-copy">Parallel COPY</h4>
+
+<p>The <code class="language-plaintext highlighter-rouge">copy-in</code> function loads the data in one thread which is usually OK. Often
+though you have millions of rows to load which is time consuming. Splitting the
+rows on chunks and loading them in parallel using separate connections might
+save your time.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">copy-in-parallel</code> function does it for you. It accepts a <code class="language-plaintext highlighter-rouge">DataSource</code>
+instance, a SQL expression, the data, the number of threads and the chunk
+size. Under the hood, it creates a new <code class="language-plaintext highlighter-rouge">FixedThreadPool</code> of the <code class="language-plaintext highlighter-rouge">threads</code>
+size. For each data chunk, it spawns a new connection that loads that chunk.</p>
+
+<p>The datasource object can be obtained with <code class="language-plaintext highlighter-rouge">next.jdbc</code> as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">ds</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-datasource</span><span class="w"> </span><span class="n">db-spec</span><span class="p">)]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Here we COPY the user rows in parallel in 4 threads (and simultaneous
+connections) by 10K rows in each:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">sql-copy</span><span class="w">
+  </span><span class="s">"COPY users (id, name) FROM STDIN WITH BINARY"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">data</span><span class="w">
+  </span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="s">"User 1"</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="s">"User 2"</span><span class="p">]</span><span class="w">
+   </span><span class="n">...</span><span class="w"> </span><span class="c1">;; 10M or so</span><span class="w">
+   </span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">copy-in-parallel</span><span class="w">
+ </span><span class="n">ds</span><span class="w">
+ </span><span class="n">sql-copy</span><span class="w">
+ </span><span class="n">data</span><span class="w">
+ </span><span class="mi">4</span><span class="w">
+ </span><span class="mi">10000</span><span class="w">
+ </span><span class="p">{</span><span class="no">:oids</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="w"> </span><span class="n">oid/int4</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">oid/text</span><span class="w"> </span><span class="mi">2</span><span class="p">}})</span><span class="w">
+
+</span><span class="c1">;; 10M</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The function returns the total numbers of rows copied summing the intermediate
+results.</p>
+
+<h4 id="measurements">Measurements</h4>
+
+<p>Let’s compare timings. The data was collected on Apple M1 Max 32Gb with 10 Cores.</p>
+
+<h5 id="plain-copy">Plain COPY</h5>
+
+<table>
+  <thead>
+    <tr>
+      <th>Total</th>
+      <th>Format</th>
+      <th>Time, sec</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10M</td>
+      <td>binary</td>
+      <td>17.4</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>CSV</td>
+      <td>51.2</td>
+    </tr>
+  </tbody>
+</table>
+
+<h5 id="parallel-copy-1">Parallel COPY</h5>
+
+<p>Binary:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Total</th>
+      <th>Threads</th>
+      <th>Chunk</th>
+      <th>Format</th>
+      <th>Time, sec</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10M</td>
+      <td>8</td>
+      <td>10k</td>
+      <td>binary</td>
+      <td>11.3</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>4</td>
+      <td>10k</td>
+      <td>binary</td>
+      <td>13.7</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>1</td>
+      <td>10k</td>
+      <td>binary</td>
+      <td>28.6</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>CSV:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Total</th>
+      <th>Threads</th>
+      <th>Chunk</th>
+      <th>Format</th>
+      <th>Time, sec</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10M</td>
+      <td>8</td>
+      <td>10k</td>
+      <td>CSV</td>
+      <td>10.6</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>4</td>
+      <td>10k</td>
+      <td>CSV</td>
+      <td>19.9</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>1</td>
+      <td>10k</td>
+      <td>CSV</td>
+      <td>71.7</td>
+    </tr>
+  </tbody>
+</table>
+
+<h5 id="summary">Summary</h5>
+
+<p>These tables prove the following rules:</p>
+
+<ol>
+  <li>
+    <p>The more threads you allocate for COPY, the faster it goes. But it’s not
+linear: doubling the threads from 4 to 8 doesn’t cuts the time twice.</p>
+  </li>
+  <li>
+    <p>With a lots of threads, the difference between binary and CSV not
+significant. But it <strong>is</strong> when you have only one thread: on 10M rows, the
+binary format beats CSV by 2.5 times.</p>
+  </li>
+</ol>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/en/pg-lib/">
+    <input required name="captcha" type="hidden" value="3 &#215; 6">
+
+    <div class="block">
+        <span class="comment-form-label"><small>3 &#215; 6 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
