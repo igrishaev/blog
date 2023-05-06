@@ -452,7 +452,7 @@ Passing vast anonymous functions into `map` makes the code unreadable:
            (do-that this))
          (let [foo 1
                bar 2]
-           (therwise this ...)))) entities)
+           (otherwise this ...)))) entities)
 ~~~
 
 This is taken from a real project I've worked on. I always hang when facing such code. The first thing I usually do is take the function out from the map either on top of the module or at least into the preceding `let` clause. Then, pass the function as a variable:
