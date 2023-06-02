@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Логи SQL (2)</title>
+  <meta name="description" content="В последнее время я много занимаюсь SQL, поэтому вот еще пара приемов.">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/sql-logs-2/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img src="/assets/static/photo-round-small.png" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Логи SQL (2)</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-06-02T00:00:00+00:00">
+        Jun 2, 2023
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/postgresql/" rel="tag">postgresql</a>, <a href="/tag/logs/" rel="tag">logs</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>В последнее время я много занимаюсь SQL, поэтому вот еще пара приемов.</p>
+
+<p>Настройка <code class="language-plaintext highlighter-rouge">log_duration = on</code> добавляет в лог длительность каждого запроса. Удобно, потому что избавляет от мусорного кода, который перед каждым запросом запоминает текущее время, выполняет его, находит новое время и печатает разницу в консоль. Postgres берет все это на себя:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>statement: create table table8855 (id integer)
+duration: 11.607 ms
+statement: BEGIN
+duration: 0.046 ms
+statement: insert into table8855 values (1), (2)
+duration: 0.368 ms
+statement: ROLLBACK
+duration: 0.052 ms
+statement: select * from table8855
+duration: 0.414 ms
+</code></pre></div></div>
+
+<p>Вторая настройка <code class="language-plaintext highlighter-rouge">log_line_prefix</code> отвечает за информацию, которая показана в логе перед запросом. По умолчанию это время с точностью до миллисекунд и номер процесса:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>2023-06-02 14:45:52.395 MSK [57002] LOG:  statement: BEGIN
+</code></pre></div></div>
+
+<p>Я предпочитаю вот что:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">log_line_prefix</span><span class="w"> </span><span class="nb">=</span><span class="w"> </span><span class="ss">'%t</span><span class="w"> </span><span class="p">[</span><span class="n">%v</span><span class="p">]</span><span class="o">'</span><span class="w">
+</span></code></pre></div></div>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">%t</code> выводит время без миллисекунд, что короче;</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">%v</code> означает виртуальный номер транзакции. Виртуальный потому, что до ее завершения система не знает, какой номер будет в итоге. Поэтому выводится пара <code class="language-plaintext highlighter-rouge">[tmin/tmax]</code> — диапазон транзакций, доступный запросу в текущий момент.</p>
+  </li>
+</ul>
+
+<p>Зачем это нужно? Бывают баги, когда разработчик ошибается с транзакциями, например открывает ее, но шлет запросы через старое соединение. Если что-то упадет в процессе, изменения будут частичными, что выливается проблемы на проде.</p>
+
+<p>С логами ниже легко понять, кто на ком стоял. Запросы с меткой <code class="language-plaintext highlighter-rouge">[3/5]</code> относятся к одной транзакции, а <code class="language-plaintext highlighter-rouge">[4/2]</code> — к другой.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[3/4]LOG: create table table8856 (id integer)
+[3/5]LOG: BEGIN
+[3/5]LOG: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE
+[3/5]LOG: insert into table8856 values (1), (2)
+[3/5]LOG: select * from table8856
+[4/2]LOG: select * from table8856
+[3/5]LOG: COMMIT
+</code></pre></div></div>
+
+<p>Заодно можно посчитать, сколько было транзакций, насколько они пересекаются и, возможно, разнести их по времени.</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/sql-logs-2/">
+    <input required name="captcha" type="hidden" value="6 &#215; 7">
+
+    <div class="block">
+        <span class="comment-form-label"><small>6 &#215; 7 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
