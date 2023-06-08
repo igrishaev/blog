@@ -100,6 +100,106 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/files2/">Возня с файлами (2)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-01-06T00:00:00+00:00">
+        Jan 6, 2023
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/files/" rel="tag">files</a>, <a href="/tag/s3/" rel="tag">s3</a>, <a href="/tag/yandex/" rel="tag">yandex</a>, <a href="/tag/amazon/" rel="tag">amazon</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Это продолжение <a href="/files/">прошлого поста</a> на тему синхронизации файлов. Небольшое дополнение и руководство как все настроить.</p>
+
+<p>Одно время я бекапил файлы в S3 при помощи <a href="https://aws.amazon.com/cli/">aws cli</a> — утилиты на питоне. Она работает просто: указываешь источник и приемник, и файлы переливаются из первого во второе. Источником и приемником могут быть локальная папка или бакет S3. В случае с S3 клиент посылает HEAD-запросы, чтобы сберечь трафик.</p>
+
+<p>Схема хороша тем, что протокол S3 поддерживает масса сторонних сервисов, например Яндекс.Облако, Digital Ocean, Exoscale (где автор имел честь работать) и другие. Если что-то пойдет не так, переезд сводится к изменению урла в настройках.</p>
+
+<p>Для айфона нашлось приложение <a href="https://apps.apple.com/us/app/aws-s3-manager/id1352683230">S3 Manager</a>, написанное на коленке одним добрым человеком. Показывает файлы из облака, умеет сохранять локально. Спартанское, немного топорное, но в этом и прелесть. Работает с Яндексом, проверял лично.</p>
+
+<p>Недостаток aws cli в том, что это односторонняя синхронизация. Сюда же относятся утилиты вроде rsync и аналоги. Их объединяет то, что одна из сторон считается верной, а другая подстраивается под первую. Например, если синхронизировать папки A и B, то файлы из А окажутся в В. Однако если в B были новые файлы, то в лучшем случае они игнорируются, а в худшем удаляются. Двойной синк по принципу сначала из А в В, а потом наоборот, эту проблему не решает.</p>
+
+<p>Забегая вперед, скажу, что в итоге поставил Syncthing, который пробовал еще год назад. Однако в процессе экспериментов узнал о замечательной программе <a href="https://www.cis.upenn.edu/~bcpierce/unison/">Unison</a>, и теперь коротко ее опишу.</p>
+
+<p>Это консольная утилита, написанная на OCaml. Работает на каждом утюге, включая Солярис. Синхронизирует два пути с учетом слияния файлов. Для этого программа ведет свой реестр и по нему сверяеся, что делать с файлами.</p>
+
+<p>Путь может быть удаленным (на другом машине). В этом случае операции с файлами протекают по SSH. У программы два режима: интерактивный (ручной) и автоматический. В первом случае, если встретится конфликт, программа запрашивает действие. Понравился богатый выбор, в том числе разрешение конфликтов при помощи сторонних утилит (<code class="language-plaintext highlighter-rouge">kdiff</code>, <code class="language-plaintext highlighter-rouge">meld</code>), что очень удобно.</p>
+
+<p>В автоматическом режиме (для скриптов и crontab) интерактивного ввода нет, все разруливается флагами.</p>
+
+<p>Unison оставил прятное впечатление. Видно, что программе много лет: огромное число функций, подробная докуметация. Но смутило, что Unison не работает в режиме демона и нуждается в регулярном запуске по крону. Плюс не очень подходит к Винде из-за SSH — как там его настроить даже не представляю.</p>
+
+<p>Закончил эсперименты тем, что поставил на удаленной машине Syncthing и работаю через него. Полагаю, о Syncthing знают все, поэтому нет смысла расписывать его возможности. Ниже — инструкция о том, как сделать все максимально быстро.</p>
+
+<p>Итак, понадобится VPS с большим диском. Путем гугления я вышел на AlphaVPS, где за три евро в месяц можно взять машину с диском на 256 гигабайт (а за три с половиной — на 512). Диски, ясное дело, не SSD, но в моем случае это не важно.</p>
+
+<p><img src="/assets/static/aws/files2/1.jpeg" /></p>
+
+<p>Заказываем машину с Ubuntu 22, заходим под рутом. Создаем пользователя:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>useradd <span class="nt">-s</span> /bin/bash <span class="nt">-d</span> /home/ivan/ <span class="nt">-m</span> <span class="nt">-G</span> <span class="nb">sudo </span>ivan
+passwd ivan
+</code></pre></div></div>
+
+<p>Перекидываем SSH-ключ:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh-copy-id <span class="nt">-i</span> ~/.ssh/ivan.pub ivan@123.123.123.123
+</code></pre></div></div>
+
+<p>В <code class="language-plaintext highlighter-rouge">~/.ssh/config</code> прописываем алиас</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Host alpha
+    HostName 123.123.123.123
+    IdentityFile ~/.ssh/ivan
+    User ivan
+</code></pre></div></div>
+
+<p>Далее заходим по <code class="language-plaintext highlighter-rouge">ssh alpha</code> и вводим команды:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">echo</span> <span class="s2">"deb https://apt.syncthing.net/ syncthing stable"</span> | <span class="nb">sudo tee</span> /etc/apt/sources.list.d/syncthing.list
+curl <span class="nt">-s</span> https://syncthing.net/release-key.txt | <span class="nb">sudo </span>apt-key add -
+<span class="nb">sudo </span>apt update
+<span class="nb">sudo </span>apt <span class="nb">install </span>syncthing
+</code></pre></div></div>
+
+<p>Чтобы Syncthing запускался в автозагрузке, добавим его в systemctl:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>systemctl <span class="nb">enable </span>syncthing@ivan.service
+</code></pre></div></div>
+
+<p>Остается включить:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>systemctl start syncthing@ivan.service
+</code></pre></div></div>
+
+<p>Syncthing настраивается через веб-интерфейс, однако он доступен только с локального хоста. Поднимаем SSH-тоннель:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssh <span class="nt">-N</span> <span class="nt">-L</span> 18384:localhost:8384 alpha
+</code></pre></div></div>
+
+<p>Теперь откройте браузер на странице localhost:18384 — появится интерфейс Syncthing на удаленной машине. Ну а дальше вы сами знаете: создаете папки, связываете машины друг с другом и так далее.</p>
+
+<p>На текущий момент у меня VPS за три евро и три компа: два мака и винда. Вроде бы работает, файлы подхватываются. К сожалению, Syncthing не так гибок в плане текстовых файлов, как Unison: умеет только брать файл А или В, а про слияние сторонней тулзой ничего не знает. Однако для текстовых файлов есть git.</p>
+
+<p>В общем, ничего нового в плане синхронизации файлов я не открыл. Это скорее инструкция для тех, кто не хочет париться с терминалом, гуглением команд и прочей болью.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/no-update/">Обновления</a>
             </h2>
 
@@ -599,63 +699,13 @@
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/lndir/">Коротко об lndir</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-10-07T00:00:00+00:00">
-        Oct 7, 2022
-    </time>
-
-    <a href="/tag/lndir/" rel="tag">lndir</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/symlink/" rel="tag">symlink</a>, <a href="/tag/make/" rel="tag">make</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Небольшая заметка о утилите, которая требуется редко, но метко – <code class="language-plaintext highlighter-rouge">lndir</code>.</p>
-
-<p>Когда у меня стало больше одного Мака, появилась проблема синхронизации настроек. Другими словами, чтобы всякие <code class="language-plaintext highlighter-rouge">.thisrc</code> и <code class="language-plaintext highlighter-rouge">.thatrc</code> были одинаковы и подхватывались при изменении. Сюда входит конфиг Emacs, ssh, словари aspell, профили AWS, конфиги ctags, zshell и многое другое.</p>
-
-<p>Легче всего держать dot-файлы в репозитории и ставить симлинки. Неожиданно я столкнулся с тем, что не так легко написать shell-скрипт, который бы поставил симлинки на файлы из папки. Пытался при помощи <code class="language-plaintext highlighter-rouge">find ... -execute</code> и <code class="language-plaintext highlighter-rouge">xargs</code>, но постоянно что-то мешало. То отсутствие файла, то его существование, словом, всякие досадные случаи. В итоге было две команды: сначала одна удаляет симлинки, а вторая создает их заново.</p>
-
-<p>Оказалось, что <code class="language-plaintext highlighter-rouge">lndir</code> делает именно то, что я искал. Они принимает две папки и строит дерево симлинков из первой во вторую. При этом учитывает случаи, что я перечислил, например если симлинк уже есть. Благодаря этому дерево можно обновлять итеративно.</p>
-
-<p>Пример: в каталоге <code class="language-plaintext highlighter-rouge">~/work/System/Dotfiles</code> хранятся оригинальные файлы Emacs, <code class="language-plaintext highlighter-rouge">.ssh</code> и прочие. Следующая команда make расставит симлинки в домашнюю папку:</p>
-
-<div class="language-make highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">HOME</span> <span class="o">=</span> /Users/ivan
-<span class="nv">PWD</span> <span class="o">=</span> <span class="nf">$(</span><span class="nb">shell</span> <span class="nb">pwd</span><span class="nf">)</span>
-
-<span class="nl">create-symlinks</span><span class="o">:</span>
-	lndir <span class="nv">${PWD}</span>/Dotfiles <span class="nv">${HOME}</span>
-	<span class="nb">chmod </span>600 <span class="nv">${HOME}</span>/.ssh/<span class="k">*</span>
-</code></pre></div></div>
-
-<p>Для файлов ssh необходимо выставить права 600, иначе утилита ругается.</p>
-
-<p>Синхронизация происходит обычным способом через git. Как только вы поменяли один из файлов, делаете коммит и пуш. На другой машине пулл и <code class="language-plaintext highlighter-rouge">make create-symlinks</code>, и все подхватывается. Репозиторий, понятно, должен быть приватным.</p>
-
-<p>По умолчанию <code class="language-plaintext highlighter-rouge">lndir</code> нет в поставке Линукса и Мака. Ставится из привычных <code class="language-plaintext highlighter-rouge">apt</code> и <code class="language-plaintext highlighter-rouge">brew</code>.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page3" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 4 из 62</span>
+        <span class="page_number ">Страница 4 из 63</span>
         
         <a href="/page5" class="next">&rarr;</a>
         
