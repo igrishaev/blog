@@ -8,7 +8,7 @@ tags: clojure programming debugging
 
 This is a small tip I'd like to share with Clojure programmers.
 
-**In a project, avoid code you cannot debugg.** It's simple: if you can put a
+**In a project, avoid code you cannot debug.** It's simple: if you can put a
 tag like `#debug` or similar somewhere in the middle, run a test and hang in a
 debugging session, you're good. But if you cannot, you'll be in trouble one day.
 
