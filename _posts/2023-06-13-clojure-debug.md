@@ -45,8 +45,8 @@ address:
 ~~~
 
 which is completely fine because a user might have no address associated with
-them. By passing that map match, I expect it to return `{:name "Ivan" :city nil}`
-but no: there will be an exception:
+them. By passing that map into `m/match`, I expect it to return `{:name "Ivan"
+:city nil}` but no: there will be an exception:
 
 ~~~clojure
 (m/match
