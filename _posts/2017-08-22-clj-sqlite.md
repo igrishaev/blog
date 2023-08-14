@@ -118,7 +118,7 @@ Now with the `db` started, you are welcome to perform all the standard `jdbc`
 operations:
 
 ~~~clojure
-(jdbc/execute! db "create table users (id integer, name text))")
+(jdbc/execute! db "create table users (id integer, name text)")
 (jdbc/insert! db :users {:id 1 :name "Ivan"})
 (jdbc/get-by-id db :users 1) ;; {:id 1 :name "Ivan"}
 (jdbc/find-by-keys db :users {:name "Ivan"}) ;; ({:id 1 :name "Ivan"})
