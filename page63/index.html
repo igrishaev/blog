@@ -104,6 +104,259 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/2012/11/28/1/">Прием смс</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2012-11-28T06:30:55+00:00">
+        Nov 28, 2012
+    </time>
+
+    <a href="/tag/sms/" rel="tag">sms</a>, <a href="/tag/python/" rel="tag">python</a>, <a href="/tag/programming/" rel="tag">programming</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Рассылать смс сегодня нетрудно — регистрируемся в одном из
+многочисленных сервисах рассылок, вносим сумму и вперед. А как
+принимать смс от граждан в автоматическом режиме?</p>
+
+<p>Короткие номера не подходит, ибо они навек закрепили за собой
+репутацию лохотрона. К тому же нужно вводить префикс, а минимальная
+стоимость 4 рубля. Принимать только на короткие номера — верх свинства
+по отношению к абонентам.</p>
+
+<p>А ведь все можно сделать своими руками! Берем простой 3Г-модем,
+втыкаем в него местную симку (я взял Мегафон), подключаем к
+компьютеру, ставим драйвера. Проверяем, появился ли в системе модем.</p>
+
+<p>Качаем замечательную утилиту <a href="http://wammu.eu/gammu/">Гамму</a>, а
+конкретно — виндовые бинарники (не Minimal, а обычные). Распаковываем.</p>
+
+<p>Утилита gammu может рулить модемом программно, например, читать и
+отправлять смс, совершать звонки, делать бекапы содержимого телефона и
+массу других полезных штук. В комплекте идет <code class="language-plaintext highlighter-rouge">gammu-smsd</code> — демон для
+чтения смс в фоновом режиме. Он постоянно проверяет наличие смс,
+складывает их в базу данных и вызывает заданную команду в момент
+прихода новой смски.</p>
+
+<p>Теперь о том, как все настроить. В папке bin создаем файл <code class="language-plaintext highlighter-rouge">smsdrc</code>
+следующего содержания:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[gammu]
+device = COM6:
+connection = at
+
+[smsd]
+Service = sql
+Driver = native_mysql
+User = user
+Password = password
+PC = xxx.xxx.xxx.xxx
+Database = smsd
+PIN = 8730
+LogFile = smsd.log
+RunOnReceive = smsd_callback.bat
+</code></pre></div></div>
+
+<p>Стартуем демона:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>gammu-smsd --config smsdrc
+</code></pre></div></div>
+
+<p>Секция <code class="language-plaintext highlighter-rouge">[gammu]</code> в конфигурации отвечает за параметры соединения с
+устройством. device — номер КОМ-порта, узнать его можно в свойствах
+модема, connection — тип соединения, для 3Г-модема обычно at.</p>
+
+<p>Раздел <code class="language-plaintext highlighter-rouge">[smsd]</code> содержит параметры демона. Как видно, в качестве базы
+я использую Мускуль. Опция PIN задает пин-код симки (если защита ПИН
+не отключена). LogFile — текстовый файл логов.</p>
+
+<p>Самое интересное — <code class="language-plaintext highlighter-rouge">RunOnReceive</code>, это имя команды, скрипта или
+батника, который будет вызываться при получении смс. Параметры
+сообщения передаются в переменных окружения <code class="language-plaintext highlighter-rouge">SMS_1_NUMBER</code>,
+<code class="language-plaintext highlighter-rouge">SMS_1_TEXT</code> и др.</p>
+
+<p>В батнике у меня прописан вызов питоньего скрипта:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>start pythonw path\to\smsd_callback.py
+</code></pre></div></div>
+
+<p>Почему бы сразу не вызвать скрипт? Потому, что вызов осуществляется в
+том же потоке, что и чтение смс, поэтому пока не завершится процесс
+команды, чтение будет приостановлено. А в данном случае батник
+вызывает скрипт и сразу закрывается.</p>
+
+<p>Фрагмент кода на питоне:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>number = os.environ["SMS_1_NUMBER"]
+message = os.environ["SMS_1_TEXT"]
+
+msg_pattern = r"\d+"
+account, value = re.findall(msg_pattern, message)[:2]
+
+statement = Statement(account=account, value=value)
+statement.save()
+
+answer = u"Принято. Абонент %s, показание %s" % (account, value)
+
+send_sms(answer, number)
+</code></pre></div></div>
+
+<p>Получаем номер и сообщение, находим в нем пару чисел — лицевой счет и
+показание прибора. Сохраняем в базу и отвечаем абоненту, что все в
+порядке.</p>
+
+<h4 id="комментарии-из-старого-блога">Комментарии из старого блога</h4>
+
+<p><strong>11/04/13 Сергей:</strong> Статья интерсная, много нового узнал, пытаясь
+  запустить. Но нет ничего про структуру базы. Мануалов гаммы на
+  русском нет. Вот и как бы статья по прямому предназначению “Прием
+  смс” (профи и без статьи организует) пока не очень полезна.</p>
+
+<p><strong>11/05/13 Иван Гришаев:</strong> Структуру базы можно посмотреть в
+  .sql-файле, который лежит где-то в папке с программой.</p>
+
+<p><strong>11/07/13 Сергей:</strong> Спасибо. Теперь вот такая картина в логфайле (тут
+я баран)) поможете???  подключаю 3g модем - железка от алкател.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Thu 2013/11/07 15:09:29 gammu-smsd[2452]: Connected to Database: smsd on localhost
+Thu 2013/11/07 15:09:29 gammu-smsd[2452]: Connected to Database native_mysql: smsd on localhost
+Thu 2013/11/07 15:09:29 gammu-smsd[2452]: Created Windows RW shared memory at 003A0000
+Thu 2013/11/07 15:09:29 gammu-smsd[2452]: Starting phone communication...
+Thu 2013/11/07 15:09:40 gammu-smsd[2452]: Error at init connection: No response in specified timeout. Probably phone not connected. (TIMEOUT[14])
+Thu 2013/11/07 15:09:40 gammu-smsd[2452]: Already hit 250 errors
+Thu 2013/11/07 15:09:40 gammu-smsd[2452]: Terminating communication: No response in specified timeout. Probably phone not connected. (TIMEOUT[14])
+Thu 2013/11/07 15:09:40 gammu-smsd[2452]: Starting phone communication...
+Thu 2013/11/07 15:09:50 gammu-smsd[2452]: Error at init connection: No response in specified timeout. Probably phone not connected. (TIMEOUT[14])
+Thu 2013/11/07 15:09:50 gammu-smsd[2452]: Already hit 250 errors
+Thu 2013/11/07 15:09:50 gammu-smsd[2452]: Terminating communication: No response in specified timeout. Probably phone not connected. (TIMEOUT[14])
+Thu 2013/11/07 15:09:50 gammu-smsd[2452]: Starting phone communication...
+</code></pre></div></div>
+
+<p><strong>11/07/13 Иван Гришаев:</strong> Пишет, что нет соединения с телефоном.
+Сначала нужно указать проге, какой порт слушать. Создайте файл
+<code class="language-plaintext highlighter-rouge">Gammu\bin\gammurc</code> (без расширения), в нем пишете:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[gammu]
+device = COM6:
+connection = at
+</code></pre></div></div>
+
+<p>только вместо COM6 - ваш порт. Двоеточие на конце нужно.</p>
+
+<p><strong>11/07/13 Сергей:</strong> Я так и делал, модем откликается (в терминале) на
+  сом3,4,5 в диспетчере оборудования модем=сом5.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[gammu]
+device = COM
+</code></pre></div></div>
+
+<p>пробовал все результат почти один, 3 и 5 сукунд через 10 закрывается
+гамми, ком4 каждые 10-20 сек перепроверяет соединение с телефоном,
+пока сам не закрою.</p>
+
+<p><strong>11/07/13 Иван Гришаев:</strong> Вспомнил - для смс-демона нужен отдельный
+  конфиг! <code class="language-plaintext highlighter-rouge">Gammu\bin\smsdrc</code></p>
+
+<p>У меня он такой:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[gammu]
+device = COM5:
+connection = at
+
+[smsd]
+Service = sql
+Driver = native_mysql
+User = username
+Password = passowrd
+PC = 172.27.86.8
+Database = smsd
+
+LogFile = smsd.log
+RunOnReceive = some_bat_file.bat
+CheckSecurity = 0
+CheckBattery = 0
+</code></pre></div></div>
+
+<p><strong>11/07/13 Сергей:</strong> Не помогло добавление Check ов. Нарыл гдето
+  другой терминал, вот он АТ командами смски вытягивает. А можно както
+  на питоне опросить АТ командами com порт? Думаю так проще будет.</p>
+
+<p><strong>11/07/13 Иван Гришаев:</strong> Конечно можно, есть либа для ком-порта:
+  http://pyserial.sourceforge.net/</p>
+
+<p>Кстати, вы пробовали http://www.simplesms.ru/ ? Прога очень хорошая,
+разработчик - русский, есть документация и форум.</p>
+
+<p><strong>11/07/13 Сергей:</strong> Хороший вы (я не против и на ты) человек. С
+  библиотекой буду разбираться (инглиша не знаю), а платные вещи
+  отпадают я имено хочу разобраться и сделать - типа хобби). Можно
+  вообще не париться - 800р/мес и прикрутить их API к своему сервису,
+  я так и делал, но как то не уютно))).</p>
+
+<p><strong>11/07/13 Сергей:</strong> надо же скрипт php заработал, раньше порты были
+  14,15,16 и не работало. Попробую на php получалку сделать!</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$telnumb='904*****37';
+$sms_text='poluchilos';
+$format = "AT+CMGF=1\r\n";
+        $tel = "at+cmgs=\"+7".$telnumb."\"\r\n ";
+        $text = $sms_text.chr(26)."\r\n ";
+        $fp = fopen ("COM3:", "w");
+        flock($fp,LOCK_EX);
+        if(!$fp){
+                echo "COM-Port not opened";
+        }
+        else{
+                fwrite($fp, $format);
+                                sleep(1);
+                fwrite($fp, $tel);
+                                sleep(1);
+                fwrite($fp, $text);
+                                sleep(1);
+                flock($fp,LOCK_UN);
+                echo $format.$tel.$text;
+        }
+        $fp = fclose ($fp);
+</code></pre></div></div>
+
+<p><strong>11/07/13 Иван Гришаев:</strong> Сообщения с кириллицей нормально приходят?
+  А сообщения из нескольких частей?</p>
+
+<p><strong>11/07/13 Сергей:</strong> Нет под w1251 все усложняется, там меняется
+  алгоритм сборки, но это решаемо. Мне прием нужен, его и ковыряю. На
+  php отправить оказывается просто, а вот принять “одна темнота” пока,
+  т.что гамми, питон не закрываю.</p>
+
+<p><strong>11/07/13 Сергей:</strong> Так то все дожно быть просто. Всего то нужно в
+  порт заслать <code class="language-plaintext highlighter-rouge">"AT+CMGL=4\r\n"</code> и получить все что он отдаст. А потом
+  раскодить, распарсить. Ну нннникак.</p>
+
+<p><strong>11/08/13 Иван Гришаев:</strong> Да, кириллица хранится в
+  последовательностях UFT-16, кажется. Придется декодировать.</p>
+
+<p><strong>11/07/13 Сергей:</strong> Еще об отправке, там без подтверждения получения
+  смс абонентом и по той же причине - читать порт не получается.</p>
+
+<p><strong>11/07/13 Сергей:</strong> simplesms пробовал скачать - антивирус
+  заблокировал(((</p>
+
+<p><strong>11/08/13 Иван Гришаев:</strong> А вы разблокируйте.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/2012/11/27/1/">1С и JSON в продакшене</a>
             </h2>
 
@@ -961,95 +1214,6 @@ cp1251.</p>
 
 <p><strong>08/19/12 jedi:</strong> Согласен со всем, жалко мало написали. Сам перехожу
   на yii</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/2012/08/13/2/">Победителя определяет скорость</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2012-08-13T03:15:37+00:00">
-        Aug 13, 2012
-    </time>
-
-    <a href="/tag/python/" rel="tag">python</a>, <a href="/tag/programming/" rel="tag">programming</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><img src="/assets/static/razborki.jpg" alt="screenshot" /></p>
-
-<p>Скорость разработки — это:</p>
-
-<ol>
-  <li>один из основных критериев, определяющих профессионализм
-разработчка;</li>
-  <li>главный аргумент в выборе тех или иных средств;</li>
-  <li>решающий фактор в бизнесе как для стартапа, так и для
-транснационального гиганта.</li>
-</ol>
-
-<p>Все три тезиса могут быть оспорены в непринужденной дискуссии, но
-утверждают себя на производстве — всё всем нужно вчера. В таких
-условиях программисту следует внимательнее отнестить к методологии и
-средствам разработки.</p>
-
-<p>Для рутинных действий и автоматизации процессов хорошо подходит Питон
-— скриптовый язык с динамической типизацией. Он поддерживает множество
-парадигм, позволяет писать код так, как нужно именно вам. Например,
-если скрипт простой, вы сразу описываете рабочую логику, а не мусор
-вроде <code class="language-plaintext highlighter-rouge">public class Foo</code> и <code class="language-plaintext highlighter-rouge">public static void main()</code>.</p>
-
-<p>С Питоном вы становитесь эффективнее. Работа с почтой, разбор и
-формирование XML, смс-рассылки, перегон данных из одного формата в
-другой, обработка офисных документов, чтение и запись DBF,
-COM-автоматизация, взаимодействие с сервисам Гугла, быстрые сайты на
-Джанго, работа с устройствами по серийному порту и уйма всего другого
-— это Питон. Плюс кросплатформенность, малый размер дистрибутива,
-пакетный менеджер (даже два — pip и pypm), масса библиотек на все
-случаи жизни. Плюс скорость.</p>
-
-<p>Не бойтесь делегировать больше задач сторонним утилитам. Например, вы
-программируете сайт, и в какой-то момент требуется ужать и обрезать
-загруженное пользователем изображение. Или сгенерировать капчу. Или
-штрихкод. Или QR-код. Или Excel-книгу. Или отправить
-письмо. Стандартный подход — подключить модуль, просмотреть примеры,
-написать код. Вы потратили время, код увеличился.</p>
-
-<p><em>Быстрый подход</em> — задействовать консольную утилиту. Работа с
- изображениями — ImageMagick, генерация капчи — он же, отправка письма
- — sendmail или blat для Винды, работа с Excel — скрипт на VB Script,
- штрихкод — GNU Barcode, QR-код — Google Charts. И так далее.</p>
-
-<p>Да, есть в этом подходе и минусы — проект становится зависим от
-стороннего ПО, использование утилит порождает внешние процессы, что
-значительно медленнее, чем вызов функций.</p>
-
-<p>Однако, вы выигрываете в скорости разработки. Вы представите публике
-рабочую версию продукта быстрее, чем ваш конкурент — коллега или
-стартап. И у вас будет время на то, чтобы подключить нужные классы и
-заменить утилиты нативными API, в отличии от тех, чей прект вообще не
-вышел из тестирования.</p>
-
-<p>Не бойтесь внедрять новые технологии. Роман Ворушин
-<a href="http://vorushin.ru/blog/43-speed/">внедрил</a> Джанго-систему в банке,
-где все было написано на Джаве. Иван Сагалаев
-<a href="http://softwaremaniacs.org/blog/2008/01/20/yandex-offline/">принес Джанго в Яндекс</a>. Я,
-не являясь специалистом такого уровня, внедрил Питон и Джанго в
-организации, где был только PHP и сервера на Винде.</p>
-
-<p>Скорость очень убедительна.</p>
 
                 
             </div>
