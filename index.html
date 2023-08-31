@@ -104,6 +104,128 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/pg-docs/02/">PG docs, part 2</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-08-31T00:00:00+00:00">
+        Aug 31, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+</ul>
+
+<p>In this chapter, we’ll discuss how to reach Postgres using the Client library.</p>
+
+<ul>
+  <li><a href="#basic-usage">Basic usage</a></li>
+  <li><a href="#queries">Queries</a></li>
+  <li><a href="#execute">Execute</a></li>
+  <li><a href="#prepared-statements">Prepared Statements</a></li>
+  <li><a href="#processing-result-with-fn-result">Processing result with :fn-result</a></li>
+  <li><a href="#column-names">Column names</a></li>
+  <li><a href="#column-duplicates">Column duplicates</a></li>
+  <li><a href="#reducers-and-bundles">Reducers and bundles</a>
+    <ul>
+      <li><a href="#java">Java</a></li>
+      <li><a href="#kebab-keys">Kebab-keys</a></li>
+      <li><a href="#matrix">Matrix</a></li>
+      <li><a href="#index-by">Index by</a></li>
+      <li><a href="#group-by">Group by</a></li>
+      <li><a href="#key-value">Key-value</a></li>
+      <li><a href="#custom-reducers">Custom reducers</a></li>
+    </ul>
+  </li>
+  <li><a href="#transactions">Transactions</a>
+    <ul>
+      <li><a href="#always-rollback">Always Rollback</a></li>
+      <li><a href="#read-only">Read-only</a></li>
+      <li><a href="#isolation-level">Isolation level</a></li>
+      <li><a href="#manual-transactions-and-status-check">Manual transactions and status check</a></li>
+    </ul>
+  </li>
+  <li><a href="#configuration">Configuration</a></li>
+  <li><a href="#authorization">Authorization</a></li>
+  <li><a href="#cloning-a-connection">Cloning a connection</a></li>
+  <li><a href="#cancelling-a-query">Cancelling a query</a></li>
+  <li><a href="#notices">Notices</a></li>
+  <li><a href="#thread-safety">Thread safety</a></li>
+  <li><a href="#debugging">Debugging</a></li>
+</ul>
+
+<!-- tocstop -->
+
+<h2 id="basic-usage">Basic usage</h2>
+
+<p>Here is a brief example of using the client library:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">scratch</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg.client</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pg</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:database</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select 1 as one"</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; [{:one 1}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>First, you import the <code class="language-plaintext highlighter-rouge">pg.client</code> namespace which brings the top-level API functions to interact with Postgres. The <code class="language-plaintext highlighter-rouge">config</code> map above specifies the minimal configuration;
+it might have more fields which we will explore in a separate section.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">with-connection</code> macro establishes a new connection, binds it to the <code class="language-plaintext highlighter-rouge">conn</code>
+symbol, and executes the body. The connection is closed afterward, even if an
+exception pops up.</p>
+
+<p>Technically you can open and terminate a connection manually like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/connect</span><span class="w"> </span><span class="n">config</span><span class="p">)</span><span class="w">
+      </span><span class="n">data</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select 1 as one"</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/terminate</span><span class="w"> </span><span class="n">conn</span><span class="p">)</span><span class="w">
+  </span><span class="n">data</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; [{:one 1}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>but it’s not recommended. Also, since the <code class="language-plaintext highlighter-rouge">Connection</code> object implements
+<code class="language-plaintext highlighter-rouge">java.io.Closeable</code>, it’s possible to use it in <code class="language-plaintext highlighter-rouge">with-open</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/connect</span><span class="w"> </span><span class="n">config</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select 1 as one"</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; [{:one 1}]</span><span class="w">
+</span></code></pre></div></div>
+
+
+                    <p><a href="/en/pg-docs/02/">Read more &rarr;</a></p>
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/en/pg-docs/01/">PG docs, part 1</a>
             </h2>
 
@@ -130,7 +252,7 @@ decided to do it step by step and share it on my blog.</em></p>
 
 <ul>
   <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
-  <li>to be posted soon…</li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
 </ul>
 
 <h2 id="about">About</h2>
@@ -892,67 +1014,6 @@ Jinja2. Получается набор статичных страниц, но 
 <p>Проблема “умных” вещей в том, что они пытаются быть умнее, чем есть на самом
 деле. Нет-нет и вылезет какая-то тупизна, от которой нет слов. Только вздохнёшь
 и идёшь дальше.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/neuro-daub/">Нейромазня</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-07-01T00:00:00+00:00">
-        Jul 1, 2023
-    </time>
-
-    <a href="/tag/ai/" rel="tag">ai</a>, <a href="/tag/daub/" rel="tag">daub</a>, <a href="/tag/pictures/" rel="tag">pictures</a>, <a href="/tag/cat/" rel="tag">cat</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Что ж, мы дожили до момента, когда нейросеть по запросу рисует кота-хакера за
-компьютером. Потрачены усилия, сделан прорыв, взяты рубежи.</p>
-
-<p><img src="/assets/static/aws/daub/1.jpg" /></p>
-
-<p>Верю, что доживу до момента, когда нейросеть объяснит, зачем мне этот кот. В какой текст его вставить, к чему подавать и что им объяснить.</p>
-
-<p>Потому что сейчас не понятно: на что этот кот? Зачем? Какую мысль он несет? Ладно кот, но все эти картинки туда же: ни малейшей идеи, чем они могут быть полезны.</p>
-
-<p>Чувак пишет статью о четвертом измерении и ставит такое:</p>
-
-<p><img src="/assets/static/aws/daub/2.jpg" /></p>
-
-<p>Какой-то алмаз, в нем пузыри, блики, крошки, капли смолы, планеты.</p>
-
-<p>Другая картинка: вензеля, стекла, то ли башня, то ли корабль. Что это вообще?</p>
-
-<p><img src="/assets/static/aws/daub/3.jpg" /></p>
-
-<p>Конечно, у женщин осиная талия и шестой размер груди. И нет трусов. По улице
-только такие и ходят.</p>
-
-<p><img src="/assets/static/aws/daub/4.jpg" /></p>
-
-<p>Никто не может сказать, какой смысл несут эти картинки? Что они добавляют в текст? Что потеряет текст, если их убрать? Хорошая иллюстрация несет смысловую нагрузку, помогает понять то, что трудно описать словами. Делает акцент на особых случаях, когда что-то отличается от повседневного.</p>
-
-<p>Как вы уже поняли, ничего полезного в нейромазне нет. Это мусор, который заполняет интернет, и нет от него спасения.</p>
-
-<p>Пара ссылок про иллюстрации:</p>
-
-<ul>
-  <li><a href="https://maximilyahov.ru/blog/all/image-shit/">Почему ваша картинка к статье — говно (грубая версия)</a></li>
-  <li><a href="https://maximilyahov.ru/blog/all/illustrated-decorated/">Иллюстрация или декорация</a></li>
-</ul>
 
                 
             </div>
