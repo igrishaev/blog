@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>PG docs, part 3</title>
+  <meta name="description" content="">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/en/pg-docs/03/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">PG docs, part 3</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-09-05T00:00:00+00:00">
+        Sep 5, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    
+<p><em>(This is a new documentation chapter from the <a href="https://github.com/igrishaev/pg">PG project</a>.)</em></p>
+
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+</ul>
+
+<h1 id="connection-pool">Connection Pool</h1>
+
+<ul>
+  <li><a href="#basic-usage">Basic usage</a></li>
+  <li><a href="#with-pool--with-open">With-pool &amp; with-open</a></li>
+  <li><a href="#config">Config</a></li>
+  <li><a href="#thread-safety">Thread safety</a></li>
+  <li><a href="#pool-exhausting">Pool Exhausting</a></li>
+  <li><a href="#exception-handling">Exception handling</a></li>
+  <li><a href="#logs">Logs</a></li>
+  <li><a href="#component">Component</a></li>
+</ul>
+
+<p>To interact with a database effectively, you need a connection pool. A single
+connection is fragile on its own: you can easily lose it by an accidental lag in
+the network.</p>
+
+<p>Another thing that is worth bearing in mind is, that opening a new connection
+every time you want to reach PostgreSQL is expensive. Every connection starts a
+new process on the server. If your code opens too many connections, say in a
+cycle or within threads/futures, sooner or later you’ll reach an error response
+saying “too many connections”.</p>
+
+<p>The connection pool is an object that holds several open connections at once. It
+allows you to <em>borrow</em> a connection for some period of time. A borrowed
+connection can be only used in a block of code that has borrowed it but nowhere
+else. Once the block of code has done with its duties, the connection gets
+returned to the pool.</p>
+
+<p>The pool is also capable of calculating the lifetime of connections and their
+expiration moments. Once a connection has expired, it gets terminated and the
+pool spawns a new connection.</p>
+
+<p>The connection pool is shipped in a dedicated library
+<code class="language-plaintext highlighter-rouge">com.github.igrishaev/pg-pool</code> as it depends on the logging facility.</p>
+
+<!-- more -->
+
+<h2 id="basic-usage">Basic usage</h2>
+
+<p>Everything related to the pool is located in the <code class="language-plaintext highlighter-rouge">pg.pool</code> namespace. To run a
+pool, at least you need a Postgres config which is passed as the first argument
+to the <code class="language-plaintext highlighter-rouge">make-pool</code> function. This config is used to spawn new connections. The
+second map controls the inner pool logic and might be skipped as it has
+defaults.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">repl</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg.client</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pg</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg.pool</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pool</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">pg-config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10150</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:database</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">pool-config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:min-size</span><span class="w"> </span><span class="mi">1</span><span class="w">
+   </span><span class="no">:max-size</span><span class="w"> </span><span class="mi">4</span><span class="w">
+   </span><span class="no">:ms-lifetime</span><span class="w"> </span><span class="p">(</span><span class="nb">*</span><span class="w"> </span><span class="mi">1000</span><span class="w"> </span><span class="mi">60</span><span class="w"> </span><span class="mi">60</span><span class="p">)})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">pool</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pool/make-pool</span><span class="w"> </span><span class="n">pg-config</span><span class="w"> </span><span class="n">pool-config</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="n">pool</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; &lt; PG pool, min: 1, max: 4, free: 1, used: 0, lifetime: 3600000 ms &gt;</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Once you’ve created a pool, borrow a connection using the <code class="language-plaintext highlighter-rouge">with-connection</code>
+macro. The connection will be bound to the first <code class="language-plaintext highlighter-rouge">conn</code> symbol:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pool/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select 1 as one"</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; [{:one 1}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The rest of the logic depends on the client library but not the pool. Being
+inside the <code class="language-plaintext highlighter-rouge">with-connection</code> macro, you can call <code class="language-plaintext highlighter-rouge">pg/query</code>, <code class="language-plaintext highlighter-rouge">pg/execute</code> and
+other client API.</p>
+
+<p>Exiting the macro body will put the connection back keeping it open. The
+connection is put at the end of the queue and taken from the head. Say, if you
+have four connections in the pool, you’ll face the same connection each fourth
+<code class="language-plaintext highlighter-rouge">with-connection</code> call.</p>
+
+<p>Once you’ve done with the pool, terminate it by calling
+<code class="language-plaintext highlighter-rouge">pool/terminate</code>. Terminating a pool closes all the open connections <strong>including
+those that are borrowed at the moment</strong>.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pool/terminate</span><span class="w"> </span><span class="n">pool</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="with-pool--with-open">With-pool &amp; with-open</h2>
+
+<p>To open a pool temporarily, use the <code class="language-plaintext highlighter-rouge">with-pool</code> macro. It wraps a block of code
+with logic that opens and terminates a pool. The first argument is a symbol that
+a new pool is bound to.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pool/with-pool</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="n">pg-config</span><span class="w"> </span><span class="n">pool-config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pool/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select 1 as one"</span><span class="p">)))</span><span class="w">
+
+</span><span class="c1">;; [{:one 1}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Since the <code class="language-plaintext highlighter-rouge">Pool</code> object implements the <code class="language-plaintext highlighter-rouge">Closeable</code> interface, it can be used
+within the <code class="language-plaintext highlighter-rouge">with-open</code> macro:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="p">(</span><span class="nf">pool/make-pool</span><span class="w"> </span><span class="n">pg-config</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pool/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+    </span><span class="n">...</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="config">Config</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Parameter</th>
+      <th>Default</th>
+      <th>Comment</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:min-size</code></td>
+      <td>2</td>
+      <td>The minimum number of connections to be opened during the initialization.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:max-size</code></td>
+      <td>8</td>
+      <td>The maximum number of connections to be opened during the initialization.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:ms-lifetime</code></td>
+      <td>3.600.000 (1 hour)</td>
+      <td>The number of milliseconds in which a connection is considered expired.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">pool-config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:min-size</span><span class="w"> </span><span class="mi">1</span><span class="w">
+   </span><span class="no">:max-size</span><span class="w"> </span><span class="mi">4</span><span class="w">
+   </span><span class="no">:ms-lifetime</span><span class="w"> </span><span class="p">(</span><span class="nb">*</span><span class="w"> </span><span class="mi">1000</span><span class="w"> </span><span class="mi">60</span><span class="w"> </span><span class="mi">15</span><span class="p">)})</span><span class="w"> </span><span class="c1">;; 15 minutes</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="thread-safety">Thread safety</h2>
+
+<p>Unlike a connection object, the pool <em>is thread-safe</em> indeed. What it means is,
+that two parallel threads cannot obtain the same connection at once. This logic
+is serialized: each thread will obtain its own connection one after another.</p>
+
+<h2 id="pool-exhausting">Pool Exhausting</h2>
+
+<p>Should you exhaust the pool – meaning you try to borrow a connection while
+there aren’t any idle connects and the <code class="language-plaintext highlighter-rouge">max-size</code> of busy connections is reached
+– the pool will throw an exception to let you know about this. Here is a simple
+way to trigger this behavior:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; create a pool with up to 2 connections</span><span class="w">
+</span><span class="p">(</span><span class="nf">pool/with-pool</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="n">pg-config</span><span class="w"> </span><span class="p">{</span><span class="no">:min-size</span><span class="w"> </span><span class="mi">1</span><span class="w">
+                                 </span><span class="no">:max-size</span><span class="w"> </span><span class="mi">2</span><span class="p">}]</span><span class="w">
+
+  </span><span class="c1">;; spawn two hanging queries that lock connections</span><span class="w">
+  </span><span class="p">(</span><span class="nf">future</span><span class="w">
+    </span><span class="p">(</span><span class="nf">pool/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+      </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select pg_sleep(600) as sleep"</span><span class="p">)))</span><span class="w">
+  </span><span class="p">(</span><span class="nf">future</span><span class="w">
+    </span><span class="p">(</span><span class="nf">pool/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+      </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select pg_sleep(600) as sleep"</span><span class="p">)))</span><span class="w">
+
+  </span><span class="c1">;; wait for a bit to let the futures start their work</span><span class="w">
+  </span><span class="p">(</span><span class="nf">Thread/sleep</span><span class="w"> </span><span class="mi">100</span><span class="p">)</span><span class="w">
+
+  </span><span class="c1">;; try to get a new connection =&gt; exception</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pool/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select pg_sleep(600) as sleep"</span><span class="p">)))</span><span class="w">
+
+</span><span class="c1">;; Execution error (ExceptionInfo) at pg.pool/-borrow-connection (pool.clj:95).</span><span class="w">
+</span><span class="c1">;; pool is exhausted: 2 connections in use</span><span class="w">
+</span></code></pre></div></div>
+
+<p>At the moment, there is no way to block the execution and wait until there is a
+free connection again. Although it’s possible with a blocking version of
+<code class="language-plaintext highlighter-rouge">ArrayDeque</code> class.</p>
+
+<h2 id="exception-handling">Exception handling</h2>
+
+<p>Should any exception occur in the middle of the <code class="language-plaintext highlighter-rouge">with-connection</code> macro, the DB
+connection gets terminated. A new connection is spawned to substitute it in the
+pool.</p>
+
+<h2 id="logs">Logs</h2>
+
+<p>The pool logs its events using the <code class="language-plaintext highlighter-rouge">clojure.tools.logging</code> library. The
+namespace is <code class="language-plaintext highlighter-rouge">pg.pool</code>. Here is an example of logs you would get:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>16:20:35 DEBUG pg.pool - a new connection created: pg10177
+16:20:35 DEBUG pg.pool - connection pg10177 has been acquired
+16:20:35 DEBUG pg.pool - a new connection created: pg10178
+16:20:35 DEBUG pg.pool - connection pg10177 has been acquired
+...
+16:20:35 DEBUG pg.pool - connection pg10177 has been released
+16:20:35 DEBUG pg.pool - terminating the pool...
+16:20:35 DEBUG pg.pool - terminating connection pg10178
+16:20:35 DEBUG pg.pool - terminating connection pg10177
+16:20:35 DEBUG pg.pool - pool termination done
+</code></pre></div></div>
+
+<p>A snippet for Logback configuration: add it into your <code class="language-plaintext highlighter-rouge">logback.xml</code> file:</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;logger</span> <span class="na">name=</span><span class="s">"pg.pool"</span> <span class="na">level=</span><span class="s">"DEBUG"</span> <span class="na">additivity=</span><span class="s">"false"</span><span class="nt">&gt;</span>
+<span class="nt">&lt;/logger&gt;</span>
+</code></pre></div></div>
+
+<h2 id="component">Component</h2>
+
+<p>The pool may act as a Component. The <code class="language-plaintext highlighter-rouge">pool/component</code> function takes both config
+maps (pg- and pool-) and returns an object that implements both <code class="language-plaintext highlighter-rouge">start</code> and
+<code class="language-plaintext highlighter-rouge">stop</code> methods from the <code class="language-plaintext highlighter-rouge">Lifecycle</code> protocol. The object doesn’t open
+connections on creation; it waits until you start it.</p>
+
+<p>Here is a quick example where we initiate and start a component manually:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w">
+  </span><span class="o">'</span><span class="p">[</span><span class="n">com.stuartsierra.component</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">component</span><span class="p">])</span><span class="w">
+
+</span><span class="c1">;; create an idle pool component</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">pool-idle</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pool/component</span><span class="w"> </span><span class="n">pg-config</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; start it</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">pool-started</span><span class="w">
+  </span><span class="p">(</span><span class="nf">component/start</span><span class="w"> </span><span class="n">pool-idle</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; use it</span><span class="w">
+</span><span class="p">(</span><span class="nf">pool/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pool-started</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select 42 as the_answer"</span><span class="p">))</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:the_answer</span><span class="w"> </span><span class="mi">42</span><span class="p">}]</span><span class="w">
+
+
+</span><span class="c1">;; stop it</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">pool-stopped</span><span class="w">
+  </span><span class="p">(</span><span class="nf">component/stop</span><span class="w"> </span><span class="n">pool-started</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Although it works, it’s better to use components within a system. Below, is an
+example of a component that depends on a pool. Both <code class="language-plaintext highlighter-rouge">:some-job</code> and <code class="language-plaintext highlighter-rouge">:pool</code> form
+a system. When started, the Job component receives a pool with pre-allocated
+connections. Then we reach the database using the <code class="language-plaintext highlighter-rouge">with-connection</code> macro.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">defrecord</span><span class="w"> </span><span class="n">SomeJob</span><span class="w"> </span><span class="p">[</span><span class="c1">;; opt</span><span class="w">
+                    </span><span class="n">params</span><span class="w">
+                    </span><span class="c1">;; deps</span><span class="w">
+                    </span><span class="n">pool</span><span class="p">]</span><span class="w">
+
+  </span><span class="n">component/Lifecycle</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">start</span><span class="w"> </span><span class="p">[</span><span class="n">this</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">pool/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+      </span><span class="n">...</span><span class="p">))</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">stop</span><span class="w"> </span><span class="p">[</span><span class="n">this</span><span class="p">]</span><span class="w">
+    </span><span class="n">...</span><span class="p">))</span><span class="w">
+
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">system</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pool</span><span class="w">
+   </span><span class="p">(</span><span class="nf">pool/component</span><span class="w"> </span><span class="n">pg-config</span><span class="p">)</span><span class="w">
+
+   </span><span class="no">:some-job</span><span class="w">
+   </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">map-&gt;SomeJob</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">})</span><span class="w">
+       </span><span class="p">(</span><span class="nf">component/using</span><span class="w"> </span><span class="p">[</span><span class="no">:pool</span><span class="p">]))})</span><span class="w">
+</span></code></pre></div></div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/en/pg-docs/03/">
+    <input required name="captcha" type="hidden" value="7 &#215; 4">
+
+    <div class="block">
+        <span class="comment-form-label"><small>7 &#215; 4 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
