@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>PG docs, part 5. Notifications</title>
+  <meta name="description" content="">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/en/pg-docs/05/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">PG docs, part 5. Notifications</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-09-15T00:00:00+00:00">
+        Sep 15, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/notifications/" rel="tag">notifications</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    
+<p><em>(This is a new documentation chapter from the <a href="https://github.com/igrishaev/pg">PG project</a>.)</em></p>
+
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+  <li><a href="/en/pg-docs/04/">Arrays</a></li>
+  <li><a href="/en/pg-docs/05/">Notifications</a></li>
+</ul>
+
+<h2 id="notifications">Notifications</h2>
+
+<!-- toc -->
+
+<ul>
+  <li><a href="#introduction">Introduction</a></li>
+  <li><a href="#usage">Usage</a></li>
+</ul>
+
+<!-- tocstop -->
+
+<h3 id="introduction">Introduction</h3>
+
+<p>Notifications are somewhat pub-sub message systems in Postgres. They can be
+described in these simple steps:</p>
+
+<ul>
+  <li>
+    <p>client B subscribes to a channel; the channel gets created if it doesn’t
+exist.</p>
+  </li>
+  <li>
+    <p>client A sends a message to that channel;</p>
+  </li>
+  <li>
+    <p>every time client B interacts with the database, they receive messages sent to
+this channel by other clients.</p>
+  </li>
+</ul>
+
+<p>To handle a message, the client invokes a special handler. This handler comes
+from the configuration. The default handler just prints the notification
+map. <strong>Pay attention</strong> that the handler is called synchronously blocking the
+interaction with a socket. To prevent the connection from hanging due to the
+time-consuming handling of a notification, provide a handler that sends it to
+some sort of channel, agent, or message queue system.</p>
+
+<!-- more -->
+
+<h3 id="usage">Usage</h3>
+
+<p>Imagine you have two connections: <code class="language-plaintext highlighter-rouge">conn1</code> and <code class="language-plaintext highlighter-rouge">conn2</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10150</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:database</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn1</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/connect</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn2</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/connect</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Let <code class="language-plaintext highlighter-rouge">conn2</code> listen for a random channel:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">channel</span><span class="w"> </span><span class="s">"hello"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/listen</span><span class="w"> </span><span class="n">conn2</span><span class="w"> </span><span class="n">channel</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Let the <code class="language-plaintext highlighter-rouge">conn1</code> connection send something into that channel:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/notify</span><span class="w"> </span><span class="n">conn1</span><span class="w"> </span><span class="n">channel</span><span class="w"> </span><span class="s">"test"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now, should <code class="language-plaintext highlighter-rouge">conn2</code> interact with the database, it will handle the notification
+by printing it to the console:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn2</span><span class="w"> </span><span class="s">"select"</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; PG notification: {:msg :NotificationResponse, :pid 11244, :channel "hello", :message "test"}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>A notification is a map which tracks the channel name, the number of the process
+number (PID) of the connection that has emitted it and the string payload of the
+notification.</p>
+
+<p>To override the default printing handler, first declare a function. In our
+example, the function just stores the notifications in a global atom:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">notifications</span><span class="w">
+  </span><span class="p">(</span><span class="nf">atom</span><span class="w"> </span><span class="p">[]))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">my-handler</span><span class="w"> </span><span class="p">[</span><span class="n">notification</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">swap!</span><span class="w"> </span><span class="n">notifications</span><span class="w"> </span><span class="nb">conj</span><span class="w"> </span><span class="n">notification</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Let’s go through the pipeline again with a new handler. Open a connection with
+the new hanlder and subscribe to the channel:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn2</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/connect</span><span class="w"> </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="no">:fn-notification</span><span class="w"> </span><span class="n">my-handler</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/listen</span><span class="w"> </span><span class="n">conn2</span><span class="w"> </span><span class="n">channel</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Send a couple of messages from another connection:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/notify</span><span class="w"> </span><span class="n">conn1</span><span class="w"> </span><span class="n">channel</span><span class="w"> </span><span class="s">"test1"</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">pg/notify</span><span class="w"> </span><span class="n">conn1</span><span class="w"> </span><span class="n">channel</span><span class="w"> </span><span class="s">"test2"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Trigger receiving the messages and check out the atom:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn2</span><span class="w"> </span><span class="s">"select"</span><span class="p">)</span><span class="w">
+
+</span><span class="o">@</span><span class="n">notifications</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:msg</span><span class="w"> </span><span class="no">:NotificationResponse,</span><span class="w"> </span><span class="no">:pid</span><span class="w"> </span><span class="mi">11244</span><span class="n">,</span><span class="w"> </span><span class="no">:channel</span><span class="w"> </span><span class="s">"hello"</span><span class="n">,</span><span class="w"> </span><span class="no">:message</span><span class="w"> </span><span class="s">"test1"</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:msg</span><span class="w"> </span><span class="no">:NotificationResponse,</span><span class="w"> </span><span class="no">:pid</span><span class="w"> </span><span class="mi">11244</span><span class="n">,</span><span class="w"> </span><span class="no">:channel</span><span class="w"> </span><span class="s">"hello"</span><span class="n">,</span><span class="w"> </span><span class="no">:message</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Futures, thread executors or core.async/Manofold are your best friends to
+organize background processing of notifications effectively.</p>
+
+<p>Keep in mind that the listenting connection is passive: you won’t get any of
+pending messages unless you interact with the database somehow. Running an empty
+query from time to time would solve the problem. Again, you may have a backgound
+loop or a scheduled task that does it for you.</p>
+
+<p>To stop receiving notifications from a certain channel, call <code class="language-plaintext highlighter-rouge">unlisten</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/unlisten</span><span class="w"> </span><span class="n">conn2</span><span class="w"> </span><span class="n">channel</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/en/pg-docs/05/">
+    <input required name="captcha" type="hidden" value="2 &#215; 6">
+
+    <div class="block">
+        <span class="comment-form-label"><small>2 &#215; 6 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
