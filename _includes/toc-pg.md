@@ -6,3 +6,4 @@
 - [Arrays](/en/pg-docs/04/)
 - [Notifications](/en/pg-docs/05/)
 - [SSL](/en/pg-docs/06/)
+- [COPY](/en/pg-docs/07/)
