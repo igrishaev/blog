@@ -6,9 +6,403 @@
 </description>
     <link>https://grishaev.me/</link>
     <atom:link href="https://grishaev.me/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Tue, 10 Oct 2023 17:48:33 +0000</pubDate>
-    <lastBuildDate>Tue, 10 Oct 2023 17:48:33 +0000</lastBuildDate>
+    <pubDate>Wed, 11 Oct 2023 06:42:28 +0000</pubDate>
+    <lastBuildDate>Wed, 11 Oct 2023 06:42:28 +0000</lastBuildDate>
     <generator>Jekyll v4.2.0</generator>
+    
+      <item>
+        <title>PG docs, part 7. COPY IN/FROM</title>
+        <description>
+&lt;p&gt;&lt;em&gt;(This is a new documentation chapter from the &lt;a href=&quot;https://github.com/igrishaev/pg&quot;&gt;PG project&lt;/a&gt;.)&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;ToC&lt;/strong&gt;&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;/en/pg-docs/01/&quot;&gt;About &amp;amp; Installation&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;/en/pg-docs/02/&quot;&gt;The Client&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;/en/pg-docs/03/&quot;&gt;Connection Pool&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;/en/pg-docs/04/&quot;&gt;Arrays&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;/en/pg-docs/05/&quot;&gt;Notifications&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;/en/pg-docs/06/&quot;&gt;SSL&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;/en/pg-docs/07/&quot;&gt;COPY&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;In this chapter:&lt;/p&gt;
+
+&lt;!-- toc --&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;#theory&quot;&gt;Theory&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#csv-vs-binary&quot;&gt;CSV vs Binary&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#usage&quot;&gt;Usage&lt;/a&gt;
+    &lt;ul&gt;
+      &lt;li&gt;&lt;a href=&quot;#copy-out&quot;&gt;COPY out&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#copy-in-from-stream&quot;&gt;COPY IN from stream&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#copy-in-rows&quot;&gt;COPY IN rows&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#copy-in-maps&quot;&gt;COPY IN maps&lt;/a&gt;&lt;/li&gt;
+    &lt;/ul&gt;
+  &lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;!-- tocstop --&gt;
+
+&lt;h2 id=&quot;theory&quot;&gt;Theory&lt;/h2&gt;
+
+&lt;p&gt;The recent update of pg-client library introduces various ways to COPY the data
+into or from the database. It’s much more flexible than the official JDBC
+Postgres driver’s standard &lt;a href=&quot;https://jdbc.postgresql.org/documentation/publicapi/org/postgresql/copy/CopyManager.html&quot;&gt;CopyManager&lt;/a&gt; class.&lt;/p&gt;
+
+&lt;p&gt;To remind you, COPY is a massive way of writing or reading data. Copying IN is
+much faster than inserting the rows by chunks. Postgres starts to read the data
+immediately without waiting for the last bit of data to arrive. You can copy
+into the same table in parallel threads. The same applies to copying out: if you
+want to dump a table into a file, use COPY FROM with an OutputStream
+OutputStream rather than selecting everything in memory.&lt;/p&gt;
+
+&lt;p&gt;The main disadvantage of JDBC CopyManager is, that it doesn’t do anything about
+data encoding and encoding. It accepts either an InputStream or an OutputStream
+assuming you encode the data on your own. It means, right before you copy the
+data to the database, you’ve got to manually encode them into CSV.&lt;/p&gt;
+
+&lt;p&gt;This is not as easy as you might think. When encoding values into CSV, it
+coerces everything to a string using &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;str&lt;/code&gt;. That’s OK for most of the primitive
+types as numbers, booleans or strings: their Clojure representation matches the
+way they’re represented in Postgres. But it doesn’t work for complex types like
+arrays. If you write a vector of &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;[1 2 3]&lt;/code&gt; in CSV you’ll get &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&quot;[1 2 3]&quot;&lt;/code&gt; which
+is an improper Postgres value. It must have been &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;{1, 2, 3}&lt;/code&gt; instead.&lt;/p&gt;
+
+&lt;p&gt;Another flaw of JDBC CopyManager is, that it doesn’t split the data by rows when
+sending them into the database. It simply reads 2Kb of bytes from an InputStream
+and writes them to a socket. At the same time, the PostgreSQL documentation
+&lt;a href=&quot;https://postgrespro.ru/docs/postgrespro/14/protocol-flow?lang=en#PROTOCOL-COPY&quot;&gt;recommends&lt;/a&gt; splitting the data chunks by rows:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;The message boundaries are not required to have anything to do with row
+boundaries, although that is often a reasonable choice&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Moreover, PostgreSQL supports not only CSV but also text and binary formats. The
+text format is somewhat CSV with different separators so it’s not so
+important. But the binary format &lt;em&gt;is&lt;/em&gt; indeed! Binary-encoded data are faster to
+parse and process and thus are preferable when dealing with vast chunks of data.&lt;/p&gt;
+
+&lt;h2 id=&quot;csv-vs-binary&quot;&gt;CSV vs Binary&lt;/h2&gt;
+
+&lt;p&gt;Here are a couple of measurements I made on my local machine. I made two files
+containing 10 million rows: in CSV and in binary format. Then I used the
+official CopyManager to copy these files in the database. All the server
+settings were default; the machine was an Apple M1 Max 32Gb with 10 Cores.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Single thread COPY&lt;/strong&gt;&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Rows&lt;/th&gt;
+      &lt;th&gt;Format&lt;/th&gt;
+      &lt;th&gt;Time, sec&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;10M&lt;/td&gt;
+      &lt;td&gt;binary&lt;/td&gt;
+      &lt;td&gt;17.4&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;10M&lt;/td&gt;
+      &lt;td&gt;CSV&lt;/td&gt;
+      &lt;td&gt;51.2&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;&lt;strong&gt;Parallel COPY&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;Binary:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Rows&lt;/th&gt;
+      &lt;th&gt;Threads&lt;/th&gt;
+      &lt;th&gt;Chunk&lt;/th&gt;
+      &lt;th&gt;Format&lt;/th&gt;
+      &lt;th&gt;Time, sec&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;10M&lt;/td&gt;
+      &lt;td&gt;8&lt;/td&gt;
+      &lt;td&gt;10k&lt;/td&gt;
+      &lt;td&gt;binary&lt;/td&gt;
+      &lt;td&gt;11.3&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;10M&lt;/td&gt;
+      &lt;td&gt;4&lt;/td&gt;
+      &lt;td&gt;10k&lt;/td&gt;
+      &lt;td&gt;binary&lt;/td&gt;
+      &lt;td&gt;13.7&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;10M&lt;/td&gt;
+      &lt;td&gt;1&lt;/td&gt;
+      &lt;td&gt;10k&lt;/td&gt;
+      &lt;td&gt;binary&lt;/td&gt;
+      &lt;td&gt;28.6&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;CSV:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Rows&lt;/th&gt;
+      &lt;th&gt;Threads&lt;/th&gt;
+      &lt;th&gt;Chunk&lt;/th&gt;
+      &lt;th&gt;Format&lt;/th&gt;
+      &lt;th&gt;Time, sec&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;10M&lt;/td&gt;
+      &lt;td&gt;8&lt;/td&gt;
+      &lt;td&gt;10k&lt;/td&gt;
+      &lt;td&gt;CSV&lt;/td&gt;
+      &lt;td&gt;10.6&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;10M&lt;/td&gt;
+      &lt;td&gt;4&lt;/td&gt;
+      &lt;td&gt;10k&lt;/td&gt;
+      &lt;td&gt;CSV&lt;/td&gt;
+      &lt;td&gt;19.9&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;10M&lt;/td&gt;
+      &lt;td&gt;1&lt;/td&gt;
+      &lt;td&gt;10k&lt;/td&gt;
+      &lt;td&gt;CSV&lt;/td&gt;
+      &lt;td&gt;71.7&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;It’s plain to see that binary encoding is three times faster than CSV. 17 vs 51 seconds is a significant difference one cannot ignore.&lt;/p&gt;
+
+&lt;p&gt;The good news is, the PG library does support binary encoding. It also allows you to perform COPY operations without encoding them manually. The library doesn’t make any InputStreams in the background: it encodes the rows one by one and sends them directly into the database. It also supports binary format of encoding which is a matter of passing a parameter. Also, it does split the data chunks by rows, not by the size of the buffer.&lt;/p&gt;
+
+&lt;h2 id=&quot;usage&quot;&gt;Usage&lt;/h2&gt;
+
+&lt;p&gt;Establish a connection to the database first:&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;require&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;o&quot;&gt;'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pg.client&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:as&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pg&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;])&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+
+&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/connect&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;...&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}))&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h3 id=&quot;copy-out&quot;&gt;COPY out&lt;/h3&gt;
+
+&lt;p&gt;The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;copy-out&lt;/code&gt; function dumps a table or a query into a file. It accepts a
+connection object, a SQL expression describing the table, the columns, the
+format and other details, and an instance of an OutputStream. The rows from the
+table or a query get sent to that stream. The function returns a number of rows
+processed.&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;let&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sql&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+      &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;COPY (select s.x as x, s.x * s.x as square from generate_series(1, 9) as s(x))
+      TO STDOUT WITH (FORMAT CSV)&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+
+      &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;out&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+      &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;new&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ByteArrayOutputStream&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+
+  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/copy-out&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sql&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;out&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The expression above returns 9 (the number of rows). The actual rows are now in
+the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;out&lt;/code&gt; variable that stores bytes.&lt;/p&gt;
+
+&lt;p&gt;Of course, for massive data it’s better to use not &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ByteArrayOutputStream&lt;/code&gt; but
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;FileOutputStream&lt;/code&gt;. You can produce it as follows:&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;with-open&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;out&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;/some/file.csv&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                    &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;io/file&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                    &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;io/output-stream&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/copy-out&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sql&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;out&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The PG library doesn’t close the stream assuming you may write multiple data
+into a single stream. It’s up to you when to close it.&lt;/p&gt;
+
+&lt;p&gt;To dump the data into a binary file, add the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;WITH (FORMAT BINARY)&lt;/code&gt; clause to
+the SQL expression. Binary files are more difficult to parse yet they’re faster
+in processing.&lt;/p&gt;
+
+&lt;h3 id=&quot;copy-in-from-stream&quot;&gt;COPY IN from stream&lt;/h3&gt;
+
+&lt;p&gt;The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;copy-in&lt;/code&gt; function copies the data from in InputStream into the
+database. The payload of the stream is either produced by the previous
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;copy-out&lt;/code&gt; function or manually by dumping the data into CSV/binary format. The
+function returns the number or rows processed by the server.&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;in-stream&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;/some/file.csv&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;io/file&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;io/input-stream&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+
+&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/copy-in&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+            &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;copy foo (id, name, active) from STDIN WITH (FORMAT CSV)&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+            &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;in-stream&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+
+&lt;/span&gt;&lt;span class=&quot;c1&quot;&gt;;; returns 6&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Again, it doesn’t close the input stream. Use the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;with-open&lt;/code&gt; macro to close it
+explicitly.&lt;/p&gt;
+
+&lt;p&gt;The next two functions are more interesting as they bring functionality missing
+in the JDBC.&lt;/p&gt;
+
+&lt;h3 id=&quot;copy-in-rows&quot;&gt;COPY IN rows&lt;/h3&gt;
+
+&lt;p&gt;The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;copy-in-rows&lt;/code&gt; function takes a sequence of rows and sends them into the
+database one by one. It doesn’t do any intermediate steps like dumping them into
+an InputStream first. Everything is done on the fly.&lt;/p&gt;
+
+&lt;p&gt;The function takes a connection, a SQL expression, and a sequence of rows. A row
+is a sequence of values. The result is a number of rows copied into the
+database.&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/copy-in-rows&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;copy foo (id, name, active, note) from STDIN WITH (FORMAT CSV)&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;Ivan&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;true&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nil&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;Juan&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;false&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;kek&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]])&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;c1&quot;&gt;;; 2&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The fourth optional parameter is a map of options. At the moment, the following
+options are supported:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;name&lt;/th&gt;
+      &lt;th&gt;default&lt;/th&gt;
+      &lt;th&gt;example (or enum)&lt;/th&gt;
+      &lt;th&gt;description&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:sep&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;,&lt;/td&gt;
+      &lt;td&gt; &lt;/td&gt;
+      &lt;td&gt;a character to separate columns in CSV/text formats&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:end&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\r\n&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt; &lt;/td&gt;
+      &lt;td&gt;a line-ending sequence of characters in CSV/text&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:null&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;empty string&lt;/td&gt;
+      &lt;td&gt; &lt;/td&gt;
+      &lt;td&gt;a string to represent NULL in CSV/text&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:oids&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;nil&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;[oid/int2 nil oid/date]&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;{0 oid/int2, 2 oid/date}&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;type hints for proper value encoding. Either a vector or OIDs, or a map of {index =&amp;gt; OID}&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:format&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:csv&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:csv&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:bin&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:txt&lt;/code&gt;&lt;/td&gt;
+      &lt;td&gt;a keyword to specify the format of a payload.&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;Copy rows in CSV with custom column separators and NULL representation:&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/copy-in-rows&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;COPY foo (id, name, active, note) FROM STDIN WITH (FORMAT CSV, NULL 'NULL', DELIMITER '|')&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;rows&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:null&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;NULL&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                  &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:sep&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;sc&quot;&gt;\|&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;})&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;c1&quot;&gt;;; 1000&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Copy rows as a binary payload with custom type hints:&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/copy-in-rows&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;COPY foo (id, name, active, note) from STDIN WITH (FORMAT BINARY)&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;rows&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:format&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:bin&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                  &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:oids&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;oid/int2&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;oid/bool&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}})&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;c1&quot;&gt;;; 1000&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h3 id=&quot;copy-in-maps&quot;&gt;COPY IN maps&lt;/h3&gt;
+
+&lt;p&gt;Often, we deal not with plain rows but maps. The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;copy-in-maps&lt;/code&gt; function acts
+but &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;copy-in-rows&lt;/code&gt; but accepts a sequence of maps. Internally, all the maps get
+transformed into rows. To transform it properly, the function needs to know the
+order of the keys.&lt;/p&gt;
+
+&lt;p&gt;The funtion accepts a connection, a SQL expression, a sequence of maps and a
+sequence of keys. Internally, it produces a selector from the keys like this:
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;(apply juxt keys)&lt;/code&gt; which gets applied to each map.&lt;/p&gt;
+
+&lt;p&gt;One more thing about copying maps is, that the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:oids&lt;/code&gt; parameter is a map like
+{key =&amp;gt; OID}.&lt;/p&gt;
+
+&lt;p&gt;An example of copying the maps in CSV. Pay attention that the second map has
+extra keys which are ignored.&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/copy-in-maps&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;copy foo (id, name, active, note) from STDIN WITH (FORMAT CSV)&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:name&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;Ivan&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:active&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;true&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:note&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;aaa&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:aaa&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;false&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:active&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nil&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:note&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nil&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:name&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;Juan&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:extra&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;Kek&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:lol&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;123&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:name&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:active&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:note&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:oids&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;oid/int2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                  &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:format&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:csv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;})&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Another example where we copy maps using binary format. The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:oids&lt;/code&gt; map has a
+single type hint so the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;:id&lt;/code&gt; fields get transformed to int2 but not bigint
+which is default for Long values.&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/copy-in-maps&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;copy foo (id, name, active, note) from STDIN WITH (FORMAT BINARY)&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;maps&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:name&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:active&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:note&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                 &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:oids&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;oid/int2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                  &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:format&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:bin&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;})&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+</description>
+        <pubDate>Tue, 10 Oct 2023 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/en/pg-docs/07/</link>
+        <guid isPermaLink="true">https://grishaev.me/en/pg-docs/07/</guid>
+        
+        <category>clojure</category>
+        
+        <category>programming</category>
+        
+        <category>postgres</category>
+        
+        <category>sql</category>
+        
+        <category>copy</category>
+        
+        
+      </item>
     
       <item>
         <title>Языки диаграмм</title>
@@ -151,6 +545,7 @@ UML сегодня? Доводилось ли кому-то посмотреть
   &lt;li&gt;&lt;a href=&quot;/en/pg-docs/04/&quot;&gt;Arrays&lt;/a&gt;&lt;/li&gt;
   &lt;li&gt;&lt;a href=&quot;/en/pg-docs/05/&quot;&gt;Notifications&lt;/a&gt;&lt;/li&gt;
   &lt;li&gt;&lt;a href=&quot;/en/pg-docs/06/&quot;&gt;SSL&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;/en/pg-docs/07/&quot;&gt;COPY&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 
 &lt;p&gt;In this chapter:&lt;/p&gt;
@@ -702,78 +1097,6 @@ use&lt;/code&gt;. Блин, какой порт? У меня их десять �
         <category>it</category>
         
         <category>errors</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Фаервол</title>
-        <description>&lt;p&gt;Лучшая вещь, что случилась со мной в последнее время — это установка фаервола на
-всех маках. Вот как это произошло.&lt;/p&gt;
-
-&lt;p&gt;Когда-то я жаловался, что программы без спроса лезут в интернет
-обновляться. Открыл Саблайм — а он показывает модалку, что вышла новая
-версия. Открыл то, другое, а там то же самое: скачай-обновись.&lt;/p&gt;
-
-&lt;p&gt;Идея как это победить простая — нужно отобрать у программы доступ в интернет. Я
-пошел настраивать встроенный фаервол, но оказалось, он убогий: закрывает только
-входящие соединения, а исходящие не трогает. В результате даже если добавить в
-список программу, она спокойно идет в сеть.&lt;/p&gt;
-
-&lt;p&gt;Путем гугления нашел программу Lulu. Хоть название и затасканное, программа
-просто супер: удобный интерфейс и настройка. Lulu делит программы на группы:
-родные Эпла, уже установленные и другие. Можно включать и выключать целые
-группы, а можно по отдельности. Правила формируются в разрезе программ, папок,
-регулярных выражений.&lt;/p&gt;
-
-&lt;p&gt;Можно настроить гибкий контроль по урлам. Например, дать программе доступ к
-хосту &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sync.blabla.com&lt;/code&gt; для синхронизации, но запретить обновления по хосту
-&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;update.blabla.com&lt;/code&gt;.&lt;/p&gt;
-
-&lt;p&gt;Можно дать временный доступ по номеру процесса. Когда программа запуститься в
-cледующий раз, номер будет другим, и Lulu спросит опять.&lt;/p&gt;
-
-&lt;p&gt;Фаервол может работать в интерактивном режиме, показывая диалог на события,
-которых нет в правилах, а может молча разрешать или разрешать все, что
-происходит.&lt;/p&gt;
-
-&lt;p&gt;Для себя я сделал так: удалил все правила, кроме Эпловских, а затем настраивал
-вручную. Запретил все программы Адоба, офисного пакета, всякие редакторы вроде
-Саблайма — их задача работать с текстом, а не лазить за обновлениями. Запретил
-обновки для Dash, программы оффлайн-документации, и много что другое.&lt;/p&gt;
-
-&lt;p&gt;На старом ноуте обнаружил несколько вирусов. Это программы с названиями типа
-robstoaf, прописанные в автозагрузке. Время от времени они ходят в сеть на левые
-хосты. Возможно, крадут историю браузеров или это ботнет. Так что не слушайте
-байки про то, что под Мак вирусов нет.&lt;/p&gt;
-
-&lt;p&gt;Что немаловажно, Lulu запрашивает подтверждение, когда левая программа хочет
-добавить себя в автозагрузку. Всякое дерьмо вроде Zoom, MS Teams прописывают
-себя там, и в итоге запускаются в фоне, даже если вы не просили. Больше этого
-беспредела нет.&lt;/p&gt;
-
-&lt;p&gt;Программа так понравилась, что я хотел перевести автору денег, долларов
-сто. Хотел скинуть с Пейпала, а у него только патреон — то есть регистрируйся,
-вводи персональные данные, карту, подтверждай — извините, нет.&lt;/p&gt;
-
-&lt;p&gt;Кроме Lulu, у автора есть смежные утилиты для безопасности, например монитор
-клавиатуры на предмет прослушки и что-то еще второстепенное.&lt;/p&gt;
-
-&lt;p&gt;Словом, не знаю как жить без Lulu: теперь это первая программа, которую я ставлю
-на Мак. Как раз недавно ставил ее на свежий ноут. Неистово рекомендую!&lt;/p&gt;
-
-&lt;p&gt;Картинки, описание и загрузка здесь:
-https://objective-see.org/products/lulu.html&lt;/p&gt;
-</description>
-        <pubDate>Wed, 27 Sep 2023 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/firewall/</link>
-        <guid isPermaLink="true">https://grishaev.me/firewall/</guid>
-        
-        <category>macos</category>
-        
-        <category>firewall</category>
-        
-        <category>lulu</category>
         
         
       </item>
