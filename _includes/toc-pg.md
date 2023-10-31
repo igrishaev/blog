@@ -7,3 +7,4 @@
 - [Notifications](/en/pg-docs/05/)
 - [SSL](/en/pg-docs/06/)
 - [COPY](/en/pg-docs/07/)
+- [HoneySQL](/en/pg-docs/08/)
