@@ -1,6 +1,6 @@
 ---
 layout: book
-title: Make Time: How to Focus on what Matters Every Day
+title: Make Time. How to Focus on what Matters Every Day
 author: Jake Knapp and John Zeratsky
 image: maketime.jpg
 ---
