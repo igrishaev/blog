@@ -104,6 +104,146 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/sql-no-orm-more/">Без ORM. Вдогонку</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2016-11-13T00:00:00+00:00">
+        Nov 13, 2016
+    </time>
+
+    <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/orm/" rel="tag">orm</a>, <a href="/tag/python/" rel="tag">python</a>, <a href="/tag/programming/" rel="tag">programming</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В <a href="/sql-no-orm">предыдущем посте</a> я поделился мыслями насчет преимуществ сырого
+SQL перед ORM. Забыл привести два следующих аргумента.</p>
+
+<h3 id="миграции">Миграции</h3>
+
+<p>Напомню, наши миграции – это SQL файлы. Специальный скрипт прогоняет их в
+особом порядке, оборачивая в транзакции. Преимущество в том, что я могу прогнать
+их самостоятельно через psql, если вдруг возникнет такая возможность.</p>
+
+<p>Пример типичной миграции:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- change column types</span>
+<span class="k">alter</span> <span class="k">table</span> <span class="n">users</span>
+    <span class="k">alter</span> <span class="k">column</span> <span class="n">username</span> <span class="k">type</span> <span class="nb">text</span><span class="p">,</span>
+    <span class="k">alter</span> <span class="k">column</span> <span class="n">username</span> <span class="k">set</span> <span class="k">not</span> <span class="k">null</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Здесь я просто меняю тип поля на <code class="language-plaintext highlighter-rouge">text</code> с <code class="language-plaintext highlighter-rouge">varchar</code> и добавляю ограничение на
+обязательное заполнение. Чтобы проверить миграцию, просто запускаю ее вручную:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>psql <span class="nt">--user</span> foo foo-dbm &lt; resources/migrations/20161107112942-change-username.up.sql
+</code></pre></div></div>
+
+<p>Если у вас база в Докере, то выигрыш в том, что при старте образа запускается
+специальный скрипт. Он автоматом прогоняет <code class="language-plaintext highlighter-rouge">.sql</code>-файлы из особой
+папки. Достаточно накидать в эту папку файлы миграций, и они выполнятся! Вот как
+это делается в <code class="language-plaintext highlighter-rouge">compose</code>-файле:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">version</span><span class="pi">:</span> <span class="s1">'</span><span class="s">2'</span>
+<span class="na">services</span><span class="pi">:</span>
+  <span class="s">...</span>
+  <span class="s">postgres</span><span class="pi">:</span>
+    <span class="na">image</span><span class="pi">:</span> <span class="s">postgres</span>
+    <span class="na">volumes</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">&lt;папка с миграциями&gt;:/docker-entrypoint-initdb.d:ro</span>
+</code></pre></div></div>
+
+<p>Сравните теперь с типичной Django-миграцией:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">django.db</span> <span class="kn">import</span> <span class="n">migrations</span><span class="p">,</span> <span class="n">models</span>
+
+<span class="k">class</span> <span class="nc">Migration</span><span class="p">(</span><span class="n">migrations</span><span class="p">.</span><span class="n">Migration</span><span class="p">):</span>
+
+    <span class="n">dependencies</span> <span class="o">=</span> <span class="p">[(</span><span class="s">"migrations"</span><span class="p">,</span> <span class="s">"0001_initial"</span><span class="p">)]</span>
+
+    <span class="n">operations</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">migrations</span><span class="p">.</span><span class="n">DeleteModel</span><span class="p">(</span><span class="s">"Tribble"</span><span class="p">),</span>
+        <span class="n">migrations</span><span class="p">.</span><span class="n">AddField</span><span class="p">(</span><span class="s">"Author"</span><span class="p">,</span> <span class="s">"rating"</span><span class="p">,</span> <span class="n">models</span><span class="p">.</span><span class="n">IntegerField</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)),</span>
+    <span class="p">]</span>
+</code></pre></div></div>
+
+<p>Во-первых, это Питон, не SQL. Чтобы понять, что происходит, нужно замаппить
+классы и методы на SQL-термы. Поскольку мы редко редактируем миграции и вообще
+лазим в них, чтение этого кода дается мне с трудом. Не говоря уж о том, что код,
+сгенерированный машиной, не предназначен для людей.</p>
+
+<p>Далее, этот код может быть запущен только на Питоне и только в особом
+окружении. Нужна Джанга, вирутальное окружение, верные переменные среды. Просто
+запустить его я не могу.</p>
+
+<p>По Ричу Хики, SQL-миграция – просто, Джанго-миграция – легко. Я за простоту.</p>
+
+<h3 id="рекурсивные-запросы">Рекурсивные запросы</h3>
+
+<p>В предыдущем проекте я столкнулся с иерархической структурой данных со ссылкой
+на саму себя. Это было что-то вроде структуры папок. Узел, который ссылается
+на родительский узел, который… и так далее, до тех пор, пока ссылка на
+родителя пустая. Это значит, достигнута вершина иерархии.</p>
+
+<p>При этом самые частые операции в коде были перемещение от элемента на самый
+вверх или на самый низ. Что сделал разработчик? Понятно, лезть в базу поштучно
+очень дорого, в цепочке может быть 20 узлов. Решил проблему радикально –
+вынимает из базы ВСЕ узлы, потом стоит иерархический словарь в памяти и
+перемещается по нему. Это работало, потому что в базе было мало узлов, около
+тысячи. Ради забавы я написал юнит-тест с 10000 узлами, код подвис секунд на
+пять.</p>
+
+<p>А ведь достаточно было использовать рекурсивные запросы! Они не только в
+Постгресе есть, но даже в SQLite! Запрос разбивается на две подчасти. Первая –
+инициализирующая часть, вторая – накопительная. Пример
+<a href="https://habrahabr.ru/post/269497/">с Хабра</a>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">WITH</span> <span class="k">RECURSIVE</span> <span class="n">r</span> <span class="k">AS</span> <span class="p">(</span>
+   <span class="k">SELECT</span> <span class="n">id</span><span class="p">,</span> <span class="n">parent_id</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="mi">1</span> <span class="k">AS</span> <span class="k">level</span>
+   <span class="k">FROM</span> <span class="n">geo</span>
+   <span class="k">WHERE</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">4</span>
+
+   <span class="k">UNION</span> <span class="k">ALL</span>
+
+   <span class="k">SELECT</span> <span class="n">geo</span><span class="p">.</span><span class="n">id</span><span class="p">,</span> <span class="n">geo</span><span class="p">.</span><span class="n">parent_id</span><span class="p">,</span> <span class="n">geo</span><span class="p">.</span><span class="n">name</span><span class="p">,</span> <span class="n">r</span><span class="p">.</span><span class="k">level</span> <span class="o">+</span> <span class="mi">1</span> <span class="k">AS</span> <span class="k">level</span>
+   <span class="k">FROM</span> <span class="n">geo</span>
+      <span class="k">JOIN</span> <span class="n">r</span>
+          <span class="k">ON</span> <span class="n">geo</span><span class="p">.</span><span class="n">parent_id</span> <span class="o">=</span> <span class="n">r</span><span class="p">.</span><span class="n">id</span>
+<span class="p">)</span>
+
+<span class="k">SELECT</span> <span class="o">*</span> <span class="k">FROM</span> <span class="n">r</span><span class="p">;</span>
+
+ <span class="n">id</span> <span class="o">|</span> <span class="n">parent_id</span> <span class="o">|</span>      <span class="n">name</span>       <span class="o">|</span> <span class="k">level</span>
+<span class="c1">----+-----------+-----------------+-------</span>
+  <span class="mi">4</span> <span class="o">|</span>         <span class="mi">2</span> <span class="o">|</span> <span class="err">Европа</span>          <span class="o">|</span>     <span class="mi">1</span>
+  <span class="mi">5</span> <span class="o">|</span>         <span class="mi">4</span> <span class="o">|</span> <span class="err">Россия</span>          <span class="o">|</span>     <span class="mi">2</span>
+  <span class="mi">6</span> <span class="o">|</span>         <span class="mi">4</span> <span class="o">|</span> <span class="err">Германия</span>        <span class="o">|</span>     <span class="mi">2</span>
+  <span class="mi">7</span> <span class="o">|</span>         <span class="mi">5</span> <span class="o">|</span> <span class="err">Москва</span>          <span class="o">|</span>     <span class="mi">3</span>
+  <span class="mi">8</span> <span class="o">|</span>         <span class="mi">5</span> <span class="o">|</span> <span class="err">Санкт</span><span class="o">-</span><span class="err">Петербург</span> <span class="o">|</span>     <span class="mi">3</span>
+  <span class="mi">9</span> <span class="o">|</span>         <span class="mi">6</span> <span class="o">|</span> <span class="err">Берлин</span>          <span class="o">|</span>     <span class="mi">3</span>
+<span class="p">(</span><span class="mi">6</span> <span class="k">rows</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>В таком запросе молжно получить еще и уровень вложенности, что просто супер для
+работы с деревьями, например, с комментариями, папками. И все это – без
+навороченных классов, методов и перегрузок операторов.</p>
+
+<p>Любите SQL – прекрасный, понятный язык запросов к данным!</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/sql-no-orm/">Без ORM</a>
             </h2>
 
@@ -667,88 +807,6 @@
 <p>В понедельник создам анонс одиннадцатой встречи. Доклады накапливаются быстрей,
 чем мы рассказываем. Хотите выступить? Пишите в группу.</p>
 
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/phrases/">С вами. Говорит. Робот.</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2016-09-28T00:00:00+00:00">
-        Sep 28, 2016
-    </time>
-
-    <a href="/tag/phrases/" rel="tag">phrases</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Бесит, когда робот озвучивает фразы, составленные из кусочков. В такси:</p>
-
-<blockquote>
-  <p>К вам подъезжает – Ауди – черный – номер – ноль – три – четыре.</p>
-</blockquote>
-
-<p>В Сбербанке:</p>
-
-<blockquote>
-  <p>Талон с номером – сто – двадцать – один – Б.</p>
-</blockquote>
-
-<p>Провалы между словами режут слух. Люди говорят связно. А. Не. По. Одному. Слову.</p>
-
-<p>Беда с произношением текста в том, что фразу нельзя собрать по кусочкам, как
-цепочку байт. Наивный программист уверен, что если список строк легко
-соединяется в одну:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">strings</span> <span class="o">=</span> <span class="p">[</span><span class="s">"Талон номер"</span><span class="p">,</span> <span class="s">"сто"</span><span class="p">,</span> <span class="s">"двадцать"</span><span class="p">,</span> <span class="s">"один"</span><span class="p">]</span>
-<span class="s">" "</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">strings</span><span class="p">)</span>
-<span class="o">&gt;&gt;&gt;</span> <span class="n">Талон</span> <span class="n">номер</span> <span class="n">сто</span> <span class="n">двадцать</span> <span class="n">один</span>
-</code></pre></div></div>
-
-<p>то и аудио-файлы достаточно склеить, чтобы получить результат.</p>
-
-<p>Конечно, нет. Странно, что об этом забывают в процессе развертывания системы.</p>
-
-<p>Правильно сделать так – начитать как можно больше фраз, чтобы не было
-пауз. Например, для чисел записать варианты от 0 до 999. Да, потребуется время,
-ну и что? Займет два лишних часа, зато будет классно звучать. Если в системе
-десять окон, то записать десять фраз:</p>
-
-<ul>
-  <li>Пройдите в первое окно</li>
-  <li>Пройдите во второе окно</li>
-  <li>…</li>
-</ul>
-
-<p>и так далее. Намного человечней, чем “Пройдите в окно. Три.”</p>
-
-<p>Так вот, в воронежском ГАИ фразы звучат именно таким образом. На каждое окно
-отдельная фраза. Каждой цифре – своя дорожка. Удивительно!</p>
-
-<blockquote>
-  <p>Клиент с номером. Сто двадцать три. Пройдите в пятое окно.</p>
-</blockquote>
-
-<p>При этом первый кусочек заканчивается повышенной интонацией, а паузы перед
-номером нет, поэтому обрыва практически не слышно. Полагаю, что дикторша читала
-текст целиком, а потом дорожку нарезали, чтобы сохранить интонацию.</p>
-
-<p>Напомню, что это не Сбербанк, который лопается от денег, а госбюджет. Видимо, за
-систему отвечал тот, которому было не похер на свою работу. Не знаю, был ли это
-программист, или тестировщик, директор или главный гаишник. Но человек золотой,
-респект и уважение.</p>
 
                 
             </div>
