@@ -2,7 +2,7 @@
 layout: post
 title:  "Письма от Госуслуг"
 permalink: /gosuslugi-mail/
-tags: tales alladdin
+tags: gosuslugi mail
 ---
 
 У Госуслуг все печально с письмами:
@@ -18,3 +18,7 @@ tags: tales alladdin
 переписке. Никто не хочет быть жертвой, а Госуслуги уже признали тебя ей заочно.
 
 Копирайтера, который составил этот текст, — на мыло.
+
+**UPD**: читатели сообщили, что [все так и задумано][1]. Вот жесть.
+
+[1]: https://habr.com/ru/companies/rtlabs/articles/768838/
