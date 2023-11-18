@@ -1,7 +1,10 @@
 
 PORT := 4001
 
-all: clear build deploy
+all: clear pull build deploy
+
+pull:
+	git pull
 
 git-prepare:
 	git clone -b gh-pages --single-branch git@github.com:igrishaev/interview.git gh-pages
