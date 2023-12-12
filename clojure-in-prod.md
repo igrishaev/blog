@@ -47,8 +47,8 @@ Clojure? Это где скобочки и нет типов? На произв�
 6. Системы
 7. Тесты
 
-[toc]: /assets/static/aws/clojure_book/clojure_excerpt.pdf
-[excerpt]: /assets/static/aws/clojure_book/clojure_toc.pdf
+[toc]: /assets/static/aws/clojure_book/clojure_toc.pdf
+[excerpt]: /assets/static/aws/clojure_book/clojure_excerpt.pdf
 
 [Подробное содержание (PDF)][toc]
 
