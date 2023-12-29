@@ -104,18 +104,18 @@
         <li>
 
             <h2>
-                <a class="post-link" href="/en/read-21/">What to read #21</a>
+                <a class="post-link" href="/en/pg-to-datomic/">Migration from Postgres to Datomic</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2017-05-02T00:00:00+00:00">
-        May 2, 2017
+          datetime="2017-07-04T00:00:00+00:00">
+        Jul 4, 2017
     </time>
 
-    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/en/" rel="tag">en</a>
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/migration/" rel="tag">migration</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/datomic/" rel="tag">datomic</a>, <a href="/tag/database/" rel="tag">database</a>
 
 </div>
 
@@ -123,41 +123,974 @@
             <div class="entry">
                 
                     
-<p>With a little delay, here are the links:</p>
+<p>Recently, I migrated my Clojure-driven pet project from PostgreSQL to
+Datomic. This is <a href="https://queryfeed.net/">Queryfeed</a>, a web application to fetch data from
+social networks. I’ve been running it for several years considering it as a
+playground for some experiments. Long ago, it was written in Python, then I
+ported it to Clojure.</p>
 
-<ul>
-  <li>
-    <p><a href="http://blog.cognitect.com/blog/2016/11/14/works-on-my-machine-how-we-work-distributed">How We Work: Distributed</a></p>
+<p>It was a great experience when I just finished
+reading <a href="http://www.braveclojure.com/">“Clojure for True and Brave”</a> book and was full of
+desire to apply new knowledge to something practical rather than
+solving <a href="https://projecteuler.net/">Euler problems</a> in vain.</p>
 
-    <p>Good post in Cognitect blog. There are also a <a href="http://blog.cognitect.com/cognicast/104">podcast</a> by the same
-author with a <a href="http://blog.cognitect.com/cognicast-transcripts/104">transcript</a>.</p>
+<p>This time, I’ve made another effort to switch the database backend to
+Datomic. Datomic is a modern, fact-driven database developed
+in <a href="https://cognitect.com">Cognitect</a> to be used in conjunction with Clojure. It really
+differs for classical RDBS such as MySQL or PostgreSQL. For a long time, I’ve
+been thinking whether I should try it. Meanwhile, more and more Clojure/conj
+talks have been publishing on <a href="https://www.youtube.com/user/ClojureTV">YouTube</a>. At my work, we use vast
+PostgreSQL database and the code base is tied to close to it. There is no an
+option to perform a switch on weekends. So I decided to port my pet project to
+Datomic in my spare time.</p>
+
+<p>Surely, before doing this, I googled for a while and was really wondered about
+how few information I found on the Internet. There were just three posts that
+did not cover the subject in details. So I decided to share my experience
+here. Maybe it would help somebody with their migration duties.</p>
+
+<p>Of cause, I cannot guarantee the steps described below will meet your
+requirements as well. Each database is different, so it’s impossible to develop
+a final tool that could handle all the cases. But at least you may borrow some
+of those.</p>
+
+<h2>
+
+    Table of Contents
+
+</h2>
+
+<ul id="toc-item-pg-to-datomic">
+  <li><a href="#introduction" id="toc-item-pg-to-datomic-introduction">Introduction</a></li>
+  <li><a href="#dump-postgres-database" id="toc-item-pg-to-datomic-dump-postgres-database">Dump Postgres database</a></li>
+  <li><a href="#adding-datomic-into-your-project" id="toc-item-pg-to-datomic-adding-datomic-into-your-project">Adding Datomic into your project</a></li>
+  <li><a href="#loading-the-data-into-datomic" id="toc-item-pg-to-datomic-loading-the-data-into-datomic">Loading the data into Datomic</a>    <ul>
+      <li><a href="#avoid-nils" id="toc-item-pg-to-datomic-avoid-nils">Avoid nils</a></li>
+      <li><a href="#shrink-your-tables" id="toc-item-pg-to-datomic-shrink-your-tables">Shrink your tables</a></li>
+      <li><a href="#use-enums" id="toc-item-pg-to-datomic-use-enums">Use enums</a></li>
+      <li><a href="#json-data" id="toc-item-pg-to-datomic-json-data">JSON data</a></li>
+      <li><a href="#foreign-keys" id="toc-item-pg-to-datomic-foreign-keys">Foreign keys</a></li>
+    </ul>
   </li>
-  <li>
-    <p><a href="http://realworldclojure.com/one-weird-trick/">One Weird Trick To Become a Clojure Expert</a></p>
-
-    <p>It’s so simple, you see?</p>
+  <li><a href="#update-the-code" id="toc-item-pg-to-datomic-update-the-code">Update the code</a></li>
+  <li><a href="#html-templates" id="toc-item-pg-to-datomic-html-templates">HTML templates</a></li>
+  <li><a href="#remove-jdbcpostgres" id="toc-item-pg-to-datomic-remove-jdbcpostgres">Remove JDBC/Postgres</a></li>
+  <li><a href="#update-unit-test" id="toc-item-pg-to-datomic-update-unit-test">Update unit test</a></li>
+  <li><a href="#infrastructure-final-touches" id="toc-item-pg-to-datomic-infrastructure-final-touches">Infrastructure (final touches)</a>    <ul>
+      <li><a href="#setting-up-production-postgres-driven-backend" id="toc-item-pg-to-datomic-setting-up-production-postgres-driven-backend">Setting up production Postgres-driven backend</a></li>
+      <li><a href="#running-the-transactor" id="toc-item-pg-to-datomic-running-the-transactor">Running the transactor</a></li>
+      <li><a href="#console" id="toc-item-pg-to-datomic-console">Console</a></li>
+      <li><a href="#backups" id="toc-item-pg-to-datomic-backups">Backups</a></li>
+      <li><a href="#backups-as-a-way-to-deploy-the-data" id="toc-item-pg-to-datomic-backups-as-a-way-to-deploy-the-data">Backups as a way to deploy the data</a></li>
+    </ul>
   </li>
-  <li>
-    <p><a href="https://codeblog.jonskeet.uk/2017/04/23/all-about-java-util-date/">All About java.util.Date</a></p>
-
-    <p>Some interesting facts behind the Java hood.</p>
-  </li>
-  <li>
-    <p><a href="http://proft.me/2017/04/10/pro-java-collections-framework-pochti-vse-i-srazu/">Про Java Collections Framework: почти все и сразу</a></p>
-
-    <p>Nice article on Russian about Java collections.</p>
-  </li>
+  <li><a href="#conclusion" id="toc-item-pg-to-datomic-conclusion">Conclusion</a></li>
 </ul>
 
-<p>Non-IT links:</p>
+<h2 id="introduction">Introduction</h2>
+
+<p>Before we begin, let’s talk about what is the reason to switch to Datomic. That
+question cannot be answered just in one or two points. Before Datomic, I’ve been
+working with PostgreSQL for several years and reckon it as a great
+software. There is no such a task that Postgres cannot deal with. Here are just
+some of them:</p>
 
 <ul>
-  <li>
-    <p><a href="http://sexprosvet.me/conversationaboutsex">How to talk to children on sex</a></p>
-
-    <p>Good advise from famous Russian psychologist.</p>
-  </li>
+  <li>streaming replication, smart sharding;</li>
+  <li>geo-spatial data, PostGIS;</li>
+  <li>full-text search, trigrams;</li>
+  <li>JSON(b) data structures;</li>
+  <li>typed arrays;</li>
+  <li>recursive queries;</li>
+  <li>and tons of other benefits.</li>
 </ul>
+
+<p>So if Postgres is really so great, why switching then? In my point of view, it
+brings the following benefits into a project:</p>
+
+<ol>
+  <li>Datomic is simple. In fact, it has only two operations: read (querying) and
+write (transaction).</li>
+  <li>It supports joins as well. Once you have a reference, it can be resolved into
+a nested map. References may be recursive. In PostgreSQL or any other RDBS,
+you always have a plain result with possibly duplicated rows. The ORM logic
+that may deal with parsing raw SQL response might be too complicated to
+understand.</li>
+  <li>Datomic was developed in the same terms as Clojure was. These are simplicity,
+immutability and declarative style. Datomic shares Clojure’s values.</li>
+  <li>It accumulates changes through time like Git or any other control version
+system. With Datomic, you may always roll-back in time to get a history of an
+order or collect audit logs.</li>
+</ol>
+
+<p>Let’s highlight some general steps we should pass through to complete the
+migration. These are:</p>
+
+<ul>
+  <li>dump you Postgres data;</li>
+  <li>add Datomic into your project;</li>
+  <li>load the data into Datomic;</li>
+  <li>rewrite the code that operates on data;</li>
+  <li>rewrite your HTML templates;</li>
+  <li>update or add unit tests;</li>
+  <li>remote JDBC/Postgres from your project;</li>
+  <li>setup infrastructure (backups, console, etc)</li>
+</ul>
+
+<p>As you see, it is not as simple as it could be thought even for a small
+project. In my case, migrating Queryfeed took about a week working by nights. It
+includes:</p>
+
+<ul>
+  <li>two days to read the whole <a href="http://docs.datomic.com/">Datomic documentation</a>;</li>
+  <li>one day to migrate the data;</li>
+  <li>two days to fix the business logic code and templates;</li>
+  <li>two days to deploy everything to the server.</li>
+</ul>
+
+<p>Regarding to the documentation, I highly recommend you to read it first before
+doing anything. Please do not rely on random Stack Overflow snippets. Datomic is
+completely different than classical SQL databases, so your long-term Postgres or
+MySQL experience won’t work.</p>
+
+<p>Quick tip here, since it could be difficult to read lots of text from a screen,
+I just download any page I wish to read into my Kindle using the official
+Amazon <a href="https://chrome.google.com/webstore/detail/send-to-kindle-for-google/cgdjpilhipecahhcilnafpblkieebhea?hl=en">extension for Chrome</a>. The paper appears on my Kindle in a
+minute and I read it.</p>
+
+<p>Once you’ve finished with the docs, feel free to the next step: dumping your
+PostgreSQL data.</p>
+
+<h2 id="dump-postgres-database">Dump Postgres database</h2>
+
+<p>Exporting you data into a set of files won’t be so difficult I believe. I may
+guess your project has <code class="language-plaintext highlighter-rouge">projectname.db</code> module that handles the most of database
+stuff. It should have <code class="language-plaintext highlighter-rouge">clojure.java.jdbc</code> module imported and <code class="language-plaintext highlighter-rouge">*db*</code> or
+<code class="language-plaintext highlighter-rouge">db-spec</code> variables declared. Your goal is for every table you have in the
+database, run a query something like <code class="language-plaintext highlighter-rouge">select * from &lt;table_name&gt;</code> against it and
+save the result into a file.</p>
+
+<p>What file format to use depends on your own preferences, but I highly recommend
+the standard <code class="language-plaintext highlighter-rouge">EDN</code> files rather than JSON, CSV or whatever. The main point in
+favor of <code class="language-plaintext highlighter-rouge">EDN</code> is it handles extended data types such as dates and UUIDs. In my
+case, every table has at least one date field, for example <code class="language-plaintext highlighter-rouge">created_at</code> that is
+not null and is set with the current time automatically. When using JSON or
+YAML, the dates will be just strings so you need to write extra code to restore
+a native <code class="language-plaintext highlighter-rouge">java.util.Date</code> class from a string. So are unique identifiers, UUIDs.</p>
+
+<p>In addition, since <code class="language-plaintext highlighter-rouge">EDN</code> files represent native Clojure data structures, you
+don’t need to add <code class="language-plaintext highlighter-rouge">org.clojure/data.json</code> dependency into your
+project. Everything can be made with out-from-the-box functions. The next
+snippet dumps all the users from your Postgres database into a <code class="language-plaintext highlighter-rouge">users.edn</code> file:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">*db*</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">JDBC</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="n">map...</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="n">jdbc/query</span><span class="w"> </span><span class="n">db-spec</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">spit</span><span class="w"> </span><span class="s">"users.edn"</span><span class="w"> </span><span class="p">(</span><span class="nb">with-out-str</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"select * from users"</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="nb">prn</span><span class="p">)))</span><span class="w">
+
+</span></code></pre></div></div>
+
+<p>And that is! With only one line of code, you’ve just dumped the whole table into
+a file. Repeat it several times substituting a name of an <code class="language-plaintext highlighter-rouge">*.edn</code> file and a
+table. If you have many tables, wrap it with a function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">dump</span><span class="w"> </span><span class="p">[</span><span class="n">table</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">spit</span><span class="w"> </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"%s.edn"</span><span class="w"> </span><span class="n">table</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nb">with-out-str</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"select * from %s"</span><span class="w"> </span><span class="n">table</span><span class="p">)</span><span class="w">
+                      </span><span class="n">query</span><span class="w">
+                      </span><span class="nb">prn</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Then run it against a vector of table names but not a set since an order is
+important. For example, if you have a user has a foreign key to <code class="language-plaintext highlighter-rouge">orders</code> table,
+it should be loaded first.</p>
+
+<p>To check whether your dump is correct, try to restore it from a file as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"users.edn"</span><span class="w"> </span><span class="nb">slurp</span><span class="w"> </span><span class="n">read-string</span><span class="w"> </span><span class="nb">first</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Again, it is so simple to perform such things in Clojure. Within one line of
+code, you have just read the file, restored the Clojure data from it and took
+the first map from a list. In REPL, you should see something like:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+ </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w">
+ </span><span class="no">:email</span><span class="w"> </span><span class="s">"test@test.com"</span><span class="w">
+ </span><span class="n">...</span><span class="w"> </span><span class="n">other</span><span class="w"> </span><span class="n">fields</span><span class="w">
+ </span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>That means the dump step was done as well.</p>
+
+<h2 id="adding-datomic-into-your-project">Adding Datomic into your project</h2>
+
+<p>Here, I won’t discuss on that step so long since it is highlighted as well in
+the official documentation. Briefly, you need to:</p>
+
+<ol>
+  <li><a href="https://my.datomic.com/">register</a> on Datomic site, it is free;</li>
+  <li>set up your <a href="https://github.com/technomancy/leiningen/blob/master/doc/GPG.md">GPG credentials</a>;</li>
+  <li>add Datomic repository and <a href="http://docs.datomic.com/integrating-peer-lib.html">the library</a> into your project;</li>
+  <li>(optional) if you use Postgres-driven backend for
+Datomic, <a href="http://docs.datomic.com/storage.html#sql-database">create a new Postgres</a> database using SQL scripts from
+<code class="language-plaintext highlighter-rouge">sql</code> folder. Then <a href="http://docs.datomic.com/run-transactor.html">run a transactor</a>.</li>
+</ol>
+
+<p>Below, here is a brief example of my setup:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; project.clj</span><span class="w">
+</span><span class="p">(</span><span class="nf">defproject</span><span class="w"> </span><span class="n">my-project</span><span class="w"> </span><span class="s">"0.x.x"</span><span class="w">
+  </span><span class="n">...</span><span class="w">
+  </span><span class="no">:repositories</span><span class="w"> </span><span class="p">{</span><span class="s">"my.datomic.com"</span><span class="w"> </span><span class="p">{</span><span class="no">:url</span><span class="w"> </span><span class="s">"https://my.datomic.com/repo"</span><span class="w">
+                                   </span><span class="no">:creds</span><span class="w"> </span><span class="no">:gpg</span><span class="p">}}</span><span class="w">
+
+  </span><span class="no">:dependencies</span><span class="w"> </span><span class="p">[</span><span class="n">...</span><span class="w">
+                 </span><span class="p">[</span><span class="n">com.datomic/datomic-pro</span><span class="w"> </span><span class="s">"0.9.5561.50"</span><span class="p">]</span><span class="w">
+                 </span><span class="n">...</span><span class="p">]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Run <code class="language-plaintext highlighter-rouge">lein deps</code> to download the library. You will be probably prompted to input
+your GPG key.</p>
+
+<p>A quick try in REPL:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">datomic.api</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">d</span><span class="p">])</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">d/connect</span><span class="w"> </span><span class="s">"datomic:mem://test-db"</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="loading-the-data-into-datomic">Loading the data into Datomic</h2>
+
+<p>In this step, we will load the previously dumped data into your Datomic
+installation.</p>
+
+<p>First, we need to prepare the schema before loading the data. A schema is a
+collection of attributes. Each attribute by itself is a small piece of
+information, for example a <code class="language-plaintext highlighter-rouge">:user/name</code> attribute keeps a string value and
+indicates a user’s name.</p>
+
+<p>An entity is a set of attributes linked together by system identifier. Thinking
+in RDBS terms, an attribute is a DB column whereas an entity is a row of a
+table. That really differs Datomic from such schema-less databases as MongoDB for
+example. In Mongo, every entity may have any structure you wish even across the
+same collection. In Datomic, you cannot write a string value into a number or a
+boolean into a date. One note, an entity may own an arbitrary number of
+attributes.</p>
+
+<p>For example, in Postgres if you did not set default values for a column and it
+is not null, you just cannot skip it when inserting a row. In Datomic, you may
+submit as many attributes as you want when performing a transaction. Imagine we
+have a user model with ten attributes: a name, email, etc. When creating a user,
+I may pass only a name and there won’t be an error. So pay attention you submit
+all the required attributes.</p>
+
+<p>Datomic schema is represented by native Clojure data structures: maps, keywords
+and vectors. That’s why they are stored in EDN files as well. A typical initial
+schema for fresh Datomic installation may look as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="w">
+ </span><span class="c1">;; Enums</span><span class="w">
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.gender/male</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.gender/female</span><span class="p">}</span><span class="w">
+
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.source/twitter</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.source/facebook</span><span class="p">}</span><span class="w">
+
+ </span><span class="c1">;; Users</span><span class="w">
+
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:user/pg-id</span><span class="w">
+  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/long</span><span class="w">
+  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/one</span><span class="w">
+  </span><span class="no">:db/unique</span><span class="w">      </span><span class="no">:db.unique/identity</span><span class="p">}</span><span class="w">
+
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:user/source</span><span class="w">
+  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/ref</span><span class="w">
+  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/one</span><span class="w">
+  </span><span class="no">:db/isComponent</span><span class="w"> </span><span class="n">true</span><span class="p">}</span><span class="w">
+
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:user/source-id</span><span class="w">
+  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/string</span><span class="w">
+  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/one</span><span class="p">}</span><span class="w">
+ </span><span class="n">...</span><span class="w">
+</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The first four ones are special attributes that are proposed as enum values. I
+will discuss more on them later.</p>
+
+<p>Again, check for the official documentation that
+describes <a href="http://docs.datomic.com/schema.html">schema usage</a>.</p>
+
+<p>Now that we prepared a schema, let add some boilerate code in our <code class="language-plaintext highlighter-rouge">db</code>
+namespace:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">project.db</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w"> </span><span class="p">[</span><span class="n">clojure.java.io</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">io</span><span class="p">]</span><span class="w">
+            </span><span class="p">[</span><span class="n">datomic.api</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">d</span><span class="p">]))</span><span class="w">
+
+</span><span class="c1">;; in-memory database for test purposes</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">db-uri</span><span class="w"> </span><span class="s">"datomic:mem://test-db"</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; global Datomic connection wrapped in atom</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">*conn</span><span class="w"> </span><span class="p">(</span><span class="nf">atom</span><span class="w"> </span><span class="n">nil</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; A function to initiate the global state</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">init-db</span><span class="w"> </span><span class="p">[]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">d/create-database</span><span class="w"> </span><span class="n">db-uri</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">reset!</span><span class="w"> </span><span class="n">*conn</span><span class="w"> </span><span class="p">(</span><span class="nf">d/connect</span><span class="w"> </span><span class="n">db-uri</span><span class="p">)))</span><span class="w">
+
+</span><span class="c1">;; reads an EDN file located in `resources` folder</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">read-edn</span><span class="w">
+  </span><span class="p">[</span><span class="n">filename</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">filename</span><span class="w">
+      </span><span class="n">io/resource</span><span class="w">
+      </span><span class="nb">slurp</span><span class="w">
+      </span><span class="n">read-string</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; reads and loads a schema from EDN file</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">load-schema</span><span class="w">
+  </span><span class="p">[</span><span class="n">filename</span><span class="p">]</span><span class="w">
+  </span><span class="o">@</span><span class="p">(</span><span class="nf">d/transact</span><span class="w"> </span><span class="o">@</span><span class="n">*conn</span><span class="w"> </span><span class="p">(</span><span class="nf">read-edn</span><span class="w"> </span><span class="n">filename</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>I hope the comments highlight the meaning of the code as well. I just declared a
+database URL, a global connection, a function to connect to the DB and two
+helper functions.</p>
+
+<p>The first function rust reads a <code class="language-plaintext highlighter-rouge">EDN</code> file and returns a data structure. Since
+our files a stored in resources folder, there is a <code class="language-plaintext highlighter-rouge">io/resource</code> wrapper here in
+the threading chain.</p>
+
+<p>The second function also read a file but also performs a Datomic transaction
+passing data as a schema.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">db-uri</code> variable is represented with URL-like string. Currently, we use
+in-memory storage for test purposes. I really doubt you can load the data
+directly to SQL-driven storage without errors so let’s just practice for a
+while. Later, when the import step will be ready, we will just switch <code class="language-plaintext highlighter-rouge">db-uri</code>
+variable to production-ready URL.</p>
+
+<p>With the code above, we are ready to load the schema. I put my initial schema
+into a file <code class="language-plaintext highlighter-rouge">resources/schema/0001-init.edn</code> so I may load it as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">init-db</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">load-schema</span><span class="w"> </span><span class="s">"schema/0001-init.edn"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now that we have a schema, let’s load the previously saved Postgres data. We
+need to add more boilerate code. Unfortunately, there cannot be a common
+function that may map your Postgres fields into Datomic attributes. The
+functions to convert your data might look a bit ugly, but they are
+one-time-purpose only so please don’t mind.</p>
+
+<p>For each EDN file that contains data of a specific table, we should:</p>
+
+<ol>
+  <li>read a proper file, get a list of maps;</li>
+  <li>convert each PostgreSQL map into Datomic map;</li>
+  <li>perform Datomic transaction passing a vector of Datomic maps.</li>
+</ol>
+
+<p>Below, here is an example of my <code class="language-plaintext highlighter-rouge">pg-user-to-datomic</code> function that accepts a
+Postgres-driven map and turns it into a set of Datomic attributes:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">pg-user-to-datomic</span><span class="w">
+  </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">email</span><span class="w">
+           </span><span class="n">first_name</span><span class="w">
+           </span><span class="n">timezone</span><span class="w">
+           </span><span class="n">source_url</span><span class="w">
+           </span><span class="n">locale</span><span class="w">
+           </span><span class="nb">name</span><span class="w">
+           </span><span class="n">access_token</span><span class="w">
+           </span><span class="n">access_secret</span><span class="w">
+           </span><span class="n">source</span><span class="w">
+           </span><span class="n">token</span><span class="w">
+           </span><span class="n">status</span><span class="w">
+           </span><span class="n">id</span><span class="w">
+           </span><span class="n">access_expires</span><span class="w">
+           </span><span class="n">last_name</span><span class="w">
+           </span><span class="n">gender</span><span class="w">
+           </span><span class="n">source_id</span><span class="w">
+           </span><span class="n">is_subscribed</span><span class="w">
+           </span><span class="n">created_at</span><span class="p">]}]</span><span class="w">
+
+  </span><span class="p">{</span><span class="no">:user/pg-id</span><span class="w"> </span><span class="n">id</span><span class="w">
+   </span><span class="no">:user/email</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">email</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
+   </span><span class="no">:user/first-name</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">first_name</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
+   </span><span class="no">:user/timezone</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">timezone</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
+   </span><span class="no">:user/source-url</span><span class="w"> </span><span class="p">(</span><span class="nf">URI.</span><span class="w"> </span><span class="n">source_url</span><span class="p">)</span><span class="w">
+   </span><span class="no">:user/locale</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">locale</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
+   </span><span class="no">:user/name</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="nb">name</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
+   </span><span class="no">:user/access-token</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">access_token</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
+   </span><span class="no">:user/access-secret</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">access_secret</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
+
+   </span><span class="no">:user/source</span><span class="w"> </span><span class="p">(</span><span class="nf">case</span><span class="w"> </span><span class="n">source</span><span class="w">
+                       </span><span class="s">"facebook"</span><span class="w"> </span><span class="no">:user.source/facebook</span><span class="w">
+                       </span><span class="s">"twitter"</span><span class="w"> </span><span class="no">:user.source/twitter</span><span class="p">)</span><span class="w">
+
+   </span><span class="no">:user/source-id</span><span class="w"> </span><span class="n">source_id</span><span class="w">
+
+   </span><span class="no">:user/token</span><span class="w"> </span><span class="p">(</span><span class="nf">UUID/fromString</span><span class="w"> </span><span class="n">token</span><span class="p">)</span><span class="w">
+   </span><span class="no">:user/status</span><span class="w"> </span><span class="p">(</span><span class="nf">case</span><span class="w"> </span><span class="n">status</span><span class="w">
+                  </span><span class="s">"normal"</span><span class="w"> </span><span class="no">:user.status/normal</span><span class="w">
+                  </span><span class="s">"pro"</span><span class="w"> </span><span class="no">:user.status/pro</span><span class="p">)</span><span class="w">
+
+   </span><span class="no">:user/access-expires</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">access_expires</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w">
+   </span><span class="no">:user/last-name</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">last_name</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
+   </span><span class="no">:user/gender</span><span class="w"> </span><span class="p">(</span><span class="nf">case</span><span class="w"> </span><span class="n">gender</span><span class="w">
+                  </span><span class="s">"male"</span><span class="w"> </span><span class="no">:user.gender/male</span><span class="w">
+                  </span><span class="s">"female"</span><span class="w"> </span><span class="no">:user.gender/female</span><span class="p">)</span><span class="w">
+
+   </span><span class="no">:user/is-subscribed</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">is_subscribed</span><span class="w"> </span><span class="n">false</span><span class="p">)</span><span class="w">
+   </span><span class="no">:user/created-at</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">created_at</span><span class="w"> </span><span class="p">(</span><span class="nf">Date.</span><span class="p">))})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Yes, it looks ugly a bit annoying, but you have to write something like this for
+every table your have.</p>
+
+<p>Here is the code to load a table into Datomic:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="s">"users.edn"</span><span class="w"> </span><span class="nb">slurp</span><span class="w"> </span><span class="n">read-string</span><span class="w"> </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="n">pg-user-to-datomic</span><span class="p">)</span><span class="w"> </span><span class="n">transact!</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Before we go further, let’s discuss some important notes on importing the data.</p>
+
+<h3 id="avoid-nils">Avoid nils</h3>
+
+<p>Datomic does not support nil values for attributes. When you do not have a value
+for an attribute, you should either skip it or pass an empty value: a zero, an
+empty string, etc. That’s why the most of expressions have <code class="language-plaintext highlighter-rouge">(or "")</code> at the end
+of threading macro.</p>
+
+<h3 id="shrink-your-tables">Shrink your tables</h3>
+
+<p>Migrating to the new datastore backend is a good chance to refactor your
+schema. For those who has spent years working with relational database it is not
+a secret that typical SQL applications suffer from lots of tables. In SQL, it is
+not enough to keep just “entities” tables: users, orders, etc. Often, you need
+to associate a product with colors, a blog post with tags or a user with
+permissions. That leads to <code class="language-plaintext highlighter-rouge">product_colors</code>, <code class="language-plaintext highlighter-rouge">post_tags</code> and other bridge
+tables. You join them in a query to “go through” from a user to their orders,
+for example.</p>
+
+<p>Datomic is free from bridge tables. It supports reference attributes that are
+linked to any other entity. In addition, each attribute may carry multiple
+values. For example, if we want to link a blog post with a set of tags, we’d
+rather declare the following schema:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="w">
+ </span><span class="c1">;; Tag</span><span class="w">
+
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:tag/name</span><span class="w">
+  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/string</span><span class="w">
+  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/one</span><span class="w">
+  </span><span class="no">:db/unique</span><span class="w">      </span><span class="no">:db.unique/identity</span><span class="p">}</span><span class="w">
+
+ </span><span class="c1">;; Post</span><span class="w">
+
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:post/title</span><span class="w">
+  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/string</span><span class="w">
+  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/one</span><span class="p">}</span><span class="w">
+
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:post/text</span><span class="w">
+  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/string</span><span class="w">
+  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/one</span><span class="p">}</span><span class="w">
+
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:post/tags</span><span class="w">
+  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/ref</span><span class="w">
+  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/many</span><span class="p">}</span><span class="w">
+</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In Postgres, you will need <code class="language-plaintext highlighter-rouge">post_tags</code> bridge table with <code class="language-plaintext highlighter-rouge">post_id</code> and <code class="language-plaintext highlighter-rouge">tag_id</code>
+foreign keys. In datomic, you simply pass a vector of IDs in <code class="language-plaintext highlighter-rouge">:post/tags</code> field
+when creating a post.</p>
+
+<p>Migrating to Datomic is a great chance to get rid of those tables.</p>
+
+<h3 id="use-enums">Use enums</h3>
+
+<p>Both Postgres and Datomic provide support of enum types. A enum type is a set of
+values. An instance of enum type may have only one of those values.</p>
+
+<p>In Postgres, I use enum types a lot. They are fast, reliable and provide strong
+consistency of you data. For example, if you have an order with possible “new”,
+“pending” and “paid” states, please don’t use <code class="language-plaintext highlighter-rouge">varchar</code> type for that. Somehow
+you may write something wrong there, for example mix up the register or make a
+misprint. So you’d better to declare the schema as follows:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">type</span> <span class="n">order_state</span> <span class="k">as</span> <span class="nb">enum</span> <span class="p">(</span>
+  <span class="s1">'order_state/new'</span><span class="p">,</span>
+  <span class="s1">'order_state/pending'</span><span class="p">,</span>
+  <span class="s1">'order_state/paid'</span>
+<span class="p">);</span>
+
+<span class="k">create</span> <span class="k">table</span> <span class="n">orders</span> <span class="p">(</span>
+  <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+  <span class="k">state</span> <span class="n">order_state</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="s1">'order_state/new'</span><span class="p">::</span><span class="n">order_state</span><span class="p">,</span>
+  <span class="p">...</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Now you cannot submit an unknown state for an order.</p>
+
+<p>Although Postgres enums are great, JDBC library makes our life a bit more
+difficult by forcing us to wrap enum values into <code class="language-plaintext highlighter-rouge">PGObject</code> when querying or
+inserting data. For example, to submit a new state for an order, you cannot just
+pass a string <code class="language-plaintext highlighter-rouge">"order_state/paid"</code>. You’ll get an error saying you are trying to
+submit a string for <code class="language-plaintext highlighter-rouge">order_state</code> type column. So you have to wrap your string
+into a special object:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">get-pg-obj</span><span class="w"> </span><span class="p">[</span><span class="n">type</span><span class="w"> </span><span class="n">value</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">doto</span><span class="w"> </span><span class="p">(</span><span class="nf">PGobject.</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">.setType</span><span class="w"> </span><span class="n">type</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">.setValue</span><span class="w"> </span><span class="n">value</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">get-order-state</span><span class="w">
+  </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="n">get-pg-obj</span><span class="w"> </span><span class="s">"order_state"</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; now, composing parameters for a query</span><span class="w">
+</span><span class="p">{</span><span class="no">:order_id</span><span class="w"> </span><span class="mi">42</span><span class="w">
+ </span><span class="no">:state</span><span class="w"> </span><span class="p">(</span><span class="nf">get-order-state</span><span class="w"> </span><span class="s">"order_state/paid"</span><span class="p">)}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Another disadvantage here is inconsistency between select and insert
+queries. When you just read the data, you get the enum value as a string. But
+when you pass a enum as a parameter, you still need to wrap it with
+PGObject. That is a bit annoying.</p>
+
+<p>Datomic also has nice support of enums. There is no a special syntax for
+them. Enums are special attributes that do not have values but only
+names. Above, I have already highlighted them:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="w">
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.gender/male</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.gender/female</span><span class="p">}</span><span class="w">
+
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.source/twitter</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.source/facebook</span><span class="p">}</span><span class="w">
+</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Later, you may reference a enum value passing just a keyword
+<code class="language-plaintext highlighter-rouge">:user.source/twitter</code>. It’s quite simple, fast and keeps your database
+consistent.</p>
+
+<h3 id="json-data">JSON data</h3>
+
+<p>Personally, I try to avoid using JSON in Postgres as long as it is
+possible. Adding JSON fields everywhere turns your Postgres installation into
+MongoDB. It becomes quite easy to make a mistake or corrupt the data and fall
+into a situation when one half or your JSON data has a particular key and the
+rest half does not.</p>
+
+<p>Sometimes you really need to keep JSON in your DB. A good example might
+be <a href="https://developer.paypal.com/docs/classic/products/instant-payment-notification/">Paypal Instant Notifications</a>. These are HTTP requests that Paypal
+sends to your server when a customer buys something. IPN’s body keeps about 30
+fields and its structure may vary depending on transaction type. Splitting that
+data into separate fields and storing all of them across separate columns will
+be a mess. A solution will be to fetch only the most sensible ones (date, email,
+sum, order number) and write the rest data into a <code class="language-plaintext highlighter-rouge">jsonb</code> column. Then, once you
+need to fetch any additional information from an IPN, for example a tax sum, you
+may query it as well:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
+  <span class="k">data</span><span class="o">-&gt;</span><span class="s1">'tax_sum'</span><span class="p">::</span><span class="nb">numeric</span> <span class="k">as</span> <span class="n">tax</span>
+<span class="k">from</span>
+  <span class="n">ipn</span>
+<span class="k">where</span>
+  <span class="n">order_number</span> <span class="o">=</span> <span class="s1">'123456'</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>In Datomic, there is no JSON type for attributes. I’m not sure I made a proper
+decision, but I just put those JSON data into a text attribute. Sure, where is
+no a way to access separate fields in a datalog query or apply roles to
+them. But at least I can restore the data when selecting a single entity:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; local handler to parse JSON with keywords in keys</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">parse-json</span><span class="w"> </span><span class="p">[</span><span class="n">value</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">json/parse-string</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="n">true</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">get-last-ipn</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">query</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="no">:find</span><span class="w"> </span><span class="p">[(</span><span class="nf">pull</span><span class="w"> </span><span class="n">?ipn</span><span class="w"> </span><span class="p">[</span><span class="nb">*</span><span class="p">])</span><span class="w"> </span><span class="n">...</span><span class="p">]</span><span class="w">
+                </span><span class="no">:in</span><span class="w"> </span><span class="n">$</span><span class="w"> </span><span class="n">?user</span><span class="w">
+                </span><span class="no">:where</span><span class="w">
+                </span><span class="p">[</span><span class="n">?ipn</span><span class="w"> </span><span class="no">:ipn/user</span><span class="w"> </span><span class="n">?user</span><span class="p">]]</span><span class="w">
+
+        </span><span class="n">result</span><span class="w"> </span><span class="p">(</span><span class="nf">d/q</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="p">(</span><span class="nf">d/db</span><span class="w"> </span><span class="o">@</span><span class="n">*conn</span><span class="p">)</span><span class="w"> </span><span class="n">user-id</span><span class="p">)]</span><span class="w">
+
+    </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="p">(</span><span class="nf">not-empty</span><span class="w"> </span><span class="n">result</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">item</span><span class="w"> </span><span class="p">(</span><span class="nb">last</span><span class="w"> </span><span class="p">(</span><span class="nb">sort-by</span><span class="w"> </span><span class="no">:ipn/emitted-at</span><span class="w"> </span><span class="n">result</span><span class="p">))]</span><span class="w">
+        </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="no">:ipn/data</span><span class="w"> </span><span class="n">parse-json</span><span class="p">)))))</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="foreign-keys">Foreign keys</h3>
+
+<p>In RDBS, a typical table has auto-incremental <code class="language-plaintext highlighter-rouge">id</code> field that marks a unique
+number of that row. When you need to refer to another table, an order or a
+user’s profile, you declare a foreign key that just keeps a value for those
+id. Since they are auto-generated, you should never bother on their real values,
+but only consistency.</p>
+
+<p>In Datomic, you do not have possibility to have auto-incremented values. When
+you import your data, it’s important to handle foreign keys (or references in
+terms of Datomic) properly. During the import, we populate <code class="language-plaintext highlighter-rouge">:&lt;entity&gt;/pg-id</code>
+field that holds the legacy Postgres value. Once you import a table with foreign
+keys, you may resolve a reference as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">...</span><span class="w"> </span><span class="c1">;; other order fields</span><span class="w">
+ </span><span class="no">:order/user</span><span class="w"> </span><span class="p">[</span><span class="no">:user/pg-id</span><span class="w"> </span><span class="n">user_id</span><span class="p">]}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>A reference attribute may be represented as vector of two where the first value
+is an attribute name and the second is its value.</p>
+
+<p>For new entities created in production after migration to Datomic, you do not
+need to submit <code class="language-plaintext highlighter-rouge">.../pg-id</code> value. You may either delete it (retract) once the
+migration process has been finished or just keep it in the database as an
+indicator that marks legacy data.</p>
+
+<h2 id="update-the-code">Update the code</h2>
+
+<p>This step would be the most boring, I believe. You need to scan the whole
+project and fix those fragments where you access the data from the database.</p>
+
+<p>Since it is a good practice to prepend attributes with a namespace, the most
+common change would be attribute renaming I believe:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; before</span><span class="w">
+</span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="p">(</span><span class="no">:name</span><span class="w"> </span><span class="n">user</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; after</span><span class="w">
+</span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="p">(</span><span class="no">:user/name</span><span class="w"> </span><span class="n">user</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>You will face less problems by organizing special functions that wraps the
+underlying logic. A good example might be to add <code class="language-plaintext highlighter-rouge">get-user-by-id</code>,
+<code class="language-plaintext highlighter-rouge">get-orders-by-user-id</code> and so on.</p>
+
+<p>If you use <a href="https://github.com/layerware/hugsql">HugSQL</a> or <a href="https://github.com/krisajenkins/yesql">YeSQL</a> Clojure libraries than you already
+have such functions created dynamically from <code class="language-plaintext highlighter-rouge">*.sql</code> files. That is quite better
+than having naked SQL everywhere. Porting such a project to Datomic will be much
+easier.</p>
+
+<h2 id="html-templates">HTML templates</h2>
+
+<p>Another dull step that cannot be automated is to scan your Selmer templates (if
+you have them in your project, of course) and to update those fragments where
+you touch entities’ attributes. For example:</p>
+
+<pre><code class="language-HTML">
+;; before
+&lt;p&gt;{{ user.first_name}} {{ user.last_name}}&lt;/p&gt;
+
+;; after
+&lt;p&gt;{{ user.user/first-name}} {{ user.user/last-name}}&lt;/p&gt;
+
+</code></pre>
+
+<p>You may access nested entities as well. Imagine a user has a reference to their
+social profile:</p>
+
+<div class="language-html highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+<span class="nt">&lt;p&gt;</span>{{ user.user/profile.profile/name }}<span class="nt">&lt;/p&gt;</span> ;; "twitter", "facebook" etc
+
+</code></pre></div></div>
+
+<p>Datomic encourages us to use enums which values are just keywords. Sometimes,
+you need to implement <code class="language-plaintext highlighter-rouge">case...then</code> pattern in your Selmer template and render
+any content depending on enum value. This may be a bit tricky since Selmer does
+not support keyword literals. In the example above, a user has <code class="language-plaintext highlighter-rouge">:user/source</code>
+attribute that references a enum with possible values <code class="language-plaintext highlighter-rouge">:user.source/twitter</code> or
+<code class="language-plaintext highlighter-rouge">:user.source/facebook</code>. Here is how I figured out switching on them:</p>
+
+<div class="language-html highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+{% ifequal request.user.user/source.db/ident|str ":user.source/twitter" %}
+  <span class="nt">&lt;a</span> <span class="na">href=</span><span class="s">"https://twitter.com/{{ user.user/username }}"</span><span class="nt">&gt;</span>Twitter page<span class="nt">&lt;/a&gt;</span>
+{% endifequal %}
+{% ifequal request.user.user/source.db/ident|str ":user.source/facebook" %}
+  <span class="nt">&lt;a</span> <span class="na">href=</span><span class="s">"{{ user.user/profile-url }}"</span><span class="nt">&gt;</span>Facebook page<span class="nt">&lt;/a&gt;</span>
+{% endifequal %}
+
+</code></pre></div></div>
+
+<p>In the example above, we have to turn a keyword into a string using <code class="language-plaintext highlighter-rouge">|str</code>
+filter to compare both values as strings.</p>
+
+<p>To find all the Selmer variables or operators in Selmer, just grep your
+templates folder by <code class="language-plaintext highlighter-rouge">{{</code> or <code class="language-plaintext highlighter-rouge">{%</code>
+literals.</p>
+
+<h2 id="remove-jdbcpostgres">Remove JDBC/Postgres</h2>
+
+<p>Now that your project is Datomic-powered and does not need JDBC drivers anymore,
+you may either remove them from the project or at least decrease them to the
+<code class="language-plaintext highlighter-rouge">dev</code> dependencies needed only for development purposes.</p>
+
+<p>Scan you project grepping it with <code class="language-plaintext highlighter-rouge">jdbc</code>, <code class="language-plaintext highlighter-rouge">postgres</code> terms to find those
+namespaces that still use legacy DB backend. Remove any that still present. Open
+your root <code class="language-plaintext highlighter-rouge">project.clj</code> file, remove <code class="language-plaintext highlighter-rouge">jdbc</code> and <code class="language-plaintext highlighter-rouge">postgresql</code> packages from
+<code class="language-plaintext highlighter-rouge">:dependencies</code> vector. Ensure you may run and build the application and unit
+tests as well.</p>
+
+<h2 id="update-unit-test">Update unit test</h2>
+
+<p>Datomic is a great tool in those aspect you may use in-memory backend when
+running tests. That makes them pass quite faster and without needing setting up
+Postgres installation on you machine.</p>
+
+<p>I believe your project is able to detect whether it is in <code class="language-plaintext highlighter-rouge">dev</code>, <code class="language-plaintext highlighter-rouge">test</code> or <code class="language-plaintext highlighter-rouge">prod</code>
+mode. If it’s not, take a look at <a href="http://www.luminusweb.net/">Luminus framework</a>. It’s done quite
+well in that meaning. For each type of environment, you specify its own database
+URL. For test, it will be in-memory storage.</p>
+
+<p>Using the standard <code class="language-plaintext highlighter-rouge">clojure.test</code> namespace, you wrap each test with a fixture
+that does the following steps:</p>
+
+<ol>
+  <li>creates a new database in memory and connects to it;</li>
+  <li>runs all the schemas against it (migrations);</li>
+  <li>populates it with predefined test data (users, orders etc; also know as
+“fixtures”);</li>
+  <li>runs the test itself</li>
+  <li>drops the database and closes and disconnects from it.</li>
+</ol>
+
+<p>These steps should be run for each test. In that case, we can guarantee what
+every test has its own environment and does not depend on other tests. It’s a
+good practice when a test accepts a fresh installation not being touched by
+previous tests.</p>
+
+<p>Some preparation steps are:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">your-project.test.users</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w"> </span><span class="p">[</span><span class="n">clojure.test</span><span class="w"> </span><span class="no">:refer</span><span class="w"> </span><span class="no">:all</span><span class="p">]</span><span class="w">
+            </span><span class="p">[</span><span class="n">your-project.db</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">db</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">migrate</span><span class="w"> </span><span class="p">[]</span><span class="w">
+  </span><span class="s">"Loads all the migrations"</span><span class="w">
+  </span><span class="p">(</span><span class="nb">doseq</span><span class="w"> </span><span class="p">[</span><span class="n">file</span><span class="w"> </span><span class="p">[</span><span class="s">"schema/0001-init.edn"</span><span class="w">
+                </span><span class="s">"schema/0002-user-updated.edn"</span><span class="p">]]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">db/load-schema</span><span class="w"> </span><span class="n">file</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">load-fixtures</span><span class="w"> </span><span class="p">[]</span><span class="w">
+  </span><span class="s">"Loads all the fixtures"</span><span class="w">
+  </span><span class="p">(</span><span class="nf">db/load-schema</span><span class="w"> </span><span class="s">"fixtures/test-data.edn"</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">test-fixture</span><span class="w"> </span><span class="p">[</span><span class="n">f</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">db/init</span><span class="p">)</span><span class="w"> </span><span class="c1">;; this function reads the config,</span><span class="w">
+            </span><span class="c1">;; creates the DB and populates</span><span class="w">
+            </span><span class="c1">;; the global Datomic connection</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">migrate</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">load-fixtures</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">f</span><span class="p">)</span><span class="w">         </span><span class="c1">;; the test is run here</span><span class="w">
+  </span><span class="p">(</span><span class="nf">db/delete</span><span class="p">)</span><span class="w"> </span><span class="c1">;; deletes a database</span><span class="w">
+  </span><span class="p">(</span><span class="nf">db/stop</span><span class="p">))</span><span class="w">  </span><span class="c1">;; stops the connection</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">use-fixtures</span><span class="w">
+  </span><span class="no">:each</span><span class="w">
+  </span><span class="n">test-fixture</span><span class="p">)</span><span class="w">
+
+</span></code></pre></div></div>
+
+<p>Now you may write your tests as well:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">
+</span><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">user-may-login</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">user-proceed-checkout</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>For every test, you will have a database running with all the migrations and
+test data loaded.</p>
+
+<p>If you still do not have any tests in your project, I urge you to add them
+soon. Without tests, you cannot be sure you do not break anything when changing
+the code.</p>
+
+<h2 id="infrastructure-final-touches">Infrastructure (final touches)</h2>
+
+<p>In the final section, I will highlight several important points that relate to
+the server management.</p>
+
+<h3 id="setting-up-production-postgres-driven-backend">Setting up production Postgres-driven backend</h3>
+
+<p>Running in-memory Datomic database is fun since it really costs nothing. In
+production, you would better set up more reliable backend. Datomic supports
+Postgres storage system out from the box. To prepare the database, run the
+following SQL scripts:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>su postgres <span class="c"># switch to postgres user</span>
+<span class="nb">cd</span> /path/to/datomic/bin/sql
+psql &lt; postgres-user.sql
+psql &lt; postgres-db.sql
+psql datomic &lt; postgres-table.sql
+</code></pre></div></div>
+
+<p>The scripts above create a user <code class="language-plaintext highlighter-rouge">datomic</code> with the password <code class="language-plaintext highlighter-rouge">datomic</code>, then the
+database <code class="language-plaintext highlighter-rouge">datomic</code> with the owner <code class="language-plaintext highlighter-rouge">datomic</code>. The last script creates a special
+table to keep Datomic blocks.</p>
+
+<p>Please do not forget to change the standard <code class="language-plaintext highlighter-rouge">datomic</code> password to something more
+complicated.</p>
+
+<h3 id="running-the-transactor">Running the transactor</h3>
+
+<p>The following page describes how to <a href="http://docs.datomic.com/run-transactor.html">run a transactor</a> needed by
+peer library when you use non-memory data storage. I’m not going to retell it
+here. Instead, I will share a bit of config to run it automatically using the
+standard <code class="language-plaintext highlighter-rouge">init.d</code> Linux daemon.</p>
+
+<p>Create a file named <code class="language-plaintext highlighter-rouge">datomic.conf</code> in your <code class="language-plaintext highlighter-rouge">my-project/conf</code> directory. Put a
+symlink to <code class="language-plaintext highlighter-rouge">/etc/init.d/</code> folder that references that file. Add the following
+lines into it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>description "Datomic transactor"
+
+start on runlevel startup
+stop on runlevel shutdown
+
+respawn
+
+setuid &lt;your user here&gt;
+setgid &lt;your group here&gt;
+
+chdir /path/to/datomic
+
+script
+    exec bin/transactor sql-project.properties
+end script
+</code></pre></div></div>
+
+<p>There, <code class="language-plaintext highlighter-rouge">/path/to/datomic</code> is a directory where unzipped Datomic installation is
+located. <code class="language-plaintext highlighter-rouge">sql-project.properties</code> is a transactor configuration file where you
+should specify your Datomic key sent to your email.</p>
+
+<p>Now that you have put a symlink, try the following commands:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>start datomic
+
+status datomic
+<span class="c"># datomic start/running, process 5281</span>
+
+<span class="nb">sudo </span>stop datomic
+</code></pre></div></div>
+
+<h3 id="console">Console</h3>
+
+<p>Most of RDBS have UI applications to manage the data. Datomic comes with
+built-in console that is run as web application. Within those console, you can
+examine the schema, perform queries and transactions.</p>
+
+<p>The following template runs a console:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/path/to/datomic/bin/console <span class="nt">-p</span> 8088 &lt;some-alias&gt; &lt;datomic-url-without-db&gt;
+</code></pre></div></div>
+
+<p>In my example, the command is:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+<span class="si">$(</span>DATOMIC_HOME<span class="si">)</span>/bin/console <span class="nt">-p</span> 8888 datomic <span class="se">\</span>
+<span class="s2">"datomic:sql://?jdbc:postgresql://localhost:5432/datomic?user=xxxxx&amp;password=xxxxx"</span>
+</code></pre></div></div>
+
+<p>Opening a browser at <code class="language-plaintext highlighter-rouge">http://your-domain:8888/browser</code> will show you a
+dashboard.</p>
+
+<p>Some security issues may be mentioned here. The console does not support any
+login/password authentication, so it is quite unsafe to run the console on
+production server as-is. Implement at least some of the following steps:</p>
+
+<ol>
+  <li>Proxy the console with Nginx. It must not be reachable by itself.</li>
+  <li>Limit access by a list of IPs. These may be your office or your home only.</li>
+  <li>There should be only secure SSL connection allowed, no plain HTTP. Let’s
+encrypt would be a great choice (see my <a href="/en/letsencrypt">recent post</a>).</li>
+  <li>Add basic/digest authentication to your Nginx config.</li>
+</ol>
+
+<p>To run a console as a service, create another <code class="language-plaintext highlighter-rouge">console.conf</code> file in
+<code class="language-plaintext highlighter-rouge">/etc/init.d/</code> directory. Use the <code class="language-plaintext highlighter-rouge">datomic.conf</code> file as template. Substitute
+the primary command with those one shown above. Now you can run the console only
+when you really need it:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>start console
+</code></pre></div></div>
+
+<h3 id="backups">Backups</h3>
+
+<p>Making backups regularly is highly important. Datomic installation carries a
+special utility to take care of it. You won’t need to make your backups manually
+by running <code class="language-plaintext highlighter-rouge">pgdump</code> against Postgres backend. Datomic provides a high-level
+backing up algorithm that performs in several threads. In addition, it
+supports <a href="https://aws.amazon.com/s3">AWS S3</a> service as a destination point.</p>
+
+<p>A typical backup command looks as follows:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/path/to/datomic/bin/datomic <span class="nt">-Xmx4g</span> <span class="nt">-Xms4g</span> backup-db &lt;datomic-url&gt; &lt;destination&gt;
+</code></pre></div></div>
+
+<p>To access AWS servers, you need to export both <code class="language-plaintext highlighter-rouge">AWS_ACCESS_KEY_ID</code> and
+<code class="language-plaintext highlighter-rouge">AWS_SECRET_KEY</code> variables first or prepend a command with them. In my case, the
+full command looks something like:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">AWS_ACCESS_KEY_ID</span><span class="o">=</span>xxxxxx <span class="nv">AWS_SECRET_KEY</span><span class="o">=</span>xxxxxxx <span class="se">\</span>
+/path/to/datomic/bin/datomic <span class="nt">-Xmx4g</span> <span class="nt">-Xms4g</span> backup-db <span class="se">\</span>
+datomic:sql://xxxxxxxx?jdbc:postgresql://localhost:5432/datomic?user<span class="o">=</span>xxxxxx&amp;password<span class="o">=</span>xxxxxxx<span class="s2">" </span><span class="se">\</span><span class="s2">
+s3://secret-bucket/datomic/2017/07/04
+</span></code></pre></div></div>
+
+<p>The date part in the end is substituted automatically using <code class="language-plaintext highlighter-rouge">$(shell date
++\%Y/\%m/\%d)</code> expression in Makefile or the following in bash:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">date_path</span><span class="o">=</span><span class="sb">`</span><span class="nb">date</span> +<span class="se">\%</span>Y/<span class="se">\%</span>m/<span class="se">\%</span>d<span class="sb">`</span> <span class="c"># 2017/07/04</span>
+</code></pre></div></div>
+
+<p>Add that command into your crontab file to make backups regularly.</p>
+
+<h3 id="backups-as-a-way-to-deploy-the-data">Backups as a way to deploy the data</h3>
+
+<p>The good news are backup’s structure does not depend on the backend type. No
+matter you dump in-memory storage or Postgres cluster, the backup can be
+restored everywhere as well. It gives us possibility to migrate the data on our
+local machine, make a backup and then restore it into production database.</p>
+
+<p>Once you finished migrating you data, launch the backup command described
+above. The backup should go to S3. On the server, run the <code class="language-plaintext highlighter-rouge">restore</code> command:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">AWS_ACCESS_KEY_ID</span><span class="o">=</span>xxxxx <span class="nv">AWS_SECRET_KEY</span><span class="o">=</span>xxxxx
+/path/to/datomic/bin/datomic <span class="nt">-Xmx4g</span> <span class="nt">-Xms4g</span> restore-db <span class="se">\</span>
+s3://secret-bucket/datomic/2017/07/04 <span class="se">\</span>
+<span class="s2">"datomic:sql://xxxxxxx?jdbc:postgresql://localhost:5432/datomic?user=xxxx&amp;password=xxxxx"</span>
+</code></pre></div></div>
+
+<p>When everything is done without mistakes, the server will catch the new data.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>After spending about a week on moving from Postgres to Datomic I can say it
+really worths it. Although Datomic does not support most of the Postgres smart
+features like geo-spatial data or JSON structures, it is much closer to Clojue
+after all. Since it was made by the same authors, Datomic looks like as a
+continuation of Clojure. And that is a huge benefit that may overweight
+disadvantages mentioned above.</p>
+
+<p>Surfing the Internet, I found the next links that may also be helpful:</p>
+
+<ul>
+  <li><a href="http://jkk.github.io/minor-victory-datomic">A Minor Victory with Datomic</a></li>
+  <li><a href="http://mcramm.com/post/datomic-setup/">Datomic Setup</a></li>
+  <li><a href="https://blog.clubhouse.io/using-datomic-heres-how-to-move-from-postgresql-to-dynamodb-local-79ad32dae97f">Using Datomic? Here’s How to Move from PostgreSQL to DynamoDB Local</a></li>
+</ul>
+
+<p>I hope you enjoyed reading this material. You are welcome to share your thoughts
+in the commentary section.</p>
 
                 
             </div>
@@ -167,76 +1100,103 @@ author with a <a href="http://blog.cognitect.com/cognicast-transcripts/104">tran
         <li>
 
             <h2>
-                <a class="post-link" href="/mail-1/">Мне пишут #1</a>
+                <a class="post-link" href="/en/letsencrypt/">Let's encrypt</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2017-05-02T00:00:00+00:00">
-        May 2, 2017
+          datetime="2017-06-29T00:00:00+00:00">
+        Jun 29, 2017
     </time>
 
-    <a href="/tag/email/" rel="tag">email</a>, <a href="/tag/help/" rel="tag">help</a>
+    <a href="/tag/ssl/" rel="tag">ssl</a>, <a href="/tag/letsencrypt/" rel="tag">letsencrypt</a>, <a href="/tag/security/" rel="tag">security</a>
 
 </div>
 
 
             <div class="entry">
                 
-                    <p>Автор письма разрешил ответить публично. Почта, имена и некоторые детали
-удалены, орфография сохранена:</p>
+                    
+<p>I’ve just tried <a href="https://letsencrypt.org/">Let’s encrypt</a> service and may say it works like a
+charm! I am really impressed by it’s simplicity and robustness. It really works
+as it’s promised within several lines in shell. That’s how a good software
+should be made.</p>
 
-<blockquote>
-  <p>Решил так как время у меня есть свободное, я ж как-ни-как фрилансер( хоть и
-родные считают безработным) начать учить не фласк, а алгоритмы. Начал курс от
-комьютер скайнс центра на степике…тяжело..ломаюсь..</p>
+<p>Let’s encrypt is an <a href="https://en.wikipedia.org/wiki/Certificate_authority">SSL authority service</a> that issues short-term SSL
+certificates for you. A typical certificate expires in 90 days and then you
+request for a new one.</p>
 
-  <p>Думаю начать с простого, кормен вводный курс плюс онлайн курс на закрепление…</p>
+<p>What’s the point to use exactly Let’s encrypt? There are some other SSL
+providers who also offer free certificates, just google for “free SSL cert”. The
+main reason is Let’s encrypt is totally automated. You don’t even need to open
+their site. The whole setup might be done in bash session in 5 minutes.</p>
 
-  <p>В общем я написал первую часть в надежде вашего комментария…</p>
+<p>Here is a quick example of setting up a SSL certificate on outdated Ubuntu 12.04
+LTS:</p>
 
-  <p>А вопрос таков, стоит ли решать олимпиадные задачки? ибо один девелопер мне
-однажды сказал, что толку нет от них…</p>
+<ol>
+  <li>
+    <p>Download <code class="language-plaintext highlighter-rouge">certbot</code> script. <a href="https://certbot.eff.org/">Certbot</a> is an open source software to
+communicate with Let’s encrypt service via secure ACME protocol:</p>
 
-  <p>Они дают плюсы для дальнейшей карьеры?</p>
+    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wget https://dl.eff.org/certbot-auto
+<span class="nb">chmod </span>a+x certbot-auto
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p>Backup your Nginx config by copying your <code class="language-plaintext highlighter-rouge">*.conf</code> files from
+<code class="language-plaintext highlighter-rouge">/etc/nginx/conf.d/</code> somewhere. Then run:</p>
 
-  <p>С уважением, N.</p>
+    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo</span> /path/to/certbot-auto <span class="nt">--nginx</span>
+</code></pre></div>    </div>
 
-  <p>P.S. Знакомые ребята, которые устроились джунами в Киеве говорят, что с
-алгоритмами не сталкивались( да они и не знают ничего даже про стеки, очереди и
-тд) только слышали в раговорах в курилке между серьезными разработчиками…</p>
-</blockquote>
+    <p>This command will ask you several questions. In most cases, the default
+choice would be enough. It scans your current Nginx config and makes required
+changes. Finally, you will be prompted for submitting your email. Please
+enter an existing one since it requires confirmation. In a minute, check your
+inbox and follow the secret link to submit your account.</p>
+  </li>
+  <li>
+    <p>Reload Nginx service with something like</p>
 
-<p>Решать олимпиадные задачи, на мой взгляд, смысла нет. Они слабо связаны с
-промышленными нуждами. Почти все задачи с олимпиад, что приходилось мне видеть,
-относятся к теории графов: как правильно составить и затем обойти. Графы не так
-часто используются в повседневной разработке.</p>
+    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>service nginx restart
+</code></pre></div>    </div>
 
-<p>Если вы только начали айти-карьеру, не грузите мозг сверх меры. Вам платят за
-то, чтобы вы решили проблему заказчика максимально быстро и дешево. Другими
-словами, если заказчику нужно поправить авторизацию на сайте, ему все равно,
-сколько курсов вы прошли.</p>
+    <p>Open your site in Chrome, go to Developer console, “Security” tab, “View
+certificate” below the green label:</p>
 
-<p>Выражаясь еще проще, на уровне джуниоров-фрилансеров глубокие знания не
-котируются. Может даже быть обратный эффект – опасение. Заказчик думает:
-попросишь такого спеца текст распарсить, а он Tensor-flow прикрутит, ценник
-выкатит конский. Не буду связываться.</p>
+    <p><img src="/assets/static/ssl-green.png" alt="SSL green label" /></p>
 
-<p>Я бы посоветовал уходить с фриланса и устраиваться в фирму с профессиональным
-коллективом. Среди коллег опыт пойдет очень быстро. Дома на балкончике вам
-неоткуда будет брать опыт.</p>
+    <p>First, all the labels should be green but not red or orange. Second, “Let’s
+encrypt” authority should be noticed in the certificate’s details:</p>
 
-<p>Начните с базовых инструментов: освойте окружение разработчика, азы Линукса,
-какой-нибудь язык и минимальный набор библиотек к нему. Если чувствуете, что
-изучили повседневные инструменты (Питон, Гит, редактор, SQL, Js, CSS, HTML,
-HTTP/Ajax), то займитесь английским и параллельно читайте SICP и функциональноые
-программирование.</p>
+    <p><img src="/assets/static/ssl-issued.png" alt="SSL issued by" /></p>
+  </li>
+  <li>
+    <p>You have gone through the main steps so far, although it would be great to
+setup automatic update for your certificate. Add the following into <code class="language-plaintext highlighter-rouge">crontab</code>
+config:</p>
 
-<p>На этом уровне от знания алгоритмов толк уже будет, потому что вам дадут задачи,
-где алгоритмы нужны. Короче, подтяните инструменты, окружите себя опытными
-коллегами, займитесь английским, а уже потом алгоритмами.</p>
+    <pre><code class="language-crontab">0 */12 * * * /path/to/certbot-auto renew --no-self-upgrade
+</code></pre>
+
+    <p>This job tries to update the certificate twice a day as the official guide
+recommends.</p>
+  </li>
+</ol>
+
+<p>To find out more, please examine the <a href="https://certbot.eff.org/docs/">Certbot documentation</a>. It has nice
+setup wizard with step-by-step algorithms for all the operation systems. You may
+also automate Let’s encrypt not with bash script but within your favorite
+language. See the <a href="https://letsencrypt.org/docs/client-options/">“Client options”</a> page to observe existing
+libraries.</p>
+
+<p>Finally, I urge you to enable SSL for your project right now if you haven’t done
+this yet. Nowadays, there cannot be an excuse for sending your client’s data
+as-is without encryption. Please respect your visitors. Setting up SSL has never
+been so easy as it is with Let’s encrypt nowadays.</p>
 
                 
             </div>
@@ -246,110 +1206,61 @@ HTTP/Ajax), то займитесь английским и параллельн
         <li>
 
             <h2>
-                <a class="post-link" href="/en/read-20/">What to read #20</a>
+                <a class="post-link" href="/read-25/">Weekly links #25</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2017-04-22T00:00:00+00:00">
-        Apr 22, 2017
+          datetime="2017-06-25T00:00:00+00:00">
+        Jun 25, 2017
     </time>
 
-    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/en/" rel="tag">en</a>
+    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>
 
 </div>
 
 
             <div class="entry">
                 
-                    <p>There are 20 issues already!</p>
+                    <p>Пишу вам из Турции. Держитесь, всего одно платье осталось!</p>
 
 <ul>
   <li>
-    <p><a href="https://dev.meduza.io/%D0%B0%D0%BB%D0%B0%D0%BD-%D1%82%D0%B5%D0%BB%D0%B5%D0%B3%D1%80%D0%B0%D0%BC-%D0%B1%D0%BE%D1%82-%D0%BC%D0%B5%D0%B4%D1%83%D0%B7%D1%8B-%D0%B8%D0%BB%D0%B8-%D0%B5%D1%89%D0%B5-%D0%BD%D0%B5%D0%BC%D0%BD%D0%BE%D0%B3%D0%BE-%D0%BE%D0%B1-elixir-dfbed7a55c18">Алан — телеграм-бот Медузы, или еще немного об Elixir</a></p>
+    <p><a href="http://www.yegor256.com/2017/06/22/object-oriented-input-output-in-cactoos.html">Object-Oriented Declarative Input/Output in Cactoos</a></p>
 
-    <p>A nice article in Meduza Dev blog. Check their other posts, the blog is pretty interesting.</p>
+    <blockquote>
+      <p>Instead of calling static procedures we want to use objects, the way they
+are supposed to be used.</p>
+    </blockquote>
   </li>
   <li>
-    <p><a href="http://waitbutwhy.com/2017/04/neuralink.html">Neuralink and the Brain’s Magical Future</a></p>
+    <p><a href="http://tonsky.livejournal.com/312123.html">Принципиальный недостаток Git CLI</a></p>
 
-    <p>A long series of related posts on Wait but Why. I don’t know where to find
-time to read them. When I’m retired maybe?</p>
+    <p>Эмоциональный обзор недостатоков Гита.</p>
   </li>
   <li>
-    <p><a href="http://artgorbunov.ru/bb/soviet/20170317/">Как грамотно написать заказчику про опоздание?</a></p>
+    <p><a href="https://snob.ru/profile/9723/blog/126187">Мода на медленный секс</a></p>
 
-    <p>You’ll definitely need that advise since you always do it wrong :-)</p>
-  </li>
-</ul>
-
-<p>There haven’t been some spicy links for a couple of months. My bad:</p>
-
-<ul>
-  <li>
-    <p><a href="http://beautifulcmnf.tumblr.com/">The Beauty of Clothed Male and Nude Female</a></p>
-
-    <p>A set of photos with couples where a women is usually naked.</p>
-  </li>
-</ul>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/clj-webinar-1/">Clojure Webinar #1</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-04-20T00:00:00+00:00">
-        Apr 20, 2017
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/emacs/" rel="tag">emacs</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <iframe width="640" height="360" src="https://www.youtube.com/embed/UNMRdi0j6HY" allowfullscreen=""></iframe>
-
-<p>In this video, I’m speaking on Emacs advantages when using Clojure.</p>
-
-<p>Links from the video:</p>
-
-<ul>
-  <li>
-    <p><a href="http://grishaev.me/emacs-story">Emacs Story</a></p>
-
-    <p>My previous long post about Emacs in general.</p>
+    <blockquote>
+      <p>«Медленный» секс — это как бы не горячо. Поэтому большинство людей и
+пытается оторвать своим любовникам пенис или клитор — им кажется, что это
+очень страстно, даже если их партнерам это не слишком приятно.</p>
+    </blockquote>
   </li>
   <li>
-    <p><a href="https://emacsformacosx.com/">Emacs for Mac OS</a></p>
+    <p><a href="https://snob.ru/profile/9723/blog/125888">Ренессанс содержанки</a></p>
 
-    <p>Nice application installer for Mac.</p>
+    <blockquote>
+      <p>…ты будешь бедной лет до тридцати самое меньшее. Гарвард? Никого не
+волнует. Работы нет.</p>
+    </blockquote>
   </li>
   <li>
-    <p><a href="https://github.com/igrishaev/dotfiles">My Emacs config</a></p>
-  </li>
-  <li>
-    <p><a href="https://github.com/clojure-emacs/cider">CIDER</a></p>
+    <p><a href="https://journal.tinkoff.ru/investing/">Инвестиции на бирже: популярные заблуждения</a></p>
 
-    <p>Emacs plugin to interact with Clojure.</p>
-  </li>
-  <li>
-    <p><a href="https://github.com/clojure/tools.nrepl">nREPL</a></p>
-
-    <p>Clojure package that provides advanced features in REPL.</p>
+    <p>Азы инвестирования. Горячо рекомендую к прочтению.</p>
   </li>
 </ul>
 
@@ -361,108 +1272,358 @@ time to read them. When I’m retired maybe?</p>
         <li>
 
             <h2>
-                <a class="post-link" href="/en/why-not-python/">Why not Python</a>
+                <a class="post-link" href="/en/clj-args/">On Clojure arguments</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2017-04-16T00:00:00+00:00">
-        Apr 16, 2017
+          datetime="2017-06-23T00:00:00+00:00">
+        Jun 23, 2017
     </time>
 
-    <a href="/tag/python/" rel="tag">python</a>, <a href="/tag/education/" rel="tag">education</a>
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/arguments/" rel="tag">arguments</a>
 
 </div>
 
 
             <div class="entry">
                 
-                    <p>Recently, I was sorting out with my drafts for blog when I found an interesting
-one. It was about what programming language to use for education at schools and
-universities. Python for sure! the draft says. Easy syntax, cross-platform, wide
-community and bla-bla-bla.</p>
+                    <p>Sometimes, a function that we are working on needs to take lots of
+parameters. Not just one or two but a decade or even more. I used to face with
+such a problem many times. I’m not sure solutions made by me were always good
+enough.</p>
 
-<p>I’m happy I haven’t published that post so far because nowadays that way of
-thinking makes me ashamed. Considering any specific language as the primary key
-of successful education means to make a mistake. Even Python with all its
-benefits.</p>
+<p>You might be brave enough to say you will never face such an error. It’s
+probably a weird architecture. A function should accept at least five
+arguments. You will refactor such a code for sure.</p>
 
-<p>You could ask me: no Python, great, so what else could you suggest? Let me keep
-an answer for a couple of paragraphs. Instead, could you think just a minute on
-what’s the reason of IT education in general? I mean, we attend to IT department
-for… what?</p>
+<p>But look at this:</p>
 
-<p>To learn a modern language? Maybe. But once you finish the university, you’ll
-realize there are lots of new languages and frameworks. Your possible employers
-don’t need PHP + jQuery anymore, they want Ruby + React. Or substitute those
-tools with Java and Scala, it doesn’t matter. In a long term, you cannot reach a
-train that moves faster day after day. Since technologies became simpler
-(Python, Ruby, Node.js), there are more and more people claim on the same
-workplace.</p>
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">verbose_name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">primary_key</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                 <span class="n">max_length</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">unique</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">blank</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">null</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                 <span class="n">db_index</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">rel</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="n">NOT_PROVIDED</span><span class="p">,</span> <span class="n">editable</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                 <span class="n">serialize</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">unique_for_date</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">unique_for_month</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">unique_for_year</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">choices</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">help_text</span><span class="o">=</span><span class="s">''</span><span class="p">,</span> <span class="n">db_column</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">db_tablespace</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">auto_created</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">validators</span><span class="o">=</span><span class="p">(),</span>
+                 <span class="n">error_messages</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+</code></pre></div></div>
 
-<p>One of your trump card might be a good knowledge of algorithms. I mean, you must
-understand how the things work rather then copying and pasting them from the
-Internet. The most serious problem that happens to new ones is they just don’t
-know how to split a huge thing into primitives. How to build abstractions. How
-to write a function rather than using a class with global state.</p>
+<p>It is <a href="https://github.com/django/django/blob/master/django/db/models/fields/__init__.py#L134">from Django</a>, the world-wide spreaded framework to build robust
+web applications. Except <code class="language-plaintext highlighter-rouge">self</code>, the constructor takes 22 optional
+arguments. Saying more, it is just a basic abstract class. Its descendants
+require their own arguments in addition to default ones.</p>
 
-<p>I saw an online interview one time. A junior Ruby guy was asked to write a
-function that reverses a string. I cannot do that, the answer was. OK, you have
-an hour, he was told. Deal with it. There were long 50 minutes of misery but he
-didn’t make it anyway.</p>
+<p>Common languages such as Python, Ruby or Java give only one standard way to deal
+with lots of parameters. In fact, using them you cannot be mistaken since you
+have no other choice. The question here is how to make you code less ugly than
+it is now.</p>
 
-<p>Closer to the end, they asked to stop writing code, but to describe the
-algorithm in words at least. No success.</p>
+<p>People who are new in Clojure, especially if they came from classical
+Python/Puby/PHP, face troubles when passing lots of arguments into a
+function. Since it’s Clojure, there are several ways to do that. This article
+highlights some on them, their benefits and disadvantages.</p>
 
-<p>That guy knew Ruby, though. And Javascript. And Node.js, Webpack, Bower and so
-on. I may even think he worked on his project as well. But I would never hire
-him or let him join a team which I belong to. Because when you cannot express a
-primitive operation in words, it reveals dangerous holes in your mind. And that
-could cause unpredictable troubles.</p>
+<h3 id="multi-arity">Multi-arity</h3>
 
-<p>As far as I see the purpose of education, it’s not to learn Python or any other
-language. It’s about a) how to compose abstractions using primitives and b) how
-to simplify abstractions, express them via primitives. Two-ways process, I
-guess. Up and down. Once you can rich any level at will, you are a great
-programmer.</p>
+<p>Any function in Clojure may have more than one body with its own
+signature. That’s normal for any functional language, but sounds surprisingly to
+former Python/Ruby adepts. An interpreter dispatches that bodies by a form of
+arguments. The first found body is called. When no body is found, an exception
+is raised.</p>
 
-<p>Talking about Python, I consider it as a great tool to express your ideas. When
-you definitely know how the things should work, but don’t have much time. It is
-one of the reasons why it’s so popular in scientific area. Engineers and
-scientists are usually busy with research, but not learning patterns and
-SOLID. Python is a great choice for them. To build a chart, to train a neural
-network.</p>
+<p>For example, the same function could be called with either two or three
+arguments if we declare it in such way:</p>
 
-<p>But that easiness could even kill willness to learn. For a newbie, neither a
-good syntax and rich standard library could help to become a good
-programmer. Maybe to write a web app, to find the first job, but not to teach
-you how to solve problems other than putting a JSON into DB.</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w">
+ </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="s">"two arguments"</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nb">+</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">))</span><span class="w">
+ </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">z</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="s">"three arguments!"</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nb">+</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">z</span><span class="p">)))</span><span class="w">
 
-<p>I would never face other stuff, you may say. OK, that’s up to you. But there
-won’t be growth in your career. Because developing web apps becomes easier
-nowadays regardless Ruby, Node.js and crowds of students. How would you survive?</p>
+</span><span class="p">(</span><span class="nf">foo</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w">
+</span><span class="mi">3</span><span class="w"> </span><span class="c1">;; prints `two arguments`</span><span class="w">
 
-<p>So after all, what language could make you high in algorithmic thinking?
-Suddenly, it’s Lisp =) or Scheme if talking more precisely. Scheme is the best
-tool to learn programming, I think. Not C, Python, or Javascript.</p>
+</span><span class="p">(</span><span class="nf">foo</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">)</span><span class="w">
+</span><span class="mi">6</span><span class="w"> </span><span class="c1">;; prints `three arguments!`</span><span class="w">
+</span></code></pre></div></div>
 
-<p>Scheme forces you to make everything from scratch by your own. At the end of
-SICP, that’s not a problem to write your own registry machine with compiler
-using pure lists and cons pairs. When you deal with some programming language or
-tool, you really understand how the things work under the hood without checking
-a source code. Only Lisp could bring that fillings.</p>
+<p>Calling a function with zero, one or ten arguments will raise an
+exception. Depending on your application’s logic, it could be both good or bad
+behaviour.</p>
 
-<p>Yes I know that in MIT, they stopped teaching SICP in respect of Java. It’s
-their decision after all. Maybe, after 20 years they’ve become really tired of
-it. And nobody couldn’t develop a new curriculum. But I know what did
-<a href="http://www.cs.utexas.edu/users/EWD/OtherDocs/To%20the%20Budget%20Council%20concerning%20Haskell.pdf">Dijkstra say</a> about that and I cannot agree more with his opinion.</p>
+<p>To fallback to default body that deals with any set of arguments, add one more
+implementation:</p>
 
-<p>Long story short: try Lisp. It’s not a silver bullet. Perhaps you would never
-work with it in the future. There a quite a few jobs, I know. But even bits of
-its knowledge will make you a better programmer than now you are.</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w">
+ </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="w">
+   </span><span class="n">...</span><span class="w">
+  </span><span class="p">)</span><span class="w">
+ </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">z</span><span class="p">]</span><span class="w">
+  </span><span class="n">...</span><span class="w">
+  </span><span class="p">)</span><span class="w">
+ </span><span class="p">([</span><span class="o">&amp;</span><span class="w"> </span><span class="n">args</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">reduce</span><span class="w"> </span><span class="nb">+</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">args</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
 
+<p>Now, you may add any arguments set together:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">foo</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">)</span><span class="w">
+</span><span class="mi">10</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">foo</span><span class="p">)</span><span class="w">
+</span><span class="mi">0</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The order of bodies is important. If you put <code class="language-plaintext highlighter-rouge">[&amp; args]</code> clause on the top, it
+will cover all the possible function calls. So you will never reach <code class="language-plaintext highlighter-rouge">[x y]</code> or
+<code class="language-plaintext highlighter-rouge">[x y z]</code> implementations.</p>
+
+<p>One interesting feature is you may redirect function call inside a body just
+calling the same function with another argument set. For example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="nb">test</span><span class="w">
+  </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="w">
+   </span><span class="p">(</span><span class="nb">test</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">nil</span><span class="p">))</span><span class="w"> </span><span class="c1">;; redirects to the second body</span><span class="w">
+  </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">z</span><span class="p">]</span><span class="w">
+   </span><span class="p">(</span><span class="nf">do-some-stuff</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">z</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Clojure dispatches a proper body quite fast. It is a key feature of Clojure’s
+runtime. There are lots of core functions that declare two, three or even five
+bodies regarding to performance issues. It’s much faster then having a single
+body with multiple <code class="language-plaintext highlighter-rouge">if</code>s, <code class="language-plaintext highlighter-rouge">case</code> or <code class="language-plaintext highlighter-rouge">cond</code>clauses.</p>
+
+<p>A quick copy-paste from <a href="https://github.com/clojure/clojure/blob/master/src/clj/clojure/core.clj#L2556">Clojure sources</a>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">juxt</span><span class="w">
+  </span><span class="s">"..."</span><span class="w">
+  </span><span class="p">([</span><span class="n">f</span><span class="p">]</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">([</span><span class="n">f</span><span class="w"> </span><span class="n">g</span><span class="p">]</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">([</span><span class="n">f</span><span class="w"> </span><span class="n">g</span><span class="w"> </span><span class="n">h</span><span class="p">]</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">([</span><span class="n">f</span><span class="w"> </span><span class="n">g</span><span class="w"> </span><span class="n">h</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">fs</span><span class="p">]</span><span class="w"> </span><span class="n">...</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Multi-arity is great when you already have a function that takes a couple of
+scalar parameters and then you need to add some extra one ASAP. Usually, the
+most needed function is called in thousand places so adding an extra parameter
+everywhere would be a mess.</p>
+
+<p>In Java or Python world, it is named “refactoring”. You need a robust commercial
+IDE to scan the project and change each call of a function. In Clojure, you just
+do:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; old</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="nb">test</span><span class="w">
+  </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">do-old-stuff</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; new</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="nb">test</span><span class="w">
+  </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="w">
+   </span><span class="p">(</span><span class="nf">do-old-stuff</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">))</span><span class="w">
+  </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">z</span><span class="p">]</span><span class="w">
+   </span><span class="p">(</span><span class="nf">do-new-stuff</span><span class="w"> </span><span class="n">z</span><span class="p">)</span><span class="w">
+   </span><span class="p">(</span><span class="nf">do-old-stuff</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now you can keep the old calls without changing your code. And pass the new
+argument only where you need.</p>
+
+<h3 id="maps">Maps</h3>
+
+<p>Your function may need lots of additional arguments. For example, boolean flags,
+extra options for HTTP connection, timeouts, headers, error messages.</p>
+
+<p>A good way to solve the problem is to join them into a single map. Thus, your
+function accepts only a couple of required parameters and the rest are put into
+an optional map. Say, you pass a hostname and a method name and a map with
+<code class="language-plaintext highlighter-rouge">:timeout</code>, <code class="language-plaintext highlighter-rouge">:headers</code> keys on so on.</p>
+
+<p>Inside a function, you either take optional arguments one by one:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">[</span><span class="n">opt</span><span class="p">]]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">timeout</span><span class="w"> </span><span class="p">(</span><span class="no">:timeout</span><span class="w"> </span><span class="n">opt</span><span class="p">)</span><span class="w">
+        </span><span class="n">headers</span><span class="w"> </span><span class="p">(</span><span class="no">:headers</span><span class="w"> </span><span class="n">opt</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">http-request</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="n">timeout</span><span class="w"> </span><span class="n">headers</span><span class="p">)</span><span class="w">
+    </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>or decompose a map on separated variables at once:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">[</span><span class="n">opt</span><span class="p">]]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">timeout</span><span class="w">
+                </span><span class="n">headers</span><span class="p">]}</span><span class="w"> </span><span class="n">opt</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">http-request</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="n">timeout</span><span class="w"> </span><span class="n">headers</span><span class="p">)</span><span class="w">
+    </span><span class="n">...</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Decomposition works as well on the signature level. I do not like this method
+though since it brings some noise in the code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">[{</span><span class="n">timeout</span><span class="w"> </span><span class="no">:timeout</span><span class="w">
+                             </span><span class="n">headers</span><span class="w"> </span><span class="no">:headers</span><span class="p">}]]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">http-request</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="n">timeout</span><span class="w"> </span><span class="n">headers</span><span class="p">)</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>A good point there is you may keep a default map somewhere and merge it with the
+passed ones to fallback to default values:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">foo-defaults</span><span class="w">
+  </span><span class="p">{</span><span class="no">:timeout</span><span class="w"> </span><span class="mi">5</span><span class="w">
+   </span><span class="no">:headers</span><span class="w"> </span><span class="p">{</span><span class="no">:user-agent</span><span class="w"> </span><span class="s">"Internet Explorer 6.0"</span><span class="p">}})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">[</span><span class="n">opt</span><span class="p">]]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">timeout</span><span class="w">
+                </span><span class="n">headers</span><span class="p">]}</span><span class="w"> </span><span class="p">(</span><span class="nb">merge</span><span class="w"> </span><span class="n">foo-defaults</span><span class="w"> </span><span class="n">opt</span><span class="p">)]</span><span class="w">
+    </span><span class="c1">;; now timeout is always 5 when not passed</span><span class="w">
+    </span><span class="n">...</span><span class="w">
+    </span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This way of passing a map is widely-spreaded across Clojure libraries. It even
+considered as the standard one because of its simplicity and transparency. If
+you have just started with Clojure and need a function with multiple arguments,
+use a map.</p>
+
+<h3 id="rest-arguments-as-a-map">Rest arguments as a map</h3>
+
+<p>There is another way to deal with multiple arguments. Do you remember the <code class="language-plaintext highlighter-rouge">rest</code>
+arguments prepended with <code class="language-plaintext highlighter-rouge">&amp;</code> in a function signature? Something like that:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="n">args</span><span class="p">]</span><span class="w">
+  </span><span class="c1">;; args is a list)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">foo</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">)</span><span class="w"> </span><span class="c1">;; args is (1 2 3 4)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Starting with Clojure 1.5 (or 1.6, I don’t remember exactly) you may turn the
+rest arguments into a map. The syntax is:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="p">{</span><span class="no">:as</span><span class="w"> </span><span class="n">args</span><span class="p">}]</span><span class="w">
+  </span><span class="c1">;; now, args is a map!</span><span class="w">
+  </span><span class="n">args</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">foo</span><span class="w"> </span><span class="no">:foo</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:bar</span><span class="w"> </span><span class="mi">42</span><span class="p">)</span><span class="w">
+</span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="mi">42</span><span class="n">,</span><span class="w"> </span><span class="no">:foo</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Pass extra arguments remembering some simple rules:</p>
+
+<ol>
+  <li>there must be even number of rest arguments, otherwise you will get an error;</li>
+  <li>each odd argument (usually a keyword) is a key;</li>
+  <li>each even argument is a value;</li>
+  <li>you cannot duplicate key items.</li>
+</ol>
+
+<p>Turning rest arguments into a map is also used oftenly in Clojure. You may
+choose that method over a map as well when developing with Clojure.</p>
+
+<h3 id="pure-map-vs-rest-args">Pure map vs rest args</h3>
+
+<p>Each of two method described above has its own benefits and disadvantages. Let’s
+highlight some of them:</p>
+
+<ol>
+  <li>
+    <p>Using a map is good when you don’t know exactly what arguments you will pass
+into a function. It’s a common situation when the final set of options is
+unknown for the last moment. It might depend on user input, environment
+variables or any conditions. Usually, you compose a map step by step, validate
+it with somehow and pass into a function. With sequences, it’s more difficult
+to compose a set of arguments.</p>
+  </li>
+  <li>
+    <p>Passing a map into a function with the <code class="language-plaintext highlighter-rouge">&amp; rest</code> signature requires some
+additional steps. You should flatten you map into a vector or sequence and
+then apply it to a function:</p>
+
+    <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">opt</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="mi">42</span><span class="w"> </span><span class="no">:bar</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]})</span><span class="w"> </span><span class="c1">;; your options map</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="p">{</span><span class="no">:as</span><span class="w"> </span><span class="n">args</span><span class="p">}]</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w"> </span><span class="c1">;; but the function accepts rest arguments</span><span class="w">
+
+</span><span class="c1">;; turns opt to a seq of (key1 val1 key2 val2)</span><span class="w">
+</span><span class="c1">;; then apply it to the function</span><span class="w">
+</span><span class="p">(</span><span class="nb">apply</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">(</span><span class="nb">mapcat</span><span class="w"> </span><span class="nb">identity</span><span class="w"> </span><span class="n">opt</span><span class="p">))</span><span class="w">
+</span></code></pre></div>    </div>
+
+    <p>Note how long is the code. Probably, you’d better to modify the function to
+accept just map.</p>
+  </li>
+  <li>
+    <p>With the rest arguments, <code class="language-plaintext highlighter-rouge">partial</code> works like a charm. Say, we have a
+function that returns a set of rows from the database. The first argument is
+a table name, and the rest are a sequence with each odd argument as a column
+name and even argument as a value:</p>
+
+    <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">db-query</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="no">:staff</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; performs a query like:</span><span class="w">
+</span><span class="c1">;; select *</span><span class="w">
+</span><span class="c1">;;   from "users"</span><span class="w">
+</span><span class="c1">;; where</span><span class="w">
+</span><span class="c1">;;   active</span><span class="w">
+</span><span class="c1">;;   and staff</span><span class="w">
+</span><span class="c1">;;   and name = "Ivan"</span><span class="w">
+</span></code></pre></div>    </div>
+
+    <p>Some of our users could be blocked. We may forget passing <code class="language-plaintext highlighter-rouge">:active false</code>
+clause every time you query for users. To prevent returning blocked ones to
+the frontend, it’s better to have a special function for that:</p>
+
+    <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">active-users</span><span class="w"> </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="n">db-query</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="p">))</span><span class="w">
+</span></code></pre></div>    </div>
+
+    <p>In addition to this constraint, we might be interested in only staff
+users. Let’s extend our function with another partial application:</p>
+
+    <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">staff-active-users</span><span class="w"> </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="n">active-users</span><span class="w"> </span><span class="no">:staff</span><span class="w"> </span><span class="n">true</span><span class="p">))</span><span class="w">
+</span></code></pre></div>    </div>
+
+    <p>Finally, we may select all the non-blocked staff users whose name is Ivan:</p>
+
+    <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">staff-active-users</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; [{:id 1 :name "Ivan" :surname "Petrov"}</span><span class="w">
+</span><span class="c1">;;  {:id 1 :name "Ivan" :surname "Sidorov"}]</span><span class="w">
+</span></code></pre></div>    </div>
+  </li>
+  <li>
+    <p>Instead, with maps you cannot declare a partial function. You need to invent
+your own <code class="language-plaintext highlighter-rouge">partial-map</code> implementation:</p>
+
+    <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">
+</span><span class="c1">;; let `foo` is a function that accepts a map</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="n">opt</span><span class="p">]</span><span class="w">
+  </span><span class="n">opt</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; our own `partial`</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">partial-map</span><span class="w"> </span><span class="p">[</span><span class="n">f</span><span class="w"> </span><span class="n">defaults</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">opt</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">f</span><span class="w"> </span><span class="p">(</span><span class="nb">merge</span><span class="w"> </span><span class="n">defaults</span><span class="w"> </span><span class="n">opt</span><span class="p">))))</span><span class="w">
+
+</span><span class="c1">;; example:</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">foo-timeout</span><span class="w"> </span><span class="p">(</span><span class="nf">partial-map</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">{</span><span class="no">:timeout</span><span class="w"> </span><span class="mi">5</span><span class="p">}))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">foo-timeout</span><span class="w"> </span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="mi">42</span><span class="p">})</span><span class="w">
+</span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="mi">42</span><span class="w"> </span><span class="no">:timeout</span><span class="w"> </span><span class="mi">5</span><span class="p">}</span><span class="w">
+</span></code></pre></div>    </div>
+  </li>
+</ol>
+
+<h3 id="conclusion">Conclusion</h3>
+
+<p>The examples above show there are more then one way to deal with multiple
+arguments in Clojure. These are multi-arity, maps and rest arguments. All of
+them cover you common requirements as well.</p>
+
+<p>Remember, you are not limited with the only three those ones. With macroses, you
+can implement you own arguments system: Common Lisp-wise or any other. The only
+limit there is your imagination.</p>
 
                 
             </div>
@@ -472,18 +1633,85 @@ its knowledge will make you a better programmer than now you are.</p>
         <li>
 
             <h2>
-                <a class="post-link" href="/en/read-19/">What to read #19</a>
+                <a class="post-link" href="/not-love/">Нелюбовь</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2017-04-15T00:00:00+00:00">
-        Apr 15, 2017
+          datetime="2017-06-15T00:00:00+00:00">
+        Jun 15, 2017
     </time>
 
-    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/en/" rel="tag">en</a>
+    <a href="/tag/movies/" rel="tag">movies</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><img src="http://ic.pics.livejournal.com/dolboeb/53631/1354853/1354853_original.jpg" alt="cover" /></p>
+
+<p>Посмотрел Звягинцева.</p>
+
+<p>Переполняют чувства, но писать рецензии как <a href="http://dolboeb.livejournal.com/3154585.html">Носик</a> я не умею, поэтому
+буду краток.</p>
+
+<p>Великое кино. Шедевр от вступительных титров до последнего кадра.</p>
+
+<p>Поражает невероятная точность, натуральность сцен, поведения, реплик. Кажется,
+ни одна деталь реальности не ушла от режиссера, в том числе интимные
+подробности. Но они не перетягивают на себя лишнее внимание. Напротив, еще
+сильнее утверждают правдивость происходящего.</p>
+
+<p>Очень реалистичны персонажи, фразы, поведение. Приемы, к которым они прибегают,
+чтобы обманывать себя и окружающих. Ощущение, что смотришь в микроскоп, только
+вместо капли воды – московская семья, средневзвешенный элемент российского
+общества.</p>
+
+<p>Бывает, мы говорим: это было как в кино. То есть волшебно, непонятно, не так как
+мы привыкли. А у Звягинцева – как в жизни. И это пугает, потому что понимаешь,
+что все происходящее может завтра случиться с тобой.</p>
+
+<p>Так же столкнешься с бездействием ментов, произволом на всех уровнях, офисным
+рабством, пасьянсом “косынка” в ожидании обеда. Православным начальстом, греющим
+руки на строительстве храма.</p>
+
+<p>И конечно, недостатком внимания к тем, кто рядом и заслуживает этого.</p>
+
+<p>Каждую сцену можно просматривать бесконечно: включается латентный
+вуайерист. Словно подглядываешь за чьей-то жизнью, и все фейлы, измены видны, как
+день.</p>
+
+<p>Сцена с Киселевым и Украиной следует за сценой с моргом. Обе они дают декартово
+произведение ужаса и тоски. В тот момент в кинотеатре я почуствовал, будто в
+сердце что-то воткнули.</p>
+
+<p>После просмотра я точно понял, чего хочу в широком смысле. Быть счастливым. В
+нелюбви и в несчастье нет дна.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/read-24/">What to read #24</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-06-11T00:00:00+00:00">
+        Jun 11, 2017
+    </time>
+
+    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>
 
 </div>
 
@@ -492,31 +1720,45 @@ its knowledge will make you a better programmer than now you are.</p>
                 
                     <ul>
   <li>
-    <p><a href="http://www.flyingmachinestudios.com/programming/the-unofficial-guide-to-rich-hickeys-brain/">The Unofficial Guide to Rich Hickey’s Brain</a></p>
+    <p><a href="http://tonsky.me/blog/readable-clojure/">Readable Clojure</a></p>
+
+    <p>Interesting notes on how to improve your Clojure code.</p>
+  </li>
+  <li>
+    <p><a href="http://deathbypassivevoice.com/all/resource/">Writing on Resource</a></p>
 
     <blockquote>
-      <p>Every time I watch one of his talks, I feel like someone has gone in and
-organized my brain.</p>
+      <p>I never write when I get a good idea. I only try to write when I find
+suitable resource to illustrate that idea.</p>
     </blockquote>
   </li>
   <li>
-    <p><a href="http://www.flyingmachinestudios.com/essays/zen-joker/">Zen and the Art of Blowing Things Up</a></p>
+    <p><a href="http://gigasquidsoftware.com/blog/2017/05/27/self-publishing-for-the-creative-coder/">Self Publishing for the Creative Coder</a></p>
 
     <blockquote>
-      <p>Nothing is permanent, but we strive mightily to hold on to the illusion of
-permanence, only to suffer when reality once again asserts itself.</p>
+      <p>So, you have an idea for a fiction book. First, let me tell you that it’s a
+good idea and it’s a great thing that you are a coder.</p>
     </blockquote>
   </li>
   <li>
-    <p><a href="https://www.ted.com/talks/susan_blackmore_on_memes_and_temes">Susan Blackmore On Memes And Temes</a></p>
+    <p><a href="http://varlamov.ru/2416234.html">Жизнь в гробу</a></p>
 
-    <p>Short and funny video about a new kind on memes than spread within
-technologies.</p>
+    <p>Фотографии гонконгских квартир-клеток.</p>
   </li>
   <li>
-    <p><a href="https://www.youtube.com/watch?v=d-7o9xYp7eE">Don’t talk to the Police</a></p>
+    <p><a href="http://sergeykorol.ru/blog/discriminatory-discrimination/">Бесправная дискриминация</a></p>
 
-    <p>Why you should never talk to them.</p>
+    <p>Сергей Король о гендере и пр.</p>
+
+    <blockquote>
+      <p>Ну и вообще готовьтесь. Кажется, общество скоро будет прилично штормить
+из-за этой фигни.</p>
+    </blockquote>
+  </li>
+  <li>
+    <p><a href="https://www.youtube.com/watch?v=_l0LVFRuHMk">Noize MC - Чайлдфри (feat. монеточка)</a></p>
+
+    <p>Прекрасный клип.</p>
   </li>
 </ul>
 
@@ -528,180 +1770,18 @@ technologies.</p>
         <li>
 
             <h2>
-                <a class="post-link" href="/oonanism/">ООнанизм</a>
+                <a class="post-link" href="/en/bugs/">Does any program really have an unlimited number of bugs?</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2017-04-10T00:00:00+00:00">
-        Apr 10, 2017
+          datetime="2017-06-03T00:00:00+00:00">
+        Jun 3, 2017
     </time>
 
-    <a href="/tag/oop/" rel="tag">oop</a>, <a href="/tag/nodejs/" rel="tag">nodejs</a>, <a href="/tag/cancer/" rel="tag">cancer</a>, <a href="/tag/idiots/" rel="tag">idiots</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Познакомьтесь с <a href="http://chaijs.com/">объектно-ориентированным онанизмом</a>:</p>
-
-<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nx">chai</span><span class="p">.</span><span class="nx">should</span><span class="p">();</span>
-
-<span class="nx">foo</span><span class="p">.</span><span class="nx">should</span><span class="p">.</span><span class="nx">be</span><span class="p">.</span><span class="nx">a</span><span class="p">(</span><span class="dl">'</span><span class="s1">string</span><span class="dl">'</span><span class="p">);</span>
-<span class="nx">foo</span><span class="p">.</span><span class="nx">should</span><span class="p">.</span><span class="nx">equal</span><span class="p">(</span><span class="dl">'</span><span class="s1">bar</span><span class="dl">'</span><span class="p">);</span>
-<span class="nx">foo</span><span class="p">.</span><span class="nx">should</span><span class="p">.</span><span class="nx">have</span><span class="p">.</span><span class="nx">lengthOf</span><span class="p">(</span><span class="mi">3</span><span class="p">);</span>
-<span class="nx">tea</span><span class="p">.</span><span class="nx">should</span><span class="p">.</span><span class="nx">have</span><span class="p">.</span><span class="nx">property</span><span class="p">(</span><span class="dl">'</span><span class="s1">flavors</span><span class="dl">'</span><span class="p">).</span><span class="kd">with</span><span class="p">.</span><span class="nx">lengthOf</span><span class="p">(</span><span class="mi">3</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Круто же? <code class="language-plaintext highlighter-rouge">Просто.пишешь.слова.через.точку.и.все.понятно()</code>. Недолго новый язык
-придумать:</p>
-
-<pre><code class="language-bred">Пусть.Сумма.Равно.Единичка().Прибавить.Двойка();
-Сохранить.В.Базу.Пользователь().Созданный.Из.JSON.Строки.Введенной.Из.Консоли().
-</code></pre>
-
-<p>Обычного ассерта недостаточно. В библиотеке есть <code class="language-plaintext highlighter-rouge">Should</code>, <code class="language-plaintext highlighter-rouge">Expect</code> и
-<code class="language-plaintext highlighter-rouge">Assert</code>. Почему нет <code class="language-plaintext highlighter-rouge">Мамой.Клянусь</code>, <code class="language-plaintext highlighter-rouge">Бля.Буду</code> или <code class="language-plaintext highlighter-rouge">Стопудов</code>? Чтобы уж точно
-быть уверенным, что тест работает.</p>
-
-<p>Конечно, этот бред зародился Джаваскрипте. Где же еще до такого додумаются? Но
-заразу начинают тащить в Руби и Питон. Языки группы риска.</p>
-
-<p>Что возвращает метод <code class="language-plaintext highlighter-rouge">should</code>? А что <code class="language-plaintext highlighter-rouge">be</code>, <code class="language-plaintext highlighter-rouge">a</code>? А если напишу
-<code class="language-plaintext highlighter-rouge">.be.be.be.a.a.a("wtf")</code>?</p>
-
-<p>Ниче, что один хер предложение не будет в точности похожим на человеческий язык?
-Придется каждый раз бегать в документацию. Насколько упоротым нужно быть, чтобы
-поддерживать артикли?</p>
-
-<p>У нас в проекте на Кложе 80 тестов и 800 ассертов, все работают
-<a href="https://clojure.github.io/clojure/clojure.test-api.html#clojure.test/is">на одном макросе is</a>. А
-этим долбоебам нужен квази-язык <code class="language-plaintext highlighter-rouge">чтобы.писать.в.объектном.стиле.потому.что.круто()</code>.</p>
-
-<p>Шизофрения, как и было сказано.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/read-18/">What to read #18</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-04-08T00:00:00+00:00">
-        Apr 8, 2017
-    </time>
-
-    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/en/" rel="tag">en</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Nice links to read:</p>
-
-<ul>
-  <li>
-    <p><a href="http://www.yegor256.com/2017/03/28/solid.html">SOLID Is OOP for Dummies</a></p>
-
-    <p>For a long time, I’ve been thinking that I’m a single person who shares the
-same thoughts. Does anybody really believe it’s possible to write SOLID code
-in production? It’s totally marketing and advertising stuff.</p>
-  </li>
-  <li>
-    <p><a href="http://tema.livejournal.com/2473428.html">Главный секрет удаленной работы</a></p>
-
-    <p>Short and clear note in respect of remote working. It’s the main point that
-distinguish a remote worker from a freelancer (I become insane then they call
-me a freelancer btw).</p>
-  </li>
-  <li>
-    <p><a href="http://lionet.livejournal.com/71005.html">RSI — как бороться с туннельным синдромом</a></p>
-
-    <p>Long and detailed story about troubles with hands caused by a keyboard told by
-Lev Valkin – a famous ex-Russian functional programmer and entrepreneur.</p>
-  </li>
-  <li>
-    <p><a href="http://ksoftware.livejournal.com/242252.html">Теперь и я ищу Робина</a></p>
-
-    <p>Just spontaneous thoughts about work.</p>
-  </li>
-  <li>
-    <p><a href="https://www.youtube.com/watch?v=uk3A41U0iO4">Programming Hand Tools</a></p>
-
-    <p>Nice speech on keyboards, Lisp and Clojure. Highly recommend you to watch.</p>
-  </li>
-</ul>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/the-wall/">The Wall (Music From The Film)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-04-04T00:00:00+00:00">
-        Apr 4, 2017
-    </time>
-
-    <a href="/tag/the-wall/" rel="tag">the-wall</a>, <a href="/tag/pink-floyd/" rel="tag">pink-floyd</a>, <a href="/tag/music/" rel="tag">music</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>What a rare album I’ve found! It’s the legendary “The Wall”, but captured
-directly from the movie with all the noises, phrases and ambients. Most of the
-songs are played within a symphony orchestra. There are also two tracks appeared
-only in the movie: “When The Tigers Broke Free” and “Empty Spaces”.</p>
-
-<p>Listen also to “Mother”, “The Trial” and “Comfortably Numb”. They sound quite
-different to the studio records.</p>
-
-<p>Oh god, that album made my week, not a day.</p>
-
-<iframe width="854" height="480" src="https://www.youtube.com/embed/GEfXSyO1e_E?list=PLD971643B6FF9D95B" allowfullscreen=""></iframe>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/future/">Будущее</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-04-02T00:00:00+00:00">
-        Apr 2, 2017
-    </time>
-
-    <a href="/tag/future/" rel="tag">future</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/idiots/" rel="tag">idiots</a>
+    <a href="/tag/bugs/" rel="tag">bugs</a>, <a href="/tag/yegor256/" rel="tag">yegor256</a>
 
 </div>
 
@@ -709,164 +1789,792 @@ different to the studio records.</p>
             <div class="entry">
                 
                     
-<p>Что действительно раздражает, так это прогнозы о том, каким будет будущее от
-людей, которые в этом ничего не смыслят. Каждый второй теперь Глоба или Ванга.</p>
+<p>I really enjoy reading <a href="http://www.yegor256.com/">Yegor’s blog</a>. He brings quite interesting
+ideas regarding programming and business. But sometimes, the thoughts he shares
+there look a bit strange to me. I’m talking about one of the latest posts
+titled <a href="http://www.yegor256.com/2017/05/23/unlimited-number-of-bugs.html">“Any Program Has an Unlimited Number of Bugs”</a>.</p>
 
-<p>Вот Илья Бирман <a href="http://ilyabirman.net/meanwhile/all/no-privacy-in-the-future/">в заметке от 2014 года пишет</a>, что в будущем не
-будет приватности. Совсем. И что сопротивляться этому глупо.</p>
-
-<p>Я эту заметку прочитал, и у меня один вопрос: где доказательства? Где ссылки,
-тренды, графики, суммарная стистика за последние 20 лет? В заметке всего лишь
-частное мнение, не подтвержденное ни чем. Просто Илье показалось, что прайваси
-не будет, а если ты думаешь иначе, то ты stupid.</p>
-
-<p>Не поленитесь, пройдитесь по каждому абзацу. Нет. Ни одного. Доказательства.</p>
-
-<p>Может, Илья пересмотрел на ночь Матрицу или произошел описанный им же случай –
-что-то брил в душе, а друг снял видео и выложил в интернет?</p>
-
-<p>В каждом параграфе Илья убеждает, что прайваси обязательно исчезнет. На все лады
-перебирает примеры: будет то, се, но доказательств не приводит. Илья, откуда все
-это будет?</p>
-
-<p>Особо доставил пример с Google Glass. Прошло 3 года, очки не взлетели. Я помню,
-как в те дни выли журналисты, что каждый будет ходить в туалет с очками, снимать
-и выкладывать с сеть.</p>
-
-<p>За все время я ни разу не слышал хотя бы отдаленно о скандалах или судебных
-разбирательствах, связанных с очками. Аргумент вообще мимо кассы. А все почему?
-Начитались интернетов и решили, что будущее предрешено.</p>
-
-<p>Популисты любят давать предсказания, но не отвечают за слова. Рей Брейдбери
-однажды заявил, что к 2000 году люди переселятся на Марс. Его потом замучали
-вопросами, почему не вышло. Даже травили. А он, в шутку, каждый раз давал другой
-ответ, чтобы хоть как-то подсластить ситуацию. Просто ему так показалось: из
-газет, новостей и пьяных бесед на кухне сложилось частное, ни чем не
-подтвержденное мнение.</p>
-
-<p>По работе я пользусь непопулярными среди программистов технологиями: Емакс,
-Кложа, Лисп. Вы бы знали, сколько я слышал об их скорой смерти. Если б за каждый
-раз капало на счет 5 рублей, был бы уже олигархом. Но все никак не помрут, а
-сумма в инвойсах растет, да что ты будешь делать.</p>
-
-<p>Коллега недавно убеждал, что в будущем люди станут святыми. Следите за нитью:
-насытившись потреблением, человек потеряет нравственный ориентир, а потому
-отринет материальные ценности и примет бога. Оставим логику за кадром. Интересно
-другое: мысль была высказана так же безапелляционно и бездоказательно, как пишет
-Илья.</p>
-
-<p>А у меня теория о порабощении нас рептилоидами. В чем разница между идеей
-Бирмана и моей? Да ни в чем. Достаточно веры в свою правоту.</p>
-
-<p>А теперь представьте, что таких предсказателей полно по всему миру и каждый
-что-то пишет в интернет. И ты всегда будешь stupid, если не согласен.</p>
-
-<p>Илья и другие: то, чем вы занимаетесь, называется экстраполяция. Продолжение
-кривой по видимому участку. Вы увидели какой-то тренд и спешите составить по
-нему прогноз. Очень опрометчиво. Специально для вас нарисовали картинку:</p>
-
-<p><img src="https://imgs.xkcd.com/comics/extrapolating.png" alt="xkcd" /></p>
-
-<p>Если сегодня у подруги 0 мужей, а завтра 1, то через месяц будет 30. Логично.</p>
-
-<p>Вы, Илья, кажется, знакомы с математикой. Не знаю, проходили ли вы полиномы
-Лагранжа. Это такие кривые, которые строят по опорным точкам. С ними забавная
-вещь – они ОЧЕНЬ плохо экстраполируются. График стреляет в потолок уже при
-приращении на единицу. То, что вам кажется прямой, может быть дугой полинома.</p>
-
-<p>История учит, что большинство процессов имеют скорее волнообразную форму, а
-события носят характер маятника.</p>
-
-<p>После Первой и Второй Мировых Войн нас убеждали, что люди уже не будут
-воевать. Воевали, и не раз.</p>
-
-<p>Коммунисты обещали светлое будущее. Убили массу людей и угробили страну.</p>
-
-<p>Недавно мне попалось видео пятилетней давности, где Владимир Соловьев сказал,
-что вооруженный конфликт России и Украины – это немыслимо и в принципе
-невозможно.</p>
-
-<p>Верующие две тысячи лет рассказывают, что завтра Иисус всех спасет.</p>
-
-<p>Популизм политиков даже не стоит приводить в пример. Политика и лживые прогнозы
-идут рука об руку.</p>
-
-<p>Меня бесит эта ложь. Теперь по поводу вашей заметки.</p>
-
-<p>Илья, прайваси не исчезнет. В разное время оно может цениться меньше или больше,
-но никогда не исчезнет, потому что будет спрос. В свой заметке вы коснулись лишь
-малой части того, что входит в понятие приватности. Конкретно, наготы и секса.</p>
-
-<p>Приватность – это не только про голые фото и секс. В сети навалом любительского
-секса. К приватности относится, например, проблемы со здоровьем, неудачные
-отношения, любовная переписка, исследования, подпольные проекты.</p>
-
-<p>Поисковик Duck Duck Go обрабатывает 20 млн запросов в день просто потому, что
-предлагает пользователям анонимность. Понимаете, человеку неудобно, когда он
-гуглил “простатит”, а завтра на любимимом сайте видит рекламу “проблемы с
-потенцией”. Особенно, когда коллеги смотрят в монитор и все понимают.</p>
-
-<p>Мое приложение <a href="https://queryfeed.net/">Queryfeed</a>, которое я написал в шутку,
-держит 6 млн запросов в день. Оно тащит данные из Твиттера, клиенты анонимны.</p>
-
-<p>Появился Биткоин – огромная распределенная система, где каждый плательщик и
-продавец могут оставаться анонимными при полной прозрачности сделки. Валюта
-биткоина за несколько лет взлетела до 1000 долларов. Откуда такой интерес?
-Анонимность.</p>
-
-<p>Вы слышали про Тор и глубокий интернет? Это бездна, которая живет по своим
-правилам и законам. Принципы публичной сети там не действуют. Каждый день на
-глубоких сайтах совершаются сделки на колоссальные суммы. Почему? Анонимность.</p>
-
-<p>Представьте, если гинеколог выложит на Ютуб видео с пациенткой. Письмо любимой
-девушке опубликуют на пятничном ресурсе. Исходный код любой программы
-моментально утекает Гуглу и ФСБ. Заказчик читает вашу переписку с конкурентом.</p>
-
-<p>Если загуглите по словам “bullying suicide”, то откроется печальная
-статистика. Среди жертв травли полно тех, кого довели до самоубийства через
-интернет. К сожалению, им не сказали, что будущее еще не наступило и не стоит
-выкладывать сомнительные тексты и фото.</p>
-
-<p>Я бы не хотел жить в мире, где все прозрачно. Для вас это глупо, молодые и
-прогрессивные должны подчиниться прогрессу. Но я точно уверен, что найдутся
-люди, которые встанут на мою сторону и проинвестируют софт и железо, чтобы
-хранить приватность.</p>
-
-<p>Это происходит уже сейчас. В моем браузере 2 расширения для блокировки рекламы и
-виджетов. Все больше открытого ПО. Разработка Тора и криптовалют идет по всем
-фронтам. Торренты давили-давили, а они все живут.</p>
-
-<p>В каждом значимом храме РПЦ ставит глушилку телефонов. Зашел в храм – не можешь
-звонить. Уже сегодня в частном порядке можно купить глушилку Вай-фай или
-GPS-сигнала. Ими пользуются угоньщики автомобилей. Это значит, что если от
-слежки станет не скрыться, изобретут устройство для противодействия этому,
-которое каждый будет носить с собой как сотовый телефон.</p>
-
-<p>И последнее. Есть умный мужик Алан Кей, создатель парадигмы ООП
-(объектно-ориентированное программирование). Сегодня нет промышленного языка,
-который бы не поддерживал эту парадигму. Этому же человеку принадлежат слова:</p>
+<p>I’m writing this in reply to Yegor’s points mentioned there. Please read them
+first. To focus on the key notes, let me quote the most sensitive part:</p>
 
 <blockquote>
-  <p>Лучший способ предсказать будущее – изобрести его.</p>
+  <p>Let’s take this simple Java method that calculates a sum of two integers as an
+example:</p>
 </blockquote>
 
-<p>Приступив к работе над теорией ООП, Алан не стал заявлять на весь мир, что скоро
-изменит будущее. А ведь именно это он и сделал: вся ИТ-индустрия сегодня
-работает на его трудах. Он лишь сказал, что нелохо бы представить программу как
-набор объектов-клеток, которые шлют друг другу сообщения (Алан биолог по
-образованию), а потом долго работал. Но не писал в блоге, что ООП изменит
-мир. Почитайте его труды: в силу авторитета Алан может позволить себе самые
-дерзские прогнозы, но делает лишь предположения.</p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">int</span> <span class="nf">sum</span><span class="o">(</span><span class="kt">int</span> <span class="n">a</span><span class="o">,</span> <span class="kt">int</span> <span class="n">b</span><span class="o">)</span> <span class="o">{</span>
+  <span class="k">return</span> <span class="n">a</span> <span class="o">+</span> <span class="n">b</span><span class="o">;</span>
+<span class="o">}</span>
+</code></pre></div></div>
 
-<p>Забавно, да? Человек, который уже изменил мир, не делал предсказаний. Тот, кто
-не изменил, делает. Это называется <a href="https://ru.wikipedia.org/wiki/%D0%AD%D1%84%D1%84%D0%B5%D0%BA%D1%82_%D0%94%D0%B0%D0%BD%D0%BD%D0%B8%D0%BD%D0%B3%D0%B0_%E2%80%94_%D0%9A%D1%80%D1%8E%D0%B3%D0%B5%D1%80%D0%B0">Эффект Даннинга — Крюгера</a>.</p>
+<blockquote>
+  <p>How about these bugs:</p>
 
-<p>Короче, я за то, чтобы горе-предсказатели несли ответственность за свои
-слова. Особенно, если сильны в чем-то, например, дизайне, и поэтому пользуются
-популяростью в интернете.</p>
+  <ul>
+    <li>It doesn’t handle overflows</li>
+    <li>It doesn’t have any user documentation</li>
+    <li>Its design is not object-oriented</li>
+    <li>It doesn’t sum three or more numbers</li>
+    <li>It doesn’t sum double numbers</li>
+    <li>It doesn’t cast long to int automatically</li>
+    <li>It doesn’t skip execution if one argument is zero</li>
+    <li>It doesn’t cache results of previous calculations</li>
+    <li>There is no logging</li>
+    <li>Checkstyle would complain since arguments are not final</li>
+  </ul>
+</blockquote>
 
-<p>Читателю советую иметь больше критицизма, требовать факты и не верить случайным
-мнениям.</p>
+<p>Well, the points highlighted above make me really uncertain about what really
+Yegor meant. And since he didn’t answer me in the commentary section, I will put
+my thoughts on that in my own blog.</p>
+
+<p>Let’s look closer at some of them.</p>
+
+<p><strong>It doesn’t have any user documentation</strong></p>
+
+<p>The question is, do you really think we need documentation for <code class="language-plaintext highlighter-rouge">sum</code> function?
+What will you put there? I cannot guess nothing other than <code class="language-plaintext highlighter-rouge">It adds two
+integers</code>. So what the reason for having it in our code?</p>
+
+<p>In a previous project, I had a teammate who was a fan of docstrings. Every
+module, a class or a method should have a docstring, he said. The code he wrote
+looked like a school composition. You could not ship your code without his
+comments something like “add docs here and there plz”.</p>
+
+<p>Since our product was developing rapidly, we had to change the code all the
+time. Surely, we used to forget to update those docstrings because it took extra
+time. It was even worse because the docstrings didn’t tell the truth
+anymore. Nobody believed them as a result.</p>
+
+<p>What we need <code class="language-plaintext highlighter-rouge">sum</code> documentation for? How should it look like? Who will read
+this documentation? A user? I doubt it. A programmer? Even programmers need not
+a machinery-generated HTML made of docstrings, but human-written manuals with
+examples and snippets.</p>
+
+<p>When you open a particular GitHub project, what do you do first? Reading the
+code? No, you scroll down for <code class="language-plaintext highlighter-rouge">README</code> or click on <code class="language-plaintext highlighter-rouge">Wiki</code> link. Digging the
+source code is the last thing you would make if something works not well.</p>
+
+<p>Let’s recall what <a href="http://kotaku.com/5975610/the-exceptional-beauty-of-doom-3s-source-code">does one say</a> on DOOM III source code and ID Software
+code standards in general:</p>
+
+<blockquote>
+  <p>Code should be self-documenting. Comments should be avoided whenever
+possible. Comments duplicate work when both writing and reading code. If you
+need to comment something to make it understandable it should probably be
+rewritten.</p>
+</blockquote>
+
+<p><strong>Its design is not object-oriented</strong></p>
+
+<p>We all know Yegor is passionate by OOP. But really, naming a function buggy just
+because it’s non-OOP designed is not fair.</p>
+
+<p>What would happen if we had an OOP version of <code class="language-plaintext highlighter-rouge">sum</code> function? I can imagine
+something messy like this:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">Adder</span> <span class="n">adder</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Adder</span><span class="o">();</span>
+<span class="n">adder</span><span class="o">.</span><span class="na">setA</span><span class="o">(</span><span class="mi">1</span><span class="o">);</span>
+<span class="n">adder</span><span class="o">.</span><span class="na">setB</span><span class="o">(</span><span class="mi">2</span><span class="o">);</span>
+<span class="nc">Integer</span> <span class="n">result</span> <span class="o">=</span> <span class="n">adder</span><span class="o">.</span><span class="na">getResult</span><span class="o">()</span> <span class="c1">// 3</span>
+</code></pre></div></div>
+
+<p>We’ve got lot more problems here. The number of lines grew up from 1 to 4
+(compare to <code class="language-plaintext highlighter-rouge">add(1, 2)</code>). In addition, now <code class="language-plaintext highlighter-rouge">adder</code> object also keeps it’s own
+state. How may I track whether <code class="language-plaintext highlighter-rouge">.setA</code> was called or not? What will happen if I
+forget to put <code class="language-plaintext highlighter-rouge">.setB</code> in my code? Will it get a <code class="language-plaintext highlighter-rouge">Null</code> value or an exception
+raised?</p>
+
+<p>What will happen if I share <code class="language-plaintext highlighter-rouge">adder</code> object across multiple threads so they call
+<code class="language-plaintext highlighter-rouge">setA</code>, <code class="language-plaintext highlighter-rouge">setB</code> and <code class="language-plaintext highlighter-rouge">getResult</code> simultaneously? Nobody would predict the result.</p>
+
+<p>Functional programming teaches us to avoid having state and keep the things
+simple. Having a small function without any state rather than manipulating with
+objects will pay off for sure.</p>
+
+<p><strong>It doesn’t sum three or more numbers</strong></p>
+
+<p>Surely, if you a Java programmer, you’ve got a problem. Because there is nothing
+you can do without rewriting the code. But if you are aware of FP-style and you
+have your <code class="language-plaintext highlighter-rouge">add</code> function, you simply do:</p>
+
+<div class="language-lisp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">reduce</span> <span class="nf">#'</span><span class="nv">add</span> <span class="p">(</span><span class="nb">list</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">3</span><span class="p">)</span> <span class="ss">:initial-value</span> <span class="mi">0</span><span class="p">)</span> <span class="c1">;; common lisp</span>
+<span class="p">(</span><span class="nb">reduce</span> <span class="nv">add</span> <span class="mi">0</span> <span class="nv">[1</span> <span class="mi">2</span> <span class="nv">3]</span><span class="p">)</span>                       <span class="c1">;; clojure</span>
+</code></pre></div></div>
+
+<p>or, in Python:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">reduce</span><span class="p">(</span><span class="n">add</span><span class="p">,</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="mi">0</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>This is definitely the right way with <code class="language-plaintext highlighter-rouge">reduce</code> also known as <code class="language-plaintext highlighter-rouge">fold</code>. You don’t
+need to write a function that adds million of integers. Instead, you add just
+two! And <code class="language-plaintext highlighter-rouge">reduce</code> will care of how to spread it across a sequence of data.</p>
+
+<p>That’s normal to focus on simplest cases and primitive operations first. Then
+you build abstractions with high-order functions based on primitives. It makes
+the code easier to understand and debug.</p>
+
+<p><strong>It doesn’t sum double numbers</strong> and <strong>It doesn’t cast long to int
+automatically</strong></p>
+
+<p>I don’t know if it is really a bug. On the one hand, it would be great to have a
+function that adds everything. Again, within any Lisp dialect or Python I may
+have it easily. Instead, with static typing you have to write more code.</p>
+
+<p>But on the other hand, having exact <code class="language-plaintext highlighter-rouge">integer</code> types might be some kind of
+specific requirement made by design. It could be an utility function that adds
+to years or any numbers that do not exceed a couple of thousands. So it’s
+difficult to judge without a full context (I’ll say more on that below).</p>
+
+<p><strong>It doesn’t skip execution if one argument is zero</strong></p>
+
+<p>I really doubt it will increase the performance. Adding zero to an integer costs
+really nothing on modern hardware. The compilers are smart enough to deal with
+such cases. But putting an extra <code class="language-plaintext highlighter-rouge">if</code> clause will definitely increase the number
+of instructions because now your program makes a comparison step.</p>
+
+<p>This is exactly what did Knuth say about preliminary optimization. You don’t
+even have any metrics about what runs faster: adding zero of extra <code class="language-plaintext highlighter-rouge">if</code>
+statement. You even don’t now how frequently your function will be called with
+zero argument. I might be 1 time per 100k calls so your trick is made in vain in
+that case.</p>
+
+<p>It does not worth it, after all.</p>
+
+<p><strong>It doesn’t cache results of previous calculations</strong></p>
+
+<p>I’m sure any cache system brings as many problems as it solves. First, where
+would you store that cache? In application’s memory? In Memcache? User’s
+cookies?</p>
+
+<p>Then, you program could sum million of numbers per second. Every cache call
+needs al least <code class="language-plaintext highlighter-rouge">O(C)</code> or <code class="language-plaintext highlighter-rouge">O(logN)</code> time to lookup a value. You will slow down
+your program dramatically with such approach when caching small functions.</p>
+
+<p><strong>There is no logging</strong></p>
+
+<p>The same claims are here: what exactly are you going to log? Who will read that
+logs and how often? For what purpose you want to store such kind of logs? Where
+would you store such amount of logs? Did you estimate the slowdown that you will
+bring to your system by adding logging? What if some of Ops team would
+misconfigure logging system and add email handler to that logger? Or sending SMS
+message?</p>
+
+<p>Finally, this function is taken <strong>completely out of the scope</strong> so it’s
+impossible to judge on its quality. We should never examine a single function
+but only their composition instead. Every function has its own weaknesses and
+strengths. Linked together properly they build a system. In such a system,
+weakness of any specific function is supported by another function that
+validates data, filters input params, cleans up system symbols and so forth.</p>
+
+<p>What I want exactly to say is there is nothing criminal in such a function that
+adds to integers. If it’s surrounded with another function that ensures that
+both numbers are really integers, there is no need to do all that validations
+again when adding them. In our projects, we usually separate our application on
+several levels. On the top level of the application, threre is one that
+validates the input data. If they are fine, functions on the next level operate
+on them as well.</p>
+
+<p><strong>In conclusion</strong>, please avoid using word “bug” when you talk about lack of
+logging or caching. Probably you don’t need that stuff. Keep functions free of
+having state and producing side effects. When you afraid of the data you use may
+be incorrect (Nulls, overflows), don’t rush into adding nested <code class="language-plaintext highlighter-rouge">if</code>s. You’d
+rather update your validation logic first.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/copyright/">Об авторском праве</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-05-29T00:00:00+00:00">
+        May 29, 2017
+    </time>
+
+    <a href="/tag/copyright/" rel="tag">copyright</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Коллеги заспорили о проблемах копирайта: можно ли качать торренты или нельзя,
+воруешь ли ты при этом или нет и так далее. А я решил сесть и записать все, что
+думаю по этому поводу.</p>
+
+<p>Главная проблема авторского права состоит в том, что до недавнего времени люди
+мерили собственность и богатство материальными единицами. Долларами, квадратными
+метрами, тоннами. В классическом предствалении богач – это тот, у кого чего-то
+много. Это самое “много” легко представить или изобразить. У богатого человека
+большой дом, огромная фабрика, мощный параход.</p>
+
+<p>В материальном мире одна и та же вещь не может существовать дважды. Поэтому у
+каждой вещи только один владелец. Если у человека забрать что-то материальное,
+это сразу станет заметно. Так ввели понятие кражи, определили институты закона и
+суда. Человек додумался до этого еще несколько тысяч лет назад. Базовые нормы
+общества вроде “не укради” опираются на аналоги, разработанные в Древнем Риме.</p>
+
+<p>Цифровые технологии изменили восприятие собственности. Впервые человек
+столкнулся с тем, что определенный тип материи может быть скопирован практически
+бесплатно. Это вкорне противоречит привычной модели материальных благ. Чтобы
+скопировать устройство, например, зарубежный фотоаппарат, подводную лодку или
+атомную бомбу, нужны ресурсы, намного превышающие затраты на постройку
+оригинала.</p>
+
+<p>Индустрия не была готова к такому феномену и до сих пор пребывает в фазе
+медленного перехода к чему-то осмысленному. Этим объясняются случаи нарушения
+прав человека, баснословные штрафы, судебные тяжбы.</p>
+
+<p>Мысль о бесплатном копировании чего угодно пугает неопределенностью. Мы
+привыкли, что любой ресурс конечен. Среднестатический человек тратит четверть
+жизни на обучение, чтобы устроиться на работу и поддерживать материальное
+состояние. Тысячи людей по всему миру живут только затем, чтобы к вечеру
+заработать на еду.</p>
+
+<p>Идея неограниченного копирования сродни идеи о бессмертии или полете. Никто не
+знает, что станет с человечеством, если подобное случится. Но нетрудно
+предположить, что мир кардинально изменится, причем не в лучшую сторону для тех,
+кто сейчас в выигрышном положении.</p>
+
+<p>Рассуждая об объектах авторского права, стоит признать, что принцип дешевого
+копирования заложен в них изначально. Примерно как метод половинного деления
+заложен в живой клетке, но не автомобиле. В рассуждениях об авторском праве
+нельзя ссылаться или приводить аналогии на материальные ценности: колбасу,
+золото и т.д.</p>
+
+<p>Регулярно возникают случаи нарушения авторских прав, и я хотел бы поговорить об
+этом подробней. Некоторые аспекты копирайтинга мне кажутся спорными. Да, они
+утверждены законом, но только одно это не мотивирует их соблюдать, поскольку
+закон относителен. Одно и то же может быть нормой в одной стране и преступлением
+в другой. Скажем, ловля покемонов в храме или съемка порнографии.</p>
+
+<p>Прежде всего, я ставлю под сомнение законность передачи авторского права по
+наследству или в дар. Оно не должно автоматически переходить в собственность
+родственников: детей, внуков. Это вредит всем участникам. Наследник получает
+актив, к которому он не прикладывал ни малейших усилий. Отношение к нему
+соответствующее: пусть лежит и приносит деньги. Поскольку юридические владельцы
+не наследуют таланты первичного автора, развитием продукта они не занимаются.</p>
+
+<p>Что касается игр, здесь ситуация однозначно меняется к лучшему. Еще 10 лет назад
+было нормально качать торренты, переписывать игры на болванки, искать кряки и
+серийные номера. А сегодня есть Стим, который свел пиратство игр на
+нет. Благодаря Стиму среди моих знакомых не осталось никого, кто бы ставил игры
+из неофицальных источников.</p>
+
+<p>К сожалению, ситуация с фильмами не развивается столь же положительно. В
+киноиндустрии бытует ошибочное мнение, что если фильм утечет в сеть, зрители
+посмотрят его дома и не пойдут в кинотеатры. Это не отвечает реальности. Поход в
+кинотеатр отличается от домашнего просмотра атмосферой. Впечатления от большого
+экрана мощнее, а поход в кино – отдельное событие. Хороший повод разнообразить
+отдых, сходить на свидание, собраться друзьями – да мало ли что еще.</p>
+
+<p>С момента изобретения кино некоторые эксперты пророчили смерть театрам. Зачем
+ехать в вечернее время в центр города, наряжаться, соблюдать этикет? С
+изобретением телевидения даже потребность в кино отпадает, утверждали
+эксперты. Все можно посмотреть дома. И тем не менее, театры востребованы. У кого
+есть дети, знают, что брать билеты на спектакли нужно за месяц вперед: раскупают
+мгновенно.</p>
+
+<p>Аналогично с концертами и фестивалями. Если предложить фанату вернуть билет на
+выступление любимой группы с предложением посмотреть на экране, он просто
+покрутит пальцем у виска.</p>
+
+<p>Невозможно сейчас вспомнить фильм, чей кассовый сбор значительно бы пострадал от
+утечки в сеть. Сразу же после премьер в кинотеатрах торрент-трекеры наводняют
+кам-рипы – снятые на скрытые камеры копии. Опять же, нет никаких показателей,
+как это влияет на прибыльность фильма. По моему опыту, камрип – это вынужденная
+мера, когда достать более достойную версию физически невозможно. Но в наше время
+это уже не актуально.</p>
+
+<p>Поиск фильма по фразе “смотреть онайн бесплатно” перебрасывает человека на
+сайты, увешанные баннерами и виджетами. Экран застилают предложения что-то
+увеличить. Подобным сайтам, в общем-то, все равно, что пользователь
+уходит. Главное – скормить ему максимум рекламного трафика. В следующий раз
+пользователь все равно прилетит из Гугла на этот же сайт или его зеркало в
+поисках другого фильма.</p>
+
+<p>Как бы ни был безграмотен в компьютерном плане пользователь, он догадывается,
+что такое положение дел неправильно. Это как будто закрылись магазины, и ты
+ходишь по барыгам.</p>
+
+<p>Вопрос, почему полулегальные сайты стоят в выдаче поисковика выше официальных?
+Неужели у поборников авторских прав нет денег на раскрутку?</p>
+
+<p>Да, некоторые фильмы можно легально просмотреть на Ютубе, купить в магазинах
+Эппла и Гугла. Но опять же, новинки попадают туда с опозданием. Другой минус
+состоит в том, что покупая там, пользователь очень стеснен в выборе и правах.</p>
+
+<p>В онлайн-магазине вы не можете выбрать языковую дорожку. Ваш аккаунт намертво
+привязан к стране и правовым нормам, которые запрещают купить фильм в
+оригинальной озвучке, если вы, например, из России. Только дубляж. Никому не
+интересно, что ты учишь английский или французский. Я помню, лет 15 назал
+покупатели массово требовали русский язык в пиратских релизах. Сегодня,
+наоборот, чтобы скачать английскую версию, пользовтель вынужден серфить
+торренты.</p>
+
+<p>Я в корне не согласен с тем, что нельзя выбирать локализацию продукта.</p>
+
+<p>Защитники авторских прав утверждают, что терпят колоссальные убытки от пиратства
+и торрентов. Называют колоссальные цифры, рассказывают, кто из музыкантов
+сколько недополучил. Подвох кроется в том, что ни в одном отчете не сказано, как
+именно считались убыки и как они структурированы в принципе.</p>
+
+<p>Помните, как считали потери в Микрософте? Брали число школьников, у которых дома
+пиратская Винда’98 и умножали на стоимость лицензии. Получали дутые суммы, в то
+время как никаких убытков не было. Напротив, именно пиратские версии заполонили
+компьютеры пользователей. Со временем пользователи легализировались. Люди
+взрослеют, у них заводятся деньги, и с какого-то момента человеку становится
+проще купить коробку и вбить номер с нее, чем лазить по левым сайтам в поисках
+ключа.</p>
+
+<p>Статисты с маниакальной тщательностью подсчитывают убытки от нелегальных копий,
+но игнорируют вопрос: купил ли бы продукт пользователь, если бы действительно не
+имел доступа к пиратскому контенту? Вспоминая детство, однозначно отвечаю нет.</p>
+
+<p>Не учитывается факт, что сегодня, при наличии быстрого интернета и свободного
+места на дисках, много фильмов, музыки и игр скачивается просто так. Синдром
+Плюшкина: скачаю, а потом, может быть, послушаю-посмотрю. У каждого из нас есть
+на компьютере папочка с пиратскими книгами и фильмами, до которых мы никогда не
+доберемся из-за нехватки времени. Книга качается 10 секунд, а читать ее нужно
+месяц. Игра установлена, но некогда даже посмотреть вступительный ролик. Поэтому
+умножать стоимость фильма на число скачиваний просто нелепо.</p>
+
+<p>Поборники авторских прав проникли в современные облачные технологии. Поскольку
+каждое устройство подключено к сети и непрерывно держит связь с сервером, любой
+купленный продукт может быть отозван, а устрйство – заблокировано. Описаны
+случаи, когда при пересечении границы Гугл удалял с планшетов электронные
+книги. Вам нельзя читать их на территории этой страны. Извините, лицензионное
+соглашение. Вот вернетесь – скачаются заново.</p>
+
+<p>Идея о том, что нельзя что-то читать, слушать или смотреть при перемещении на
+несколько сотен киломентров, кажется мне сошедшей со страниц 1984.</p>
+
+<p>В какой-то момент Айтюнс удалил с моего телефона честно купленный альбом. Не
+было ни писем, ни смс. Эппл не посчитал нужным сообщать о причинах
+проишествия. Ссылки на альбом ведут в никуда. Конечно, через 15 минут я скачал
+торрент.</p>
+
+<p>Игроки-пользователи Стима и Близзарда отмечают схожее поведение компаний при
+переезде в другие страны. Как только россиянин входит в Стим из США, аккаунт
+блокируется. Начинается долгая тяжба по его восстановлению. Формально это
+объясняется проверками на взлом, но, по неофициальным данным, реальная причина
+связана с правовыми нормами и лицензионными соглашениями.</p>
+
+<p>Права на игру, выпущенные в одном регионе, не тождественны правам на ту же игру
+в другом регионе. В теории, они могу быть равны, но чтобы точно убедиться, нужны
+человеческие ресурсы, помощь юристов. Чем больше игр купил пользователь, тем
+сложней ситуация. В случае ошибки засудят на крупные суммы. Поэтому фирмы
+затягивают восстановление аккаунта и неформально подталкивают пользователя к
+регистрации нового с повторной покупкой тех же игр, но уже изданных в США.</p>
+
+<p>Нужно понимать, что любой продукт, даже самый коммерческий, со сременем
+становится частью культуры, в рамках которой он создается. Любая человеческая
+мысль, сюжет или персонаж является компиляцией чужих идей и образов. Например,
+писатель находит вдохновение в прогулках по парку. Обязан ли он платить фирме,
+занимающейся содержанием парка? Или автор написал интересную книгу. Как быть с
+тем фактом, что другие люди прочли ее, сформировали мнение, поделились эмоциями,
+посоветовали друзьям ее купить?</p>
+
+<p>Эти процессы невозможно отследить, посчитать и выразить в национальной
+валюте. Правообладателям выгодней о них забыть. Использовать их в дискуссии
+невозможно.</p>
+
+<p>Представьте себе, что внезапно ожили древние римляне и потребовали выплат за
+использование имен богов в названиях космических кораблей и студий
+красоты. Кирилл и Мефодий запросли авторские отчисления за кириллицу. А чтобы
+выплатить гонорар изобретателю колеса за каждый факт его применения, у
+человечества не хватило бы суммарных денег.</p>
+
+<p>Поскольку широкая аудитория есть главный потребитель фильмов, игр, книг, с ней
+нужно считаться. В этом смысле толпа ведет себя как жидкость: если сжимать в
+одном месте, давление передастся в другое. Иначе говоря, систематически
+расстраивая потребителя ограничениями и штрафами, поборники авторских прав
+подталкиваю его к пиратскому контенту.</p>
+
+<p>Копирайтеры, возможно, видят мир немного иным, где каждый озадачен проблемой
+легальности. Перед просмотром фильма или кликом по ссылке пользователь
+взвешивает: не нарушаю ли я права, а если да, то чьи и на какую сумму. В
+реальности потребитель бесхитростен и совершенно безграмотен в этом
+вопросе. Если браузер показывает, значит, смотреть можно – вот его аргументы.</p>
+
+<p>Возможно, кто-то догадывается, что качать фильмы с сайтов с рекламой казино
+нелегально. Но обычно у людей нет на это времени. У них работа, дети, вечный
+завал. Проблемы нарушения авторских прав не в их мире. В онлайн магазине форма
+регистрации занимает два экрана, а тут бесплатно.</p>
+
+<p>Задача индустрии в том, чтобы сделать качественные сервисы с удобной навигацией
+и оплатой. Чтобы они всплывали в поисковиках раньше полулегальных сайтов. В
+идеале, последние вообще должны исчезнуть с первых страниц выдачи Гугла и
+Яндекса и стать уделом маргиналов.</p>
+
+<p>Легко видеть, что проблема не имеет однозначного решения. Даже на то, чтобы
+связно выразить точку зрения, ушло несколько дней. Не называйте ворами тех, кто
+качает торренты, умерьте пыл. Возможно, прямо сейчас вы нарушаете дюжину
+лицензионных соглашений, которые промотали в момент установки, а там было
+анальное рабство.</p>
+
+<p>Правильное решение придет со временем.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/read-23/">What to read #23</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-05-21T00:00:00+00:00">
+        May 21, 2017
+    </time>
+
+    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>The last time I had to skip the rubric. Here are a couple of more links to
+compensate that:</p>
+
+<ul>
+  <li>
+    <p><a href="http://softwaremaniacs.org/blog/2017/05/13/http-status-codes-strings/">Treat Http Status Codes As Strings</a></p>
+
+    <p>An interesting advise from Ivan Sagalaev. Makes sense, but honestly I prefer
+boolean <code class="language-plaintext highlighter-rouge">ok</code> flag that represents whether your HTTP request has finished with
+2xx status.</p>
+  </li>
+  <li>
+    <p><a href="http://www.yegor256.com/2017/05/02/remote-slaves.html">A Remote Slave Is Still a Slave</a></p>
+
+    <p>As a remote worker, I could not pass through without sharing a link.</p>
+  </li>
+  <li>
+    <p><a href="http://wiki.c2.com/?BenefitsOfDynamicTyping">Benefits Of Dynamic Typing</a></p>
+
+    <p>A long paper full of random thoughts on dynamic typing. Don’t even remember
+how I managed to find this link, but it worth reading it.</p>
+  </li>
+  <li>
+    <p><a href="http://www.gigamonkeys.com/book/introduction-why-lisp.html">Why Lisp?</a></p>
+
+    <p>An introduction to the legendary Practical Common Lisp book.</p>
+  </li>
+  <li>
+    <p><a href="https://snob.ru/selected/entry/124326">10 цитат из Моэма, за которые вас посадят</a></p>
+
+    <p>Да в общем-то, ничего криминального.</p>
+  </li>
+  <li>
+    <p><a href="http://kompotique.ru/useful-comments/">Полезные комментарии</a></p>
+
+    <p>Ознакомьтесь, если все-таки решили написать комент с соцсети.</p>
+  </li>
+  <li>
+    <p><a href="http://artgorbunov.ru/bb/soviet/20170423/">К двум вопросам возвращаюсь постоянно</a></p>
+
+    <p>Работа, деньги, переговоры.</p>
+  </li>
+  <li>
+    <p><a href="https://sexynotes.quora.com/">Sexy Notes</a></p>
+
+    <p>An interesting blog of Susan James, a sexual researcher.</p>
+  </li>
+</ul>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/dos-and-donts/">Do's and Don'ts</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-05-12T00:00:00+00:00">
+        May 12, 2017
+    </time>
+
+    <a href="/tag/english/" rel="tag">english</a>, <a href="/tag/dos-and-donts/" rel="tag">dos-and-donts</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Here is a short list of rules I try to follow when working:</p>
+
+<h3 id="database">Database</h3>
+
+<ul>
+  <li>
+    <p>Avoid using nullable fields in your DB. Put <code class="language-plaintext highlighter-rouge">not null</code> everywhere you can when
+defining a table. Assign a default blank value if submitting a field is not
+necessary:</p>
+
+    <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">foo</span> <span class="p">(</span>
+  <span class="p">...</span>
+  <span class="k">comment</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="s1">''</span><span class="p">,</span>
+  <span class="k">count</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="mi">0</span>
+<span class="p">);</span>
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p>Keep your database migrations in raw <code class="language-plaintext highlighter-rouge">*.sql</code> files. Wrap each migration into
+transaction explicitly putting <code class="language-plaintext highlighter-rouge">begin;</code> and at the top of file and <code class="language-plaintext highlighter-rouge">commit;</code>
+at the bottom:</p>
+
+    <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">--</span>
+<span class="c1">-- A short comment about what this migration does.</span>
+<span class="c1">--</span>
+<span class="k">begin</span><span class="p">;</span>
+
+<span class="k">update</span> <span class="n">foo</span> <span class="k">set</span> <span class="n">bar</span> <span class="o">=</span> <span class="mi">42</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">100500</span><span class="p">;</span>
+
+<span class="k">alter</span> <span class="k">table</span> <span class="n">baz</span> <span class="k">drop</span> <span class="k">column</span> <span class="n">test</span><span class="p">;</span>
+
+<span class="k">commit</span><span class="p">;</span>
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p>Don’t delete anything from your DB. Add <code class="language-plaintext highlighter-rouge">deleted</code> boolean flag that is false
+by default and put <code class="language-plaintext highlighter-rouge">AND NOT mytable.deleted</code> in <code class="language-plaintext highlighter-rouge">WHERE</code> or <code class="language-plaintext highlighter-rouge">JOIN</code> statements:</p>
+
+    <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">foo</span> <span class="k">where</span> <span class="k">not</span> <span class="n">deleted</span><span class="p">;</span>
+</code></pre></div>    </div>
+
+    <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span><span class="p">.</span><span class="n">f</span><span class="p">,</span> <span class="o">*</span><span class="p">.</span><span class="n">b</span>
+<span class="k">from</span> <span class="n">foo</span> <span class="n">f</span>
+<span class="k">left</span> <span class="k">join</span> <span class="n">bar</span> <span class="n">b</span> <span class="k">on</span> <span class="n">foo</span><span class="p">.</span><span class="n">bar_id</span> <span class="o">=</span> <span class="n">b</span><span class="p">.</span><span class="n">id</span> <span class="k">and</span> <span class="k">not</span> <span class="n">b</span><span class="p">.</span><span class="n">deleted</span><span class="p">;</span>
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p>For each table, add <code class="language-plaintext highlighter-rouge">created_at</code> that fixates creation time automatically:</p>
+
+    <div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">foo</span> <span class="p">(</span>
+  <span class="p">...</span>
+  <span class="n">created_at</span> <span class="nb">timestamp</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="k">current_timestamp</span><span class="p">;</span>
+<span class="p">);</span>
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p>Once you’ve got any geographical data (locations, areas, routes), install
+PostGIS extension without inventing your own “smart” algorithms. They will let
+you down one Friday evening.</p>
+  </li>
+  <li>
+    <p>Postgres is great for full-text searching. Try to deal with standard
+PostgreSQL capabilities before installing Elastic, Sphinx and related stuff.</p>
+  </li>
+  <li>
+    <p>Avoid using ORMs. A small wrapper that parses <code class="language-plaintext highlighter-rouge">*.sql</code> files and creates plain
+functions would be enough.</p>
+  </li>
+  <li>
+    <p>Don’t use triggers to implement business logic. Such behaviour is quite
+implicit and difficult to maintain. And business rules change all the time.</p>
+  </li>
+</ul>
+
+<h3 id="code">Code</h3>
+
+<ul>
+  <li>
+    <p>Don’t align you code with spaces like it’s shown below. Use one space only.</p>
+
+    <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">foo</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="s">"short"</span><span class="p">:</span>              <span class="mi">1</span><span class="p">,</span>
+  <span class="s">"a-bit-longer"</span><span class="p">:</span>       <span class="mi">2</span><span class="p">,</span>
+  <span class="s">"very-very-long-one"</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p>Write unit tests for both server and UI sides immediately once you’ve started
+a new project.</p>
+  </li>
+  <li>
+    <p>Classes are not data. Prefer plain data structures like lists and maps over
+classes. Usually, structures are fast and covers the most of requirements.</p>
+  </li>
+  <li>
+    <p>Try to follow functional approach when develop a program. Avoid keeping state
+where it can be skipped. Separate IO from code that does pure calculations.</p>
+  </li>
+</ul>
+
+<h3 id="frontend">Frontend</h3>
+
+<ul>
+  <li>
+    <p>Don’t use vanilla Javascript. Use such modern technologies as ClojureScript,
+TypeScrip or Elm to develop without pain in the ass. Consider JS as necessary
+evil running under the hood to ship your application.</p>
+  </li>
+  <li>
+    <p>Don’t make SAPs (single page applications). Usually they work poorly, the
+layout leaks, you cannot open a link in a new window and they break W3C
+standards.</p>
+  </li>
+  <li>
+    <p>Even with Javascript turned off, your client must see important information on
+their screen.</p>
+  </li>
+  <li>
+    <p>Don’t make you own widgets to substitute standard ones (inputs, drop-downs,
+etc).</p>
+  </li>
+  <li>
+    <p>Never interrupt a user with alerts, pop-ups, splashes.</p>
+  </li>
+  <li>
+    <p>Never claim on Ad-Block enabled. It’s so ridiculous. It’s users choice what
+software to use when browsing the Internet.</p>
+  </li>
+</ul>
+
+<h3 id="architecture">Architecture</h3>
+
+<ul>
+  <li>
+    <p>Don’t make micro-services. Try to keep the whole codebase within. Run
+different domains of your application in separate threads as components.</p>
+  </li>
+  <li>
+    <p>Queues might help a lot. Don’t invent your own message queue facility. Use
+Rabbit, ZeroMQ or even Redis.</p>
+  </li>
+  <li>
+    <p>For message processing, use text format but not binary one. You are not Google
+with their proto-bufs invented to break down network limitations.</p>
+  </li>
+  <li>
+    <p>Writing logs in a file and <code class="language-plaintext highlighter-rouge">tail</code>ing them via SSH is a mess. Write all the
+logs into (remote) syslog, either your own one or any third-party one. Syslog
+brings huge capabilities with logs processing.</p>
+  </li>
+  <li>
+    <p>Never commit to master branch directly (set that option in your Git
+config). Use the simplest Git pipeline you can imagine:</p>
+
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>master -&gt; feature-branch -&gt; commits -&gt; pull request -&gt; review -&gt; merge
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p>JSON is bad when configuring software: lots of braces, no comments. Take YAML.</p>
+  </li>
+</ul>
+
+<h3 id="programming-languages">Programming languages</h3>
+
+<ul>
+  <li>
+    <p>Prefer those languages that could give you a single compiled file as a result
+of you effort (both binary or bytecode). C-family, Go, Rust, Haskell,
+Java-family are OK. PHP, Python, Ruby, Perl, JavaScript are less OK.</p>
+  </li>
+  <li>
+    <p>Take a look at functional languages even you don’t have intentions using them
+in your daily work.</p>
+  </li>
+  <li>
+    <p>You’d better try not modern languages but rather old ones. Smalltalk, Lisp,
+OCaml would be a great choice.</p>
+  </li>
+</ul>
+
+<h3 id="workspace">Workspace</h3>
+
+<ul>
+  <li>
+    <p>Keep you desktop free from unused items.</p>
+  </li>
+  <li>
+    <p>The more gadgets you need having around the less you are productive. Ideally,
+you only need your Mac connected to the Internet.</p>
+  </li>
+  <li>
+    <p>Use messagers on mobile only except those you need to communicate with your
+customer. On my desktop, I have only Slask running with my customer’s
+room. Leave Telegram, Skype, WhatsApp or whatever else on you phone and check
+them rarely.</p>
+  </li>
+  <li>
+    <p>Turn off all the notifications on you phone/desktop.</p>
+  </li>
+  <li>
+    <p>Try to keep you developing tools simple. Choose text editor like Vim or Emacs
+over IDE. Work with Git from a command line.</p>
+  </li>
+  <li>
+    <p>Don’t work in open-space. A room with 3-4 people around is OK.</p>
+  </li>
+  <li>
+    <p>Don’t read the news. Your friends will warn you if something really important
+happens.</p>
+  </li>
+</ul>
+
+<h3 id="communication">Communication</h3>
+
+<ul>
+  <li>
+    <p>Don’t argue on Vim vs Emacs, Python vs Ruby and so on. It looks quite
+unprofessional.</p>
+  </li>
+  <li>
+    <p>If you full of thoughts you want to share with the world, open a blog or write
+a book. But never argue on them in social networks or messagers.</p>
+  </li>
+  <li>
+    <p>Even you are a remote worker, say Hi and Bye every time you’ve started or
+finished your work day. Your team should know whether are you at the desk or
+not.</p>
+  </li>
+  <li>
+    <p>Be always polite.</p>
+  </li>
+  <li>
+    <p>When you don’t know what to say, keep silence.</p>
+  </li>
+  <li>
+    <p>Never afraid saying No.</p>
+  </li>
+  <li>
+    <p>Read about negotiations.</p>
+  </li>
+  <li>
+    <p>Invest time and money in improving your English skills.</p>
+  </li>
+</ul>
+
+<p>This post is a snapshot of my <a href="https://github.com/igrishaev/dos-and-donts">Do’s And Don’ts</a> repository. You may always
+find updates there.</p>
+
 
                 
             </div>
@@ -879,7 +2587,7 @@ GPS-сигнала. Ими пользуются угоньщики автомо�
         
         <a href="/page38" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 39 из 68</span>
+        <span class="page_number ">Страница 39 из 70</span>
         
         <a href="/page40" class="next">&rarr;</a>
         
