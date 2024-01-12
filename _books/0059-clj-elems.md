@@ -1,6 +1,6 @@
 ---
 layout: book
-title: Elements of Сlojure
+title: Elements of Clojure
 author: Zachary Tellman
 image: elem-clojure.png
 ---
