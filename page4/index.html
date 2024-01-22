@@ -104,6 +104,408 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/pg-docs/07/">PG docs, part 7. COPY IN/FROM</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-10-10T00:00:00+00:00">
+        Oct 10, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/copy/" rel="tag">copy</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><em>(This is a new documentation chapter from the <a href="https://github.com/igrishaev/pg">PG project</a>.)</em></p>
+
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+  <li><a href="/en/pg-docs/04/">Arrays</a></li>
+  <li><a href="/en/pg-docs/05/">Notifications</a></li>
+  <li><a href="/en/pg-docs/06/">SSL</a></li>
+  <li><a href="/en/pg-docs/07/">COPY</a></li>
+  <li><a href="/en/pg-docs/08/">HoneySQL</a></li>
+</ul>
+
+<p>In this chapter:</p>
+
+<!-- toc -->
+
+<ul>
+  <li><a href="#theory">Theory</a></li>
+  <li><a href="#csv-vs-binary">CSV vs Binary</a></li>
+  <li><a href="#usage">Usage</a>
+    <ul>
+      <li><a href="#copy-out">COPY out</a></li>
+      <li><a href="#copy-in-from-stream">COPY IN from stream</a></li>
+      <li><a href="#copy-in-rows">COPY IN rows</a></li>
+      <li><a href="#copy-in-maps">COPY IN maps</a></li>
+    </ul>
+  </li>
+</ul>
+
+<!-- tocstop -->
+
+<h2 id="theory">Theory</h2>
+
+<p>The recent update of pg-client library introduces various ways to COPY the data
+into or from the database. It’s much more flexible than the official JDBC
+Postgres driver’s standard <a href="https://jdbc.postgresql.org/documentation/publicapi/org/postgresql/copy/CopyManager.html">CopyManager</a> class.</p>
+
+<p>To remind you, COPY is a massive way of writing or reading data. Copying IN is
+much faster than inserting the rows by chunks. Postgres starts to read the data
+immediately without waiting for the last bit of data to arrive. You can copy
+into the same table in parallel threads. The same applies to copying out: if you
+want to dump a table into a file, use COPY FROM with an OutputStream
+OutputStream rather than selecting everything in memory.</p>
+
+<p>The main disadvantage of JDBC CopyManager is, that it doesn’t do anything about
+data encoding and encoding. It accepts either an InputStream or an OutputStream
+assuming you encode the data on your own. It means, right before you copy the
+data to the database, you’ve got to manually encode them into CSV.</p>
+
+<p>This is not as easy as you might think. When encoding values into CSV, it
+coerces everything to a string using <code class="language-plaintext highlighter-rouge">str</code>. That’s OK for most of the primitive
+types as numbers, booleans or strings: their Clojure representation matches the
+way they’re represented in Postgres. But it doesn’t work for complex types like
+arrays. If you write a vector of <code class="language-plaintext highlighter-rouge">[1 2 3]</code> in CSV you’ll get <code class="language-plaintext highlighter-rouge">"[1 2 3]"</code> which
+is an improper Postgres value. It must have been <code class="language-plaintext highlighter-rouge">{1, 2, 3}</code> instead.</p>
+
+<p>Another flaw of JDBC CopyManager is, that it doesn’t split the data by rows when
+sending them into the database. It simply reads 2Kb of bytes from an InputStream
+and writes them to a socket. At the same time, the PostgreSQL documentation
+<a href="https://postgrespro.ru/docs/postgrespro/14/protocol-flow?lang=en#PROTOCOL-COPY">recommends</a> splitting the data chunks by rows:</p>
+
+<blockquote>
+  <p>The message boundaries are not required to have anything to do with row
+boundaries, although that is often a reasonable choice</p>
+</blockquote>
+
+<p>Moreover, PostgreSQL supports not only CSV but also text and binary formats. The
+text format is somewhat CSV with different separators so it’s not so
+important. But the binary format <em>is</em> indeed! Binary-encoded data are faster to
+parse and process and thus are preferable when dealing with vast chunks of data.</p>
+
+<h2 id="csv-vs-binary">CSV vs Binary</h2>
+
+<p>Here are a couple of measurements I made on my local machine. I made two files
+containing 10 million rows: in CSV and in binary format. Then I used the
+official CopyManager to copy these files in the database. All the server
+settings were default; the machine was an Apple M1 Max 32Gb with 10 Cores.</p>
+
+<p><strong>Single thread COPY</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Rows</th>
+      <th>Format</th>
+      <th>Time, sec</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10M</td>
+      <td>binary</td>
+      <td>17.4</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>CSV</td>
+      <td>51.2</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Parallel COPY</strong></p>
+
+<p>Binary:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Rows</th>
+      <th>Threads</th>
+      <th>Chunk</th>
+      <th>Format</th>
+      <th>Time, sec</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10M</td>
+      <td>8</td>
+      <td>10k</td>
+      <td>binary</td>
+      <td>11.3</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>4</td>
+      <td>10k</td>
+      <td>binary</td>
+      <td>13.7</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>1</td>
+      <td>10k</td>
+      <td>binary</td>
+      <td>28.6</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>CSV:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Rows</th>
+      <th>Threads</th>
+      <th>Chunk</th>
+      <th>Format</th>
+      <th>Time, sec</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10M</td>
+      <td>8</td>
+      <td>10k</td>
+      <td>CSV</td>
+      <td>10.6</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>4</td>
+      <td>10k</td>
+      <td>CSV</td>
+      <td>19.9</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>1</td>
+      <td>10k</td>
+      <td>CSV</td>
+      <td>71.7</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>It’s plain to see that binary encoding is three times faster than CSV. 17 vs 51 seconds is a significant difference one cannot ignore.</p>
+
+<p>The good news is, the PG library does support binary encoding. It also allows you to perform COPY operations without encoding them manually. The library doesn’t make any InputStreams in the background: it encodes the rows one by one and sends them directly into the database. It also supports binary format of encoding which is a matter of passing a parameter. Also, it does split the data chunks by rows, not by the size of the buffer.</p>
+
+<h2 id="usage">Usage</h2>
+
+<p>Establish a connection to the database first:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.client</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pg</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/connect</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}))</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="copy-out">COPY out</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">copy-out</code> function dumps a table or a query into a file. It accepts a
+connection object, a SQL expression describing the table, the columns, the
+format and other details, and an instance of an OutputStream. The rows from the
+table or a query get sent to that stream. The function returns a number of rows
+processed.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">sql</span><span class="w">
+      </span><span class="s">"COPY (select s.x as x, s.x * s.x as square from generate_series(1, 9) as s(x))
+      TO STDOUT WITH (FORMAT CSV)"</span><span class="w">
+
+      </span><span class="n">out</span><span class="w">
+      </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">ByteArrayOutputStream</span><span class="p">)]</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">pg/copy-out</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">sql</span><span class="w"> </span><span class="n">out</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The expression above returns 9 (the number of rows). The actual rows are now in
+the <code class="language-plaintext highlighter-rouge">out</code> variable that stores bytes.</p>
+
+<p>Of course, for massive data it’s better to use not <code class="language-plaintext highlighter-rouge">ByteArrayOutputStream</code> but
+<code class="language-plaintext highlighter-rouge">FileOutputStream</code>. You can produce it as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"/some/file.csv"</span><span class="w">
+                    </span><span class="n">io/file</span><span class="w">
+                    </span><span class="n">io/output-stream</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/copy-out</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">sql</span><span class="w"> </span><span class="n">out</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The PG library doesn’t close the stream assuming you may write multiple data
+into a single stream. It’s up to you when to close it.</p>
+
+<p>To dump the data into a binary file, add the <code class="language-plaintext highlighter-rouge">WITH (FORMAT BINARY)</code> clause to
+the SQL expression. Binary files are more difficult to parse yet they’re faster
+in processing.</p>
+
+<h3 id="copy-in-from-stream">COPY IN from stream</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">copy-in</code> function copies the data from in InputStream into the
+database. The payload of the stream is either produced by the previous
+<code class="language-plaintext highlighter-rouge">copy-out</code> function or manually by dumping the data into CSV/binary format. The
+function returns the number or rows processed by the server.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">in-stream</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"/some/file.csv"</span><span class="w"> </span><span class="n">io/file</span><span class="w"> </span><span class="n">io/input-stream</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/copy-in</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"copy foo (id, name, active) from STDIN WITH (FORMAT CSV)"</span><span class="w">
+            </span><span class="n">in-stream</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; returns 6</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Again, it doesn’t close the input stream. Use the <code class="language-plaintext highlighter-rouge">with-open</code> macro to close it
+explicitly.</p>
+
+<p>The next two functions are more interesting as they bring functionality missing
+in the JDBC.</p>
+
+<h3 id="copy-in-rows">COPY IN rows</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">copy-in-rows</code> function takes a sequence of rows and sends them into the
+database one by one. It doesn’t do any intermediate steps like dumping them into
+an InputStream first. Everything is done on the fly.</p>
+
+<p>The function takes a connection, a SQL expression, and a sequence of rows. A row
+is a sequence of values. The result is a number of rows copied into the
+database.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-rows</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"copy foo (id, name, active, note) from STDIN WITH (FORMAT CSV)"</span><span class="w">
+                 </span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="n">nil</span><span class="p">]</span><span class="w">
+                  </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="s">"Juan"</span><span class="w"> </span><span class="n">false</span><span class="w"> </span><span class="s">"kek"</span><span class="p">]])</span><span class="w">
+</span><span class="c1">;; 2</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The fourth optional parameter is a map of options. At the moment, the following
+options are supported:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>name</th>
+      <th>default</th>
+      <th>example (or enum)</th>
+      <th>description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:sep</code></td>
+      <td>,</td>
+      <td> </td>
+      <td>a character to separate columns in CSV/text formats</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:end</code></td>
+      <td><code class="language-plaintext highlighter-rouge">\r\n</code></td>
+      <td> </td>
+      <td>a line-ending sequence of characters in CSV/text</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:null</code></td>
+      <td>empty string</td>
+      <td> </td>
+      <td>a string to represent NULL in CSV/text</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:oids</code></td>
+      <td><code class="language-plaintext highlighter-rouge">nil</code></td>
+      <td><code class="language-plaintext highlighter-rouge">[oid/int2 nil oid/date]</code>, <code class="language-plaintext highlighter-rouge">{0 oid/int2, 2 oid/date}</code></td>
+      <td>type hints for proper value encoding. Either a vector or OIDs, or a map of {index =&gt; OID}</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:format</code></td>
+      <td><code class="language-plaintext highlighter-rouge">:csv</code></td>
+      <td><code class="language-plaintext highlighter-rouge">:csv</code>, <code class="language-plaintext highlighter-rouge">:bin</code>, <code class="language-plaintext highlighter-rouge">:txt</code></td>
+      <td>a keyword to specify the format of a payload.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Copy rows in CSV with custom column separators and NULL representation:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-rows</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"COPY foo (id, name, active, note) FROM STDIN WITH (FORMAT CSV, NULL 'NULL', DELIMITER '|')"</span><span class="w">
+                 </span><span class="n">rows</span><span class="w">
+                 </span><span class="p">{</span><span class="no">:null</span><span class="w"> </span><span class="s">"NULL"</span><span class="w">
+                  </span><span class="no">:sep</span><span class="w"> </span><span class="sc">\|</span><span class="p">})</span><span class="w">
+</span><span class="c1">;; 1000</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Copy rows as a binary payload with custom type hints:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-rows</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"COPY foo (id, name, active, note) from STDIN WITH (FORMAT BINARY)"</span><span class="w">
+                 </span><span class="n">rows</span><span class="w">
+                 </span><span class="p">{</span><span class="no">:format</span><span class="w"> </span><span class="no">:bin</span><span class="w">
+                  </span><span class="no">:oids</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="w"> </span><span class="n">oid/int2</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="n">oid/bool</span><span class="p">}})</span><span class="w">
+</span><span class="c1">;; 1000</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="copy-in-maps">COPY IN maps</h3>
+
+<p>Often, we deal not with plain rows but maps. The <code class="language-plaintext highlighter-rouge">copy-in-maps</code> function acts
+but <code class="language-plaintext highlighter-rouge">copy-in-rows</code> but accepts a sequence of maps. Internally, all the maps get
+transformed into rows. To transform it properly, the function needs to know the
+order of the keys.</p>
+
+<p>The funtion accepts a connection, a SQL expression, a sequence of maps and a
+sequence of keys. Internally, it produces a selector from the keys like this:
+<code class="language-plaintext highlighter-rouge">(apply juxt keys)</code> which gets applied to each map.</p>
+
+<p>One more thing about copying maps is, that the <code class="language-plaintext highlighter-rouge">:oids</code> parameter is a map like
+{key =&gt; OID}.</p>
+
+<p>An example of copying the maps in CSV. Pay attention that the second map has
+extra keys which are ignored.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-maps</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"copy foo (id, name, active, note) from STDIN WITH (FORMAT CSV)"</span><span class="w">
+                 </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="no">:note</span><span class="w"> </span><span class="s">"aaa"</span><span class="p">}</span><span class="w">
+                  </span><span class="p">{</span><span class="no">:aaa</span><span class="w"> </span><span class="n">false</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="no">:note</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Juan"</span><span class="w"> </span><span class="no">:extra</span><span class="w"> </span><span class="s">"Kek"</span><span class="w"> </span><span class="no">:lol</span><span class="w"> </span><span class="mi">123</span><span class="p">}]</span><span class="w">
+                 </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="no">:note</span><span class="p">]</span><span class="w">
+                 </span><span class="p">{</span><span class="no">:oids</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="n">oid/int2</span><span class="p">}</span><span class="w">
+                  </span><span class="no">:format</span><span class="w"> </span><span class="no">:csv</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Another example where we copy maps using binary format. The <code class="language-plaintext highlighter-rouge">:oids</code> map has a
+single type hint so the <code class="language-plaintext highlighter-rouge">:id</code> fields get transformed to int2 but not bigint
+which is default for Long values.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-maps</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"copy foo (id, name, active, note) from STDIN WITH (FORMAT BINARY)"</span><span class="w">
+                 </span><span class="n">maps</span><span class="w">
+                 </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="no">:note</span><span class="p">]</span><span class="w">
+                 </span><span class="p">{</span><span class="no">:oids</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="n">oid/int2</span><span class="p">}</span><span class="w">
+                  </span><span class="no">:format</span><span class="w"> </span><span class="no">:bin</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/chart-lang/">Языки диаграмм</a>
             </h2>
 
@@ -886,89 +1288,6 @@ use</code>. Блин, какой порт? У меня их десять в пр
 <p>То же самое происходит у нас. Вместо понятного сообщения мы ждем, что его
 предоставит вышестоящий слой. Но это бессмысленно: не сделаем мы — не сделает
 никто.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/firewall/">Фаервол</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/macos/" rel="tag">macos</a>, <a href="/tag/firewall/" rel="tag">firewall</a>, <a href="/tag/lulu/" rel="tag">lulu</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Лучшая вещь, что случилась со мной в последнее время — это установка фаервола на
-всех маках. Вот как это произошло.</p>
-
-<p>Когда-то я жаловался, что программы без спроса лезут в интернет
-обновляться. Открыл Саблайм — а он показывает модалку, что вышла новая
-версия. Открыл то, другое, а там то же самое: скачай-обновись.</p>
-
-<p>Идея как это победить простая — нужно отобрать у программы доступ в интернет. Я
-пошел настраивать встроенный фаервол, но оказалось, он убогий: закрывает только
-входящие соединения, а исходящие не трогает. В результате даже если добавить в
-список программу, она спокойно идет в сеть.</p>
-
-<p>Путем гугления нашел программу Lulu. Хоть название и затасканное, программа
-просто супер: удобный интерфейс и настройка. Lulu делит программы на группы:
-родные Эпла, уже установленные и другие. Можно включать и выключать целые
-группы, а можно по отдельности. Правила формируются в разрезе программ, папок,
-регулярных выражений.</p>
-
-<p>Можно настроить гибкий контроль по урлам. Например, дать программе доступ к
-хосту <code class="language-plaintext highlighter-rouge">sync.blabla.com</code> для синхронизации, но запретить обновления по хосту
-<code class="language-plaintext highlighter-rouge">update.blabla.com</code>.</p>
-
-<p>Можно дать временный доступ по номеру процесса. Когда программа запуститься в
-cледующий раз, номер будет другим, и Lulu спросит опять.</p>
-
-<p>Фаервол может работать в интерактивном режиме, показывая диалог на события,
-которых нет в правилах, а может молча разрешать или разрешать все, что
-происходит.</p>
-
-<p>Для себя я сделал так: удалил все правила, кроме Эпловских, а затем настраивал
-вручную. Запретил все программы Адоба, офисного пакета, всякие редакторы вроде
-Саблайма — их задача работать с текстом, а не лазить за обновлениями. Запретил
-обновки для Dash, программы оффлайн-документации, и много что другое.</p>
-
-<p>На старом ноуте обнаружил несколько вирусов. Это программы с названиями типа
-robstoaf, прописанные в автозагрузке. Время от времени они ходят в сеть на левые
-хосты. Возможно, крадут историю браузеров или это ботнет. Так что не слушайте
-байки про то, что под Мак вирусов нет.</p>
-
-<p>Что немаловажно, Lulu запрашивает подтверждение, когда левая программа хочет
-добавить себя в автозагрузку. Всякое дерьмо вроде Zoom, MS Teams прописывают
-себя там, и в итоге запускаются в фоне, даже если вы не просили. Больше этого
-беспредела нет.</p>
-
-<p>Программа так понравилась, что я хотел перевести автору денег, долларов
-сто. Хотел скинуть с Пейпала, а у него только патреон — то есть регистрируйся,
-вводи персональные данные, карту, подтверждай — извините, нет.</p>
-
-<p>Кроме Lulu, у автора есть смежные утилиты для безопасности, например монитор
-клавиатуры на предмет прослушки и что-то еще второстепенное.</p>
-
-<p>Словом, не знаю как жить без Lulu: теперь это первая программа, которую я ставлю
-на Мак. Как раз недавно ставил ее на свежий ноут. Неистово рекомендую!</p>
-
-<p>Картинки, описание и загрузка здесь:
-https://objective-see.org/products/lulu.html</p>
 
                 
             </div>

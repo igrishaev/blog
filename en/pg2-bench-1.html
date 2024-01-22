@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>PG2 early announce and benchmarks, part 1</title>
+  <meta name="description" content="">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/en/pg2-bench-1">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">PG2 early announce and benchmarks, part 1</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-01-22T00:00:00+00:00">
+        Jan 22, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    
+<p><em>TL;DR: <a href="https://github.com/igrishaev/pg">https://github.com/igrishaev/pg2</a></em></p>
+
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-pg2-bench-1">
+  <li><a href="#introduction" id="toc-item-pg2-bench-1-introduction">Introduction</a></li>
+  <li><a href="#how-the-benchmarks-were-made" id="toc-item-pg2-bench-1-how-the-benchmarks-were-made">How the benchmarks were made</a></li>
+  <li><a href="#test-1-querying-a-single-column-series-based-query-with-50000-rows" id="toc-item-pg2-bench-1-test-1-querying-a-single-column-series-based-query-with-50000-rows">Test 1. Querying a single-column, series-based query with 50000 rows</a></li>
+  <li><a href="#benchmark-2-a-complex-multi-column-randomly-generated-select-query" id="toc-item-pg2-bench-1-benchmark-2-a-complex-multi-column-randomly-generated-select-query">Benchmark 2. A complex, multi-column, randomly generated SELECT query</a></li>
+  <li><a href="#test-3-querying-randomly-generated-json" id="toc-item-pg2-bench-1-test-3-querying-randomly-generated-json">Test 3. Querying randomly generated JSON</a></li>
+  <li><a href="#test-4-inserting-a-single-row-with-no-transaction" id="toc-item-pg2-bench-1-test-4-inserting-a-single-row-with-no-transaction">Test 4. Inserting a single row with no transaction</a></li>
+  <li><a href="#test-5-inserting-a-row-in-a-transaction" id="toc-item-pg2-bench-1-test-5-inserting-a-row-in-a-transaction">Test 5. Inserting a row in a transaction</a></li>
+  <li><a href="#test-6-copy-in-a-vast-csv-file-from-disk" id="toc-item-pg2-bench-1-test-6-copy-in-a-vast-csv-file-from-disk">Test 6. COPY IN a vast CSV file from disk</a></li>
+  <li><a href="#test-7-copy-in-a-collection-of-rows-in-csv-format" id="toc-item-pg2-bench-1-test-7-copy-in-a-collection-of-rows-in-csv-format">Test 7. Copy IN a collection of rows in CSV format</a></li>
+  <li><a href="#test-8-copy-in-a-collection-of-rows-in-binary-format" id="toc-item-pg2-bench-1-test-8-copy-in-a-collection-of-rows-in-binary-format">Test 8. Copy IN a collection of rows in binary format</a></li>
+  <li><a href="#test-9-copy-out-a-table-into-an-outputstream" id="toc-item-pg2-bench-1-test-9-copy-out-a-table-into-an-outputstream">Test 9. COPY OUT a table into an OutputStream</a></li>
+  <li><a href="#test-10-measuring-connection-pools" id="toc-item-pg2-bench-1-test-10-measuring-connection-pools">Test 10. Measuring connection pools</a></li>
+</ul>
+
+<h2 id="introduction">Introduction</h2>
+
+<p>During the last year, I was working on <a href="https://github.com/igrishaev/pg">PG</a> — JDBC-free PostgreSQL driver in
+pure Clojure. By purity it means, there is only a TCP socket to read and write
+bytes according to the official PostgreSQL protocol, and nothing more.</p>
+
+<p>It was fun: the very idea of implementing something low-level in Clojure was a
+challenge. I’ve made a series of tricks to squeeze the performance: mutable
+collections in favour of Clojure’s ones, special macros to traverse collections
+using Iterator and .forEach, and so on. After all, my driver was about 1.5 times
+slower than Next.JDBC, and I still think there is room for further improvement.</p>
+
+<p>One may ask what is the point of making a driver from scratch in 2024. The
+reason is, I’m still missing plenty of Postgres features when working with it
+from Clojure. Namely:</p>
+
+<ul>
+  <li>
+    <p>no built-in JSON support. In every project, I’ve got to extend some protocols
+with PGObject, encode and decode the JSON manually;</p>
+  </li>
+  <li>
+    <p>no COPY support. In Postgres, COPY IN/OUT is one of the best features I can
+remember. But there is no built-in CSV nor binary encoding, for example.</p>
+  </li>
+  <li>
+    <p>Poor time support: selecting a timestamp returns an instance of
+<code class="language-plaintext highlighter-rouge">java.sql.Timestamp</code> which is based on <code class="language-plaintext highlighter-rouge">java.util.Date</code>: a mutable object
+deprecated in Java 1.1.</p>
+  </li>
+  <li>
+    <p>Poor array support: only a certain number of types, no multidimensional
+arrays, etc.</p>
+  </li>
+  <li>
+    <p>No built-in connection pool.</p>
+  </li>
+</ul>
+
+<p>Today I deprecated the PG project in favour of <a href="https://github.com/igrishaev/pg2">PG2</a>. This is a successor
+of PG(one), my second attempt to make a JDBC-free driver for Postgres. This time
+around, it’s written completely in Java with a thin Clojure layer. I’ve made
+some benchmarks and it looks like PG2 2-3 times faster than Next.JDBC. There is
+no documentation yet, only integration tests that cover plenty of cases (I
+borrowed the old tests and improved then). Although the documentation is highly
+required, I could not wait to announce PG2 and share the benchmarks.</p>
+
+<h2 id="how-the-benchmarks-were-made">How the benchmarks were made</h2>
+
+<p>I’ve got three Mac devices with core i5, i9, and ARM M1 processors. On each
+device, I’ve got PostgreSQL installed. All the settings are default, no changes
+are made. JVM is version 21 although the 16th is the minimum version. The
+benchmarks are made with Criterium version 0.4.6.</p>
+
+<p>There are two types of benchmarks, actually. In the first group, I measure
+query/execute functions using the Criterium framework. In the second group, I’m
+running a simple HTTP server using Ring + Jetty + JSON and measuring requests
+per second with Apache Benchmark (ab). For each test, I show the source code
+with a chart and comments.</p>
+
+<p>The source code of benchmarks can be found <a href="https://github.com/igrishaev/pg2/blob/master/pg-bench/src/pg/bench.clj">in the repository</a>.</p>
+
+<!-- more -->
+
+<h2 id="test-1-querying-a-single-column-series-based-query-with-50000-rows">Test 1. Querying a single-column, series-based query with 50000 rows</h2>
+
+<p>The query:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">x</span> <span class="k">from</span> <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">50000</span><span class="p">)</span> <span class="k">as</span> <span class="n">s</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>JDBC.Next code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"next.JDBC simple value select"</span><span class="w">
+  </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w">
+                    </span><span class="n">jdbc-config</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+     </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                    </span><span class="p">[</span><span class="n">QUERY_SELECT_RANDOM_SIMPLE</span><span class="p">]</span><span class="w">
+                    </span><span class="p">{</span><span class="no">:as</span><span class="w"> </span><span class="n">rs/as-unqualified-maps</span><span class="p">}))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>PG2 code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"pg simple select"</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pg-config</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+     </span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="n">QUERY_SELECT_RANDOM_SIMPLE</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Pay attention that, in both cases, the connection is opened outside the
+quick-bench macro. It means that the procedure of establishing a connection is
+not taken into account when measuring the body of the quick-bench macro.</p>
+
+<p>This was my first benchmark ever made in this project, and I found the results
+promising:</p>
+
+<p><img src="/assets/static/aws/pg2-bench/01.svg" class="svg-chart" /></p>
+
+<p>2 times faster on i9, and 3 times faster on i5 and arm M1! Isn’t it great?
+Getting a 200-300% performance boost when querying a database would be amazing
+for web apps because they spend most of the time reading data.</p>
+
+<p>By the way, when measuring pure SELECT queries, PG2 is even faster than bare
+JDBC. Here is the code for low-level DB access using the official PostgreSQL
+Java driver:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"pure JDBC simple select"</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="o">^</span><span class="n">java.sql.Connection</span><span class="w"> </span><span class="n">conn</span><span class="w">
+        </span><span class="p">(</span><span class="nf">DriverManager/getConnection</span><span class="w"> </span><span class="n">JDBC-URL</span><span class="w"> </span><span class="n">USER</span><span class="w"> </span><span class="n">USER</span><span class="p">)</span><span class="w">
+        </span><span class="o">^</span><span class="n">PreparedStatement</span><span class="w"> </span><span class="n">stmt</span><span class="w">
+        </span><span class="p">(</span><span class="nf">.prepareStatement</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">QUERY_SELECT_RANDOM_SIMPLE</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+     </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="o">^</span><span class="n">ResultSet</span><span class="w"> </span><span class="n">rs</span><span class="w"> </span><span class="p">(</span><span class="nf">.executeQuery</span><span class="w"> </span><span class="n">stmt</span><span class="p">)</span><span class="w">
+           </span><span class="o">^</span><span class="n">ArrayList</span><span class="w"> </span><span class="n">l</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">ArrayList</span><span class="w"> </span><span class="mi">50000</span><span class="p">)]</span><span class="w">
+       </span><span class="p">(</span><span class="nf">while</span><span class="w"> </span><span class="p">(</span><span class="nf">.next</span><span class="w"> </span><span class="n">rs</span><span class="p">)</span><span class="w">
+         </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="o">^</span><span class="n">HashMap</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">HashMap</span><span class="p">)]</span><span class="w">
+           </span><span class="p">(</span><span class="nf">.put</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="s">"x"</span><span class="w"> </span><span class="p">(</span><span class="nf">.getString</span><span class="w"> </span><span class="n">rs</span><span class="w"> </span><span class="s">"x"</span><span class="p">))</span><span class="w">
+           </span><span class="p">(</span><span class="nf">.add</span><span class="w"> </span><span class="n">l</span><span class="w"> </span><span class="n">m</span><span class="p">)))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>On my i5 machine, the average time is 50 msec vs 43 in favour of PG2. My clumsy
+Java code is faster than the official Postgres driver!</p>
+
+<h2 id="benchmark-2-a-complex-multi-column-randomly-generated-select-query">Benchmark 2. A complex, multi-column, randomly generated SELECT query</h2>
+
+<p>Let’s try a more complex query with integers, floats, numeric, and various
+date/time types. The amount of rows is 50.000:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
+  <span class="n">x</span><span class="p">::</span><span class="n">int4</span>                  <span class="k">as</span> <span class="n">int4</span><span class="p">,</span>
+  <span class="n">x</span><span class="p">::</span><span class="n">int8</span>                  <span class="k">as</span> <span class="n">int8</span><span class="p">,</span>
+  <span class="n">x</span><span class="p">::</span><span class="nb">numeric</span>               <span class="k">as</span> <span class="nb">numeric</span><span class="p">,</span>
+  <span class="n">x</span><span class="p">::</span><span class="nb">text</span> <span class="o">||</span> <span class="s1">'foobar'</span>      <span class="k">as</span> <span class="n">line</span><span class="p">,</span>
+  <span class="n">x</span> <span class="o">&gt;</span> <span class="mi">100500</span>               <span class="k">as</span> <span class="nb">bool</span><span class="p">,</span>
+  <span class="n">now</span><span class="p">()</span>                    <span class="k">as</span> <span class="n">ts</span><span class="p">,</span>
+  <span class="n">now</span><span class="p">()::</span><span class="nb">date</span>              <span class="k">as</span> <span class="nb">date</span><span class="p">,</span>
+  <span class="n">now</span><span class="p">()::</span><span class="nb">time</span>              <span class="k">as</span> <span class="nb">time</span><span class="p">,</span>
+  <span class="k">null</span>                     <span class="k">as</span> <span class="n">nil</span>
+<span class="k">from</span>
+  <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">50000</span><span class="p">)</span> <span class="k">as</span> <span class="n">s</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Timings in milliseconds:</p>
+
+<p><img src="/assets/static/aws/pg2-bench/02.svg" class="svg-chart" /></p>
+
+<p>Again, PG2 was two times faster than Next.JDBC.</p>
+
+<h2 id="test-3-querying-randomly-generated-json">Test 3. Querying randomly generated JSON</h2>
+
+<p>The query produces 50k rows of a single column; the column is a JSON object
+where the values are random float values:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">row_to_json</span><span class="p">(</span><span class="k">row</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">random</span><span class="p">(),</span> <span class="mi">2</span><span class="p">,</span> <span class="n">random</span><span class="p">()))</span>
+   <span class="k">from</span> <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">50000</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>One important note: PG2 library carries its own JSON Java module based on
+<a href="https://github.com/metosin/jsonista">Jsonista</a>. Thus, there is no need to import a third-party JSON
+library and extend any protocols. For Next.JDBC, I grabbed the code specified in
+the <a href="https://github.com/seancorfield/next-jdbc/blob/develop/doc/tips-and-tricks.md#working-with-json-and-jsonb">official documentation</a>. It extends certain protocols and the
+PGObject class with encode/decode logic from jsonista.</p>
+
+<p>Timings:</p>
+
+<p><img src="/assets/static/aws/pg2-bench/03.svg" class="svg-chart" /></p>
+
+<p>Although the numbers are higher than before, PG2 is still two times faster.</p>
+
+<h2 id="test-4-inserting-a-single-row-with-no-transaction">Test 4. Inserting a single row with no transaction</h2>
+
+<p>Let’s prepare a table for further insertions: three fields, one of them is of a
+timestamp type, and everything is not null.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">if</span> <span class="k">not</span> <span class="k">exists</span> <span class="n">test1</span> <span class="p">(</span>
+  <span class="n">id</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+  <span class="n">name</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+  <span class="n">created_at</span> <span class="nb">timestamp</span> <span class="k">not</span> <span class="k">null</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>Insertion query:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">test1</span><span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">created_at</span><span class="p">)</span> <span class="k">values</span> <span class="p">(</span><span class="o">?</span><span class="p">,</span> <span class="o">?</span><span class="p">,</span> <span class="o">?</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>PG2 benchmark code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"pg insert values"</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pg-config</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">pg/with-statement</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
+                        </span><span class="n">conn</span><span class="w">
+                        </span><span class="n">QUERY_INSERT_PG</span><span class="p">]</span><span class="w">
+      </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+       </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="p">(</span><span class="nb">rand-int</span><span class="w"> </span><span class="mi">10000</span><span class="p">)]</span><span class="w">
+         </span><span class="p">(</span><span class="nf">pg/execute-statement</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                               </span><span class="n">stmt</span><span class="w">
+                               </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="n">x,</span><span class="w">
+                                         </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"name%s"</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w">
+                                         </span><span class="p">(</span><span class="nf">LocalDateTime/now</span><span class="p">)]}))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Next.JDBC benchmark code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"next.JDBC insert values in TRANSACTION"</span><span class="w">
+  </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w">
+                    </span><span class="n">jdbc-config</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+     </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="p">(</span><span class="nb">rand-int</span><span class="w"> </span><span class="mi">10000</span><span class="p">)]</span><span class="w">
+       </span><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">tx</span><span class="w"> </span><span class="n">conn</span><span class="p">]</span><span class="w">
+         </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">tx</span><span class="w">
+                        </span><span class="p">[</span><span class="n">QUERY_INSERT_JDBC</span><span class="w">
+                         </span><span class="n">x,</span><span class="w">
+                         </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"name%s"</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w">
+                         </span><span class="p">(</span><span class="nf">LocalDateTime/now</span><span class="p">)]))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This is a situation where I could not beat JDBC. The timings are equal across
+all the platforms:</p>
+
+<p><img src="/assets/static/aws/pg2-bench/04.svg" class="svg-chart" /></p>
+
+<p>An interesting moment here is, I’ve got to use the <code class="language-plaintext highlighter-rouge">pg/with-statement</code> macro in
+the PG2 code. It creates a prepared statement which is used later on so the
+insertion query is not parsed every time you perform it. I suspect that JDBC
+does the same implicitly under the hood with some sort of a cache.</p>
+
+<h2 id="test-5-inserting-a-row-in-a-transaction">Test 5. Inserting a row in a transaction</h2>
+
+<p>In both cases, the code is the same with a small change. The insertion
+invocation is wrapped with <code class="language-plaintext highlighter-rouge">(jdbc/with-transaction [tx conn] ...)</code> and
+<code class="language-plaintext highlighter-rouge">(pg/with-tx [conn] ...)</code> macros that produce BEGIN … COMMIT commands before
+and after the INSERT statement. In this benchmark, PG2 is slightly faster:</p>
+
+<p><img src="/assets/static/aws/pg2-bench/05.svg" class="svg-chart" /></p>
+
+<h2 id="test-6-copy-in-a-vast-csv-file-from-disk">Test 6. COPY IN a vast CSV file from disk</h2>
+
+<p>Let’s proceed with COPY operations. First, we generate a CSV file with 1 million
+rows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">rows</span><span class="w">
+      </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="p">(</span><span class="nb">range</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="mi">1000000</span><span class="p">)]</span><span class="w">
+        </span><span class="p">[</span><span class="n">x</span><span class="w">
+         </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"name"</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w">
+         </span><span class="p">(</span><span class="nf">LocalDateTime/now</span><span class="p">)])]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">writer</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">SAMPLE_CSV</span><span class="w">
+                         </span><span class="n">io/file</span><span class="w">
+                         </span><span class="n">io/writer</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">csv/write-csv</span><span class="w"> </span><span class="n">writer</span><span class="w"> </span><span class="n">rows</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now import this file using both libraries. PG2 code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"PG COPY in from a stream"</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pg-config</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+     </span><span class="p">(</span><span class="nf">pg/copy-in</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="n">QUERY_IN_STREAM</span><span class="w">
+                 </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">SAMPLE_CSV</span><span class="w"> </span><span class="n">io/file</span><span class="w"> </span><span class="n">io/input-stream</span><span class="p">)))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Next.JDBC doesn’t have a wrapper for copying data. Here is a low-level code that
+uses the <code class="language-plaintext highlighter-rouge">CopyManager</code> class:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"JDBC COPY in from a stream"</span><span class="w">
+  </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w">
+                    </span><span class="n">jdbc-config</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+     </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">copy</span><span class="w">
+           </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">CopyManager</span><span class="w"> </span><span class="n">conn</span><span class="p">)]</span><span class="w">
+
+       </span><span class="p">(</span><span class="nf">.copyIn</span><span class="w"> </span><span class="n">copy</span><span class="w">
+                </span><span class="o">^</span><span class="n">String</span><span class="w"> </span><span class="n">QUERY_IN_STREAM</span><span class="w">
+                </span><span class="o">^</span><span class="n">InputStream</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">SAMPLE_CSV</span><span class="w"> </span><span class="n">io/file</span><span class="w"> </span><span class="n">io/input-stream</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The timings are pretty even:</p>
+
+<p><img src="/assets/static/aws/pg2-bench/06.svg" class="svg-chart" /></p>
+
+<h2 id="test-7-copy-in-a-collection-of-rows-in-csv-format">Test 7. Copy IN a collection of rows in CSV format</h2>
+
+<p>First, let’s discuss this case. Imagine you have a collection of rows you’d like
+to COPY into a table. You cannot do it with JDBC. There is no function or a
+class that takes a collection of rows and streams it as a series of CopyData
+messages. I’ve got to encode these rows into a CSV file (or a buffer) and then
+stream the result into the DB. This is long, it involves disk, and sometimes it
+leads to weird CSV formatting. Some developers don’t use CSV libraries and just
+str the data joining them with a comma. It works for plain types like numbers
+and strings. But JSON, arrays, or strings with quotes always ruin this, and it
+always happens when you’re in a rush.</p>
+
+<p>So. This benchmark does different things depending on the library we’re
+testing. For PG2, it measures invocation of the pg/copy-in-rows function as
+follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"PG COPY in from rows CSV"</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pg-config</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">rows</span><span class="w"> </span><span class="p">(</span><span class="nf">generate-rows</span><span class="p">)]</span><span class="w">
+      </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+       </span><span class="p">(</span><span class="nf">pg/copy-in-rows</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                        </span><span class="n">QUERY_IN_STREAM</span><span class="w">
+                        </span><span class="n">rows</span><span class="p">)))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>For JDBC, it turns the rows into a CSV input stream and then sends it to the
+database using <code class="language-plaintext highlighter-rouge">CopyManager</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">rows-&gt;csv-input-stream</span><span class="w"> </span><span class="o">^</span><span class="n">InputStream</span><span class="w"> </span><span class="p">[</span><span class="n">rows</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">ByteArrayOutputStream</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">writer</span><span class="w"> </span><span class="p">(</span><span class="nf">io/writer</span><span class="w"> </span><span class="n">out</span><span class="p">)]</span><span class="w">
+      </span><span class="p">(</span><span class="nf">csv/write-csv</span><span class="w"> </span><span class="n">writer</span><span class="w"> </span><span class="n">rows</span><span class="p">))</span><span class="w">
+    </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">out</span><span class="w"> </span><span class="n">.toByteArray</span><span class="w"> </span><span class="n">io/input-stream</span><span class="p">)))</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"JDBC COPY in from rows CSV"</span><span class="w">
+    </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w">
+                      </span><span class="n">jdbc-config</span><span class="p">)]</span><span class="w">
+      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">rows</span><span class="w"> </span><span class="p">(</span><span class="nf">generate-rows</span><span class="p">)]</span><span class="w">
+        </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+         </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">input-stream</span><span class="w">
+               </span><span class="p">(</span><span class="nf">rows-&gt;csv-input-stream</span><span class="w"> </span><span class="n">rows</span><span class="p">)</span><span class="w">
+               </span><span class="n">copy</span><span class="w">
+               </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">CopyManager</span><span class="w"> </span><span class="n">conn</span><span class="p">)]</span><span class="w">
+           </span><span class="p">(</span><span class="nf">.copyIn</span><span class="w"> </span><span class="n">copy</span><span class="w">
+                    </span><span class="o">^</span><span class="n">String</span><span class="w"> </span><span class="n">QUERY_IN_STREAM</span><span class="w">
+                    </span><span class="o">^</span><span class="n">InputStream</span><span class="w"> </span><span class="n">input-stream</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p><img src="/assets/static/aws/pg2-bench/07.svg" class="svg-chart" /></p>
+
+<p>PG2 is two times faster again, and there is no need to dump the rows into a CSV
+buffer.</p>
+
+<h2 id="test-8-copy-in-a-collection-of-rows-in-binary-format">Test 8. Copy IN a collection of rows in binary format</h2>
+
+<p>Most of the developers don’t know that PostgreSQL supports binary format to
+transfer data. It’s more complex in terms of development but more robust. The
+good news is that PG2 supports binary mode for COPY IN! This benchmark measures
+the time required to insert randomly generated rows in binary mode. Here is the
+code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"PG COPY in from rows BIN"</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pg-config</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">rows</span><span class="w"> </span><span class="p">(</span><span class="nf">generate-rows</span><span class="p">)]</span><span class="w">
+      </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+       </span><span class="p">(</span><span class="nf">pg/copy-in-rows</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                        </span><span class="n">QUERY_IN_STREAM_BIN</span><span class="w">
+                        </span><span class="n">rows</span><span class="w">
+                        </span><span class="p">{</span><span class="no">:copy-bin?</span><span class="w"> </span><span class="n">true</span><span class="w">
+                         </span><span class="no">:oids</span><span class="w"> </span><span class="p">[</span><span class="n">oid/int4</span><span class="w"> </span><span class="n">oid/text</span><span class="w"> </span><span class="n">oid/timestamp</span><span class="p">]})))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Since JDBC cannot binary encode data on the fly, I took then numbers from the
+previous benchmark for CSV:</p>
+
+<p><img src="/assets/static/aws/pg2-bench/08.svg" class="svg-chart" /></p>
+
+<p>One can see that, although PG2 is still faster than JDBC, binary mode beats CSV
+performance. Thus, whenever you can, prefer binary COPY operations.</p>
+
+<h2 id="test-9-copy-out-a-table-into-an-outputstream">Test 9. COPY OUT a table into an OutputStream</h2>
+
+<p>This test measures the COPY … TO STDOUT … command. In both cases, I used
+nullOutputStream to not depend on the disk. Code for PG2:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"PG COPY out"</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pg-config</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+     </span><span class="p">(</span><span class="nf">pg/copy-out</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                  </span><span class="n">QUERY_OUT_STREAM</span><span class="w">
+                  </span><span class="p">(</span><span class="nf">OutputStream/nullOutputStream</span><span class="p">)))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Code for Next.JDBC:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"JDBC COPY out"</span><span class="w">
+  </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w">
+                    </span><span class="n">jdbc-config</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+     </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">copy</span><span class="w">
+           </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">CopyManager</span><span class="w"> </span><span class="n">conn</span><span class="p">)]</span><span class="w">
+       </span><span class="p">(</span><span class="nf">.copyOut</span><span class="w"> </span><span class="n">copy</span><span class="w">
+                 </span><span class="o">^</span><span class="n">String</span><span class="w"> </span><span class="n">QUERY_OUT_STREAM</span><span class="w">
+                 </span><span class="o">^</span><span class="n">OutputStream</span><span class="w"> </span><span class="p">(</span><span class="nf">OutputStream/nullOutputStream</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Timings:</p>
+
+<p><img src="/assets/static/aws/pg2-bench/09.svg" class="svg-chart" /></p>
+
+<p>I was a bit surprised to see such a significant difference in performance on
+core i5. Don’t know what was the reason but x2.5 times performance boost for
+dumping the data is great. On other platforms, the timings are even.</p>
+
+<h2 id="test-10-measuring-connection-pools">Test 10. Measuring connection pools</h2>
+
+<p>Benching a single connection is not enough; it’s important to know how much time
+it takes to borrow a connection for a pool, use it and release it afterwards.</p>
+
+<p>Next.JDBC has no built-in pool so I used HikariCP. Here is the code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"JDBC pool"</span><span class="w">
+  </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="o">^</span><span class="n">HikariDataSource</span><span class="w"> </span><span class="n">datasource</span><span class="w">
+              </span><span class="p">(</span><span class="nf">cp/make-datasource</span><span class="w"> </span><span class="n">cp-options</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+     </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">datasource</span><span class="p">)]</span><span class="w">
+       </span><span class="no">:nothing</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>PG2 code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"PG pool"</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pool/with-pool</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="n">pg-config</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+     </span><span class="p">(</span><span class="nf">pool/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+       </span><span class="no">:nothing</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In both cases, pools get opened before entering the quick-bench macro. Timings:</p>
+
+<p><img src="/assets/static/aws/pg2-bench/10.svg" class="svg-chart" /></p>
+
+<p>As a result, borrowing a connection from PG2 pool is faster.</p>
+
+<p>In the next post, I’m going to share HTTP benchmarks with a simple Ring
+application.</p>
+
+<p><em>(to be continued)</em></p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/en/pg2-bench-1">
+    <input required name="captcha" type="hidden" value="2 &#215; 3">
+
+    <div class="block">
+        <span class="comment-form-label"><small>2 &#215; 3 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
