@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>PG2 benchmarks, part 2</title>
+  <meta name="description" content="">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/en/pg2-bench-2">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">PG2 benchmarks, part 2</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-01-24T00:00:00+00:00">
+        Jan 24, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-pg2-bench-2">
+  <li><a href="#introduction" id="toc-item-pg2-bench-2-introduction">Introduction</a></li>
+  <li><a href="#test-1-sending-1000-requests-in-series" id="toc-item-pg2-bench-2-test-1-sending-1000-requests-in-series">Test 1. Sending 1000 requests in series</a></li>
+  <li><a href="#test-2-sending-1000-requests-with-concurrency-of-16" id="toc-item-pg2-bench-2-test-2-sending-1000-requests-with-concurrency-of-16">Test 2. Sending 1000 requests with concurrency of 16</a></li>
+  <li><a href="#test-3-sending-1000-requests-with-concurrency-of-64" id="toc-item-pg2-bench-2-test-3-sending-1000-requests-with-concurrency-of-64">Test 3. Sending 1000 requests with concurrency of 64</a></li>
+</ul>
+
+<p>In the <a href="/en/pg2-bench-1">previous post</a>, I was measuring bare query/execute/copy functions
+of the library. Although it’s useful, it doesn’t render the whole picture
+because it’s unclear how an application will benefit from faster DB access.</p>
+
+<p>This post covers the second group of benchmarks I made: a simple HTTP server
+that reads random data from the database and responds with JSON. The benchmark
+compares PG2 and Next.JDBC as before.</p>
+
+<h2 id="introduction">Introduction</h2>
+
+<p>Some general notes: the server uses Ring Jetty version 1.7.1, JVM 21, Ring-JSON
+0.5.1 for middleware. The handles are synchronous. The application uses
+connection pools for both libraries, and the pools are opened in advance when
+the server gets started. The maximum allowed pool size is 64. HTTP requests are
+sent by the <code class="language-plaintext highlighter-rouge">ab</code> utility with different <code class="language-plaintext highlighter-rouge">-n</code> and <code class="language-plaintext highlighter-rouge">-c</code> keys; the <code class="language-plaintext highlighter-rouge">-l</code> flag is
+always sent.</p>
+
+<!-- more -->
+
+<p>The full source code of the benchmark can be found <a href="https://github.com/igrishaev/pg2/blob/master/pg-bench/src/pg/server.clj">in the repository</a>.</p>
+
+<p>Here are the most important fragments of code. Depending on what type argument
+is passed, either JDBC or PG2 version of the app is run:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">-main</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="p">[</span><span class="n">type</span><span class="p">]]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">case</span><span class="w"> </span><span class="n">type</span><span class="w">
+    </span><span class="s">"pg"</span><span class="w"> </span><span class="p">(</span><span class="nf">-main-pg</span><span class="p">)</span><span class="w">
+    </span><span class="s">"jdbc"</span><span class="w"> </span><span class="p">(</span><span class="nf">-main-jdbc</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>JDBC version:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">-main-jdbc</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="n">_</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="o">^</span><span class="n">HikariDataSource</span><span class="w"> </span><span class="n">datasource</span><span class="w">
+              </span><span class="p">(</span><span class="nf">cp/make-datasource</span><span class="w"> </span><span class="n">cp-options</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">handler</span><span class="w">
+          </span><span class="p">(</span><span class="nf">make-jdbc-handler</span><span class="w"> </span><span class="n">datasource</span><span class="p">)]</span><span class="w">
+      </span><span class="p">(</span><span class="nf">jetty/run-jetty</span><span class="w">
+       </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">handler</span><span class="w">
+           </span><span class="p">(</span><span class="nf">wrap-json-response</span><span class="p">)</span><span class="w">
+           </span><span class="p">(</span><span class="nf">wrap-ex</span><span class="p">))</span><span class="w">
+       </span><span class="n">JETTY</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">wrap-json-response</code> middleware comes from the <code class="language-plaintext highlighter-rouge">ring.middleware.json</code>
+namespace, and the <code class="language-plaintext highlighter-rouge">wrap-ex</code> is defined in-place:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">wrap-ex</span><span class="w"> </span><span class="p">[</span><span class="n">handler</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">request</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">try</span><span class="w">
+      </span><span class="p">(</span><span class="nf">handler</span><span class="w"> </span><span class="n">request</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">catch</span><span class="w"> </span><span class="n">Throwable</span><span class="w"> </span><span class="n">e</span><span class="w">
+        </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">500</span><span class="w">
+         </span><span class="no">:body</span><span class="w">
+         </span><span class="p">(</span><span class="nb">with-out-str</span><span class="w">
+           </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="n">Throwable-&gt;map</span><span class="w"> </span><span class="n">pprint/pprint</span><span class="p">))}))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>A function that builds a hander closed over the pool:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">make-jdbc-handler</span><span class="w"> </span><span class="p">[</span><span class="o">^</span><span class="n">HikariDataSource</span><span class="w"> </span><span class="n">datasource</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="n">handler</span><span class="w"> </span><span class="p">[</span><span class="n">request</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">data</span><span class="w">
+          </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w">
+                      </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">datasource</span><span class="p">)]</span><span class="w">
+            </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">QUERY_SELECT_JSON</span><span class="p">]))]</span><span class="w">
+      </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w">
+       </span><span class="no">:body</span><span class="w"> </span><span class="n">data</span><span class="p">})))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The PG2 handler is designed in a similar way: it’s a function closed over the
+pool:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">make-pg-handler</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="n">handler</span><span class="w"> </span><span class="p">[</span><span class="n">request</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">data</span><span class="w">
+          </span><span class="p">(</span><span class="nf">pool/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+            </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">QUERY_SELECT_JSON</span><span class="p">))]</span><span class="w">
+      </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w">
+       </span><span class="no">:body</span><span class="w"> </span><span class="n">data</span><span class="p">})))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>But it’s wrapped with a special <code class="language-plaintext highlighter-rouge">pg.ring.json/wrap-json-response</code> middleware
+that comes from the box with PG2:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">-main-pg</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="n">_</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pool/with-pool</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="n">pg-config</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">handler</span><span class="w">
+          </span><span class="p">(</span><span class="nf">make-pg-handler</span><span class="w"> </span><span class="n">pool</span><span class="p">)]</span><span class="w">
+      </span><span class="p">(</span><span class="nf">jetty/run-jetty</span><span class="w">
+       </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">handler</span><span class="w">
+           </span><span class="p">(</span><span class="nf">pg.ring.json/wrap-json-response</span><span class="p">)</span><span class="w">
+           </span><span class="p">(</span><span class="nf">wrap-ex</span><span class="p">))</span><span class="w">
+       </span><span class="n">JETTY</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Why didn’t we use the standard <code class="language-plaintext highlighter-rouge">wrap-json-response</code> from Ring JSON? As I
+mentioned in the previous post, PG2 ships it’s own JSON module which is based on
+Jsonista. But the middleware from Ring JSON uses Cheshire. Both Jsonista and
+Cheshire use Jackson Java library in different ways. The Jsonista approach is
+faster; also PG2 extends Jsonista with java.time.* classes so you can encode
+LocalTime or OffsetDateTime without extending protocols and so on.</p>
+
+<p>As a result, PG2 can be used as a part of the HTTP stack for JSON middleware.</p>
+
+<h2 id="test-1-sending-1000-requests-in-series">Test 1. Sending 1000 requests in series</h2>
+
+<p>The command:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ab <span class="nt">-n</span> 1000 <span class="nt">-c</span> 1 <span class="nt">-c</span> 1 http://127.0.0.1:18080/
+</code></pre></div></div>
+
+<p>Requests per second:</p>
+
+<p><img src="/assets/static/aws/pg2-bench/11.svg" class="svg-chart" /></p>
+
+<p>The server driven with PG2 handles two times more RPS than its JDBC counterpart.</p>
+
+<h2 id="test-2-sending-1000-requests-with-concurrency-of-16">Test 2. Sending 1000 requests with concurrency of 16</h2>
+
+<p>The command:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ab <span class="nt">-n</span> 1000 <span class="nt">-c</span> 1 <span class="nt">-c</span> 16 http://127.0.0.1:18080/
+</code></pre></div></div>
+
+<p>The second test sends 16 parallel requests to the server. Both servers handle
+more RPS, two times difference is the same:</p>
+
+<p><img src="/assets/static/aws/pg2-bench/12.svg" class="svg-chart" /></p>
+
+<h2 id="test-3-sending-1000-requests-with-concurrency-of-64">Test 3. Sending 1000 requests with concurrency of 64</h2>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ab <span class="nt">-n</span> 1000 <span class="nt">-c</span> 1 <span class="nt">-c</span> 64 http://127.0.0.1:18080/
+</code></pre></div></div>
+
+<p>Requests per second:</p>
+
+<p><img src="/assets/static/aws/pg2-bench/13.svg" class="svg-chart" /></p>
+
+<p>With 64 incoming parallel requests, Jetty and PG2 handle up to 3.3K RPS. Pay
+attention that this is not a hello-world application: on each request, it
+fetches 500 randomly generated rows from the database and serializes them into
+JSON.</p>
+
+<p>The JDBC-driven server has only 1900 RPS which is also good but… on Arm M1
+with 10 cores I’ve been getting socket errors many times duing benchmarks. And
+PG2 didn’t have them! Maybe it is because of garbage collection or Jetty could
+not serve all the inqueued requests.</p>
+
+<hr />
+
+<p>This is all I have for PG2 benchmarks. Not as detailed as it was the last time
+but at least it measures a real application, not a library. If you application
+relies on the database heavily, most likely you can double RPS by switching to
+another DB client.</p>
+
+<p>I hope I’ve intrigued you to try PG2 in your pet project. If I really have, drop
+me a line on how it goes! Meanwhile, I’m writing <a href="https://github.com/igrishaev/pg2/blob/master/README.md">documentation</a>.</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/en/pg2-bench-2">
+    <input required name="captcha" type="hidden" value="6 &#215; 9">
+
+    <div class="block">
+        <span class="comment-form-label"><small>6 &#215; 9 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
