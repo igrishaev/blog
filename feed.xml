@@ -6,9 +6,539 @@
 </description>
     <link>https://grishaev.me/</link>
     <atom:link href="https://grishaev.me/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Fri, 02 Feb 2024 06:31:04 +0000</pubDate>
-    <lastBuildDate>Fri, 02 Feb 2024 06:31:04 +0000</lastBuildDate>
+    <pubDate>Tue, 06 Feb 2024 12:10:51 +0000</pubDate>
+    <lastBuildDate>Tue, 06 Feb 2024 12:10:51 +0000</lastBuildDate>
     <generator>Jekyll v4.2.0</generator>
+    
+      <item>
+        <title>PG2 release 0.1.2: more performance, benchmarks, part 3</title>
+        <description>
+&lt;h2&gt;
+
+    Table of Content
+
+&lt;/h2&gt;
+
+&lt;ul id=&quot;toc-item-pg2-bench-3&quot;&gt;
+  &lt;li&gt;&lt;a href=&quot;#introduction&quot; id=&quot;toc-item-pg2-bench-3-introduction&quot;&gt;Introduction&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#test1-reading-a-single-column-random-query&quot; id=&quot;toc-item-pg2-bench-3-test1-reading-a-single-column-random-query&quot;&gt;Test1. Reading a single-column random query&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#test2-reading-a-multi-column-complex-random-query&quot; id=&quot;toc-item-pg2-bench-3-test2-reading-a-multi-column-complex-random-query&quot;&gt;Test2. Reading a multi-column, complex random query&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#test3-reading-random-json&quot; id=&quot;toc-item-pg2-bench-3-test3-reading-random-json&quot;&gt;Test3. Reading random JSON&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#test-4-connection-pools&quot; id=&quot;toc-item-pg2-bench-3-test-4-connection-pools&quot;&gt;Test 4. Connection pools&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#test-5-forcibly-evaluate-each-row-after-reading&quot; id=&quot;toc-item-pg2-bench-3-test-5-forcibly-evaluate-each-row-after-reading&quot;&gt;Test 5. Forcibly evaluate each row after reading&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#test-6-benchmarking-the-http-server-with-various--c-values&quot; id=&quot;toc-item-pg2-bench-3-test-6-benchmarking-the-http-server-with-various--c-values&quot;&gt;Test 6. Benchmarking the HTTP server with various -c values&lt;/a&gt;    &lt;ul&gt;
+      &lt;li&gt;&lt;a href=&quot;#1-concurrent-request&quot; id=&quot;toc-item-pg2-bench-3-1-concurrent-request&quot;&gt;1 concurrent request&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#16-concurrent-requests&quot; id=&quot;toc-item-pg2-bench-3-16-concurrent-requests&quot;&gt;16 concurrent requests&lt;/a&gt;&lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;#64-concurrent-requests&quot; id=&quot;toc-item-pg2-bench-3-64-concurrent-requests&quot;&gt;64 concurrent requests&lt;/a&gt;&lt;/li&gt;
+    &lt;/ul&gt;
+  &lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#summary&quot; id=&quot;toc-item-pg2-bench-3-summary&quot;&gt;Summary&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;introduction&quot;&gt;Introduction&lt;/h2&gt;
+
+&lt;p&gt;The &lt;a href=&quot;https://github.com/igrishaev/pg2&quot;&gt;PG2 library&lt;/a&gt; version 0.1.2 is out. One of its features is a
+significant performance boost when processing SELECT queries. The more fields
+and rows you have in a result, the faster is the processing. Here is a chart
+that measures a query with a single column:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/pg2-bench-3/01.svg&quot; class=&quot;svg-chart&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;No difference between the previous release of PG and the new one. But with nine
+fields, the average execution time is less now:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/pg2-bench-3/02.svg&quot; class=&quot;svg-chart&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Briefly, PG2 0.1.2 allows you to fetch the data 7-8 times faster than Next.JDBC
+does. But before we proceed with other charts and numbers, let me explain how
+the new processing algorithm works.&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;p&gt;When you send a query to Postgres, it responds with a series of messages. The
+leading message called &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;RowDescription&lt;/code&gt; describes the structure of the
+result. When parsed, it can be presented as an array of maps; each map holds the
+name of the column, its type code (so called OID), the code of a table where
+this field comes from, and more. One should save this message somewhere as it’s
+used later.&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;[{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:name&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:oid&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;23&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;   &lt;/span&gt;&lt;span class=&quot;c1&quot;&gt;;; type int4&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:format&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;c1&quot;&gt;;; text format&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;...&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+ &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:name&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;email&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:oid&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;25&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;   &lt;/span&gt;&lt;span class=&quot;c1&quot;&gt;;; type text&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:format&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;c1&quot;&gt;;; text format&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;...&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+ &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Then, Postgres sends you a series of &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;DataRow&lt;/code&gt; messages. Each &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;DataRow&lt;/code&gt; message
+is a long array of bytes which holds concatenated values. Before each value,
+there are four bytes (int32) representing the lengths of the subsequent chunk of
+bytes to parse:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;[&amp;lt;N of cols&amp;gt;&amp;lt;len1&amp;gt;&amp;lt;value1&amp;gt;&amp;lt;len2&amp;gt;&amp;lt;value2&amp;gt;, ...]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;(By the way, if &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&amp;lt;lenX&amp;gt;&lt;/code&gt; is -1 than the value is NULL, and there is no bytes for
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&amp;lt;valueX&amp;gt;&lt;/code&gt;.)&lt;/p&gt;
+
+&lt;p&gt;The question is, how to deal with all this to make your Postgres client
+faster. Obviously you can parse &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;DataRow&lt;/code&gt; messages into maps one by one as
+you’re getting them from a TCP socket. This is what PG2 did before. The problem
+with this approach is that it slows down reading data from the network. Parsing
+bytes is a really CPU-heavy task. While you’re parsing a row, you’re not reading
+the next one.&lt;/p&gt;
+
+&lt;p&gt;On one hand, you fairly parse data and have a complete map at the end. On
+another hand, it slows down the process of consuming the response.&lt;/p&gt;
+
+&lt;p&gt;There is an opposite approach: you read the data as fast as you can with no (or
+minimum) parsing. Then, when you’ve done with reading, you parse what you
+got. The speed of reading the socket increases. As a result, the time window
+required to execute a query shrinks. The connection might serve more queries
+than before because now each request takes less time to be finished — in terms
+of the server, of course.&lt;/p&gt;
+
+&lt;p&gt;To process the result in Clojure, you need to parse it first. But now you have
+not plain maps but byte arrays with some metadata about the structure of the
+result. To prevent users from manual parsing, each row pretends to be a Clojure
+map that, when certain methods are triggered, parses the underlying bytes.&lt;/p&gt;
+
+&lt;p&gt;This is what the recent version of PG2 does under the hood. Before, it blindly
+parsed all the data on the fly. It was pretty fast: 2 or 3 times faster than
+using Next.JDBC. But with lazy parsing described above, it’s even faster: 7 to 9
+times in favour of PG2. It affects only &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;SELECT...&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;...RETURNING&lt;/code&gt;
+queries. The new algorithm has nothing in common with inserting or deleting the
+data.&lt;/p&gt;
+
+&lt;p&gt;Now, benchmarks and timings. Most of the technical details like the environment,
+code snippets and SQL queries were covered in the &lt;a href=&quot;/en/pg2-bench-1&quot;&gt;previous post&lt;/a&gt;. Please
+refer to it for details.&lt;/p&gt;
+
+&lt;h2 id=&quot;test1-reading-a-single-column-random-query&quot;&gt;Test1. Reading a single-column random query&lt;/h2&gt;
+
+&lt;p&gt;This benchmark reads 50.000 randomly generated rows with a single integer
+column. The code from this benchmark hasn’t changed since the previous
+post. Having one column only in a row doesn’t make any difference with version
+of PG2 0.1.1:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/pg2-bench-3/01.svg&quot; class=&quot;svg-chart&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Timings:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Platform&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.1&lt;/th&gt;
+      &lt;th&gt;JDBC.Next&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.2&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i5 2 GHz Quad-Core 16G&lt;/td&gt;
+      &lt;td&gt;43.026307&lt;/td&gt;
+      &lt;td&gt;127.677926&lt;/td&gt;
+      &lt;td&gt;44.36297&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i9 2,4 GHz 8-Core 32G&lt;/td&gt;
+      &lt;td&gt;39.551719&lt;/td&gt;
+      &lt;td&gt;83.932103&lt;/td&gt;
+      &lt;td&gt;27.672117&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;arm m1 10 cores 32G&lt;/td&gt;
+      &lt;td&gt;18.517718&lt;/td&gt;
+      &lt;td&gt;49.340986&lt;/td&gt;
+      &lt;td&gt;14.670815&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;h2 id=&quot;test2-reading-a-multi-column-complex-random-query&quot;&gt;Test2. Reading a multi-column, complex random query&lt;/h2&gt;
+
+&lt;p&gt;This test reads 50.000 randomly generated rows with 9 columns of different
+types: numbers, strings, and timestamps. This is where the lazy algorithm beats
+the old one:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/pg2-bench-3/02.svg&quot; class=&quot;svg-chart&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Timings:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Platform&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.1&lt;/th&gt;
+      &lt;th&gt;JDBC.Next&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.2&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i5 2 GHz Quad-Core 16G&lt;/td&gt;
+      &lt;td&gt;273.866142&lt;/td&gt;
+      &lt;td&gt;579.59995&lt;/td&gt;
+      &lt;td&gt;80.352246&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i9 2,4 GHz 8-Core 32G&lt;/td&gt;
+      &lt;td&gt;270.262248&lt;/td&gt;
+      &lt;td&gt;447.326861&lt;/td&gt;
+      &lt;td&gt;54.34384&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;arm m1 10 cores 32G&lt;/td&gt;
+      &lt;td&gt;117.241426&lt;/td&gt;
+      &lt;td&gt;206.371502&lt;/td&gt;
+      &lt;td&gt;30.444798&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;h2 id=&quot;test3-reading-random-json&quot;&gt;Test3. Reading random JSON&lt;/h2&gt;
+
+&lt;p&gt;In this test, we select 50.000 randomly generated JSON objects. The absolute
+numbers are higher yet the ratio between the timings is the same:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/pg2-bench-3/03.svg&quot; class=&quot;svg-chart&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Timings:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Platform&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.1&lt;/th&gt;
+      &lt;th&gt;JDBC.Next&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.2&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i5 2 GHz Quad-Core 16G&lt;/td&gt;
+      &lt;td&gt;227.067587&lt;/td&gt;
+      &lt;td&gt;498.160381&lt;/td&gt;
+      &lt;td&gt;64.590117&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i9 2,4 GHz 8-Core 32G&lt;/td&gt;
+      &lt;td&gt;230.741915&lt;/td&gt;
+      &lt;td&gt;413.006218&lt;/td&gt;
+      &lt;td&gt;52.063469&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;arm m1 10 cores 32G&lt;/td&gt;
+      &lt;td&gt;105.99894&lt;/td&gt;
+      &lt;td&gt;188.33619&lt;/td&gt;
+      &lt;td&gt;30.75433&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;h2 id=&quot;test-4-connection-pools&quot;&gt;Test 4. Connection pools&lt;/h2&gt;
+
+&lt;p&gt;This benchmark doesn’t bring any new information. It just confirms that the lazy
+algorithm works with a connection pool.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/pg2-bench-3/04.svg&quot; class=&quot;svg-chart&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Timings:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Platform&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.1&lt;/th&gt;
+      &lt;th&gt;JDBC.Next&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.2&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i5 2 GHz Quad-Core 16G&lt;/td&gt;
+      &lt;td&gt;334.488016&lt;/td&gt;
+      &lt;td&gt;445.280716&lt;/td&gt;
+      &lt;td&gt;59.709788&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i9 2,4 GHz 8-Core 32G&lt;/td&gt;
+      &lt;td&gt;163.220533&lt;/td&gt;
+      &lt;td&gt;243.250634&lt;/td&gt;
+      &lt;td&gt;56.457382&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;arm m1 10 cores 32G&lt;/td&gt;
+      &lt;td&gt;112.234569&lt;/td&gt;
+      &lt;td&gt;154.656431&lt;/td&gt;
+      &lt;td&gt;31.408932&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;Now that we clearly see that lazy parsing is useful, it’s still a half of the
+picture. We measure the time spent on reading the rows from the network and
+wrapping each into a pseudo-map class. But how much does it take to parse the
+rows? There are some dedicated benchmarks for that.&lt;/p&gt;
+
+&lt;h2 id=&quot;test-5-forcibly-evaluate-each-row-after-reading&quot;&gt;Test 5. Forcibly evaluate each row after reading&lt;/h2&gt;
+
+&lt;p&gt;This test is similar to the previous one where I select randomly generated
+values. The difference is, now we associate an extra key to each row after
+reading. Assoc-ing a key to a lazy map triggers the process of parsing all the
+underlying bytes and composing a real Clojure map.&lt;/p&gt;
+
+&lt;p&gt;The query is really tough in terms of parsing: 60 timestamp fields :–)&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt;
+   &lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;from&lt;/span&gt;
+  &lt;span class=&quot;n&quot;&gt;generate_series&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;50000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;s&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;JDBC code:&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;with-title&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;next.JDBC select many fields WITH ASSOC&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;with-open&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;jdbc/get-connection&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                    &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;jdbc-config&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+    &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;quick-bench&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;let&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;rows&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+           &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;jdbc/execute!&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                          &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;QUERY_SELECT_RANDOM_MANY_FIELDS&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                          &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:as&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;rs/as-unqualified-maps&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;})]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+       &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;doseq&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;row&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;rows&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+         &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;assoc&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;row&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:extra&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;42&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))))))&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;PG2 code:&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;with-title&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;pg select many fields WITH ASSOC&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/with-connection&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pg-config&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+    &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;quick-bench&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+      &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;let&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;rows&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+            &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/execute&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+                        &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;QUERY_SELECT_RANDOM_MANY_FIELDS&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+        &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;doseq&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;row&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;rows&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+          &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;assoc&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;row&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:extra&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;42&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))))))&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The result:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/pg2-bench-3/08.svg&quot; class=&quot;svg-chart&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Timings:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Platform&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.1&lt;/th&gt;
+      &lt;th&gt;JDBC.Next&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.2&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i5 2 GHz Quad-Core 16G&lt;/td&gt;
+      &lt;td&gt;1161.563&lt;/td&gt;
+      &lt;td&gt;2540.014&lt;/td&gt;
+      &lt;td&gt;1502.913&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i9 2,4 GHz 8-Core 32G&lt;/td&gt;
+      &lt;td&gt;1330.753&lt;/td&gt;
+      &lt;td&gt;953.199066&lt;/td&gt;
+      &lt;td&gt;1473.492&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;arm m1 10 cores 32G&lt;/td&gt;
+      &lt;td&gt;547.914391&lt;/td&gt;
+      &lt;td&gt;448.419085&lt;/td&gt;
+      &lt;td&gt;619.253412&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;The chart shows that PG2 is a bit slower when it comes to parsing lazy maps. I
+believe there is a way to improve it in the future.&lt;/p&gt;
+
+&lt;p&gt;Anyway, we will get the clearest score if we measure the RPS of an HTTP server
+that sends the data from the database in JSON. Such a server was described in
+the previous post. We measure it again with the new release of PG2.&lt;/p&gt;
+
+&lt;h2 id=&quot;test-6-benchmarking-the-http-server-with-various--c-values&quot;&gt;Test 6. Benchmarking the HTTP server with various -c values&lt;/h2&gt;
+
+&lt;h3 id=&quot;1-concurrent-request&quot;&gt;1 concurrent request&lt;/h3&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;ab &lt;span class=&quot;nt&quot;&gt;-n&lt;/span&gt; 1000 &lt;span class=&quot;nt&quot;&gt;-c&lt;/span&gt; 1 &lt;span class=&quot;nt&quot;&gt;-l&lt;/span&gt; http://127.0.0.1:18080/
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The chart and metrics (here and below: more is better):&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/pg2-bench-3/05.svg&quot; class=&quot;svg-chart&quot; /&gt;&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Platform&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.1&lt;/th&gt;
+      &lt;th&gt;JDBC.Next&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.2&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i5 2 GHz Quad-Core 16G&lt;/td&gt;
+      &lt;td&gt;225.22&lt;/td&gt;
+      &lt;td&gt;116.24&lt;/td&gt;
+      &lt;td&gt;202.88&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i9 2,4 GHz 8-Core 32G&lt;/td&gt;
+      &lt;td&gt;322.93&lt;/td&gt;
+      &lt;td&gt;179.68&lt;/td&gt;
+      &lt;td&gt;279.36&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;arm m1 10 cores 32G&lt;/td&gt;
+      &lt;td&gt;428.41&lt;/td&gt;
+      &lt;td&gt;286.04&lt;/td&gt;
+      &lt;td&gt;269.4&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;PG2 didn’t show great results on the M1 machine: it’s even slower than JDBC for
+just one concurrent request. But when it comes to many parallel requests, it’s
+as fast as PG 0.1.1 again.&lt;/p&gt;
+
+&lt;h3 id=&quot;16-concurrent-requests&quot;&gt;16 concurrent requests&lt;/h3&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;ab &lt;span class=&quot;nt&quot;&gt;-n&lt;/span&gt; 1000 &lt;span class=&quot;nt&quot;&gt;-c&lt;/span&gt; 16 &lt;span class=&quot;nt&quot;&gt;-l&lt;/span&gt; http://127.0.0.1:18080/
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The results:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/pg2-bench-3/06.svg&quot; class=&quot;svg-chart&quot; /&gt;&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Platform&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.1&lt;/th&gt;
+      &lt;th&gt;JDBC.Next&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.2&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i5 2 GHz Quad-Core 16G&lt;/td&gt;
+      &lt;td&gt;968.51&lt;/td&gt;
+      &lt;td&gt;555.55&lt;/td&gt;
+      &lt;td&gt;915.93&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i9 2,4 GHz 8-Core 32G&lt;/td&gt;
+      &lt;td&gt;1909.19&lt;/td&gt;
+      &lt;td&gt;1304&lt;/td&gt;
+      &lt;td&gt;1688.72&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;arm m1 10 cores 32G&lt;/td&gt;
+      &lt;td&gt;2999.06&lt;/td&gt;
+      &lt;td&gt;1902.31&lt;/td&gt;
+      &lt;td&gt;3026&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;PG2 version 0.1.2 is slightly slower than 0.1.1 because parsing lazy maps takes
+CPU resources.&lt;/p&gt;
+
+&lt;h3 id=&quot;64-concurrent-requests&quot;&gt;64 concurrent requests&lt;/h3&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;ab &lt;span class=&quot;nt&quot;&gt;-n&lt;/span&gt; 1000 &lt;span class=&quot;nt&quot;&gt;-c&lt;/span&gt; 64 &lt;span class=&quot;nt&quot;&gt;-l&lt;/span&gt; http://127.0.0.1:18080/
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The results:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/pg2-bench-3/07.svg&quot; class=&quot;svg-chart&quot; /&gt;&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Platform&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.1&lt;/th&gt;
+      &lt;th&gt;JDBC.Next&lt;/th&gt;
+      &lt;th&gt;PG2 0.1.2&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i5 2 GHz Quad-Core 16G&lt;/td&gt;
+      &lt;td&gt;1025.62&lt;/td&gt;
+      &lt;td&gt;543.66&lt;/td&gt;
+      &lt;td&gt;945.51&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;core i9 2,4 GHz 8-Core 32G&lt;/td&gt;
+      &lt;td&gt;2025.94&lt;/td&gt;
+      &lt;td&gt;1113.81&lt;/td&gt;
+      &lt;td&gt;1806.29&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;arm m1 10 cores 32G&lt;/td&gt;
+      &lt;td&gt;3348.75&lt;/td&gt;
+      &lt;td&gt;1909.23&lt;/td&gt;
+      &lt;td&gt;3205.83&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;Both 0.1.1 and 0.1.2 are almost even in terms of performance.&lt;/p&gt;
+
+&lt;h2 id=&quot;summary&quot;&gt;Summary&lt;/h2&gt;
+
+&lt;p&gt;Introducing lazy maps and lazy result parsing was an interesting
+experiment. Although it slightly slows down processing the result, it brings
+some benefits. First, the time required for connection to serve a query reduces
+drastically. The connection dumps the payload it got for you, and then you parse
+it while the connection is serving another query. It’s especially useful when
+working with connection pools. For pools, you have to return the connections
+back as soon as possible as their number is limited. Spawning a fresh connection
+is expensive as it runs a new process on the server side.&lt;/p&gt;
+
+&lt;p&gt;Second, lazy parsing reduces the odds of getting an exception in the middle of
+reading the data from a connection. This is a weird situation when you got the
+data partially, and then an exception popped up. Without capturing it and
+rethrowing later, the connection might hang into a broken state.&lt;/p&gt;
+
+&lt;p&gt;To sum up — I’m not a big fan of laziness in Clojure but this time, the idea
+seems to be the right choice. Let’s see how it goes.&lt;/p&gt;
+</description>
+        <pubDate>Tue, 06 Feb 2024 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/en/pg2-bench-3</link>
+        <guid isPermaLink="true">https://grishaev.me/en/pg2-bench-3</guid>
+        
+        <category>clojure</category>
+        
+        <category>programming</category>
+        
+        <category>postgres</category>
+        
+        <category>sql</category>
+        
+        
+      </item>
     
       <item>
         <title>Gzip</title>
@@ -1196,48 +1726,6 @@ application.&lt;/p&gt;
         <category>NY</category>
         
         <category>2024</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Плеер в Ютубе</title>
-        <description>&lt;p&gt;У плеера в Ютубе серьезный косяк, от которого просто опускаются руки. Он не
-целостный, а состоит из многих виджетов. При этом кнопка пробела влияет на тот
-виджет, что сейчас активен.&lt;/p&gt;
-
-&lt;p&gt;Пример: если щелкнуть по видео, фокус будет на временной шкале. Пробел ставит
-видео на паузу. Если кликнуть по динамику, выключится звук, и фокус окажется на
-виджете звука. Нажимая пробел, вы будете включать и выключать звук.&lt;/p&gt;
-
-&lt;p&gt;Если кликнуть по кнопке субтитров, пробел переключится на их включение и
-выключение. Аналогично с гайкой и выпадашкой из нее.&lt;/p&gt;
-
-&lt;p&gt;Ясен хрен, так быть не должно. Пробел должен отвечать за что-то одно, а не все
-разом в зависимости от того, где сейчас фокус. Это мышление кодера: да, плеер
-сложный и логично, что он состоит из компонентов. Но какое мне дело как
-пользователю? Представьте радиоприемник, где у кнопок разные функции в
-зависимости от угла к северу или фазы Луны. А для фронтендера это — обычное
-дело.&lt;/p&gt;
-
-&lt;p&gt;Наконец, попытайтесь объяснить эти мульки пожилому родственнику или ребенку,
-которого вы усадили смотреть Ютуб. И в последний момент черт дернул вас кликнуть
-по виджету звука. В итоге фокус остался на нем, и каждый раз, когда родственник
-жал пробел, чтобы поставить на паузу, он выключал звук.&lt;/p&gt;
-
-&lt;p&gt;Я уже говорил, что нам не везет с фронтендерами. Почему-то они не могут сделать
-нормальный интефейс, хоть в Гугле, хоть Амазоне, получая при этом космические
-деньги.&lt;/p&gt;
-
-&lt;p&gt;Чтож, подождем.&lt;/p&gt;
-</description>
-        <pubDate>Fri, 29 Dec 2023 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/yt-player/</link>
-        <guid isPermaLink="true">https://grishaev.me/yt-player/</guid>
-        
-        <category>ui</category>
-        
-        <category>youtube</category>
         
         
       </item>

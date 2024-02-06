@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>PG2 release 0.1.2: more performance, benchmarks, part 3</title>
+  <meta name="description" content="">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/en/pg2-bench-3">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">PG2 release 0.1.2: more performance, benchmarks, part 3</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-02-06T00:00:00+00:00">
+        Feb 6, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-pg2-bench-3">
+  <li><a href="#introduction" id="toc-item-pg2-bench-3-introduction">Introduction</a></li>
+  <li><a href="#test1-reading-a-single-column-random-query" id="toc-item-pg2-bench-3-test1-reading-a-single-column-random-query">Test1. Reading a single-column random query</a></li>
+  <li><a href="#test2-reading-a-multi-column-complex-random-query" id="toc-item-pg2-bench-3-test2-reading-a-multi-column-complex-random-query">Test2. Reading a multi-column, complex random query</a></li>
+  <li><a href="#test3-reading-random-json" id="toc-item-pg2-bench-3-test3-reading-random-json">Test3. Reading random JSON</a></li>
+  <li><a href="#test-4-connection-pools" id="toc-item-pg2-bench-3-test-4-connection-pools">Test 4. Connection pools</a></li>
+  <li><a href="#test-5-forcibly-evaluate-each-row-after-reading" id="toc-item-pg2-bench-3-test-5-forcibly-evaluate-each-row-after-reading">Test 5. Forcibly evaluate each row after reading</a></li>
+  <li><a href="#test-6-benchmarking-the-http-server-with-various--c-values" id="toc-item-pg2-bench-3-test-6-benchmarking-the-http-server-with-various--c-values">Test 6. Benchmarking the HTTP server with various -c values</a>    <ul>
+      <li><a href="#1-concurrent-request" id="toc-item-pg2-bench-3-1-concurrent-request">1 concurrent request</a></li>
+      <li><a href="#16-concurrent-requests" id="toc-item-pg2-bench-3-16-concurrent-requests">16 concurrent requests</a></li>
+      <li><a href="#64-concurrent-requests" id="toc-item-pg2-bench-3-64-concurrent-requests">64 concurrent requests</a></li>
+    </ul>
+  </li>
+  <li><a href="#summary" id="toc-item-pg2-bench-3-summary">Summary</a></li>
+</ul>
+
+<h2 id="introduction">Introduction</h2>
+
+<p>The <a href="https://github.com/igrishaev/pg2">PG2 library</a> version 0.1.2 is out. One of its features is a
+significant performance boost when processing SELECT queries. The more fields
+and rows you have in a result, the faster is the processing. Here is a chart
+that measures a query with a single column:</p>
+
+<p><img src="/assets/static/aws/pg2-bench-3/01.svg" class="svg-chart" /></p>
+
+<p>No difference between the previous release of PG and the new one. But with nine
+fields, the average execution time is less now:</p>
+
+<p><img src="/assets/static/aws/pg2-bench-3/02.svg" class="svg-chart" /></p>
+
+<p>Briefly, PG2 0.1.2 allows you to fetch the data 7-8 times faster than Next.JDBC
+does. But before we proceed with other charts and numbers, let me explain how
+the new processing algorithm works.</p>
+
+<!-- more -->
+
+<p>When you send a query to Postgres, it responds with a series of messages. The
+leading message called <code class="language-plaintext highlighter-rouge">RowDescription</code> describes the structure of the
+result. When parsed, it can be presented as an array of maps; each map holds the
+name of the column, its type code (so called OID), the code of a table where
+this field comes from, and more. One should save this message somewhere as it’s
+used later.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[{</span><span class="no">:name</span><span class="w"> </span><span class="s">"id"</span><span class="w">
+  </span><span class="no">:oid</span><span class="w"> </span><span class="mi">23</span><span class="w">   </span><span class="c1">;; type int4</span><span class="w">
+  </span><span class="no">:format</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="c1">;; text format</span><span class="w">
+  </span><span class="n">...</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"email"</span><span class="w">
+  </span><span class="no">:oid</span><span class="w"> </span><span class="mi">25</span><span class="w">   </span><span class="c1">;; type text</span><span class="w">
+  </span><span class="no">:format</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="c1">;; text format</span><span class="w">
+  </span><span class="n">...</span><span class="p">}</span><span class="w">
+ </span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Then, Postgres sends you a series of <code class="language-plaintext highlighter-rouge">DataRow</code> messages. Each <code class="language-plaintext highlighter-rouge">DataRow</code> message
+is a long array of bytes which holds concatenated values. Before each value,
+there are four bytes (int32) representing the lengths of the subsequent chunk of
+bytes to parse:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[&lt;N of cols&gt;&lt;len1&gt;&lt;value1&gt;&lt;len2&gt;&lt;value2&gt;, ...]
+</code></pre></div></div>
+
+<p>(By the way, if <code class="language-plaintext highlighter-rouge">&lt;lenX&gt;</code> is -1 than the value is NULL, and there is no bytes for
+<code class="language-plaintext highlighter-rouge">&lt;valueX&gt;</code>.)</p>
+
+<p>The question is, how to deal with all this to make your Postgres client
+faster. Obviously you can parse <code class="language-plaintext highlighter-rouge">DataRow</code> messages into maps one by one as
+you’re getting them from a TCP socket. This is what PG2 did before. The problem
+with this approach is that it slows down reading data from the network. Parsing
+bytes is a really CPU-heavy task. While you’re parsing a row, you’re not reading
+the next one.</p>
+
+<p>On one hand, you fairly parse data and have a complete map at the end. On
+another hand, it slows down the process of consuming the response.</p>
+
+<p>There is an opposite approach: you read the data as fast as you can with no (or
+minimum) parsing. Then, when you’ve done with reading, you parse what you
+got. The speed of reading the socket increases. As a result, the time window
+required to execute a query shrinks. The connection might serve more queries
+than before because now each request takes less time to be finished — in terms
+of the server, of course.</p>
+
+<p>To process the result in Clojure, you need to parse it first. But now you have
+not plain maps but byte arrays with some metadata about the structure of the
+result. To prevent users from manual parsing, each row pretends to be a Clojure
+map that, when certain methods are triggered, parses the underlying bytes.</p>
+
+<p>This is what the recent version of PG2 does under the hood. Before, it blindly
+parsed all the data on the fly. It was pretty fast: 2 or 3 times faster than
+using Next.JDBC. But with lazy parsing described above, it’s even faster: 7 to 9
+times in favour of PG2. It affects only <code class="language-plaintext highlighter-rouge">SELECT...</code> and <code class="language-plaintext highlighter-rouge">...RETURNING</code>
+queries. The new algorithm has nothing in common with inserting or deleting the
+data.</p>
+
+<p>Now, benchmarks and timings. Most of the technical details like the environment,
+code snippets and SQL queries were covered in the <a href="/en/pg2-bench-1">previous post</a>. Please
+refer to it for details.</p>
+
+<h2 id="test1-reading-a-single-column-random-query">Test1. Reading a single-column random query</h2>
+
+<p>This benchmark reads 50.000 randomly generated rows with a single integer
+column. The code from this benchmark hasn’t changed since the previous
+post. Having one column only in a row doesn’t make any difference with version
+of PG2 0.1.1:</p>
+
+<p><img src="/assets/static/aws/pg2-bench-3/01.svg" class="svg-chart" /></p>
+
+<p>Timings:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Platform</th>
+      <th>PG2 0.1.1</th>
+      <th>JDBC.Next</th>
+      <th>PG2 0.1.2</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>core i5 2 GHz Quad-Core 16G</td>
+      <td>43.026307</td>
+      <td>127.677926</td>
+      <td>44.36297</td>
+    </tr>
+    <tr>
+      <td>core i9 2,4 GHz 8-Core 32G</td>
+      <td>39.551719</td>
+      <td>83.932103</td>
+      <td>27.672117</td>
+    </tr>
+    <tr>
+      <td>arm m1 10 cores 32G</td>
+      <td>18.517718</td>
+      <td>49.340986</td>
+      <td>14.670815</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="test2-reading-a-multi-column-complex-random-query">Test2. Reading a multi-column, complex random query</h2>
+
+<p>This test reads 50.000 randomly generated rows with 9 columns of different
+types: numbers, strings, and timestamps. This is where the lazy algorithm beats
+the old one:</p>
+
+<p><img src="/assets/static/aws/pg2-bench-3/02.svg" class="svg-chart" /></p>
+
+<p>Timings:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Platform</th>
+      <th>PG2 0.1.1</th>
+      <th>JDBC.Next</th>
+      <th>PG2 0.1.2</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>core i5 2 GHz Quad-Core 16G</td>
+      <td>273.866142</td>
+      <td>579.59995</td>
+      <td>80.352246</td>
+    </tr>
+    <tr>
+      <td>core i9 2,4 GHz 8-Core 32G</td>
+      <td>270.262248</td>
+      <td>447.326861</td>
+      <td>54.34384</td>
+    </tr>
+    <tr>
+      <td>arm m1 10 cores 32G</td>
+      <td>117.241426</td>
+      <td>206.371502</td>
+      <td>30.444798</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="test3-reading-random-json">Test3. Reading random JSON</h2>
+
+<p>In this test, we select 50.000 randomly generated JSON objects. The absolute
+numbers are higher yet the ratio between the timings is the same:</p>
+
+<p><img src="/assets/static/aws/pg2-bench-3/03.svg" class="svg-chart" /></p>
+
+<p>Timings:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Platform</th>
+      <th>PG2 0.1.1</th>
+      <th>JDBC.Next</th>
+      <th>PG2 0.1.2</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>core i5 2 GHz Quad-Core 16G</td>
+      <td>227.067587</td>
+      <td>498.160381</td>
+      <td>64.590117</td>
+    </tr>
+    <tr>
+      <td>core i9 2,4 GHz 8-Core 32G</td>
+      <td>230.741915</td>
+      <td>413.006218</td>
+      <td>52.063469</td>
+    </tr>
+    <tr>
+      <td>arm m1 10 cores 32G</td>
+      <td>105.99894</td>
+      <td>188.33619</td>
+      <td>30.75433</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="test-4-connection-pools">Test 4. Connection pools</h2>
+
+<p>This benchmark doesn’t bring any new information. It just confirms that the lazy
+algorithm works with a connection pool.</p>
+
+<p><img src="/assets/static/aws/pg2-bench-3/04.svg" class="svg-chart" /></p>
+
+<p>Timings:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Platform</th>
+      <th>PG2 0.1.1</th>
+      <th>JDBC.Next</th>
+      <th>PG2 0.1.2</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>core i5 2 GHz Quad-Core 16G</td>
+      <td>334.488016</td>
+      <td>445.280716</td>
+      <td>59.709788</td>
+    </tr>
+    <tr>
+      <td>core i9 2,4 GHz 8-Core 32G</td>
+      <td>163.220533</td>
+      <td>243.250634</td>
+      <td>56.457382</td>
+    </tr>
+    <tr>
+      <td>arm m1 10 cores 32G</td>
+      <td>112.234569</td>
+      <td>154.656431</td>
+      <td>31.408932</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Now that we clearly see that lazy parsing is useful, it’s still a half of the
+picture. We measure the time spent on reading the rows from the network and
+wrapping each into a pseudo-map class. But how much does it take to parse the
+rows? There are some dedicated benchmarks for that.</p>
+
+<h2 id="test-5-forcibly-evaluate-each-row-after-reading">Test 5. Forcibly evaluate each row after reading</h2>
+
+<p>This test is similar to the previous one where I select randomly generated
+values. The difference is, now we associate an extra key to each row after
+reading. Assoc-ing a key to a lazy map triggers the process of parsing all the
+underlying bytes and composing a real Clojure map.</p>
+
+<p>The query is really tough in terms of parsing: 60 timestamp fields :–)</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
+   <span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">()</span>
+  <span class="p">,</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">()</span>
+  <span class="p">,</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">()</span>
+  <span class="p">,</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">()</span>
+  <span class="p">,</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">()</span>
+  <span class="p">,</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">(),</span><span class="n">now</span><span class="p">()</span>
+<span class="k">from</span>
+  <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">50000</span><span class="p">)</span> <span class="k">as</span> <span class="n">s</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>JDBC code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"next.JDBC select many fields WITH ASSOC"</span><span class="w">
+  </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w">
+                    </span><span class="n">jdbc-config</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+     </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">rows</span><span class="w">
+           </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                          </span><span class="p">[</span><span class="n">QUERY_SELECT_RANDOM_MANY_FIELDS</span><span class="p">]</span><span class="w">
+                          </span><span class="p">{</span><span class="no">:as</span><span class="w"> </span><span class="n">rs/as-unqualified-maps</span><span class="p">})]</span><span class="w">
+       </span><span class="p">(</span><span class="nb">doseq</span><span class="w"> </span><span class="p">[</span><span class="n">row</span><span class="w"> </span><span class="n">rows</span><span class="p">]</span><span class="w">
+         </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="n">row</span><span class="w"> </span><span class="no">:extra</span><span class="w"> </span><span class="mi">42</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>PG2 code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-title</span><span class="w"> </span><span class="s">"pg select many fields WITH ASSOC"</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pg-config</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">quick-bench</span><span class="w">
+      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">rows</span><span class="w">
+            </span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                        </span><span class="n">QUERY_SELECT_RANDOM_MANY_FIELDS</span><span class="p">)]</span><span class="w">
+        </span><span class="p">(</span><span class="nb">doseq</span><span class="w"> </span><span class="p">[</span><span class="n">row</span><span class="w"> </span><span class="n">rows</span><span class="p">]</span><span class="w">
+          </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="n">row</span><span class="w"> </span><span class="no">:extra</span><span class="w"> </span><span class="mi">42</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The result:</p>
+
+<p><img src="/assets/static/aws/pg2-bench-3/08.svg" class="svg-chart" /></p>
+
+<p>Timings:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Platform</th>
+      <th>PG2 0.1.1</th>
+      <th>JDBC.Next</th>
+      <th>PG2 0.1.2</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>core i5 2 GHz Quad-Core 16G</td>
+      <td>1161.563</td>
+      <td>2540.014</td>
+      <td>1502.913</td>
+    </tr>
+    <tr>
+      <td>core i9 2,4 GHz 8-Core 32G</td>
+      <td>1330.753</td>
+      <td>953.199066</td>
+      <td>1473.492</td>
+    </tr>
+    <tr>
+      <td>arm m1 10 cores 32G</td>
+      <td>547.914391</td>
+      <td>448.419085</td>
+      <td>619.253412</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>The chart shows that PG2 is a bit slower when it comes to parsing lazy maps. I
+believe there is a way to improve it in the future.</p>
+
+<p>Anyway, we will get the clearest score if we measure the RPS of an HTTP server
+that sends the data from the database in JSON. Such a server was described in
+the previous post. We measure it again with the new release of PG2.</p>
+
+<h2 id="test-6-benchmarking-the-http-server-with-various--c-values">Test 6. Benchmarking the HTTP server with various -c values</h2>
+
+<h3 id="1-concurrent-request">1 concurrent request</h3>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ab <span class="nt">-n</span> 1000 <span class="nt">-c</span> 1 <span class="nt">-l</span> http://127.0.0.1:18080/
+</code></pre></div></div>
+
+<p>The chart and metrics (here and below: more is better):</p>
+
+<p><img src="/assets/static/aws/pg2-bench-3/05.svg" class="svg-chart" /></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Platform</th>
+      <th>PG2 0.1.1</th>
+      <th>JDBC.Next</th>
+      <th>PG2 0.1.2</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>core i5 2 GHz Quad-Core 16G</td>
+      <td>225.22</td>
+      <td>116.24</td>
+      <td>202.88</td>
+    </tr>
+    <tr>
+      <td>core i9 2,4 GHz 8-Core 32G</td>
+      <td>322.93</td>
+      <td>179.68</td>
+      <td>279.36</td>
+    </tr>
+    <tr>
+      <td>arm m1 10 cores 32G</td>
+      <td>428.41</td>
+      <td>286.04</td>
+      <td>269.4</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>PG2 didn’t show great results on the M1 machine: it’s even slower than JDBC for
+just one concurrent request. But when it comes to many parallel requests, it’s
+as fast as PG 0.1.1 again.</p>
+
+<h3 id="16-concurrent-requests">16 concurrent requests</h3>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ab <span class="nt">-n</span> 1000 <span class="nt">-c</span> 16 <span class="nt">-l</span> http://127.0.0.1:18080/
+</code></pre></div></div>
+
+<p>The results:</p>
+
+<p><img src="/assets/static/aws/pg2-bench-3/06.svg" class="svg-chart" /></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Platform</th>
+      <th>PG2 0.1.1</th>
+      <th>JDBC.Next</th>
+      <th>PG2 0.1.2</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>core i5 2 GHz Quad-Core 16G</td>
+      <td>968.51</td>
+      <td>555.55</td>
+      <td>915.93</td>
+    </tr>
+    <tr>
+      <td>core i9 2,4 GHz 8-Core 32G</td>
+      <td>1909.19</td>
+      <td>1304</td>
+      <td>1688.72</td>
+    </tr>
+    <tr>
+      <td>arm m1 10 cores 32G</td>
+      <td>2999.06</td>
+      <td>1902.31</td>
+      <td>3026</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>PG2 version 0.1.2 is slightly slower than 0.1.1 because parsing lazy maps takes
+CPU resources.</p>
+
+<h3 id="64-concurrent-requests">64 concurrent requests</h3>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ab <span class="nt">-n</span> 1000 <span class="nt">-c</span> 64 <span class="nt">-l</span> http://127.0.0.1:18080/
+</code></pre></div></div>
+
+<p>The results:</p>
+
+<p><img src="/assets/static/aws/pg2-bench-3/07.svg" class="svg-chart" /></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Platform</th>
+      <th>PG2 0.1.1</th>
+      <th>JDBC.Next</th>
+      <th>PG2 0.1.2</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>core i5 2 GHz Quad-Core 16G</td>
+      <td>1025.62</td>
+      <td>543.66</td>
+      <td>945.51</td>
+    </tr>
+    <tr>
+      <td>core i9 2,4 GHz 8-Core 32G</td>
+      <td>2025.94</td>
+      <td>1113.81</td>
+      <td>1806.29</td>
+    </tr>
+    <tr>
+      <td>arm m1 10 cores 32G</td>
+      <td>3348.75</td>
+      <td>1909.23</td>
+      <td>3205.83</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Both 0.1.1 and 0.1.2 are almost even in terms of performance.</p>
+
+<h2 id="summary">Summary</h2>
+
+<p>Introducing lazy maps and lazy result parsing was an interesting
+experiment. Although it slightly slows down processing the result, it brings
+some benefits. First, the time required for connection to serve a query reduces
+drastically. The connection dumps the payload it got for you, and then you parse
+it while the connection is serving another query. It’s especially useful when
+working with connection pools. For pools, you have to return the connections
+back as soon as possible as their number is limited. Spawning a fresh connection
+is expensive as it runs a new process on the server side.</p>
+
+<p>Second, lazy parsing reduces the odds of getting an exception in the middle of
+reading the data from a connection. This is a weird situation when you got the
+data partially, and then an exception popped up. Without capturing it and
+rethrowing later, the connection might hang into a broken state.</p>
+
+<p>To sum up — I’m not a big fan of laziness in Clojure but this time, the idea
+seems to be the right choice. Let’s see how it goes.</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/en/pg2-bench-3">
+    <input required name="captcha" type="hidden" value="1 &#215; 6">
+
+    <div class="block">
+        <span class="comment-form-label"><small>1 &#215; 6 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
