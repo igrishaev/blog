@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>PG2 release 0.1.3: Next.JDBC-compatible API</title>
+  <meta name="description" content="">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/en/pg-jdbc">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">PG2 release 0.1.3: Next.JDBC-compatible API</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-02-20T00:00:00+00:00">
+        Feb 20, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-pg2-jdbc">
+  <li><a href="#obtaining-a-connection" id="toc-item-pg2-jdbc-obtaining-a-connection">Obtaining a Connection</a></li>
+  <li><a href="#executing-queries" id="toc-item-pg2-jdbc-executing-queries">Executing Queries</a></li>
+  <li><a href="#transactions" id="toc-item-pg2-jdbc-transactions">Transactions</a></li>
+  <li><a href="#keys-and-namespaces" id="toc-item-pg2-jdbc-keys-and-namespaces">Keys and Namespaces</a></li>
+</ul>
+
+<p><a href="https://github.com/igrishaev/pg2">PG2 version 0.1.3</a> is out. One of its new features is a module which
+mimics <a href="https://github.com/seancorfield/next-jdbc">Next.JDBC</a> API. Of course, it doesn’t cover 100% of Next.JDBC
+features yet most of the functions and macros are there. It will help you to
+introduce PG2 into the project without rewriting all the database-related code
+from scratch.</p>
+
+<h3 id="obtaining-a-connection">Obtaining a Connection</h3>
+
+<p>In Next.JDBC, all the functions and macros accept something that implements the
+<code class="language-plaintext highlighter-rouge">Connectable</code> protocol. It might be a plain Clojure map, an existing connection,
+or a connection pool. The PG2 wrapper follows this design. It works with either
+a map, a connection, or a pool.</p>
+
+<p>Import the namespace and declare a config:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.jdbc</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">jdbc</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10140</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Having a config map, obtain a connection by passing it into the <code class="language-plaintext highlighter-rouge">get-connection</code>
+function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This approach, although is a part of the Next.JDBC design, is not recommended to
+use. Once you’ve established a connection, you must either close it or, if it
+was borrowed from a pool, return it to the pool. There is a special macro
+<code class="language-plaintext highlighter-rouge">on-connection</code> that covers this logic:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">bind</span><span class="w"> </span><span class="n">source</span><span class="p">]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If the <code class="language-plaintext highlighter-rouge">source</code> was a map, a new connection is spawned and gets closed
+afterwards. If the <code class="language-plaintext highlighter-rouge">source</code> is a pool, the connection gets returned to the pool.
+When the <code class="language-plaintext highlighter-rouge">source</code> is a connection, nothing happens when exiting the macro.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="n">conn</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>A brief example with a connection pool and a couple of futures. Each future
+borrows a connection from a pool, and returns it afterwards.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pool/with-pool</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">f1</span><span class="w">
+        </span><span class="p">(</span><span class="nf">future</span><span class="w">
+          </span><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn1</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+            </span><span class="p">(</span><span class="nb">println</span><span class="w">
+             </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn1</span><span class="w"> </span><span class="p">[</span><span class="s">"select 'hoho' as message"</span><span class="p">]))))</span><span class="w">
+        </span><span class="n">f2</span><span class="w">
+        </span><span class="p">(</span><span class="nf">future</span><span class="w">
+          </span><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn2</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+            </span><span class="p">(</span><span class="nb">println</span><span class="w">
+             </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn2</span><span class="w"> </span><span class="p">[</span><span class="s">"select 'haha' as message"</span><span class="p">]))))]</span><span class="w">
+    </span><span class="o">@</span><span class="n">f1</span><span class="w">
+    </span><span class="o">@</span><span class="n">f2</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; {:message hoho}</span><span class="w">
+</span><span class="c1">;; {:message haha}</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="executing-queries">Executing Queries</h3>
+
+<p>Two functions <code class="language-plaintext highlighter-rouge">execute!</code> and <code class="language-plaintext highlighter-rouge">execute-one!</code> send queries to the database. Each
+of them takes a source, a SQL vector, and a map of options. The SQL vector is a
+sequence where the first item is either a string or a prepared statement, and
+the rest values are parameters.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="s">"select $1 as num"</span><span class="w"> </span><span class="mi">42</span><span class="p">]))</span><span class="w">
+</span><span class="c1">;; [{:num 42}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Pay attention that parameters use a dollar sign with a number but not a question
+mark.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">execute-one!</code> function acts like <code class="language-plaintext highlighter-rouge">execute!</code> but returns the first row
+only. Internaly, this is done by passing the <code class="language-plaintext highlighter-rouge">{:first? true}</code> parameter that
+enables the <code class="language-plaintext highlighter-rouge">First</code> reducer.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="s">"select $1 as num"</span><span class="w"> </span><span class="mi">42</span><span class="p">]))</span><span class="w">
+</span><span class="c1">;; {:num 42}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To prepare a statement, pass a SQL-vector into the <code class="language-plaintext highlighter-rouge">prepare</code> function. The
+result will be an instance of the <code class="language-plaintext highlighter-rouge">PreparedStatement</code> class. To execute a
+statement, put it into a SQL-vector followed by the parameters:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                      </span><span class="p">[</span><span class="s">"select $1::int4 + 1 as num"</span><span class="p">])</span><span class="w">
+        </span><span class="n">res1</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="mi">1</span><span class="p">])</span><span class="w">
+
+        </span><span class="n">res2</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="mi">2</span><span class="p">])]</span><span class="w">
+
+    </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))</span><span class="w">
+
+</span><span class="c1">;; [{:num 2} {:num 3}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, the same <code class="language-plaintext highlighter-rouge">stmt</code> statement is executed twice with different parameters.</p>
+
+<p>More realistic example with inserting data into a table. Let’s prepare the table
+first:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">[</span><span class="s">"create table test2 (id serial primary key, name text not null)"</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Insert a couple of rows returning the result:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                      </span><span class="p">[</span><span class="s">"insert into test2 (name) values ($1) returning *"</span><span class="p">])</span><span class="w">
+
+        </span><span class="n">res1</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">])</span><span class="w">
+
+        </span><span class="n">res2</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Huan"</span><span class="p">])]</span><span class="w">
+
+    </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))</span><span class="w">
+
+</span><span class="c1">;; [{:name "Ivan", :id 1} {:name "Huan", :id 2}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>As it was mentioned above, in Postgres, a prepared statement is always bound to
+a certain connection. Thus, use the <code class="language-plaintext highlighter-rouge">prepare</code> function only inside the
+<code class="language-plaintext highlighter-rouge">on-connection</code> macro to ensure that all the underlying database interaction is
+made within the same connection.</p>
+
+<h3 id="transactions">Transactions</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">with-transaction</code> macro wraps a block of code into a transaction. Before
+entering the block, the macro emits the <code class="language-plaintext highlighter-rouge">BEGIN</code> expression, and <code class="language-plaintext highlighter-rouge">COMMIT</code>
+afterwards, if there was no an exception. Should an exception pop up, the
+transaction gets rolled back with <code class="language-plaintext highlighter-rouge">ROLLBACK</code>, and the exception is re-thrown.</p>
+
+<p>The macro takes a binding symbol which a connection is bound to, a source, an a
+map of options. The standard Next.JDBC transaction options are supported,
+namely:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">:isolation</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:read-only</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:rollback-only</code></li>
+</ul>
+
+<p>Here is an example of inserting a couple of rows in a transaction:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                      </span><span class="p">[</span><span class="s">"insert into test2 (name) values ($1) returning *"</span><span class="p">])]</span><span class="w">
+
+    </span><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:isolation</span><span class="w"> </span><span class="no">:serializable</span><span class="w">
+                                     </span><span class="no">:read-only</span><span class="w"> </span><span class="n">false</span><span class="w">
+                                     </span><span class="no">:rollback-only</span><span class="w"> </span><span class="n">false</span><span class="p">}]</span><span class="w">
+
+      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">res1</span><span class="w">
+            </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Snip"</span><span class="p">])</span><span class="w">
+
+            </span><span class="n">res2</span><span class="w">
+            </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Snap"</span><span class="p">])]</span><span class="w">
+
+        </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))))</span><span class="w">
+
+</span><span class="c1">;; [{:name "Snip", :id 3} {:name "Snap", :id 4}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The Postgres log:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BEGIN
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE
+insert into test2 (name) values ($1) returning *
+  $1 = 'Snip'
+insert into test2 (name) values ($1) returning *
+  $1 = 'Snap'
+COMMIT
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">:isolation</code> parameter might be one of the following:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">:read-uncommitted</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:read-committed</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:repeatable-read</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:serializable</code></li>
+</ul>
+
+<p>To know more about transaction isolation, refer to the official [Postgres
+documentation][transaction-iso].</p>
+
+<p>When <code class="language-plaintext highlighter-rouge">read-only</code> is true, any mutable query will trigger an error response from
+Postgres:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:read-only</span><span class="w"> </span><span class="n">true</span><span class="p">}]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">TX</span><span class="w"> </span><span class="p">[</span><span class="s">"delete from test2"</span><span class="p">]))</span><span class="w">
+
+</span><span class="c1">;; Execution error (PGErrorResponse) at org.pg.Accum/maybeThrowError (Accum.java:207).</span><span class="w">
+</span><span class="c1">;; Server error response: {severity=ERROR, message=cannot execute DELETE in a read-only transaction, verbosity=ERROR}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When <code class="language-plaintext highlighter-rouge">:rollback-only</code> is true, the transaction gets rolled back even there was
+no an exception. This is useful for tests and experiments:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:rollback-only</span><span class="w"> </span><span class="n">true</span><span class="p">}]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">TX</span><span class="w"> </span><span class="p">[</span><span class="s">"delete from test2"</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The logs:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>statement: BEGIN
+execute s1/p2: delete from test2
+statement: ROLLBACK
+</code></pre></div></div>
+
+<p>The table still has its data:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">[</span><span class="s">"select * from test2"</span><span class="p">])</span><span class="w">
+
+</span><span class="c1">;; [{:name "Ivan", :id 1} ...]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The function <code class="language-plaintext highlighter-rouge">active-tx?</code> helps to determine if you’re in the middle of a
+transaction:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/active-tx?</span><span class="w"> </span><span class="n">conn</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">conn</span><span class="p">]</span><span class="w">
+      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">res2</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/active-tx?</span><span class="w"> </span><span class="n">TX</span><span class="p">)]</span><span class="w">
+        </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))))</span><span class="w">
+
+</span><span class="c1">;; [false true]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It returns <code class="language-plaintext highlighter-rouge">true</code> for transactions tha are in the error state as well.</p>
+
+<h3 id="keys-and-namespaces">Keys and Namespaces</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">pg.jdbc</code> wrapper tries to mimic Next.JDBC and thus uses <code class="language-plaintext highlighter-rouge">kebab-case-keys</code>
+when building maps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="s">"select 42 as the_answer"</span><span class="p">]))</span><span class="w">
+
+</span><span class="c1">;; {:the-answer 42}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To change that behaviour and use <code class="language-plaintext highlighter-rouge">snake_case_keys</code>, pass the <code class="language-plaintext highlighter-rouge">{:kebab-keys?
+false}</code> option map:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                     </span><span class="p">[</span><span class="s">"select 42 as the_answer"</span><span class="p">]</span><span class="w">
+                     </span><span class="p">{</span><span class="no">:kebab-keys?</span><span class="w"> </span><span class="n">false</span><span class="p">}))</span><span class="w">
+
+</span><span class="c1">;; {:the_answer 42}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>By default, Next.JDBC returns full-qualified keys where namespaces are table
+names, for example <code class="language-plaintext highlighter-rouge">:user/profile-id</code> or <code class="language-plaintext highlighter-rouge">:order/created-at</code>. At the moment,
+namespaces are not supported by the wrapper.</p>
+
+<p>For more information, please refer to the official <a href="https://github.com/igrishaev/pg2/blob/master/README.md">README file</a>.</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/en/pg-jdbc">
+    <input required name="captcha" type="hidden" value="2 &#215; 1">
+
+    <div class="block">
+        <span class="comment-form-label"><small>2 &#215; 1 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
