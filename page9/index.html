@@ -104,6 +104,132 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/clojure-debug/">Avoid code you cannot debug</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-06-13T00:00:00+00:00">
+        Jun 13, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/debugging/" rel="tag">debugging</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>This is a small tip I’d like to share with Clojure programmers.</p>
+
+<p><strong>In a project, avoid code you cannot debug.</strong> It’s simple: if you can put a
+tag like <code class="language-plaintext highlighter-rouge">#debug</code> or similar somewhere in the middle, run a test and hang in a
+debugging session, you’re good. But if you cannot, you’ll be in trouble one day.</p>
+
+<p>Thus, any kind of DSL or yet another “smart” solution is a source of potential
+problems. Take Meander, for example. Imagine I have a map like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w">
+ </span><span class="no">:address</span><span class="w"> </span><span class="p">{</span><span class="no">:city</span><span class="w"> </span><span class="s">"Chita"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>and I want it to become this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w">
+ </span><span class="no">:city</span><span class="w"> </span><span class="s">"Chita"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>With Meander, I would write:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">m/match</span><span class="w">
+  </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:address</span><span class="w"> </span><span class="p">{</span><span class="no">:city</span><span class="w"> </span><span class="s">"Chita"</span><span class="p">}}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="n">?name</span><span class="w"> </span><span class="no">:address</span><span class="w"> </span><span class="p">{</span><span class="no">:city</span><span class="w"> </span><span class="n">?city</span><span class="p">}}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="n">?name</span><span class="w"> </span><span class="no">:city</span><span class="w"> </span><span class="n">?city</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>and it works fine. But one day, my datasource suddenly returns a user without an
+address:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:address</span><span class="w"> </span><span class="n">nil</span><span class="p">}</span><span class="w">
+</span><span class="c1">;; or just {:name "Ivan"}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>which is completely fine because a user might have no address associated with
+them. By passing that map into <code class="language-plaintext highlighter-rouge">m/match</code>, I expect it to return <code class="language-plaintext highlighter-rouge">{:name "Ivan"
+:city nil}</code> but no: there will be an exception:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">m/match</span><span class="w">
+   </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:address</span><span class="w"> </span><span class="n">nil</span><span class="p">}</span><span class="w">
+   </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="n">?name</span><span class="w"> </span><span class="no">:address</span><span class="w"> </span><span class="p">{</span><span class="no">:city</span><span class="w"> </span><span class="n">?city</span><span class="p">}}</span><span class="w">
+   </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="n">?name</span><span class="w"> </span><span class="no">:city</span><span class="w"> </span><span class="n">?city</span><span class="p">})</span><span class="w">
+
+</span><span class="n">Unhandled</span><span class="w"> </span><span class="n">clojure.lang.ExceptionInfo</span><span class="w">
+   </span><span class="n">non</span><span class="w"> </span><span class="n">exhaustive</span><span class="w"> </span><span class="n">pattern</span><span class="w"> </span><span class="n">match</span><span class="w">
+   </span><span class="p">{}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The line “non exhaustive pattern match” tells nothing to me nor the ex-data
+does. The message is fuzzy, there is no context, the ex-data has nothing useful
+(it’s an empty map). Having such an entry in logs or Sentry would not help you
+in a bit.</p>
+
+<p>Moreover, you cannot debug it. The <code class="language-plaintext highlighter-rouge">m/match</code> macro expands into a huge block of
+code. Debugging it somewhere in the middle would be quite challenging.</p>
+
+<p>Now compare it with a plain function that splits the data step by step:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">remap-user</span><span class="w"> </span><span class="p">[</span><span class="n">entry</span><span class="p">]</span><span class="w">
+
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[{</span><span class="n">username</span><span class="w"> </span><span class="no">:name</span><span class="w">
+         </span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">address</span><span class="p">]}</span><span class="w">
+        </span><span class="n">entry</span><span class="w">
+
+        </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">city</span><span class="p">]}</span><span class="w">
+        </span><span class="n">address</span><span class="p">]</span><span class="w">
+
+    </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="n">username</span><span class="w">
+     </span><span class="no">:city</span><span class="w"> </span><span class="n">city</span><span class="p">}))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>First, it works with both maps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">remap-user</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">})</span><span class="w">
+</span><span class="n">=&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="n">,</span><span class="w"> </span><span class="no">:city</span><span class="w"> </span><span class="n">nil</span><span class="p">}</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">remap-user</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:address</span><span class="w"> </span><span class="p">{</span><span class="no">:city</span><span class="w"> </span><span class="s">"Chita"</span><span class="p">}})</span><span class="w">
+</span><span class="n">=&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="n">,</span><span class="w"> </span><span class="no">:city</span><span class="w"> </span><span class="s">"Chita"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Second, I can always put a debugging tag into that function and observe the
+local variables, the state and even run some expressions. With Meander, it’s
+just impossible or only possible with certain effort.</p>
+
+<p>Third, if a city is required, I’d put something like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">assert</span><span class="w"> </span><span class="n">city</span><span class="w"> </span><span class="s">"The city is missing"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>and get a clear exception I want.</p>
+
+<p>Vast Meander patterns are completely unmaintainable. Pass something weird and
+you’ll get a “non exhaustive pattern match” message with no idea about what went
+wrong.</p>
+
+<p>Finally, debugging is crucial. If you cannot hang in the middle of execution and
+observe the state, that’s bad. Most Clojure programmers believe it’s a special
+language liberating you from debugging errors, but it’s not true. Debugging has
+not gone anywhere even with such a great language as Clojure.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/yt-pause/">Пауза в Ютубе</a>
             </h2>
 
@@ -795,112 +921,6 @@ duration: 0.414 ms
 вооруженный всем этим добром.</p>
 
 <p>Так и живем.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/pascal-exercises/">Задачник по Паскалю</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-05-15T00:00:00+00:00">
-        May 15, 2023
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/pascal/" rel="tag">pascal</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В сотый раз повторяется одно и то же. Человек учит язык — неважно Питон, Кложу,
-что угодно — и спрашивает: посоветуйте задачки. Ему кидают ссылки на Exercism,
-Project Euler и похожие сайты. Мой ответ не меняется годами: покупаешь задачник
-по Турбо-Паскалю за 300 рублей и решаешь на своей Кложе, Питоне или PHP. Или
-просто качаешь из интернета первый попавшийся.</p>
-
-<p>Думаете, кто-то так делает? Конечно, нет. Мало того, поднимается драма: как так,
-у нас современные языки, а ты со своим Паскалем! Оставь дерьмо мамонта в покое.</p>
-
-<p>Сколько себя помню, всегда поражала эта избирательность. Эти задачи буду решать,
-а эти не буду. Эти современные и хорошие, а эти старые. Иной раз мне доказывают,
-мол, концепции Паскаля плохо ложатся на Кложу, поэтому решать их неудобно.</p>
-
-<p>Я аж представил себе. Начальство: Иван, вот тебе задача, надо сделать то и
-это. А я такой: ребята, она плохо ложится на концепцию языка, не буду делать. А
-они: конечно, дорогой, вот задача получше, а эту делать не будем. Исправим,
-чтобы ложилась.</p>
-
-<p>Думаю, ясно, что решать надо все задачи. В том числе те, что в старых
-учебниках. А почему именно из учебников, тому следуют пункты.</p>
-
-<ul>
-  <li>
-    <p>Сразу много задач. Купив сборник, вы получите не две-три интересных задачки, а
-две-три сотни.</p>
-  </li>
-  <li>
-    <p>Если это толковый сборник, задачи в нем собраны по разделам: арифметика,
-циклы, массивы, связные списки, файлы, графика и так далее. В каждом разделе
-задачи идут по нарастанию сложности. Это позволит набить руку в той теме, где
-вы плаваете.</p>
-  </li>
-  <li>
-    <p>Поскольку задачи составлены для школьников и студентов, они перекликаются с
-учебной программой. Решая задачи, вы заодно ее подтяните.</p>
-  </li>
-</ul>
-
-<p>Примеры задач, которые можно сделать на любом языке:</p>
-
-<ul>
-  <li>
-    <p>квадратное уравнение. По коэффициентам a, b, c найти корни или сообщить, что
-их нет.</p>
-  </li>
-  <li>
-    <p>игра “угадай число”. Компьютер загадывает число от 0 до 100, ваша задача —
-угадать его. На ваши попытки компьютер отвечает “нет, больше”, “нет, меньше”
-или “угадал”.</p>
-  </li>
-  <li>
-    <p>пересечение прямоугольников, точки и окружности по их координатам</p>
-  </li>
-  <li>
-    <p>задачи на массивы и связные списки, чтобы лучше понимать коллекции</p>
-  </li>
-  <li>
-    <p>графики, исследование функций.</p>
-  </li>
-  <li>
-    <p>запись данных о сотруднике в файл и их чтение.</p>
-  </li>
-</ul>
-
-<p>Что из этого плохо ложится на современный язык? Может, за “не хочу” стоит “не
-могу” или “лень вспоминать”?</p>
-
-<p>Какой смысл открывать условный Exercism, регистрироваться, подтверждать почту,
-отписываться от рассылки? Чтобы что? Я уже накидал задач на неделю, сиди
-решай. В учебнике их на год. Что ты хочешь найти? Чего не хватает?</p>
-
-<p>Наконец, еще один пункт в пользу сборника задач — это работа с книгой. Не знаю
-как это работает, но бумажная книга эффективней, чем тупление в монитор. Для
-меня это совершенно очевидно. Скорей всего, включается другой отдел мозга, но
-объяснение не так важно.</p>
-
-<p>Изучать язык тяжело. Красивые сайты пытаются это скрыть или развлечь
-пользователя, потому что их цель — донаты и показ рекламы. У задачника этой цели
-нет. Это более хардкорный вариант, но тем он и лучше.</p>
 
                 
             </div>
