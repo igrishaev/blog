@@ -104,352 +104,317 @@
         <li>
 
             <h2>
-                <a class="post-link" href="/pauses/">Паузы в играх</a>
+                <a class="post-link" href="/en/pg-jdbc">PG2 release 0.1.3: Next.JDBC-compatible API</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2023-12-29T00:00:00+00:00">
-        Dec 29, 2023
+          datetime="2024-02-20T00:00:00+00:00">
+        Feb 20, 2024
     </time>
 
-    <a href="/tag/games/" rel="tag">games</a>, <a href="/tag/pause/" rel="tag">pause</a>
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
 
 </div>
 
 
             <div class="entry">
                 
-                    <p>Я играю только в старые игры: те, которые были популярны, когда мне было 13-17
-лет. В основном это эмулятор PlayStation и ранний PC. Играя сегодня, наблюдаю
-забавные вещи, на которые не обращал внимания раньше. Например, паузы или
-перезарядка оружия.</p>
+                    
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-pg2-jdbc">
+  <li><a href="#obtaining-a-connection" id="toc-item-pg2-jdbc-obtaining-a-connection">Obtaining a Connection</a></li>
+  <li><a href="#executing-queries" id="toc-item-pg2-jdbc-executing-queries">Executing Queries</a></li>
+  <li><a href="#transactions" id="toc-item-pg2-jdbc-transactions">Transactions</a></li>
+  <li><a href="#keys-and-namespaces" id="toc-item-pg2-jdbc-keys-and-namespaces">Keys and Namespaces</a></li>
+</ul>
+
+<p><a href="https://github.com/igrishaev/pg2">PG2 version 0.1.3</a> is out. One of its new features is a module which
+mimics <a href="https://github.com/seancorfield/next-jdbc">Next.JDBC</a> API. Of course, it doesn’t cover 100% of Next.JDBC
+features yet most of the functions and macros are there. It will help you to
+introduce PG2 into the project without rewriting all the database-related code
+from scratch.</p>
+
+<h3 id="obtaining-a-connection">Obtaining a Connection</h3>
+
+<p>In Next.JDBC, all the functions and macros accept something that implements the
+<code class="language-plaintext highlighter-rouge">Connectable</code> protocol. It might be a plain Clojure map, an existing connection,
+or a connection pool. The PG2 wrapper follows this design. It works with either
+a map, a connection, or a pool.</p>
+
+<p>Import the namespace and declare a config:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.jdbc</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">jdbc</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10140</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Having a config map, obtain a connection by passing it into the <code class="language-plaintext highlighter-rouge">get-connection</code>
+function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This approach, although is a part of the Next.JDBC design, is not recommended to
+use. Once you’ve established a connection, you must either close it or, if it
+was borrowed from a pool, return it to the pool. There is a special macro
+<code class="language-plaintext highlighter-rouge">on-connection</code> that covers this logic:</p>
 
-<p>Далеко не везде пауза останавливает мир полностью. Например, в старой сеговской
-игрушке General Chaos есть прикол: если бросить гранату и нажать паузу, она
-спокойно долетает и наносит урон. При этом работает анимация урона и смерти
-врага. За счет этого можно пройти игру одним бойцом.</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">bind</span><span class="w"> </span><span class="n">source</span><span class="p">]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
 
-<p>В игре Parasite Eve 2 на PlayStation был мощный лазер (насадка на карабин
-“Javelin”). Лазер хорош, но с большим интервалом между выстрелами. Однако если
-выстрелить и нажать паузу, то за это время его отпустит, и после паузы можно
-стрелять снова. С точки зрения игры лазер спамит непрерывно.</p>
+<p>If the <code class="language-plaintext highlighter-rouge">source</code> was a map, a new connection is spawned and gets closed
+afterwards. If the <code class="language-plaintext highlighter-rouge">source</code> is a pool, the connection gets returned to the pool.
+When the <code class="language-plaintext highlighter-rouge">source</code> is a connection, nothing happens when exiting the macro.</p>
 
-<p>В игре Alien Shooter 2 на PC нечто схожее с переключением и перезарядкой. Есть
-ракетница по принципу “мощно, но редко”. Пока она перезаряжается, можно
-переключиться на другое оружие и пострелять из него, а потом вернуться к
-ракетнице — она будет готова к выстрелу.</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="n">conn</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
 
-<p>В Quake 2 на PlayStation был прикол с путаницей патронов от одного оружия к
-другому. Если во время стрельбы переключиться с шоги на рейл и обратно, то рейл
-тратил дробь, а шога — обедненный уран.</p>
+<p>A brief example with a connection pool and a couple of futures. Each future
+borrows a connection from a pool, and returns it afterwards.</p>
 
-<p>Почему так происходит? Хоть я ничего не понимаю в играх, но хотя бы
-предположу. Пауза ставит логический флаг, при котором игровой цикл не обновляет
-объекты. А перезарядка оружия и некоторые другие вещи работают от прерывания
-процессора. Другими словами, процессору говорят: через две секунды выполни код,
-который находится по этому адресу. Таймер можно только отменить, но не
-продлить. Поэтому даже если мир заморожен, через две секунды сработает код,
-который снимет с оружия статус “перезадяка” и выставит ему нужное число
-патронов. Отсюда такие приколы.</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pool/with-pool</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">f1</span><span class="w">
+        </span><span class="p">(</span><span class="nf">future</span><span class="w">
+          </span><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn1</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+            </span><span class="p">(</span><span class="nb">println</span><span class="w">
+             </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn1</span><span class="w"> </span><span class="p">[</span><span class="s">"select 'hoho' as message"</span><span class="p">]))))</span><span class="w">
+        </span><span class="n">f2</span><span class="w">
+        </span><span class="p">(</span><span class="nf">future</span><span class="w">
+          </span><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn2</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+            </span><span class="p">(</span><span class="nb">println</span><span class="w">
+             </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn2</span><span class="w"> </span><span class="p">[</span><span class="s">"select 'haha' as message"</span><span class="p">]))))]</span><span class="w">
+    </span><span class="o">@</span><span class="n">f1</span><span class="w">
+    </span><span class="o">@</span><span class="n">f2</span><span class="p">))</span><span class="w">
 
-<p>Морали нет, просто вспомнилось.</p>
+</span><span class="c1">;; {:message hoho}</span><span class="w">
+</span><span class="c1">;; {:message haha}</span><span class="w">
+</span></code></pre></div></div>
 
-                
-            </div>
+<h3 id="executing-queries">Executing Queries</h3>
 
-        </li>
-        
-        <li>
+<p>Two functions <code class="language-plaintext highlighter-rouge">execute!</code> and <code class="language-plaintext highlighter-rouge">execute-one!</code> send queries to the database. Each
+of them takes a source, a SQL vector, and a map of options. The SQL vector is a
+sequence where the first item is either a string or a prepared statement, and
+the rest values are parameters.</p>
 
-            <h2>
-                <a class="post-link" href="/java-inhumanity/">Бесчеловечность Java</a>
-            </h2>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="s">"select $1 as num"</span><span class="w"> </span><span class="mi">42</span><span class="p">]))</span><span class="w">
+</span><span class="c1">;; [{:num 42}]</span><span class="w">
+</span></code></pre></div></div>
 
-            
-<div class="post-meta">
+<p>Pay attention that parameters use a dollar sign with a number but not a question
+mark.</p>
 
-    <time class="post-time"
-          datetime="2023-12-29T00:00:00+00:00">
-        Dec 29, 2023
-    </time>
+<p>The <code class="language-plaintext highlighter-rouge">execute-one!</code> function acts like <code class="language-plaintext highlighter-rouge">execute!</code> but returns the first row
+only. Internaly, this is done by passing the <code class="language-plaintext highlighter-rouge">{:first? true}</code> parameter that
+enables the <code class="language-plaintext highlighter-rouge">First</code> reducer.</p>
 
-    <a href="/tag/java/" rel="tag">java</a>, <a href="/tag/programming/" rel="tag">programming</a>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="s">"select $1 as num"</span><span class="w"> </span><span class="mi">42</span><span class="p">]))</span><span class="w">
+</span><span class="c1">;; {:num 42}</span><span class="w">
+</span></code></pre></div></div>
 
-</div>
+<p>To prepare a statement, pass a SQL-vector into the <code class="language-plaintext highlighter-rouge">prepare</code> function. The
+result will be an instance of the <code class="language-plaintext highlighter-rouge">PreparedStatement</code> class. To execute a
+statement, put it into a SQL-vector followed by the parameters:</p>
 
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                      </span><span class="p">[</span><span class="s">"select $1::int4 + 1 as num"</span><span class="p">])</span><span class="w">
+        </span><span class="n">res1</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="mi">1</span><span class="p">])</span><span class="w">
 
-            <div class="entry">
-                
-                    <p>Джавное ООП отличает особая бесчеловечность. Ощущение, что код писали не
-люди, а роботы, которые хотят обратить кожаных мешков в рабство. Именно такие
-ассоциации приходят в голову.</p>
+        </span><span class="n">res2</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="mi">2</span><span class="p">])]</span><span class="w">
 
-<p>Пример — джавный SDK для S3. Возникла задача — явно указать пару ключей и
-регион. Как это делается в дружелюбных языках? Передается мапка с тремя
-ключами или kwargs. По умолчанию берутся переменные среды, но считается, что
-пользователь не идиот и в случае нужды укажет свои ключи.</p>
+    </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))</span><span class="w">
 
-<p>Джавный SDK, напротив, считает пользователя идиотом. Креды берутся из
-переменных среды и системных файлов. Если хочешь указать свои, то нужно
-написать такой код:</p>
+</span><span class="c1">;; [{:num 2} {:num 3}]</span><span class="w">
+</span></code></pre></div></div>
 
-<p><img src="/assets/static/aws/java-inhumanity/1.jpeg" /></p>
+<p>Above, the same <code class="language-plaintext highlighter-rouge">stmt</code> statement is executed twice with different parameters.</p>
 
-<p>Я рожал его почти два часа. Понимаете ли, инициировать <code class="language-plaintext highlighter-rouge">BasicAWSCredentials</code>
-недостаточно. Нужно обернуть его в <code class="language-plaintext highlighter-rouge">AWSStaticCredentialsProvider</code> и передать в
-<code class="language-plaintext highlighter-rouge">AmazonS3ClientBuilder</code>. Так очевидно и просто!</p>
+<p>More realistic example with inserting data into a table. Let’s prepare the table
+first:</p>
 
-<p>Ясное дело, в джавадоке об этом ни слова. Каждый класс подробно знает о своих
-геттерах и сеттарах, но не то, как их скомпоновать. Гугление выдает ссылки на
-StackOverflow и Baeldung. Все спонтанно, что-то уже deprecated, разброд и
-шатание.  В официальных доках только те примеры, что считаются правильными со
-стороны AWS.</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">[</span><span class="s">"create table test2 (id serial primary key, name text not null)"</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
 
-<p>Все это топорно и бездушно. А некоторым с этим жить.</p>
+<p>Insert a couple of rows returning the result:</p>
 
-                
-            </div>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                      </span><span class="p">[</span><span class="s">"insert into test2 (name) values ($1) returning *"</span><span class="p">])</span><span class="w">
 
-        </li>
-        
-        <li>
+        </span><span class="n">res1</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">])</span><span class="w">
 
-            <h2>
-                <a class="post-link" href="/empty-console/">Пустая консоль</a>
-            </h2>
+        </span><span class="n">res2</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Huan"</span><span class="p">])]</span><span class="w">
 
-            
-<div class="post-meta">
+    </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))</span><span class="w">
 
-    <time class="post-time"
-          datetime="2023-12-29T00:00:00+00:00">
-        Dec 29, 2023
-    </time>
+</span><span class="c1">;; [{:name "Ivan", :id 1} {:name "Huan", :id 2}]</span><span class="w">
+</span></code></pre></div></div>
 
-    <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/console/" rel="tag">console</a>, <a href="/tag/javascript/" rel="tag">javascript</a>
+<p>As it was mentioned above, in Postgres, a prepared statement is always bound to
+a certain connection. Thus, use the <code class="language-plaintext highlighter-rouge">prepare</code> function only inside the
+<code class="language-plaintext highlighter-rouge">on-connection</code> macro to ensure that all the underlying database interaction is
+made within the same connection.</p>
 
-</div>
+<h3 id="transactions">Transactions</h3>
 
+<p>The <code class="language-plaintext highlighter-rouge">with-transaction</code> macro wraps a block of code into a transaction. Before
+entering the block, the macro emits the <code class="language-plaintext highlighter-rouge">BEGIN</code> expression, and <code class="language-plaintext highlighter-rouge">COMMIT</code>
+afterwards, if there was no an exception. Should an exception pop up, the
+transaction gets rolled back with <code class="language-plaintext highlighter-rouge">ROLLBACK</code>, and the exception is re-thrown.</p>
 
-            <div class="entry">
-                
-                    <p>Как приятно осознавать, что есть сайты, где в Developer Console ничего нет. То есть
-буквально ничего: ни логов Javascript, ни красных сообщений блокировщика, ни
-Google Static Content и прочего барахла. Пустой экран.</p>
+<p>The macro takes a binding symbol which a connection is bound to, a source, an a
+map of options. The standard Next.JDBC transaction options are supported,
+namely:</p>
 
-<p>Я об этом (популярный новостной сайт):</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">:isolation</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:read-only</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:rollback-only</code></li>
+</ul>
 
-<p><img src="/assets/static/aws/empty-console/1.jpeg" /></p>
+<p>Here is an example of inserting a couple of rows in a transaction:</p>
 
-<p>Вдвойне приятней, что один из этих сайтов — мой. В его консоли действительно
-ничего нет! Пусть посетитель об этом не знает, но знаю я, и от этого хорошо на
-душе.</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
 
-                
-            </div>
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                      </span><span class="p">[</span><span class="s">"insert into test2 (name) values ($1) returning *"</span><span class="p">])]</span><span class="w">
 
-        </li>
-        
-        <li>
+    </span><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:isolation</span><span class="w"> </span><span class="no">:serializable</span><span class="w">
+                                     </span><span class="no">:read-only</span><span class="w"> </span><span class="n">false</span><span class="w">
+                                     </span><span class="no">:rollback-only</span><span class="w"> </span><span class="n">false</span><span class="p">}]</span><span class="w">
 
-            <h2>
-                <a class="post-link" href="/dark-themes/">Темные темы</a>
-            </h2>
+      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">res1</span><span class="w">
+            </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Snip"</span><span class="p">])</span><span class="w">
 
-            
-<div class="post-meta">
+            </span><span class="n">res2</span><span class="w">
+            </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Snap"</span><span class="p">])]</span><span class="w">
 
-    <time class="post-time"
-          datetime="2023-12-29T00:00:00+00:00">
-        Dec 29, 2023
-    </time>
+        </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))))</span><span class="w">
 
-    <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/dark/" rel="tag">dark</a>
+</span><span class="c1">;; [{:name "Snip", :id 3} {:name "Snap", :id 4}]</span><span class="w">
+</span></code></pre></div></div>
 
-</div>
+<p>The Postgres log:</p>
 
-
-            <div class="entry">
-                
-                    <p><img src="/assets/static/aws/dark-themes/1.png" /></p>
-
-<p>Про темные темы можно сказать так: лучше, чем ничего. Потому что идея хорошая, а
-нормальных темных тем не бывает.</p>
-
-<p>Проблема в том, что затемнить фон недостаточно. Всякие иконки и виджеты
-по-прежнему светят в глаза, потому что на них смена темы не действует. Пример —
-белые иконки приложений на скриншоте слева. Когда их много, света почти столько
-же, что и раньше. В грамотной теме должны меняться иконки тоже. Технически это
-возможно, но требует доработки со стороны третьих лиц, поэтому маловероятно.</p>
-
-<p>Вторая проблема на картинке справа. Синий, желтый и другие цвета выглядят ярко
-на черном фоне. Иконки у ящиков надо сделать серыми, а звезду — чуть ярче, чтобы
-она выделялась за счет яркости, а не цвета. Жирные белые заголовки дают много
-света, их надо приглушить. Но дизайнерам это до лампочки — они поменяли фон и
-выкатили в продакшен. Вы просили темную тему? Просили. Мы добавили?
-Добавили. Закрываем тикет.</p>
-
-<p>Так это и работает. Темные темы кидают пользователям, как кость, хотя они не
-проработаны. Я понимаю, это долго и дорого, и по-хорошему это два разных
-дизайна. Кому охота поддерживать два, если можно один?</p>
-
-<p>Поэтому и отношение к темным темам такое: есть что-то да и ладно. Лучше, чем
-ничего.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/cards-expiration/">Истечение карт</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-12-29T00:00:00+00:00">
-        Dec 29, 2023
-    </time>
-
-    <a href="/tag/cards/" rel="tag">cards</a>, <a href="/tag/security/" rel="tag">security</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Нет смысла говорить о том, что истечение паролей и ключей — плохая идея. Об этом
-уже много раз писали.</p>
-
-<p>Но интересно, почему такая же история с пластиковыми картами? По умолчанию они
-действительны три года. Вопрос: почему только три года? Что мешает карте
-работать пять, семь, пятнадцать лет? У нее что, чип протухает? Очевидно,
-препятствий этому нет, нужно лишь поменять дату в базе данных.</p>
-
-<p>Понравилось ли бы служащему банка, если бы каждые три года нужно было менять
-замок на входной двери? Или гонять машину к дилеру, чтобы тот перепрошил
-электронику, иначе в машину не попадешь. Или ноут спустя три года не включается,
-и ты едешь в офис Эпла, чтобы его продлили. А с картами это считается
-нормальным.</p>
-
-<p>Самое главное, что правило в три года игнорируется самим банком, когда ему
-хочется. Например, премиум-карты делают на семь лет, потому что они
-металлические и выпускать их каждые три года дорого. Или когда против России
-ввели санкции, у банков временно закончился пластик для выпуска карт. И банки
-что? — просто продлили сроки карт. Массово пришли смс-ки: ваша карта *1234
-теперь работает до 2030 года.</p>
-
-<p>Сервисы онлайн-платежей тоже подтянулись: они перестали проверять дату карт,
-потому что люди на автомате вводят ту, что на карте, а не ту, что в смс.</p>
-
-<p>Спрашивается, а что, так можно было? Как видим, да. Истечение по времени — вещь
-искусственная, и в случае нужды ее легко подвинуть. Никто не умер, банковская
-система не рухнула. Беда в том, что двигать такие вещи может лишь тот, кто ввел
-их в оборот, то есть не мы с вами.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/java/">Java</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-12-05T00:00:00+00:00">
-        Dec 5, 2023
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/java/" rel="tag">java</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>У меня появился пет-проект, и самое главное — он не на Кложе, а на Джаве. Пишу
-уже две недели, и вот какие ощущения.</p>
-
-<p>Современная Джава неожиданно хороша. Если взять последнюю версию 21, не цепляясь
-на бородатое легаси, то писать на ней довольно приятно. Скажем, везде вместо
-классов использовать рекорды — это неизменяемые классы, которые экономят код и
-несут клевые вещи из коробки.</p>
-
-<p>Или использовать паттерн-матчинг по классам, например:</p>
-
-<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">switch</span> <span class="o">(</span><span class="n">msg</span><span class="o">)</span> <span class="o">{</span>
-    <span class="k">case</span> <span class="nc">BindComplete</span> <span class="nl">ignored:</span>
-        <span class="k">break</span><span class="o">;</span>
-    <span class="k">case</span> <span class="nc">AuthenticationOk</span> <span class="nl">ignored:</span>
-        <span class="k">break</span><span class="o">;</span>
-    <span class="k">case</span> <span class="nc">AuthenticationCleartextPassword</span> <span class="nl">ignored:</span>
-        <span class="n">handleAuthenticationCleartextPassword</span><span class="o">();</span>
-        <span class="k">break</span><span class="o">;</span>
-    <span class="k">case</span> <span class="nc">ParameterStatus</span> <span class="nl">x:</span>
-        <span class="n">handleParameterStatus</span><span class="o">(</span><span class="n">x</span><span class="o">);</span>
-        <span class="k">break</span><span class="o">;</span>
-    <span class="k">default</span><span class="o">:</span>
-        <span class="k">throw</span> <span class="k">new</span> <span class="nf">SomeException</span><span class="o">(</span><span class="s">"no branch"</span><span class="o">);</span>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BEGIN
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE
+insert into test2 (name) values ($1) returning *
+  $1 = 'Snip'
+insert into test2 (name) values ($1) returning *
+  $1 = 'Snap'
+COMMIT
 </code></pre></div></div>
 
-<p>Когда-то давно это делалось паттерном Visitor (Посетитель). От одного упоминания
-на зубах скрипит песок. А теперь это несколько строчек. Современной Джаве нужно
-все меньше паттернов, потому что они нативо поддерживаются языком. Это
-происходит медленно, в год по чайной ложке, но в данном случае медлительность
-значит неотвратимость.</p>
+<p>The <code class="language-plaintext highlighter-rouge">:isolation</code> parameter might be one of the following:</p>
 
-<p>В 21 Джаве завезли виртуальные треды. С ними можно писать блокирующий код, а JDK
-сама определит, когда тред можно остановить и возобновить. Конечно, нужно знать
-детали процесса. <a href="/en/virtuoso/">Недавно я погонял</a> виртуальные треды из Кложи,
-и прям очень приятно.</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">:read-uncommitted</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:read-committed</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:repeatable-read</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:serializable</code></li>
+</ul>
 
-<p>Хочется отметить Джавный тулинг. Идея Community Edition очень хороша. Все
-подхватывает, безошибочно подсказывает варианты в выпадашках. В Кложе такого нет
-и никогда не будет.</p>
+<p>To know more about transaction isolation, refer to the official [Postgres
+documentation][transaction-iso].</p>
 
-<p>Да, в Джаве нет репла, но вот смотрите: я написал класс Main с запускалкой
-кода. Жму зеленую стрелку — все выполнилось. Если что-то упало, я ставлю дебаг
-на строку и жму кнопку с жуком. Исполнение прерывается на отметке, вижу
-локальное состояние, правлю код, запускаю. Прекрасно.</p>
+<p>When <code class="language-plaintext highlighter-rouge">read-only</code> is true, any mutable query will trigger an error response from
+Postgres:</p>
 
-<p>В Кложе, наоборот, нет встроенного отладчика вообще. Есть отладчик в
-emacs-cider, но он странный и работает через раз. Для себя я написал <a href="https://github.com/igrishaev/bogus">отладчик
-bogus</a>, и он спасал меня раз двести, не меньше. Но моя поделка ничего не
-решает — ей пользуются три анонимуса, а остальные дебажат принтами или через
-tap.</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:read-only</span><span class="w"> </span><span class="n">true</span><span class="p">}]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">TX</span><span class="w"> </span><span class="p">[</span><span class="s">"delete from test2"</span><span class="p">]))</span><span class="w">
 
-<p>Конечно, начинать проект на Джаве 21 — это утопия. Куда бы вы не пошли, вас
-будет ждать легаси, которому, дай бог, обновиться бы до Джавы 17. Там будут
-паттерны, частично инициированные POJO и прочие прелести. Но хобби на свежей
-Джаве — почему нет?</p>
+</span><span class="c1">;; Execution error (PGErrorResponse) at org.pg.Accum/maybeThrowError (Accum.java:207).</span><span class="w">
+</span><span class="c1">;; Server error response: {severity=ERROR, message=cannot execute DELETE in a read-only transaction, verbosity=ERROR}</span><span class="w">
+</span></code></pre></div></div>
 
-<p>Джава развивается так быстро, что не успеваешь следить. В нее вливают горы
-денег, а работают над ней одни из умнейших людей мира. Это
-чувствуется. Например, в случае с виртуальными тредами пришлось пройти по всей
-SDK и поправить все блокирующие вызовы. Колоссальная работа! Все, чтобы
-программист поменял <code class="language-plaintext highlighter-rouge">FixedPoolExecutor</code> на <code class="language-plaintext highlighter-rouge">VirtualThreadExecutor</code>, и вжух —
-полетело.</p>
+<p>When <code class="language-plaintext highlighter-rouge">:rollback-only</code> is true, the transaction gets rolled back even there was
+no an exception. This is useful for tests and experiments:</p>
 
-<p>Не все принимают эту данность. Я знаю человека, который уверен, что Джава — это
-собственность Оракла (хорошо хоть не Sun), за нее нужно платить, она тормозная и
-ест много памяти. При этом на Джаве он писал 15 лет назад. Уютный мирок
-заблуждений приятней, чем реальность.</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:rollback-only</span><span class="w"> </span><span class="n">true</span><span class="p">}]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">TX</span><span class="w"> </span><span class="p">[</span><span class="s">"delete from test2"</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
 
-<p>Сказанное не значит, что я записался в джависты. Просто у Джавы можно многому
-поучиться в плане развития. Взять на заметку.</p>
+<p>The logs:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>statement: BEGIN
+execute s1/p2: delete from test2
+statement: ROLLBACK
+</code></pre></div></div>
+
+<p>The table still has its data:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">[</span><span class="s">"select * from test2"</span><span class="p">])</span><span class="w">
+
+</span><span class="c1">;; [{:name "Ivan", :id 1} ...]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The function <code class="language-plaintext highlighter-rouge">active-tx?</code> helps to determine if you’re in the middle of a
+transaction:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/active-tx?</span><span class="w"> </span><span class="n">conn</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">conn</span><span class="p">]</span><span class="w">
+      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">res2</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/active-tx?</span><span class="w"> </span><span class="n">TX</span><span class="p">)]</span><span class="w">
+        </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))))</span><span class="w">
+
+</span><span class="c1">;; [false true]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It returns <code class="language-plaintext highlighter-rouge">true</code> for transactions tha are in the error state as well.</p>
+
+<h3 id="keys-and-namespaces">Keys and Namespaces</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">pg.jdbc</code> wrapper tries to mimic Next.JDBC and thus uses <code class="language-plaintext highlighter-rouge">kebab-case-keys</code>
+when building maps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="s">"select 42 as the_answer"</span><span class="p">]))</span><span class="w">
+
+</span><span class="c1">;; {:the-answer 42}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To change that behaviour and use <code class="language-plaintext highlighter-rouge">snake_case_keys</code>, pass the <code class="language-plaintext highlighter-rouge">{:kebab-keys?
+false}</code> option map:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                     </span><span class="p">[</span><span class="s">"select 42 as the_answer"</span><span class="p">]</span><span class="w">
+                     </span><span class="p">{</span><span class="no">:kebab-keys?</span><span class="w"> </span><span class="n">false</span><span class="p">}))</span><span class="w">
+
+</span><span class="c1">;; {:the_answer 42}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>By default, Next.JDBC returns full-qualified keys where namespaces are table
+names, for example <code class="language-plaintext highlighter-rouge">:user/profile-id</code> or <code class="language-plaintext highlighter-rouge">:order/created-at</code>. At the moment,
+namespaces are not supported by the wrapper.</p>
+
+<p>For more information, please refer to the official <a href="https://github.com/igrishaev/pg2/blob/master/README.md">README file</a>.</p>
 
                 
             </div>
@@ -459,15 +424,212 @@ SDK и поправить все блокирующие вызовы. Колос
         <li>
 
             <h2>
-                <a class="post-link" href="/video-covers/">Обложки</a>
+                <a class="post-link" href="/en/pg2-bench-3">PG2 release 0.1.2: more performance, benchmarks, part 3</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2023-12-04T00:00:00+00:00">
-        Dec 4, 2023
+          datetime="2024-02-06T00:00:00+00:00">
+        Feb 6, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-pg2-bench-3">
+  <li><a href="#introduction" id="toc-item-pg2-bench-3-introduction">Introduction</a></li>
+  <li><a href="#test1-reading-a-single-column-random-query" id="toc-item-pg2-bench-3-test1-reading-a-single-column-random-query">Test1. Reading a single-column random query</a></li>
+  <li><a href="#test2-reading-a-multi-column-complex-random-query" id="toc-item-pg2-bench-3-test2-reading-a-multi-column-complex-random-query">Test2. Reading a multi-column, complex random query</a></li>
+  <li><a href="#test3-reading-random-json" id="toc-item-pg2-bench-3-test3-reading-random-json">Test3. Reading random JSON</a></li>
+  <li><a href="#test-4-connection-pools" id="toc-item-pg2-bench-3-test-4-connection-pools">Test 4. Connection pools</a></li>
+  <li><a href="#test-5-forcibly-evaluate-each-row-after-reading" id="toc-item-pg2-bench-3-test-5-forcibly-evaluate-each-row-after-reading">Test 5. Forcibly evaluate each row after reading</a></li>
+  <li><a href="#test-6-benchmarking-the-http-server-with-various--c-values" id="toc-item-pg2-bench-3-test-6-benchmarking-the-http-server-with-various--c-values">Test 6. Benchmarking the HTTP server with various -c values</a>    <ul>
+      <li><a href="#1-concurrent-request" id="toc-item-pg2-bench-3-1-concurrent-request">1 concurrent request</a></li>
+      <li><a href="#16-concurrent-requests" id="toc-item-pg2-bench-3-16-concurrent-requests">16 concurrent requests</a></li>
+      <li><a href="#64-concurrent-requests" id="toc-item-pg2-bench-3-64-concurrent-requests">64 concurrent requests</a></li>
+    </ul>
+  </li>
+  <li><a href="#summary" id="toc-item-pg2-bench-3-summary">Summary</a></li>
+</ul>
+
+<h2 id="introduction">Introduction</h2>
+
+<p>The <a href="https://github.com/igrishaev/pg2">PG2 library</a> version 0.1.2 is out. One of its features is a
+significant performance boost when processing SELECT queries. The more fields
+and rows you have in a result, the faster is the processing. Here is a chart
+that measures a query with a single column:</p>
+
+<p><img src="/assets/static/aws/pg2-bench-3/01.svg" class="svg-chart" /></p>
+
+<p>No difference between the previous release of PG and the new one. But with nine
+fields, the average execution time is less now:</p>
+
+<p><img src="/assets/static/aws/pg2-bench-3/02.svg" class="svg-chart" /></p>
+
+<p>Briefly, PG2 0.1.2 allows you to fetch the data 7-8 times faster than Next.JDBC
+does. But before we proceed with other charts and numbers, let me explain how
+the new processing algorithm works.</p>
+
+
+                    <p><a href="/en/pg2-bench-3">Read more &rarr;</a></p>
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/gzip/">Gzip</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-01-26T00:00:00+00:00">
+        Jan 26, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/gzip/" rel="tag">gzip</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Коллеги, используйте gzip! Это простой способ уменьшить трафик в разы, если не
+на порядок. Буквально двумя строчками можно превратить гигабайты CSV в 200-300
+мегабайтов. Разве не чудо? И делается это парой строк.</p>
+
+<p>Теперь подробней. Gzip — старый алгоритм потокового сжатия. Ключевое слово
+“потоковый”. Это значит, алгоритму не нужен файл целиком; он читает окно байтов
+и выдает сжатое окно. За счет этого можно пережать любой поток, в том числе
+бесконечный.</p>
+
+<p>В джаве потоки байтов используют часто. В ней легко втиснуть <code class="language-plaintext highlighter-rouge">GzipInputStream</code>
+или <code class="language-plaintext highlighter-rouge">GzipOutputStream</code>, чтобы закодировать или декодировать поток. Например,
+если источник сжат Gzip, то обернем его так:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"some.file.gzip"</span><span class="w">
+    </span><span class="p">(</span><span class="nf">io/file</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">io/input-stream</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">GzipInputStream.</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>При чтении получим нормальный текст. А чтобы закодировать поток, делаем иначе:
+навесим на выходной поток <code class="language-plaintext highlighter-rouge">GzipOutputStream</code> и колбасим в него. Только в конце
+надо вызвать <code class="language-plaintext highlighter-rouge">.finish</code>, чтобы добить незавершенное окно.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"myfile.out.gzip"</span><span class="w">
+              </span><span class="n">io/file</span><span class="w">
+              </span><span class="n">io/input-stream</span><span class="p">)</span><span class="w">
+      </span><span class="n">gzip</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">GzipOutputStream</span><span class="w"> </span><span class="n">out</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">while</span><span class="w"> </span><span class="n">...</span><span class="w">
+    </span><span class="p">(</span><span class="nf">.write</span><span class="w"> </span><span class="n">gzip</span><span class="w"> </span><span class="n">&lt;bytes&gt;</span><span class="p">))</span><span class="w">
+  </span><span class="p">(</span><span class="nf">.finish</span><span class="w"> </span><span class="n">gzip</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Удивляет, что при всей банальности gzip используют мало. А ведь он отлично
+подходит для текстовых данных: HTML, JSON, CSS, JS, CSV. В текущем проекте
+сервисы гоняют гигабайты CSV и JSON, и хоть кто-нибудь подумал о сжатии…</p>
+
+<p>Простой эксперимент: несжатый CSV — 146 мегабайтов, сжатый — 26. Почти в шесть
+раз. Даже если закодировать результат в base64, это даст +30% от 26 мегабайтов,
+то есть всего 35. Выгода все равно 4 раза. В том же Nginx сжатие gzip включается
+одной строкой в конфиге.</p>
+
+<p>Еще больше мою веру укрепил крит на проде. Один из сервисов выплюнул 6
+мегабайтов JSON, что не помещается в квоту AWS Lambda. Пришлось в спешке
+прикручивать сжатие, чтобы сообщенька пролезла.</p>
+
+<p>Соответственно, бесят HTTP-клиенты, которые ничего не знают о Gzip. Работа с
+ними превращается в ад: сам проверь заголовки, сам закодируй-раскодируй… и в
+проекте используется именно такой! Он читает ответ как строку, не проверяя
+Content-Encoding, и если там gzip, получается чешуя. Авторам — большой ай-ай за
+игнор веб-стандартов.</p>
+
+<p>Чем раньше вы возьмете gzip в проект, тем лучше. Потом все равно придется, но
+будет больно.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/women-stories/">Женские истории</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-01-25T00:00:00+00:00">
+        Jan 25, 2024
+    </time>
+
+    <a href="/tag/women/" rel="tag">women</a>, <a href="/tag/sex/" rel="tag">sex</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Когда читаю женские истории — Твиттер, блоги, журналистику, — вижу один и тот же
+паттерн:</p>
+
+<ul>
+  <li>он мне не нравился, но я осталась на свидании;</li>
+  <li>он мне не нравился, но мы целовались;</li>
+  <li>он мне не нравился, но мы поехали к нему;</li>
+  <li>он мне не нравился, но у нас был секс.</li>
+</ul>
+
+<p>То есть он всю дорогу не нравился, но программа шла по плану — от кафе до
+постели.</p>
+
+<p>Тут два момента: либо женщина и правда не знает, что если человек не нравится,
+то и секс с ним будет плохим. Надеюсь, теперь она это знает.</p>
+
+<p>Либо женщина все знает, но понимает, что в данный момент на мужчину лучше она
+рассчитывать не может. Поэтому все, что случилось, выставляется как одолжение с
+ее стороны.</p>
+
+<p>Чем раньше женщина прервет эту цепочку, тем лучше.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/pseudo-resp/">Изображая ответственность</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-01-25T00:00:00+00:00">
+        Jan 25, 2024
     </time>
 
     <a href="/tag/life/" rel="tag">life</a>
@@ -477,15 +639,81 @@ SDK и поправить все блокирующие вызовы. Колос
 
             <div class="entry">
                 
-                    <p>Я не могу смотреть на обложки, где автор кривляется. Например, делает грустное
-или злое лицо. Кривит рот. Или в заголовке указано “Choosing X vs Y”, и автор
-подпирает подбородок и смотрит вверх — типа задумался.</p>
+                    <p>Я уже писал про известный шаблон в кино. Ученый делает бомбу годами, хотя даже
+грубые расчеты показывают, что она убьет тысячи людей. Ученый курит сигары, не
+спит, в голове красочные приходы.</p>
 
-<p>Помните Крошку Енота? Не строй рожи, а улыбнись! И оно к тебе вернется.</p>
+<p>И вот бомба готова, ее забирают вояки, чтобы взорвать над городом. Гибнет двести
+тысяч человек. ВНЕЗАПНО ученый чувствует ответственность. Пока не умерли эти
+двести тысяч, кто сгорев, кто разлагаясь от лучевой болезни, ответственности не
+было. А тут появилась. Пропали сон и аппетит, начинаются походы в высшие
+инстанции: господин Президент, я чувствую ответственность.</p>
 
-<p>Не буду приводить примеры, чтобы не обидеть кого-нибудь. Но блин, какая же это
-тупизна. Хотя и здесь можно найти пользу: если автор кривляется, смотреть видео
-не нужно.</p>
+<p>Словом, бред. Лети в Японию и расскажи погибшим про свою ответственность.</p>
+
+<p>Почему это нормально для фильма, ясно: историю всегда натягивают на
+драму. Неважно, про что фильм: бомба, война, политика — на первом месте стоит
+личная драма, иначе зрители не пойдут. Кроме того, зрителя подводит время. Два
+года создания бомбы сжаты до 40 минут, и для нас с вами она появляется внезапно:
+еще пять минут назад не было, а сегодня уже на стенде.</p>
+
+<p>К фильмам у меня нет претензий за этот штамп. Сняли и ладно. Но раздражает,
+когда псевдо-ответственность появляется в реальной жизни.</p>
+
+<p>Скажем, один из разработчиков Постгреса разразился плачем: жаль, что лицензия не
+позволяет запретить Постгрес в России. Ведь наверняка их армия применяет нашу
+базу. Срач вышел знатный, и даже пришел основатель проекта, чтобы унять
+активиста.</p>
+
+<p>Я не имею отношения к российской армии, но уверен: там используется и Постгрес,
+и Мария, и Питон, и Перл, и Плюсы и тысячи протоколов и стеков. Ровно как и в
+другой армии мира. Но если ты хочешь запретить, то где точность? Программист
+должен мыслить точно. Запрещай конкретно армии России. Почему под запрет
+попадает детский сад, где сервер 1С крутится на Постгресе?</p>
+
+<p>Далее, как быть с евреями, которые еще месяц назад обрушали дома с палестинскими
+детьми? Как-то не очень гуманно. Будем отзывать лицензии у всех фирм Израиля?</p>
+
+<p>Когда Китай скажет “Тайвань наш” и начнет свою “спецоперацию”, будем отзывать
+Постгрес у Китая? А потом возвращать по итогам переговоров?</p>
+
+<p>Еще есть плохие парни вроде торговцев оружием, наркотиками и CP. Свои дела они
+тоже хранят в базах данных, запрещай ты им или нет.</p>
+
+<p>Если думать об этом системно, задача становится слишком сложной. Кто-то должен
+трекать новости и решать, у кого сегодня мы отзываем, а кому возвращаем. Кто
+будет этим заниматься? Разработчик? Останется ли у него время на разработку
+после этих вопросов? Если поручить это секретарю, где гарантия, что он правильно
+истолкует повестку дня?</p>
+
+<p>Все потому, что с разработчиком случился казус из заголовка. ВНЕЗАПНО он
+почувствовал ответственность. Захотелось решать, кому можно пользоваться базой,
+а кому нельзя.</p>
+
+<p>Похожая история была с другим разработчиком, как ни странно, тоже связанным с
+Постгресом. У него на сайте был хороший парсер EXPLAIN ANALYSE, но затем автор
+закрыл доступ из России и Беларуси. Его спросили: зачем? Он накатал телегу про
+танки в Чехословакии. Так запрети доступ танковым войскам РФ. Зачем всем
+запрещаешь? Какую проблему ты пытаешься решить?</p>
+
+<p>Казалось бы, программисты — люди с точным мышлением, а в жизни все наоборот: в
+голове кисель.</p>
+
+<p>Для меня выход из ситуации простой: трусы или крестик. Либо ты выходишь из
+разработки со словами: хорош, я в этом не участвую. Либо пишешь качественный
+код, понимая, что мир огромен, и у тебя нет возможности контролировать, кто и
+как его использует. Оба варианта честные и снимают все вопросы.</p>
+
+<p>Вариант с псевдо-ответственностью лжив от начала до конца. Он ситуативен и
+основан на реакции, в нем нет идеи и своей повестки. Это желание попасть в
+тренд: Гугл-Эпл запрещают, а я чем хуже?</p>
+
+<p>Если вы хороший разработчик, прошу вас, не становитесь плохим
+Оппенгеймером. Косплей на великого человека будет крайне неудачным.</p>
+
+<p>Поэтому: не ищите ответственности там, где ее нет. Просто делайте то, что вы
+делаете хорошо. Соблюдать этот принцип несмотря ни на что — уже большая
+ответственность.</p>
 
                 
             </div>
@@ -495,202 +723,322 @@ SDK и поправить все блокирующие вызовы. Колос
         <li>
 
             <h2>
-                <a class="post-link" href="/on-headers/">О заголовках</a>
+                <a class="post-link" href="/nesting-01/">Вложенность</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2023-12-04T00:00:00+00:00">
-        Dec 4, 2023
+          datetime="2024-01-25T00:00:00+00:00">
+        Jan 25, 2024
     </time>
 
-    <a href="/tag/text/" rel="tag">text</a>, <a href="/tag/headers/" rel="tag">headers</a>
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/nesting/" rel="tag">nesting</a>
 
 </div>
 
 
             <div class="entry">
                 
-                    <p>Небольшая заметка о том, как писать заголовки. Главное правило — заголовок не
-должен делать предположений о читателе или диктовать ему шаги. Читатель —
-абсолютно нейтральная сторона. Указывать ему — все равно что ломать четвертую
-стену, то есть фу.</p>
+                    <p>Об этом никто не пишет, а ведь проблема серьезная. Я говорю о лишней вложенности
+данных. Недавний пример:</p>
 
-<p>Примеры плохих заголовков:</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:manager</span><span class="w">
+ </span><span class="p">{</span><span class="no">:risk</span><span class="w">
+  </span><span class="p">{</span><span class="no">:time</span><span class="w"> </span><span class="s">"10:30"</span><span class="w">
+   </span><span class="no">:task-id</span><span class="w"> </span><span class="mi">100400</span><span class="p">}}</span><span class="w">
+ </span><span class="no">:accounter</span><span class="w">
+ </span><span class="p">{</span><span class="no">:business</span><span class="w">
+  </span><span class="p">{</span><span class="no">:time</span><span class="w"> </span><span class="s">"12:35"</span><span class="w">
+   </span><span class="no">:task-id</span><span class="w"> </span><span class="mi">100500</span><span class="p">}}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Это вложенная мапа: на первом уровне роль менеджера, на втором тип апрува, на
+третьем — детали апрува: дата и ссылка на задачу. Спрашивается, зачем было
+группировать события по роли и типу? Какой смысл? Почему не записать два
+события:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[{</span><span class="no">:role</span><span class="w"> </span><span class="no">:manager</span><span class="w">
+  </span><span class="no">:type</span><span class="w"> </span><span class="no">:risk</span><span class="w">
+  </span><span class="no">:time</span><span class="w"> </span><span class="s">"10:30"</span><span class="w">
+  </span><span class="no">:task-id</span><span class="w"> </span><span class="mi">100400</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:role</span><span class="w"> </span><span class="no">:accounter</span><span class="w">
+  </span><span class="no">:type</span><span class="w"> </span><span class="no">:business</span><span class="w">
+  </span><span class="no">:time</span><span class="w"> </span><span class="s">"12:35"</span><span class="w">
+  </span><span class="no">:task-id</span><span class="w"> </span><span class="mi">100500</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Плоско, понятно, нет вложенности. Кому надо, сгруппируют и по роли, и по дате, и
+бог знает как еще. А когда сгруппировано до нас, сперва нужно распутать, а потом
+группировать как надо.</p>
+
+<p>Второй пример: есть мапа с ключом children, в которой вектор мап. В каждой мапе
+— айдишка и имя:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:children</span><span class="w">
+ </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test1"</span><span class="p">}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test3"</span><span class="p">}]}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Нужно построить индекс <code class="language-plaintext highlighter-rouge">id =&gt; name</code>, чтобы потом по нему искать. Я быстренько
+прошел по children и собрал словарь:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="mi">1</span><span class="w"> </span><span class="s">"test2"</span><span class="w">
+ </span><span class="mi">2</span><span class="w"> </span><span class="s">"test2"</span><span class="w">
+ </span><span class="mi">3</span><span class="w"> </span><span class="s">"test3"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>На проде — сплошные промахи мимо индекса. Что такое? Оказалось, не до конца
+прокрутил файлик. У некоторых children есть свои children, то есть структура
+такая:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:children</span><span class="w">
+ </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test1"</span><span class="p">}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test3"</span><span class="p">}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">4</span><span class="w">
+   </span><span class="no">:name</span><span class="w"> </span><span class="s">"test4"</span><span class="w">
+   </span><span class="no">:children</span><span class="w">
+   </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">5</span><span class="w">
+     </span><span class="no">:name</span><span class="w"> </span><span class="s">"test5"</span><span class="p">}</span><span class="w">
+    </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">6</span><span class="w">
+     </span><span class="no">:name</span><span class="w"> </span><span class="s">"test6"</span><span class="w">
+     </span><span class="no">:children</span><span class="w">
+     </span><span class="p">[</span><span class="n">...</span><span class="p">]}]}]}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>При этом ограничения в глубину нет: может быть два уровня, может двадцать.</p>
+
+<p>Вот опять: кто этот гений, который сгруппировал? Как ты будешь это обходить?
+Ладно у меня Кложа, я написал <code class="language-plaintext highlighter-rouge">(tree-seq :children :children data)</code> и готово. А
+на каком-нибудь Питоне или Джаве голову сломаешь – тут дерево с обходом, нужен
+стек или очередь. Алгоритмы!</p>
+
+<p>Сделай ты плоский список и добавь parent_id. Кому надо, построит иерархию:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test1"</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test3"</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test4"</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test5"</span><span class="w"> </span><span class="no">:parent-id</span><span class="w"> </span><span class="mi">4</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">6</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test6"</span><span class="w"> </span><span class="no">:parent-id</span><span class="w"> </span><span class="mi">5</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>И такое постоянно. Беру любой JSON и вижу, как его можно упростить, убрав лишнюю
+вложенность. Вдвойне обидно, что на эту вложенность кто-то тратил время, а она
+не нужна!</p>
+
+<p>Особенно я не люблю, когда вкладывают равнозначные сущности. Например, у нас два
+автора и у каждого две книги. JSON выглядит так:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+  </span><span class="no">:name</span><span class="w"> </span><span class="s">"John Smith"</span><span class="w">
+  </span><span class="no">:books</span><span class="w">
+  </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">20</span><span class="w">
+    </span><span class="no">:title</span><span class="w"> </span><span class="s">"The Best Novels"</span><span class="p">}</span><span class="w">
+   </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">30</span><span class="w">
+    </span><span class="no">:title</span><span class="w"> </span><span class="s">"Poems"</span><span class="p">}]}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w">
+  </span><span class="no">:name</span><span class="w"> </span><span class="s">"Sam Doe"</span><span class="w">
+  </span><span class="no">:books</span><span class="w">
+  </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">40</span><span class="w">
+    </span><span class="no">:title</span><span class="w"> </span><span class="s">"Some Story"</span><span class="p">}</span><span class="w">
+   </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">50</span><span class="w">
+    </span><span class="no">:title</span><span class="w"> </span><span class="s">"Achieves"</span><span class="p">}]}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Что если нужны не книги по авторам, а просто все книги? Опять ходи собирай.</p>
+
+<p>Я придумал способ как бороться такими случаями. О нем — в следующий раз.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/lotus-pose/">Поза лотоса</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-01-25T00:00:00+00:00">
+        Jan 25, 2024
+    </time>
+
+    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/idiots/" rel="tag">idiots</a>, <a href="/tag/designers/" rel="tag">designers</a>, <a href="/tag/lotus/" rel="tag">lotus</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><img src="/assets/static/aws/lotus/1.jpeg" /></p>
+
+<p>Когда я вижу программиста в позе лотоса, в голове играет сюжет.</p>
+
+<p>К автору картинки приезжает особая команда. Обученные люди сажают автора в позу
+лотоса и дают ноутбук. Его заставляют работать в этой позе час. За попытку
+встать, размяться, подвигать шеей — избиение ноутбуком по голове, а отсчет
+времени сбрасывается.</p>
+
+<p>Глядишь, так дизайнеры отучатся рисовать программиста в позе лотоса!</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/boy-heron/">Мальчик и птица</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-01-25T00:00:00+00:00">
+        Jan 25, 2024
+    </time>
+
+    <a href="/tag/movies/" rel="tag">movies</a>, <a href="/tag/anime/" rel="tag">anime</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Я знал, что этого делать не следует, но сделал — сходил на мульт “Мальчик и
+птица”. Будет много скепсиса и спойлеров, я предупреждал.</p>
+
+<p>Писать о мультике тяжело. Хаяо Миядзаки — гений и наше все, поэтому любая
+критика в его адрес — что карикатуры на Мухаммеда: порвут на части. Я не буду
+критиковать мастера, а только опишу ощущения от просмотра.</p>
+
+<p>Начнем с того, что фильму не повезло с названием. В оригинале он называется “Как
+поживаете?” — это заголовок книги, по которой он снят. Однако связи между
+сюжетом и названием нет. Лишь один раз герой находит книгу с таким заголовком и
+благополучно забывает о ней. Кто и как поживает — не ясно.</p>
+
+<p><img src="/assets/static/aws/heron/1.jpg" /></p>
+
+<p>В американском прокате мульт назвали “The boy and the heron” — мальчик и
+цапля. Это правильно, потому что мальчика и (псевдо)цаплю мы видим большую часть
+фильма. И хотя у слова “heron” однозначный перевод — цапля, Карл!, — в русском
+прокате она стала птицей. Эта претензия не к Миядзаки, а к переводчикам.</p>
+
+<p>В целом, мульт страдает от тех же проблем, что и <a href="/avatar2/">второй Аватар</a>. При
+запредельном качестве картинки в нем никакой сюжет, все скомкано и
+ситуативно. Зрителя отвлекает миллион незначащих деталей. Досадно, что бюджет
+спустили на визуальную красоту, попустившись смыслом.</p>
+
+<p><img src="/assets/static/aws/heron/2.jpg" /></p>
+
+<p>Мульт идет 2 часа 10 минут — не так уж и мало. Первые 40 минут — это топтание на
+тему “не ходи в запретное место”. Понятно, что когда ребенку говорят не ходить
+куда-то, он пойдет, вопрос в том, как скоро. Но с этим большая затяжка.</p>
+
+<p>Когда герой входит в запретное место, начинается фантасмагория. Каждые десять
+минут он проваливается в новый мир со своими причудами. Мелькают локации,
+существа, загадочные сцены. Все это красиво, но требует ответов: кто это,
+откуда, зачем и что если? Режиссер не считает нужным все это объяснять; он
+забрасывает героя в новую локацию, где другие существа, враги и друзья. Словно
+летишь на карусели и видишь только мелькание.</p>
+
+<p><img src="/assets/static/aws/heron/3.jpg" /></p>
+
+<p>Иногда режиссер дает отдохнуть: показывает пять минут, как девушка режет хлеб,
+мажет маслом и ест. Ме-е-едленно и основа-а-ательно. Без музыки, только звон
+посуды и скрип пола. Красиво, но опять же — назрел миллион вопросов, может,
+объясните хоть что-нибудь? А бутерброд потерпит.</p>
+
+<p>Если вы думаете, что я цепляюсь зря, то вот малая толика вопросов:</p>
+
+<ul>
+  <li>Зачем герой рассек голову камнем?</li>
+  <li>Зачем мачеха пошла в башню?</li>
+  <li>Почему нельзя входить в родильную комнату?</li>
+  <li>Почему мачеха гонит героя прочь?</li>
+  <li>Какую роль играл нерожденный ребенок? Его хотели забрать? Кто и зачем?</li>
+  <li>Какую цель преследовал король попугаев?</li>
+  <li>Что за камни, из которых колдун строил башню? Почему они злые?</li>
+  <li>Что за хранитель гробницы? Почему его не показали?</li>
+  <li>Это все один мир или разные?</li>
+  <li>Если парень в мире мертвых — он умер?</li>
+  <li>Мать парня умерла в больнице или вознеслась на небо, потому что была огненным духом?</li>
+  <li>Что стало в параллельном мире после апокалипсиса?</li>
+  <li>Куда делся дед-колдун? Кто унаследовал его?</li>
+</ul>
+
+<p>Этих вопросов я могу написать пару экранов, но не вижу смысла. Спрашиваю вас:
+может быть, из всей этой каши надо было выбрать что-то одно и хорошенько его
+проработать? А не вываливать на голову, как тарелку с лапшой.</p>
+
+<p><img src="/assets/static/aws/heron/4.jpg" /></p>
+
+<p>Как я уже говорил, сюжету не хватает целостности: непонятно, какую проблему
+решает герой. Он отправился в башню, чтобы спасти мачеху, однако:</p>
 
 <ul>
   <li>
-    <p><strong>10 фактов о JavaScript, которые должен знать каждый разработчик.</strong> Ничего я тебе
-не должен, отвали.</p>
+    <p>на чердаке он находит послание умершей матери — книгу “Как поживаете?”. Что
+там написано и какую роль играет находка — не ясно.</p>
   </li>
   <li>
-    <p><strong>20 фактов о Python, которые вы не знали.</strong> Я на нем 8 лет писал, все я знаю.</p>
+    <p>В мире мертвых живут забавные пузыри, которые улетают и становятся
+людьми. Этих пузырей жрут пеликаны. Показана сцена, где они слопали почти все
+пузыри. Как это относится к мачехе? Мы ее спасаем или нерожденных людей?</p>
   </li>
   <li>
-    <p><strong>Почему ваш код — отстой.</strong> Это у тебя отстой, не переноси с больной головы
-не здоровую.</p>
+    <p>В мире мертвых живет женщина-рыболов, при этом она вовсе не мертвая. Что она
+там делает и зачем помогает герою — непонятно.</p>
   </li>
   <li>
-    <p><strong>Посмотрите это видео прямо сейчас или добавьте в закладки.</strong> Спасибо, сам
-разберусь, что и когда смотреть и где хранить.</p>
+    <p>В другом мире живет горящая девочка, которую приносят в жертву главному
+колдуну. Намекается, что девочка — сестра мачехи и мать героя в мире людей. Как
+все это связано, можно только гадать.</p>
   </li>
 </ul>
 
-<p>Удивляет, что вроде бы нормальные ребята нет-нет да озаглавят материал в таком
-духе. Один кложурист написал статью “Why your REPL experience sucks”. Я
-посмотрел код, а он там жестко накосячил. Интересно выходит: косячит он, а
-experience sucks мой.</p>
+<p>В сюжете напутаны сложные отношения: смущение подростка перед молодой мачехой,
+отстранение от отца, наставничество колдуна. Все это эпизодически, ситуативно,
+без малейшей проработки.</p>
 
-<p>Или видел заголовок Медузы: вышло какое-то видео, посмотрите сейчас или добавьте
-в закладки. Может, еще выслать письменный отчет о просмотре? И переслать ссылку
-десяти знакомым?</p>
+<p>Пожалуй, главное: нет морали. Совершенно не ясно, от чего предостерегает
+режиссер. Как жить, чтобы это не повторилось? Или наоборот: все, что случилось —
+хорошо? Где ориентиры?</p>
 
-<p>Нельзя тыкать читателю, что он знает и что нет, что и когда смотреть. Читатель
-сам прекрасно разберется.</p>
+<p><img src="/assets/static/aws/heron/5.jpg" /></p>
 
-                
-            </div>
+<p>Изумила пара сцен:</p>
 
-        </li>
-        
-        <li>
+<ul>
+  <li>
+    <p>отец дает беременной жене чемодан со словами “осторожно, он тяжелый”. После
+чего смотрит, как она тащит его в коляску. Помочь беременной жене? Не слышали.</p>
+  </li>
+  <li>
+    <p>Парнишка бьет себя камнем по голове, из нее вытекает ЛИТР крови. Парень
+спокойно идет домой. Хотел бы я это видеть. Нельзя было как-то реалистичней? Как
+писал выше, тема самонаказания не раскрыта.</p>
+  </li>
+</ul>
 
-            <h2>
-                <a class="post-link" href="/dvd-quests/">DVD-квесты</a>
-            </h2>
+<p>Словом, если вы смотрели другие мульты Миядзаки, сходите на “Мальчика и птицу”
+из чувства долга: все-таки прощальный мульт. Недочеты можно списать на фирменный
+стиль автора: кроме него таких мультов (почти) никто не делает. В отрыве от
+остального творчества Миядзаки мульт затянут и скучноват. Очень на любителя.</p>
 
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-12-04T00:00:00+00:00">
-        Dec 4, 2023
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/dvd/" rel="tag">dvd</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Накатило воспоминание, и хочу им поделиться с вами.</p>
-
-<p>В моем детстве не было интернета, и контент доставали на DVD. Это были фильмы,
-софт, музыка любимых групп. И надо сказать, кроме содержимого диска я всегда
-интересовался его оформлением.</p>
-
-<p>На DVD мог быть не только фильм, но и интерактивное меню. Например, при
-включении диска показывалась менюшка, где можно было выбрать просмотр сначала,
-конкретный эпизод или фанатский контент: короткометражки, бекстейдж и прочее.</p>
-
-<p>Технически менюшка могла быть как картинкой, так и видео. Классно смотрелись
-менюхи, где фоном шло видео, а кнопки тоже были анимированные, например,
-короткие сцены к эпизодам. Кнопки работали как горячие области: на них можно
-было кликать. По клику человек улетал на другую менюху или видео.</p>
-
-<p>Одно время я работал на <a href="/altes/">телеканале Альтес</a>, и там мне это очень
-пригодилось. Мы частенько записывали клипы местных артистов на DVD, и до меня
-оформления дисков как такового не было. В программе для записи выбирали менюху
-по умолчанию, и все. А я заморочился и сделал менюхи в стиле каждого
-артиста. Это был фурор, и подобная вещь стала стандартом: нам, пожалуйста, с
-менюшкой, как у тех ребят.</p>
-
-<p>Так вот, у меня было много дивидишек, красивых и не очень, но один я никогда не
-забуду. В то время я увлекался группой Korn — я и сейчас их люблю, но меньше — и
-попался мне их диск. Я думал, что на нем обычный сборник клипов, но то, что было
-внутри, превзошло все ожидания.</p>
-
-<p>Это был настоящий DVD-квест! Действие в нем происходит от первого лица. Вначале
-беднягу закатывают на каталке в дурдом а-ля Сайлент Хилл. Всюду инвалидные
-коляски, решетки и крючья на потолке. Герой встает и начинает исследовать
-локацию.</p>
-
-<p>На Ютубе нашлись фрагменты этого диска. Ниже — кадр из заставки и ссылка на
-видос:</p>
-
-<p><img src="/assets/static/aws/dvd-quests/1.png" /></p>
-
-<p>https://www.youtube.com/watch?v=KkioRvvyVRw</p>
-
-<p>Каждая локация — это комната с интерактивными предметами. Посмотрев на предмет,
-герой испытывает припадок, и ему показывают видео с группой Korn. В основном это
-бекстейдж, где музыканты обдолбанные в трейлере, видео с репетиций или просто
-балдеж. Во время блужданий по дурдому можно попасть в комнату охраны с кучей
-телевизоров, и по клику на каждый показывается клип. Контент нужно было найти!</p>
-
-<p>Особо хотелось бы рассказать про навигацию между комнатами. Каждая комната была
-не статичной картинкой, а видео. Например, крючья на потолке качались и
-бренчали, проводка искрила, вода текла из пробитых труб. На фоне звучал зловещий
-амбиент. В одной из комнат был псих в рубашке на электрическом стуле. Набор
-штампов, но как все это было оформлено!</p>
-
-<p>Если “потрогать” предмет, например череп на столе или анатомический атлас, герой
-“видел” историю этого предмета: кто его держал до вас, что происходило в комнате
-и так далее.</p>
-
-<p>Навигация между комнатами была связной: если нажать на дверь, включался ролик,
-как герой отворяет ее и попадает в другую локацию. Если нажать на вентиляцию в
-стене, он вставал на цыпочки, чтобы подглядеть, что там твориться. Были приколы
-с пролетом сквозь трубы с червями и мокрицами. Все вместе это давало такой
-эффект присутствия, что не найду слов.</p>
-
-<p>Ну и наконец: там была скрытая локация. Представляете? Секретная комната! На
-DVD! В одном месте была лестница в подвал, а там — дверь с кодовым замком. Замок
-был представлен отдельной менюшкой с кнопками от 1 до 9. Нужно было ввести
-четыре правильных цифры. При ошибке тебя сбрасывали на начало ввода.</p>
-
-<p>По ссылке ниже другая головоломка с этого диска. Видимо, либо их было две, либо
-я что-то путаю.</p>
-
-<p><img src="/assets/static/aws/dvd-quests/2.png" /></p>
-
-<p>https://www.youtube.com/watch?v=ofR1hijB1rw</p>
-
-<p>Вы представляете, как трудно это было сделать? У DVD нет переменных и состояния,
-он может только показывать видео или меню. Поэтому создатели диска сделали пять
-сцен с замком. Первая — когда ничего не введено и одна кнопка ведет вперед, а
-остальные — назад. Вторая — когда правильно введена первая цифра; на ней уже
-другая кнопка ведет вперед, а остальные — на первую сцену. Третья — когда
-введены две цифры; четвертая — когда введены три, и последняя правильная
-открывает дверь.</p>
-
-<p>Чтобы вы оценили масштаб, нарисую граф переходов:</p>
-
-<p><img src="/assets/static/aws/dvd-quests/3.png" /></p>
-
-<p>Видите? Я даже две полных сцены не нарисовал, а линии уже не дают понять, что
-происходит. А там этих сцен было минимум пять.</p>
-
-<p>Код на двери был 19… чего-то там: год образования группы. За дверью находился
-морг с совсем уж трешовым оформлением. На стеллажах лежали трупы музыкантов;
-если их осмотреть, показывали крайне упоротое видео.</p>
-
-<p>Вот какой был дивидишник! Пишу о нем потому, что хочу воздать должное его
-создателям. Как же они заморочились! Надо было найти подходящий подвал,
-разложить реквизит, все отснять, смонтировать, наложить криповые эффекты. Надо
-было продумать карту, маршруты передвижения, какое видео и где разместить. Сцена
-с кодовым замком по сложности была как четверть всего проекта. И сделать все это
-в программе, которые были рассчитаны на пару менюшек! Это просто мое уважение.</p>
-
-<p>Сколько часов я провел, слоняясь по тем подвалам! Это была как будто игра, но и
-не игра — а квест в телевизоре.</p>
-
-<p>И хотя я ни разу не видел подобных дисков, один приятель рассказывал о чем-то
-похожем. У него был официальный DVD с фильмом “Люди в черном”, и там зритель
-оказывался в лаборатории. Можно было либо смотреть фильм, либо исследовать
-локации и заглядывать в предметы, где спрятан фанатский контент.</p>
-
-<p>Пишу это и понимаю, что ничего подобного сегодня быть не может. У нас есть
-стриминговые сервисы и торренты, но ни то, ни другое не предполагает оформления:
-ни меню, ни фанатского контента.</p>
-
-<p>Это ни в коем случае не сожаление о прошлом, а попытка его увековечить. Да, была
-такая прикольная фигня. Да, было клево. Да, да.</p>
-
-<p>И вернемся в сегодня.</p>
+<p>PS: если речь пошла об аниме, в следующем посте расскажу о другом мульте,
+который, напротив, советую посмотреть.</p>
 
                 
             </div>
@@ -700,18 +1048,18 @@ DVD! В одном месте была лестница в подвал, а та
         <li>
 
             <h2>
-                <a class="post-link" href="/en/ddd-lie">Data-Driven Development is a Lie</a>
+                <a class="post-link" href="/en/pg2-bench-2">PG2 benchmarks, part 2</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2023-11-20T00:00:00+00:00">
-        Nov 20, 2023
+          datetime="2024-01-24T00:00:00+00:00">
+        Jan 24, 2024
     </time>
 
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/ddd/" rel="tag">ddd</a>, <a href="/tag/lie/" rel="tag">lie</a>
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
 
 </div>
 
@@ -719,32 +1067,152 @@ DVD! В одном месте была лестница в подвал, а та
             <div class="entry">
                 
                     
-<p><strong>UPD:</strong> there is <a href="https://news.ycombinator.com/item?id=38345843">discussion on Hacker News</a> on that article. Thank you
-Mike for letting me know.</p>
+<h2>
 
-<p>In the Clojure community, people often discuss such things as <a href="https://en.wikipedia.org/wiki/Data-driven_programming">data-driven
-development</a>. It is like you don’t write any code or logic. Instead, you
-declare data structures, primarily maps, and whoosh: there is a kind of Deus ex
-Machina that evaluates these maps and does the stuff.</p>
+    Table of Content
 
-<p>That’s OK when newcomers believe in such things. But I feel nervous when even
-experienced programmers tell fairy tales about the miracle that DDD brings to
-the scene. That’s a lie.</p>
+</h2>
 
-<p>I’ve been doing Clojure for nine years, and DDD is useful in rare cases
-only. Yes, in some circumstances, it saves one’s time indeed. But only
-sometimes, not always! And it’s unfair: people give talks at conferences about
-how successful they were with DDD in their project. But they would never give a
-speech about how they messed up by describing everything with maps.</p>
+<ul id="toc-item-pg2-bench-2">
+  <li><a href="#introduction" id="toc-item-pg2-bench-2-introduction">Introduction</a></li>
+  <li><a href="#test-1-sending-1000-requests-in-series" id="toc-item-pg2-bench-2-test-1-sending-1000-requests-in-series">Test 1. Sending 1000 requests in series</a></li>
+  <li><a href="#test-2-sending-1000-requests-with-concurrency-of-16" id="toc-item-pg2-bench-2-test-2-sending-1000-requests-with-concurrency-of-16">Test 2. Sending 1000 requests with concurrency of 16</a></li>
+  <li><a href="#test-3-sending-1000-requests-with-concurrency-of-64" id="toc-item-pg2-bench-2-test-3-sending-1000-requests-with-concurrency-of-64">Test 3. Sending 1000 requests with concurrency of 64</a></li>
+</ul>
 
-<p>Let me give you an example. Imagine we’re implementing a restriction
-system. There is a context, and we must decide whether to allow or prohibit the
-incoming request. Obviously, every Clojure developer would do that with maps. We
-declare a vector of maps where each map represents a subset of the
-context. Should at least one rule match the context, we allow the request.</p>
+<p>In the <a href="/en/pg2-bench-1">previous post</a>, I was measuring bare query/execute/copy functions
+of the library. Although it’s useful, it doesn’t render the whole picture
+because it’s unclear how an application will benefit from faster DB access.</p>
+
+<p>This post covers the second group of benchmarks I made: a simple HTTP server
+that reads random data from the database and responds with JSON. The benchmark
+compares PG2 and Next.JDBC as before.</p>
+
+<h2 id="introduction">Introduction</h2>
+
+<p>Some general notes: the server uses Ring Jetty version 1.7.1, JVM 21, Ring-JSON
+0.5.1 for middleware. The handles are synchronous. The application uses
+connection pools for both libraries, and the pools are opened in advance when
+the server gets started. The maximum allowed pool size is 64. HTTP requests are
+sent by the <code class="language-plaintext highlighter-rouge">ab</code> utility with different <code class="language-plaintext highlighter-rouge">-n</code> and <code class="language-plaintext highlighter-rouge">-c</code> keys; the <code class="language-plaintext highlighter-rouge">-l</code> flag is
+always sent.</p>
 
 
-                    <p><a href="/en/ddd-lie">Read more &rarr;</a></p>
+                    <p><a href="/en/pg2-bench-2">Read more &rarr;</a></p>
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/pg2-bench-1">PG2 early announce and benchmarks, part 1</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-01-22T00:00:00+00:00">
+        Jan 22, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><em>TL;DR: <a href="https://github.com/igrishaev/pg2">https://github.com/igrishaev/pg2</a></em></p>
+
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-pg2-bench-1">
+  <li><a href="#introduction" id="toc-item-pg2-bench-1-introduction">Introduction</a></li>
+  <li><a href="#how-the-benchmarks-were-made" id="toc-item-pg2-bench-1-how-the-benchmarks-were-made">How the benchmarks were made</a></li>
+  <li><a href="#test-1-querying-a-single-column-series-based-query-with-50000-rows" id="toc-item-pg2-bench-1-test-1-querying-a-single-column-series-based-query-with-50000-rows">Test 1. Querying a single-column, series-based query with 50000 rows</a></li>
+  <li><a href="#benchmark-2-a-complex-multi-column-randomly-generated-select-query" id="toc-item-pg2-bench-1-benchmark-2-a-complex-multi-column-randomly-generated-select-query">Benchmark 2. A complex, multi-column, randomly generated SELECT query</a></li>
+  <li><a href="#test-3-querying-randomly-generated-json" id="toc-item-pg2-bench-1-test-3-querying-randomly-generated-json">Test 3. Querying randomly generated JSON</a></li>
+  <li><a href="#test-4-inserting-a-single-row-with-no-transaction" id="toc-item-pg2-bench-1-test-4-inserting-a-single-row-with-no-transaction">Test 4. Inserting a single row with no transaction</a></li>
+  <li><a href="#test-5-inserting-a-row-in-a-transaction" id="toc-item-pg2-bench-1-test-5-inserting-a-row-in-a-transaction">Test 5. Inserting a row in a transaction</a></li>
+  <li><a href="#test-6-copy-in-a-vast-csv-file-from-disk" id="toc-item-pg2-bench-1-test-6-copy-in-a-vast-csv-file-from-disk">Test 6. COPY IN a vast CSV file from disk</a></li>
+  <li><a href="#test-7-copy-in-a-collection-of-rows-in-csv-format" id="toc-item-pg2-bench-1-test-7-copy-in-a-collection-of-rows-in-csv-format">Test 7. Copy IN a collection of rows in CSV format</a></li>
+  <li><a href="#test-8-copy-in-a-collection-of-rows-in-binary-format" id="toc-item-pg2-bench-1-test-8-copy-in-a-collection-of-rows-in-binary-format">Test 8. Copy IN a collection of rows in binary format</a></li>
+  <li><a href="#test-9-copy-out-a-table-into-an-outputstream" id="toc-item-pg2-bench-1-test-9-copy-out-a-table-into-an-outputstream">Test 9. COPY OUT a table into an OutputStream</a></li>
+  <li><a href="#test-10-measuring-connection-pools" id="toc-item-pg2-bench-1-test-10-measuring-connection-pools">Test 10. Measuring connection pools</a></li>
+</ul>
+
+<h2 id="introduction">Introduction</h2>
+
+<p>During the last year, I was working on <a href="https://github.com/igrishaev/pg">PG</a> — JDBC-free PostgreSQL driver in
+pure Clojure. By purity it means, there is only a TCP socket to read and write
+bytes according to the official PostgreSQL protocol, and nothing more.</p>
+
+<p>It was fun: the very idea of implementing something low-level in Clojure was a
+challenge. I’ve made a series of tricks to squeeze the performance: mutable
+collections in favour of Clojure’s ones, special macros to traverse collections
+using Iterator and .forEach, and so on. After all, my driver was about 1.5 times
+slower than Next.JDBC, and I still think there is room for further improvement.</p>
+
+<p>One may ask what is the point of making a driver from scratch in 2024. The
+reason is, I’m still missing plenty of Postgres features when working with it
+from Clojure. Namely:</p>
+
+<ul>
+  <li>
+    <p>no built-in JSON support. In every project, I’ve got to extend some protocols
+with PGObject, encode and decode the JSON manually;</p>
+  </li>
+  <li>
+    <p>no COPY support. In Postgres, COPY IN/OUT is one of the best features I can
+remember. But there is no built-in CSV nor binary encoding, for example.</p>
+  </li>
+  <li>
+    <p>Poor time support: selecting a timestamp returns an instance of
+<code class="language-plaintext highlighter-rouge">java.sql.Timestamp</code> which is based on <code class="language-plaintext highlighter-rouge">java.util.Date</code>: a mutable object
+deprecated in Java 1.1.</p>
+  </li>
+  <li>
+    <p>Poor array support: only a certain number of types, no multidimensional
+arrays, etc.</p>
+  </li>
+  <li>
+    <p>No built-in connection pool.</p>
+  </li>
+</ul>
+
+<p>Today I deprecated the PG project in favour of <a href="https://github.com/igrishaev/pg2">PG2</a>. This is a successor
+of PG(one), my second attempt to make a JDBC-free driver for Postgres. This time
+around, it’s written completely in Java with a thin Clojure layer. I’ve made
+some benchmarks and it looks like PG2 2-3 times faster than Next.JDBC. There is
+no documentation yet, only integration tests that cover plenty of cases (I
+borrowed the old tests and improved then). Although the documentation is highly
+required, I could not wait to announce PG2 and share the benchmarks.</p>
+
+<h2 id="how-the-benchmarks-were-made">How the benchmarks were made</h2>
+
+<p>I’ve got three Mac devices with core i5, i9, and ARM M1 processors. On each
+device, I’ve got PostgreSQL installed. All the settings are default, no changes
+are made. JVM is version 21 although the 16th is the minimum version. The
+benchmarks are made with Criterium version 0.4.6.</p>
+
+<p>There are two types of benchmarks, actually. In the first group, I measure
+query/execute functions using the Criterium framework. In the second group, I’m
+running a simple HTTP server using Ring + Jetty + JSON and measuring requests
+per second with Apache Benchmark (ab). For each test, I show the source code
+with a chart and comments.</p>
+
+<p>The source code of benchmarks can be found <a href="https://github.com/igrishaev/pg2/blob/master/pg-bench/src/pg/bench.clj">in the repository</a>.</p>
+
+
+                    <p><a href="/en/pg2-bench-1">Read more &rarr;</a></p>
                 
             </div>
 
@@ -756,7 +1224,7 @@ context. Should at least one rule match the context, we allow the request.</p>
         
         <a href="/page2" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 3 из 71</span>
+        <span class="page_number ">Страница 3 из 73</span>
         
         <a href="/page4" class="next">&rarr;</a>
         

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>AWS, история вторая. Афина прекрасная</title>
+  <meta name="description" content="Все статьи из цикла AWS  Амазон  AWS, история первая. Внезапный мегабайт  AWS, история вторая. Афина прекрасная  AWS, история третья. Разрывы">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/aws-2/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">AWS, история вторая. Афина прекрасная</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/athena/" rel="tag">athena</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Все статьи из цикла AWS</p>
+
+<ul>
+  <li><a href="/aws-0/">Амазон</a></li>
+  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
+  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
+  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
+</ul>
+
+<p>Расскажу о еще одном случае с AWS, который стоил мне пару бессонных ночей.</p>
+
+<p>В Амазоне есть славный сервис Athena — супер-пупер агрегатор всего и вся. Он
+тащит терабайты данных из разных источников, обрабатывает и складывает в другие
+сервисы. Хадуп на стероидах. По-русски читается “Афина”.</p>
+
+<p>Мы пользуемся им так. Есть лямбда, которая складывает в S3 сущности в JSON.
+Сущностей более миллиона. Другим сервисам нужны все сущности разом — и
+оказывается, выгрести их из S3 невозможно.</p>
+
+<p>Почему? Даже если предположить, что за секунду мы скачаем 10 сущностей
+параллельно (что невозможно), за 900 секунд мы получим 9000 сущностей, что
+меньше одного процента. А нам нужно не девять тысяч, а миллион. Напомню, что 900
+секунд — это 15 минут, максимальное время работы лямбды.</p>
+
+<p>Архитектуру дизайнил не я, поэтому не спрашивайте, почему так.</p>
+
+<p>На помощь приходит Афина. Мы говорим ей: склей все JSON файлы из бакета в один и
+положи туда-то. Афине, при всей мощи Амазона, нужно на это 4 минуты.  Чудес не
+бывает, и чтобы забрать из S3 миллион файлов, Амазону нужно попотеть.</p>
+
+<p>В ответ на нашу просьбу Афина дает айдишник задания, и мы его поллим. Готово?
+Нет. Готово? Нет. Готово? Да. И если да, в ответе будет ссылка на файл-агрегат.</p>
+
+<p>Таких агрегатов у нас несколько, и я столкнулся с тем, что лямбда не
+укладывается в 15 минут. Если тратить по 4 минуты на агрегат, то на ожидание
+трёх уйдёт 12 минут.  Процессинг файлов занимает еще 5-6 минут, и готово — ты не
+успел.</p>
+
+<p>Тратить 12 минут впустую глупо, поэтому я сделал поллинг Афины параллельным. В
+самом деле, зачем ждать 4 минуты, если можно запустить второй поллинг? Логично
+же? Но вот к чему это привело.</p>
+
+<p>Кто-то заметил, что в отчетах стали появляться “дырки”, то есть пустые ячейки. С
+точки зрения кода это выглядит так, словно в агрегате не было записей. Сначала я
+отнеткивался, но потом проверил размеры агрегатов. Оказалось, что сегодняшний
+файл, собранный Афиной, в два раза меньше вчерашнего. Или наоборот: вчера ок, а
+сегодня половина. Файл не битый, открывается, просто в нем половина данных.</p>
+
+<p>После гуглений, осбуждений и вырванных волос обнаружились сразу три бага.</p>
+
+<p>Первый — разработчик, который писал код до меня, допустил ошибку. Он поллил
+Афину по условию “пока статус pending”. Если что-то другое, он читал результат.
+Оказалось, что у задачи может быть три статуса: pending, ready и error. И в
+нашем случае статус был error.</p>
+
+<p>Второй — даже если задача в статусе error, она содержит ссылку на собранный
+файл. Да, Афина не смогла, и файл собран частично. Считается, что это лучше, чем
+ничего.</p>
+
+<p>Третий — в чем была причина error? Напомню, что я запускал в Афине несколько
+задач параллельно. Каждая задача собирала файлы из S3. В итоге сработал лимит на
+доступ к S3 — он ответил, что кто-то слишком часто обращается ко мне, убавьте
+пыл, господа. Поэтому задача упала.</p>
+
+<p>Интересно, что S3 не волнует, что обращается к нему не сторонний потребитель, а
+сама Афина. При всем абсурде я считаю это правильным, потому что если лимит
+задан, он должен соблюдаться глобально, без поблажек “для своих”.</p>
+
+<p>В итоге я сделал следующее. Все отчеты, которые обращаются к Афине, я разнес по
+времени с разницей в 5-10 минут. Раньше они стартовали одновременно, что
+порождало много задач в Афину, а та насиловала S3. С разницей по времени стало
+легче.</p>
+
+<p>Потом я додумался до решения лучше. Сделал фейковый warmup-отчет, который
+работает как прогрев кеша. Он запускается первым и триггерит все задачи в Афине.
+Когда другим отчетам что-то нужно из Афины, они проверяют, была ли задача с
+такими параметрами за последние 2 часа. Если да, ссылка на агрегат берется из
+старой задачи.</p>
+
+<p>Вот такая она, борьба с AWS. Перечитываю и понимаю, что, хоть и звучит умно,
+хвастаться здесь нечем. Не будь этой архитектуры, результат обошелся бы дешевле.
+Усилия потрачены, но неясно зачем.</p>
+
+<p>Я пишу комментарии к коду, надеясь, что следующий разработчик поймет хоть толику
+все этой котовасии. Но не особо на это надеюсь: скорее всего, он скажет — что
+это наговнокодили такое? Пойду переделаю. И все повторится.</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/aws-2/">
+    <input required name="captcha" type="hidden" value="8 &#215; 3">
+
+    <div class="block">
+        <span class="comment-form-label"><small>8 &#215; 3 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
