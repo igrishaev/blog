@@ -9,12 +9,21 @@ tags: clojure programming postgres sql migrations
 [docs]: https://github.com/igrishaev/pg2/blob/master/README.md
 [pg2]: https://github.com/igrishaev/pg2
 
+[PG2 version 0.1.5][pg2] ships its own migration engine through the
+`pg2-migration` package. Like Migratus or Ragtime, it allows to grow the
+database schema continuously, track changes and apply them with care.
+
 {% include toc.html id="pg2-migration" title="Table of Content" %}
 
-[PG2 version 0.1.5][pg2] provides its own migration engine through the
-`pg2-migration` package (see the "Installation" section). Like Migratus or
-Ragtime, it allows to grow the database schema continuously, track changes and
-apply them with care.
+## Installation
+
+~~~clojure
+;; lein
+[com.github.igrishaev/pg2-migration "0.1.5]
+
+;; deps
+com.github.igrishaev/pg2-migration {:mvn/version "0.1.5"}
+~~~
 
 ## Concepts
 
