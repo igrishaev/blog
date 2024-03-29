@@ -104,6 +104,476 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/lein/">Don't use Leiningen to run shell-scripts</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2018-01-09T00:00:00+00:00">
+        Jan 9, 2018
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/lein/" rel="tag">lein</a>, <a href="/tag/make/" rel="tag">make</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Working with various Clojure projects, I noticed one thing that really worries
+me. I’m talking about developers who add more and more entries into
+<code class="language-plaintext highlighter-rouge">:prep-tasks</code> vector in <code class="language-plaintext highlighter-rouge">project.clj</code> file. Please stop it. Every time you want
+to put there a new task to compile CSS or build a Docker image, take a minute or
+two to think on that. Let’s discuss the problem.</p>
+
+<p><a href="https://leiningen.org/">Lein</a> is a great tool of course, really a piece of art. But its abilities
+are not unlimited. Remember, its main purpose is to manage a Clojure-driven
+project. I think, everybody agree with that statement.</p>
+
+<p>The Clojure project you are working on is only a part of a top-level project in
+business terms. Besides both server and UI sides, your application probably
+sends emails, pushes notifications, interacts with Blockchain network and does
+further more things.</p>
+
+<p>According to GitHub statistics, you may have even 99% percent of code written
+with Clojure. But still, there is definitely something that is beyond it. Thus,
+please do not use Lein for those tasks that do no have any relation to Clojure
+code.</p>
+
+<p>Recently, I faced a situation when running REPL caused building Ethereum smart
+contracts first. That step assumes you have installed software of proper
+versions and configured paths, text configs, etc. Compiling them was a really
+resource- and time-consuming duty.</p>
+
+<p>The next step was to compile CSS sources. Again, it required installing Ruby,
+less and wait for some time.</p>
+
+<p>Remember, I did’n want all of this to happen. All I wanted to do is to connect
+to REPL from Emacs and debug one tiny function. Needless to say, I just
+commented those tasks in project file.</p>
+
+<p>Again: your Clojure project should know nothing about compiling CSS, building
+email templates, fetching anything from the network, querying Ethereum, building
+Docker image or whatever else. Especially when we talking about running REPL. It
+should run without any troubles at any time.</p>
+
+<p>That’s why I’m strictly against using <code class="language-plaintext highlighter-rouge">lein-shell</code> plugin or something similar
+that lets you run shell commands from Lein.</p>
+
+<p>Of course, building a project requires passing through a list of particular
+steps that were partially mentioned above. What should we use for that?
+Shell-scripts? Any modern Javascript task runner? No, just <a href="https://www.gnu.org/software/make/">Make utility</a>
+that has been here for ages.</p>
+
+<p>“Put that gun down and let me explain.” (c)</p>
+
+<p>I know Make is an ancient tool that came from rough C/C++ times. Those days,
+developers knew quite few about a pipeline, CI or methodologies in
+general. Almost every single programming language nowadays offers a task runner
+that takes modern requirements into account. But still, for a set of tasks that
+might be run upon your project, there is nothing better then a Makefile at the
+top of file structure. And here is why.</p>
+
+<p>Make utility is a binary tool that does not force you to install a new version
+of Node.js, Python or Ruby. Probably, it’s already installed on your computer
+since most of Linux distributions have it out from the box. It works perfectly
+of various systems. I have never faced any troubles with it switching between
+Linux and Mac.</p>
+
+<p>Such modern shells as <a href="https://en.wikipedia.org/wiki/Z_shell">zsh</a> support auto-completing make targets when
+pressing <code class="language-plaintext highlighter-rouge">&lt;TAB&gt;</code> character after “make”. That really saves time especially when
+you use prefixes. Say, in my pet project, besides Clojure-related targets, I’ve
+got a bunch of commands to operate on Docker images. These are <code class="language-plaintext highlighter-rouge">docker-run</code>,
+<code class="language-plaintext highlighter-rouge">docker-build</code>, <code class="language-plaintext highlighter-rouge">docker-compose-up/down</code> and more. Each of them takes 60 to 100
+characters so it’s impossible to remember them. So in terminal, I type <code class="language-plaintext highlighter-rouge">make
+doc&lt;TAB&gt;</code> and see a short subset of Docker-related stuff.</p>
+
+<p>I consider any Makefile as not just a list of commands but rather a knowledge
+base of your project. The more the project develops, the more operations you
+need to perform over it. Where to store all the those commands? <strong>In your wiki?
+Nobody reads it.</strong> A better solution would be to keep them as close to the code
+as it possible.</p>
+
+<p>Make utility runs extremely fast whereas lein needs about five seconds to boot
+up. That’s pretty long time, really. Imagine each command line tool hangs for a
+couple of seconds before it runs. That would be a hell on your computer. A
+situation that makes me angry is when I mistype in a long lein command like
+<code class="language-plaintext highlighter-rouge">lein migratus craete user-updated</code>, wait for five seconds and see an error
+message saying there is no <code class="language-plaintext highlighter-rouge">craete</code> subcommand in migratus. With make utility,
+there is no an option for such things.</p>
+
+<p>One of my favorite features is to ask a user for prompt when typing names,
+passwords or any other sensitive data. Here is an example of how usually I
+create a new SQL migration:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>create-migration:
+    @read <span class="nt">-p</span> <span class="s2">"Enter migration name: "</span> migration <span class="se">\</span>
+    <span class="o">&amp;&amp;</span> lein migratus create <span class="nv">$$</span>migration
+</code></pre></div></div>
+
+<p>When I type <code class="language-plaintext highlighter-rouge">make crea&lt;TAB&gt;&lt;RET&gt;</code> (remember, auto-complete magic works here),
+the system asks for a new migration name. I enter a string that I need and a new
+migration named properly appears.</p>
+
+<p>Makefiles may include other ones so probably you can maintain separate files for
+both production/developer modes or for developers/ops teams. Since those files
+support comments, you are welcome to put doc hints there.</p>
+
+<p>The utility allows to chain targets. When I start working on a new task, at
+least I need to perform three steps: 1) migrate the database; 2) run tests to
+ensure everything works before I change something; 3) launch REPL. In my make
+file, I’ve got a separate target for each step. But I can call them in chain as
+well:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make mig&lt;TAB&gt; te&lt;TAB&gt; re&lt;TAB&gt;
+</code></pre></div></div>
+
+<p>that expands into:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make migrate <span class="nb">test </span>repl
+</code></pre></div></div>
+
+<p>and finally becomes:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>lein migratus migrate
+lein <span class="nb">test
+</span>lein repl
+</code></pre></div></div>
+
+<p>Inside a makefile, you can call for another makefile what may become a powerful
+feature of your build process. Here is how it works.</p>
+
+<p>Say, in our project, on the top level of it there is a “email” folder that
+brings Node.js project for building email templates. Our Clojure application use
+those compiled templates for further processing with Selmer to send final emails
+to our clients. It’s obvious, I need those templates only when I work with our
+email subsystem and never else. So it would be madness to force all our
+developers to install Node.js with tons of packages and compile the templates
+each time they launch REPL.</p>
+
+<p>Inside “email” folder, there is a separate Makefile that knows how to deal with
+that sub-project. It installs all the requirements and has some useful targets,
+say, to run compiler in debug mode or open a browser window for preview.</p>
+
+<p>A small fragment of that make file:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>all: <span class="nb">install </span>build dist
+
+<span class="nb">install</span>:
+	yarn <span class="nb">install
+
+</span>build:
+	node_modules/.bin/gulp build <span class="nt">--production</span>
+
+dist:
+    <span class="nb">cp</span> ...
+</code></pre></div></div>
+
+<p>The default target performs all the targets that are required to get final
+templates. Now, in the main make file that is on the root of the project, I put:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>EMAILDIR :<span class="o">=</span> <span class="si">$(</span>CURDIR<span class="si">)</span>/email
+
+.PHONY: email
+email:
+    make <span class="nt">-C</span> <span class="si">$(</span>EMAILDIR<span class="si">)</span>
+
+uberjar-build: email
+    lein uberjar
+</code></pre></div></div>
+
+<p>So this configuration gives me freedom of choice. When I launch REPL, I don’t
+need all that stuff to deal with compiling emails. Probably, I may work in a
+company for years without touching them. But those guys who do, they run <code class="language-plaintext highlighter-rouge">make
+email</code> and get the full and ready email installation. Finally, no one be able to
+build an Uberjar without compiling fresh emails.</p>
+
+<p>Now take into account that those emails were just a small part of a
+project. Remember, for successful production build you might need fetching huge
+JSON declarations from 3rd-party services; compiling smart contracts; building
+Docker images; building CSS and much more. Now answer, whey <code class="language-plaintext highlighter-rouge">lein</code> utility that
+even doesn’t have any default capabilities for that, should do it instead of
+special tools designed for exactly those things?</p>
+
+<p>I think it’s obvious now that <code class="language-plaintext highlighter-rouge">lein</code> only should be used to manage your Clojure
+code. Never configure it to run non-Clojure-related stuff.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/ivi/">Как ivi.ru крадет деньги</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2018-01-07T00:00:00+00:00">
+        Jan 7, 2018
+    </time>
+
+    <a href="/tag/ivi/" rel="tag">ivi</a>, <a href="/tag/idiots/" rel="tag">idiots</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>Месяц назад решили с женой посмотреть один кинчик. Я уже не в том возрасте,
+чтобы шариться по торрент-помойкам, поэтому покупаю на Ютубе. Но именно этого
+фильма там не было. Гугл вывел меня на <a href="https://www.ivi.ru/">ivi.ru</a>, где фильм был, и вот что
+из этого вышло.</p>
+
+<p>Купил, посмотрели. Через месяц приходит письмо, что с карты списаны 399 рублей
+за продление ежемесячной подписки. Полез на сайт и выяснил, что:</p>
+
+<ul>
+  <li>
+    <p>эти черти сохранили мою карту, хотя нигде подобной галочки не было;</p>
+  </li>
+  <li>
+    <p>они же оформили мне платную подписку, хотя, опять же, нигде этих галочек не
+было. Вот так, купив фильм у ivi, попадаешь на бабки.</p>
+  </li>
+</ul>
+
+<p>А дальше еще интересней. Звоню в поддержку. Заранее продумал
+разговор. Сотрудник, не спросив ни моего имени, ни емейла, словом, никак не
+подтвердив мою личность, отвечает – назовите номер карты, сделаю возврат. Я
+назвал, он на кнопку клац – отвечает, готово, ждите денег. И действительно, на
+следующий день они пришли.</p>
+
+<p>Напрашиваются несколько выводов. Первый – ivi.ru действует незаконно, сохраняя
+карты и подключая платные услуги без ведома владельца. Что-то вроде мобильного
+опсоса, потерявшего берега.</p>
+
+<p>Второе – в команде ivi об этом прекрасно знают, и уже отработан стандартный
+сценарий возврата денег. Моментальная реакция говорит о том, что на этот случай
+заведена отдельная кнопка. Никаких личных данных и подтверждений личности не
+просят, чтобы не раздувать скандал. Вы когда-нибудь делали возврат в обычном
+магазине? Там и заявление, и паспорт потребуют. А тут анонимно и по номеру
+карты.</p>
+
+<p>Третье – действия ivi.ru это обычная кража. Конечно, они прислали письмо. Но
+что если я не читаю почту? Упор сделан на то, что я не замечу списания. Типичный
+русский наебизнес. Почему-то именно русская компания смошенничала с моей
+картой. Совпадение? Не думаю (с).</p>
+
+<p>Короче, ivi.ru, обманщики вы и воры. Позорище.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/oop-1/">Почему я против объектов. Часть первая, философская</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2018-01-05T00:00:00+00:00">
+        Jan 5, 2018
+    </time>
+
+    <a href="/tag/oop/" rel="tag">oop</a>, <a href="/tag/programming/" rel="tag">programming</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><strong>UPD</strong>: <a href="/oop-2">вторая часть</a>.</p>
+
+<p><strong>LT;DR:</strong> это очень личный взгляд на ООП, который я обдумывал довольно долго,
+но окончательно сформировал после прочтения книги Егора <a href="http://www.yegor256.com/elegant-objects.html">“Elegant
+Objects”</a>. Если коротко, я высказываюсь против идеи представления кода в
+объектной модели. Некоторые аргументы почерпнуты из сторонних публикаций и
+адаптированы для краткости. В таких случаях я даю ссылку на оригинал.</p>
+
+<p>Изначально я планировал написать два в одном: и про ментальную, и про
+техническую составляющие ООП, но так как текст получается объемный, опубликую
+пока что первую часть о том, как ООП ложится на (мой) мозг.</p>
+
+<p>Объекты, как утверждают <a href="https://en.wikipedia.org/wiki/Object-oriented_programming#Objects_and_classes">Википедия</a> и учебники, помогают отобразить
+картину физического мира в коде. Думаю, всем это объяснял преподаватель в школе
+или университете на примере класса кота или собаки. Потом примеры с
+наследованием, переопределением класса “голос” и так далее.</p>
+
+<p>За последние годы мое увлечение ООП плавно сошло на нет. В одном из постов <a href="http://grishaev.me/oop">я
+прямо признавался</a>, что не понимаю его принципов. Главное, что меня
+смущает: во время работы, если это был не строго объектный язык, а Питон, JS или
+PHP, то все задачи я решал простыми функциями. Каждый раз мне говорили, что
+просто проект легкий, что однажды наступит БОЛЬШОЙ ПРОЕКТ, где с функциями ты
+хлебнешь. Но время шло, БОЛЬШОЙ ПРОЕКТ так и не наступил, и, кажется, в эпоху
+микро-сервисов его уже не дождешься. А я все пишу на функциях и неизменяемых
+коллекциях. В чем же дело?</p>
+
+<p>И любой объектный код я переписывал на функциях с сокращением числа строк до
+двух раз. Как так?</p>
+
+<p>Причина мне видится в том, что ООП очень абстрактно. Одно и то же событие
+реального мира можно интерпретировать в объектной модели совершенно
+по-разному. Отсюда и трудности изучения, и лишний код.</p>
+
+<p>Представим, что Вася отправляет письмо Пете. На языке объектов это записывается
+так (опустим определения классов):</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">User</span> <span class="n">vasya</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">User</span><span class="o">(</span><span class="s">"Vasya"</span><span class="o">);</span>
+<span class="nc">User</span> <span class="n">petya</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">User</span><span class="o">(</span><span class="s">"Petya"</span><span class="o">);</span>
+<span class="nc">Message</span> <span class="n">msg</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Message</span><span class="o">(</span><span class="s">"Hello!"</span><span class="o">);</span>
+<span class="n">vasya</span><span class="o">.</span><span class="na">send</span><span class="o">(</span><span class="n">msg</span><span class="o">,</span> <span class="n">petya</span><span class="o">);</span>
+</code></pre></div></div>
+
+<p>Тут, возможно, я нарушил один из бесчисленных паттернов ООП: отвечать за
+отправку должен не пользователь, а само сообщение (что весьма спорно). Поэтому
+следующий после меня разработчик поправит код вот так:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">msg</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="k">from</span><span class="o">=</span><span class="n">vasya</span><span class="p">,</span> <span class="n">to</span><span class="o">=</span><span class="n">petya</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Это уже не синтаксис Джавы, в ней нет именованных аргументов, а скорее
+Питона. Написал так, чтоб было понятно: метод <code class="language-plaintext highlighter-rouge">.send()</code> принимает отправителя и
+получателя и сам отправляет письмо.</p>
+
+<p>Уже на этом этапе видна вся неоднозначность и зыбкость объектного
+мышления. Согласно паттернам, отправку письма логичней вынести в класс
+сообщения. С другой стороны, в реальном мире именно пользователь инициирует
+отправку. Письмо это неодушевленная сущность, набор байт или листок бумаги. Как
+он может что-то отправлять?</p>
+
+<p>Теперь представим, что на каждый чих мы проектируем класс и создаем объект. Как
+можно утверждать, что отношения между ними логически верны? Как это доказать?</p>
+
+<p>Зыбкость этого принципа порождает все новые и новые книги и статьи в блогах, где
+авторы доказывают, что именно их подход обеспечивает прозрачность и
+поддерживаемость программы, написанной в объектном стиле. Но на более
+приземленном уровне это выражается, простите, в срачи – бурные обсуждения в
+чатах, когда эмоции и мнения намного опережают опыт.</p>
+
+<p>Проблему отношений между объектами я называю “кто на ком стоял”. В самом деле,
+ручка пишет по бумаге <code class="language-plaintext highlighter-rouge">pen.writeOn(paper)</code> или бумага с помощью ручки
+<code class="language-plaintext highlighter-rouge">paper.write(pen)</code>? Каждый, кто поспешит ответом в духе “ну конечно первый
+(второй) вариант”, не учитывает, что это совершенно субъективно.</p>
+
+<p>Предполагаю, что именно поэтому в ООП-среде так популярен рефакторинг. Ключевая
+фича каждой промышленной IDE – облегчение рефакторинга: переименование и
+перенос методов, автоматическая адаптация кода.</p>
+
+<p>В окружающем нас реальном мире физические объекты играют далеко не решающую
+роль. Иными словами, не все можно выразить через объекты. Рассмотрим, например,
+акт рукопожатия. Следуя принципам Егора, отразить в коде это можно так:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nc">User</span> <span class="o">{</span>
+  <span class="kd">private</span> <span class="nc">String</span> <span class="n">name</span>
+
+  <span class="nf">User</span><span class="o">(</span><span class="nc">String</span> <span class="n">name</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">name</span> <span class="o">=</span> <span class="n">name</span><span class="o">;</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+
+<span class="kd">class</span> <span class="nc">Handshake</span> <span class="o">{</span>
+  <span class="nc">User</span> <span class="n">user1</span><span class="o">;</span>
+  <span class="nc">User</span> <span class="n">user2</span><span class="o">;</span>
+
+  <span class="nc">Handshare</span><span class="o">(</span><span class="nc">User</span> <span class="n">user1</span><span class="o">,</span> <span class="nc">User</span> <span class="n">user2</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">user1</span> <span class="o">=</span> <span class="n">user1</span><span class="o">;</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">user2</span> <span class="o">=</span> <span class="n">user2</span><span class="o">;</span>
+  <span class="o">}</span>
+
+  <span class="kt">void</span> <span class="nf">shake</span><span class="o">()</span> <span class="o">{</span>
+    <span class="c1">// ... лог в консоль или что угодно</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+
+<span class="nc">User</span> <span class="n">user1</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">User</span><span class="o">(</span><span class="s">"Ivan"</span><span class="o">);</span>
+<span class="nc">User</span> <span class="n">user2</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">User</span><span class="o">(</span><span class="s">"Petr"</span><span class="o">);</span>
+<span class="nc">Handshake</span> <span class="n">hs</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Handshake</span><span class="o">(</span><span class="n">user1</span><span class="o">,</span> <span class="n">user2</span><span class="o">);</span>
+<span class="n">hs</span><span class="o">.</span><span class="na">shake</span><span class="o">();</span>
+</code></pre></div></div>
+
+<p>Но ведь физически рукопожатия не существует. Нет в нашем мире такого объекта,
+его нельзя купить, смастерить, поставить на полку. Это событие, акт или,
+выражаясь точнее, действие! А что в программировании выражает действие? Функция.</p>
+
+<p>Предположим теперь, что друзья пожали руки несколько раз с интервалом в 10
+минут. Будет ли правильным вызывать у того же объекта метод <code class="language-plaintext highlighter-rouge">.shake()</code>? Или на
+каждый раз создавать новый объект?</p>
+
+<p>Если первое, не противоречит ли это принципам ООП? Ведь все это разные
+рукопожатия, совершенно независящие друг от друга. Что если они жали руки с
+перерывом в 10 лет?</p>
+
+<p>Если второе, то чем это отличается от вызова функции? Мы создаем объект,
+вызываем единственный метод и тут же забываем его? Зачем тогда класс и объект?
+Если один-два метода это все, что нам нужно от класса, не проще ли завести
+функцию?</p>
+
+<p>На эту тему уже неписана отличная статья “перестаньте писать классы”, изучите
+обязательно. <a href="http://pyvideo.org/pycon-us-2012/stop-writing-classes.html">Видео</a> со слайдами, <a href="https://habrahabr.ru/post/140581/">перевод</a> на
+Хабре.</p>
+
+<p>Далее можно рассуждать о более сложных вещах. Рукопожатие все же имеет косвенное
+отношение к физическим объектам. Но такие абстрактные понятия как ненависть,
+симпатия, эгоизм, честность, религия выразить объектно невозможно. Я имею в
+виду, что не составит труда написать класс с нужным именем, который
+инкапсулирует другие классы. Но спрашивается, в чем здесь смысл?</p>
+
+<p>Добавьте процессы: горение, магнитные волны, свет. Все, что перечислено выше
+имеет значение только в действии. Важен не сам объект, а как он изменяет другие
+сущности. Опять же, про <a href="http://www.flyingmachinestudios.com/programming/the-unofficial-guide-to-rich-hickeys-brain/">написана хорошая статья</a>, где рассматривается
+река с точки зрения ООП- и ФП-программиста.</p>
+
+<p>В книге “Elegant Objects” Егор справедливо замечает, что сегодняшнее ООП это
+просто структура данных с прикрепленными к ней функциями. Однако, не делается
+акцент на том, сколь масштабно это явление. С выходом языков Go и Rust на них
+перешли тысячи бывших Java и С++ разработчиков, и, похоже, сочли новые языки
+вполне себе объектными. А ведь и в Go и в Rust объекты – это банальные сишные
+структуры. И если функция принимает первым аргументом такую структуру, то вместо
+<code class="language-plaintext highlighter-rouge">some_action(data, 1, "test")</code> можно написать <code class="language-plaintext highlighter-rouge">data.some_action(1, "test")</code>. Вот
+и вся разница.</p>
+
+<p>Очевидно, сегодня для большинства вызов функции через точку кажется главным
+показателем объектности языка. Я не хочу никого этим обидеть. Человеку
+свойственно упрощать рутину: выражать код всей программы с помощью настоящих,
+“элегантных” объектов, как советует Егор, мне кажется неподъемным делом. А со
+структурам и функциями проще, и даже похоже на ООП.</p>
+
+<p>Я утверждаю, что современный ООП-подход, согласно которому мы выражаем все
+сущности как объекты, так же похож на окружающий мир, как шахматы на реальную
+войну. То есть в кукольной манере и гротескным упрощением. Тысячи лет назад
+войска действительно выстраивались напротив противника, впереди пешие войска, по
+бокам боевые слоны, сзади командование. Сегодня это не так.</p>
+
+<p>Кратко резюмируя. В ООП до сих пор нет четкого понимания, как выстраивать
+отношения между объектами. Огромное число паттернов сбивает с толку. Объекты в
+коде не могут точно описать нематериальные понятия: природные процессы,
+отношения между людьми. Гораздо большее значение имеет не объект, а действие над
+ним.</p>
+
+<p>В следующий раз поговорим о технической стороне ООП.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/shorter/">Надо короче</a>
             </h2>
 
@@ -508,120 +978,6 @@ travel, we had lunch, dinner, everything. A+ experience!</p>
 или нет. Заблокирован ли тот сайт в его стране? Успела ли открыться превьюшка?</p>
 
 <p>Больше никаких таких ссылочек во время общения с заказчиком.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tlg-blog/">Канал в Телеграме</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-12-20T00:00:00+00:00">
-        Dec 20, 2017
-    </time>
-
-    <a href="/tag/telegram/" rel="tag">telegram</a>, <a href="/tag/blog/" rel="tag">blog</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>И раз уж пошла такая пьянка: завел канал в Телеграме. Все-таки, как бы я его ни
-хаял, Телеграм стал достойным способом поделиться информацией. Буду валить туда
-все, что пишу в блог, а заодно всякую мелочь, ради которой лень вставать.</p>
-
-<p>Вступайте: <a href="https://t.me/igrishaev_blog">https://t.me/igrishaev_blog</a></p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/qa/">Отвечу на вопросы</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-12-20T00:00:00+00:00">
-        Dec 20, 2017
-    </time>
-
-    <a href="/tag/qa/" rel="tag">qa</a>, <a href="/tag/questions/" rel="tag">questions</a>, <a href="/tag/answers/" rel="tag">answers</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Я отвечаю на письма читателей, и порой текст получаются столь развернутыми, что
-потянул бы на отдельный пост. Поэтому ввожу новую рубрику ответов в
-блоге. Укажите в письме, что не против публикации здесь, и ответ смогут прочесть
-все читатели. Конечно, я уберу личные данные (город, место работы, только имя).</p>
-
-<p>Какие вопросы мне задавать? Хотя бы на следующие темы:</p>
-
-<ul>
-  <li>программирование и разработка ПО,</li>
-  <li>функциональный подход,</li>
-  <li>Кложа, Емакс,</li>
-  <li>работа, в т.ч. удаленная,</li>
-  <li>книги, в т.ч. детские (у меня хорошая подборка книг для детей),</li>
-  <li>организация рабочего времени, “сделывание” задач,</li>
-  <li>переезд в другой город,</li>
-  <li>английский,</li>
-  <li>опен-сорс.</li>
-</ul>
-
-<p>На большую часть из этого я хоть раз да писал в блоге, пруфы есть. Или что-то
-другое по вашему желанию.</p>
-
-<p>Почта ivan@grishaev.me</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/clj-stream/">First Clojure stream in English</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-12-18T00:00:00+00:00">
-        Dec 18, 2017
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/stream/" rel="tag">stream</a>, <a href="/tag/etaoin/" rel="tag">etaoin</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Last Sunday, I tried to stream some Clojure coding commenting it in
-English. Although I was nervous a bit and thus sounded weird, I think the result
-worth publishing it here:</p>
-
-<iframe width="640" height="360" src="https://www.youtube.com/embed/cLL_5rETLWY" gesture="media" allow="encrypted-media" allowfullscreen=""></iframe>
 
                 
             </div>
