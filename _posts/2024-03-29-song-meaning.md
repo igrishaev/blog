@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Смысл"
+title:  "Смысл песен"
 permalink: /song-meaning/
 tags: life music meaning
 ---
