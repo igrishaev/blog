@@ -104,6 +104,162 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/db-opt/">Database optimization</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-09-21T00:00:00+00:00">
+        Sep 21, 2017
+    </time>
+
+    <a href="/tag/database/" rel="tag">database</a>, <a href="/tag/performance/" rel="tag">performance</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Sometimes, especially on interviews, developers are asked about what would be
+their steps to fix a database that works slowly. That’s a really extensive
+subject to discuss. Here, I decided to summarize my experience. I hope it help
+to not only increase the performance but do that in acceptable time and with
+less misery.</p>
+
+<p>First, of all, fixing the database queries is the last thing you should
+do. Fixing code first is premature optimization that is a root of all evil as we
+know. It could take huge amount of time whereas the real problem is kept in a
+wrong configuration file.</p>
+
+<p>So in my prospective, the right steps to make your database more peppy are
+something like follows below. Keep in mind that it is not a technical tutorial
+with code snippets that you could paste and make the job done.</p>
+
+<p><strong>Ensure you use SSD drives.</strong> It sounds silly but still you should check
+it. SSD gives you up to 10 times performance boost immediately. Ensure that SSD
+drive is a highlighted feature in you hoster’s plan.</p>
+
+<p><strong>Check you database config</strong> before tweaking something else. Usually, the
+default configurations are set up poorly to make the DB work on cheap
+computers. Some distributions carry config templates which names include memory
+or CPU values. Read them, they are well-documented. Google for best practices
+when configuring your database. Read books.</p>
+
+<p>Consider a case when <strong>the entire database is kept in memory</strong>. That also
+involves DBA and Ops teams so probably you won’t be allowed to perform such a
+move by your own. But since memory is cheat nowadays, it is possible. For
+backups, replicate such a database using streaming replications on servers that
+are run on hard drives. PostgreSQL supports various replication scenarios as
+well. You may also dump memory images into files and restore them on demand.</p>
+
+<p>I used to work in a project where they ran 400Gb database into RAM and it worked
+quite fast.</p>
+
+<p><strong>Check you application uses connection pooling</strong> when communicating to the
+DB. Suddenly, such wildly spreaded frameworks as <a href="https://www.djangoproject.com/">Django</a> do not use
+them. On each HTTP request, they open a fresh connection and close it once the
+response has been sent. Now imagine your application serves 20 requests per
+second. Network communication will be quite expensive in that case!</p>
+
+<p>Consider using either <a href="https://pgbouncer.github.io/">PGBouncer</a> in front your Postgres installation
+or any library for your language that deals with reusable connections by its
+own. Say, for Clojure, <a href="https://github.com/tomekw/hikari-cp">HikariCP</a> would be a good choice.</p>
+
+<p><strong>Everything that might be read from replica should be read from it</strong>, not the
+prod DB instance. Don’t run reports against the production. All the analytics
+and statistics should not touch it. Modern frameworks allow you to declare
+multiple database backends and switch between them on demand. For example, in
+Django, calling <code class="language-plaintext highlighter-rouge">.using('replica')</code> method on a Queryset instance dispatches a
+query into another database, not the default one.</p>
+
+<p><strong>For quite complicated queries, use materialized views</strong> that may be turned
+into physical tables on demand. Querying them would be much faster than
+processing a query full of joins and aggregates every time. Setup a cron job to
+rebuild such views every night for example when the load is low.</p>
+
+<p><strong>Select only those fields that you really need</strong> to process a request. Avoid
+using <code class="language-plaintext highlighter-rouge">select * from table</code> since it takes extra time for the database to find
+out what fields to fetch exactly. With Django ORM, either specify needed fields
+with <code class="language-plaintext highlighter-rouge">.only()</code> method or bypass some of them calling <code class="language-plaintext highlighter-rouge">.defer()</code>. But keep in
+mind that touching a non-fetched field hits the database again.</p>
+
+<p>When writing unit tests, <strong>add a case that counts a number of database queries</strong>
+made during request. Sometimes, it leads to terrifying findings. Touching fields
+of foreign entities in a cycle without joining them initially may end up with up
+to 100 queries or more.</p>
+
+<p><strong>Be carefull when passing a collection of IDs as a parameter.</strong> On the database
+level, it turns into something like</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>STATEMENT: SELECT * FROM users WHERE id IN (?, ?, ?, &lt;100 more of them&gt;)
+PARAMETERS: $1=10035, $2=10036, $3=10037, $4=10038, $5=10039,...
+</code></pre></div></div>
+
+<p>When not limiting the number of such IDs, one may end up with 1000 of them what
+is quite harmful for the database. Either process them by chunks or try to
+compose a single query with raw SQL.</p>
+
+<p>For fast data processing, <strong>don’t use ORM at all</strong>. Building a model instance
+from a low-lever tuple that the database driver returns is really
+costly. Even <a href="https://www.sqlalchemy.org/">SQLAlchemy</a> (Python’s the most powerful ORM) spends
+double time on building instances than reading data from <a href="http://initd.org/psycopg/">psycopg2</a>
+(Python PostgreSQL driver) directly.</p>
+
+<p><strong>Denormalize your tables.</strong> Sometimes, it really worth moving any columns into
+foreign tables and joining them on demand. A good example might be ranking
+system. You’ve got a users table full of fields. Now you need to add rank field
+and recalculate it every 6 hours. Adding yet another fields would be a bad
+choice since our users table is already under load.</p>
+
+<p>But having the <code class="language-plaintext highlighter-rouge">users_ranks</code> table that has a unique foreign key to a user and a
+rank value would be a good choice. Now that, we may rewrite it as we wish
+without touching actual user’s data. When needing to sort users by their rank,
+we join that table and order the result by rank as well.</p>
+
+<p>The same relates to a search document. When implementing full search on some
+entity, we need to build a special document known as
+a <a href="https://www.postgresql.org/docs/current/static/datatype-textsearch.html">search vector</a>. Storing that vector inside an entity is a bad
+choice because it is not the data but just technical information.</p>
+
+<p><strong>Join tables only by foreign and primary keys</strong> but not any custom conditions
+like strings equality, regex matching and so on. When you need such a join,
+probably it is better to fetch both parts of it and compose the result in your
+app’s code.</p>
+
+<p>When a query really works badly, <strong>examine it with EXPLAIN operator</strong>. If you
+don’t understand its output completely, use <a href="https://explain.depesz.com/">online services</a> that turn
+it into more human-friendly format. Ensure the query hits indexes. Don’t add
+multiple indexes since having them a lot may slow down writing procedure.</p>
+
+<p>Finally, <strong>never be afraid of raw SQL</strong>. No matter how powerful your ORM is,
+check what queries it produces exactly. On my dev machine, I always start
+Postgres not as a service but as a process passing <code class="language-plaintext highlighter-rouge">-E</code> flag to print all the
+queries:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>postgres <span class="nt">-E</span> <span class="nt">-D</span> /usr/local/var/postgres
+</code></pre></div></div>
+
+<p>That gives me the whole vision of what’s going on with the database.</p>
+
+<p>Summarizing all together:</p>
+
+<ol>
+  <li>use modern hardware;</li>
+  <li>configure your database properly;</li>
+  <li>know all the shadowed parts of your ORM;</li>
+  <li>rise your SQL skills.</li>
+</ol>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/en/highload-cup/">Clojure in Highload Cup</a>
             </h2>
 
@@ -1176,49 +1332,13 @@ in <code class="language-plaintext highlighter-rouge">clojure.core</code> for th
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/facebook/">Фейсбук прекрасен</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-09-01T00:00:00+00:00">
-        Sep 1, 2017
-    </time>
-
-    <a href="/tag/idiots/" rel="tag">idiots</a>, <a href="/tag/facebook/" rel="tag">facebook</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Каждый месяц повторяется печальное событие: мне нужно зайти в ФБ и сделать анонс
-митапа. Я тяну время, но часа X не избежать.</p>
-
-<p><img src="/assets/static/facebook.png" alt="facebook" /></p>
-
-<p>Даже не знаю, что может быть хуже Фейсбука: столь тормозной и неорганизованный
-сайт еще поискать. При том что денег у них до жопы.</p>
-
-<p>Погрязли в жадности и бюрократизме.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page40" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 41 из 73</span>
+        <span class="page_number ">Страница 41 из 74</span>
         
         <a href="/page42" class="next">&rarr;</a>
         
