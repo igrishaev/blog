@@ -104,333 +104,6 @@
         <li>
 
             <h2>
-                <a class="post-link" href="/en/pg-hugsql">PG2 release 0.1.11: HugSQL support</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-04-14T00:00:00+00:00">
-        Apr 14, 2024
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/hugsql/" rel="tag">hugsql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p><em>The latest <a href="https://github.com/igrishaev/pg2">0.1.11 release</a> of PG2 introduces HugSQL support.</em></p>
-
-<p>The <code class="language-plaintext highlighter-rouge">pg2-hugsql</code> package brings integration with the <a href="https://www.hugsql.org/">HugSQL library</a>.
-It creates functions out from SQL files like HugSQL does but these functions use
-the PG2 client instead of JDBC. Under the hood, there is a special database
-adapter as well as a slight override of protocols to make inner HugSQL stuff
-compatible with PG2.</p>
-
-<p>Since the package already depends on core HugSQL functionality, there is no need
-to add the latter to dependencies: having <code class="language-plaintext highlighter-rouge">pg2-hugsql</code> by itself will be enough
-(see <a href="#installation">Installation</a>).</p>
-
-<h3 id="basic-usage">Basic Usage</h3>
-
-<p>Let’s go through a short demo. Imagine we have a <code class="language-plaintext highlighter-rouge">demo.sql</code> file with the
-following queries:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name create-demo-table :!</span>
-<span class="k">create</span> <span class="k">table</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="p">(</span><span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span> <span class="n">title</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">);</span>
-
-<span class="c1">-- :name insert-into-table :! :n</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="p">(</span><span class="n">title</span><span class="p">)</span> <span class="k">values</span> <span class="p">(:</span><span class="n">title</span><span class="p">);</span>
-
-<span class="c1">-- :name insert-into-table-returning :&lt;!</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="p">(</span><span class="n">title</span><span class="p">)</span> <span class="k">values</span> <span class="p">(:</span><span class="n">title</span><span class="p">)</span> <span class="n">returning</span> <span class="o">*</span><span class="p">;</span>
-
-<span class="c1">-- :name select-from-table :? :*</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="k">order</span> <span class="k">by</span> <span class="n">id</span><span class="p">;</span>
-
-<span class="c1">-- :name get-by-id :? :1</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="p">:</span><span class="n">id</span> <span class="k">limit</span> <span class="mi">1</span><span class="p">;</span>
-
-<span class="c1">-- :name get-by-ids :? :*</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="k">where</span> <span class="n">id</span> <span class="k">in</span> <span class="p">(:</span><span class="n">v</span><span class="o">*</span><span class="p">:</span><span class="n">ids</span><span class="p">)</span> <span class="k">order</span> <span class="k">by</span> <span class="n">id</span><span class="p">;</span>
-
-<span class="c1">-- :name insert-rows :&lt;!</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">title</span><span class="p">)</span> <span class="k">values</span> <span class="p">:</span><span class="n">t</span><span class="o">*</span><span class="p">:</span><span class="k">rows</span> <span class="n">returning</span> <span class="o">*</span><span class="p">;</span>
-
-<span class="c1">-- :name update-title-by-id :&lt;!</span>
-<span class="k">update</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="k">set</span> <span class="n">title</span> <span class="o">=</span> <span class="p">:</span><span class="n">title</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="p">:</span><span class="n">id</span> <span class="n">returning</span> <span class="o">*</span><span class="p">;</span>
-
-<span class="c1">-- :name delete-from-tablee :n</span>
-<span class="k">delete</span> <span class="k">from</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Prepare a namespace with all the imports:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">pg.demo</span><span class="w">
-  </span><span class="p">(</span><span class="no">:require</span><span class="w">
-   </span><span class="p">[</span><span class="n">clojure.java.io</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">io</span><span class="p">]</span><span class="w">
-   </span><span class="p">[</span><span class="n">pg.hugsql</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">hug</span><span class="p">]</span><span class="w">
-   </span><span class="p">[</span><span class="n">pg.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pg</span><span class="p">]))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>To inject functions from the file, pass it into the <code class="language-plaintext highlighter-rouge">pg.hugsql/def-db-fns</code>
-function:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">hug/def-db-fns</span><span class="w"> </span><span class="p">(</span><span class="nf">io/file</span><span class="w"> </span><span class="s">"test/demo.sql"</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>It accepts either a string path to a file, a resource, or a <code class="language-plaintext highlighter-rouge">File</code>
-object. Should there were no exceptions, and the file was correct, the current
-namespace will get new functions declared in the file. Let’s examine them and
-their metadata:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">create-demo-table</span><span class="w">
-</span><span class="o">#</span><span class="n">function</span><span class="p">[</span><span class="n">pg.demo...</span><span class="p">]</span><span class="w">
-
-</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">create-demo-table</span><span class="w"> </span><span class="n">var</span><span class="w"> </span><span class="nb">meta</span><span class="p">)</span><span class="w">
-
-</span><span class="p">{</span><span class="no">:doc</span><span class="w"> </span><span class="s">""</span><span class="w">
- </span><span class="no">:command</span><span class="w"> </span><span class="no">:!</span><span class="w">
- </span><span class="no">:result</span><span class="w"> </span><span class="no">:raw</span><span class="w">
- </span><span class="no">:file</span><span class="w"> </span><span class="s">"test/demo.sql"</span><span class="w">
- </span><span class="no">:line</span><span class="w"> </span><span class="mi">2</span><span class="w">
- </span><span class="no">:arglists</span><span class="w"> </span><span class="p">([</span><span class="n">db</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="n">db</span><span class="w"> </span><span class="n">params</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="n">db</span><span class="w"> </span><span class="n">params</span><span class="w"> </span><span class="n">opt</span><span class="p">])</span><span class="w">
- </span><span class="no">:name</span><span class="w"> </span><span class="n">create-demo-table</span><span class="w">
- </span><span class="no">:ns</span><span class="w"> </span><span class="o">#</span><span class="nb">namespace</span><span class="p">[</span><span class="n">pg.demo</span><span class="p">]}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Each newborn function has at most three bodies:</p>
-
-<ul>
-  <li><code class="language-plaintext highlighter-rouge">[db]</code></li>
-  <li><code class="language-plaintext highlighter-rouge">[db params]</code></li>
-  <li><code class="language-plaintext highlighter-rouge">[db params opt]</code>,</li>
-</ul>
-
-<p>where:</p>
-
-<ul>
-  <li><code class="language-plaintext highlighter-rouge">db</code> is a source of a connection. It might either a <code class="language-plaintext highlighter-rouge">Connection</code> object, a
-plain Clojure config map, or a <code class="language-plaintext highlighter-rouge">Pool</code> object.</li>
-  <li><code class="language-plaintext highlighter-rouge">params</code> is a map of HugSQL parameters like <code class="language-plaintext highlighter-rouge">{:id 42}</code>;</li>
-  <li><code class="language-plaintext highlighter-rouge">opt</code> is a map of <code class="language-plaintext highlighter-rouge">pg/execute</code> parameters that affect processing the current
-query.</li>
-</ul>
-
-<p>Now that we have functions, let’s call them. Establish a connection first:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
-  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
-   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10140</span><span class="w">
-   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
-
-</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
-  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Let’s create a table using the <code class="language-plaintext highlighter-rouge">create-demo-table</code> function:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="s">"demo123"</span><span class="p">)</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">create-demo-table</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="p">})</span><span class="w">
-</span><span class="p">{</span><span class="no">:command</span><span class="w"> </span><span class="s">"CREATE TABLE"</span><span class="p">}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Insert something into the table:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">insert-into-table</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
-                         </span><span class="no">:title</span><span class="w"> </span><span class="s">"hello"</span><span class="p">})</span><span class="w">
-</span><span class="mi">1</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">insert-into-table</code> function has the <code class="language-plaintext highlighter-rouge">:n</code> flag in the source SQL file. Thus,
-it returns the number of rows affected by the command. Above, there was a single
-record inserted.</p>
-
-<p>Let’s try an expression that inserts something and returns the data:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">insert-into-table-returning</span><span class="w"> </span><span class="n">conn</span><span class="w">
-                             </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
-                              </span><span class="no">:title</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
-</span><span class="p">[{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Now that the table is not empty any longer, let’s select from it:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">select-from-table</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="p">})</span><span class="w">
-
-</span><span class="p">[{</span><span class="no">:title</span><span class="w"> </span><span class="s">"hello"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">get-by-id</code> shortcut fetches a single row by its primary key. It returs
-<code class="language-plaintext highlighter-rouge">nil</code> for a missing key:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
-                 </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">})</span><span class="w">
-</span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"hello"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
-                 </span><span class="no">:id</span><span class="w"> </span><span class="mi">123</span><span class="p">})</span><span class="w">
-</span><span class="n">nil</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Its bulk version called <code class="language-plaintext highlighter-rouge">get-by-ids</code> relies on the <code class="language-plaintext highlighter-rouge">in (:v*:ids)</code> HugSQL
-syntax. It expands into the following SQL vector: <code class="language-plaintext highlighter-rouge">["... where id in ($1, $2,
-... )" 1 2 ...]</code></p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name get-by-ids :? :*</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="k">where</span> <span class="n">id</span> <span class="k">in</span> <span class="p">(:</span><span class="n">v</span><span class="o">*</span><span class="p">:</span><span class="n">ids</span><span class="p">)</span> <span class="k">order</span> <span class="k">by</span> <span class="n">id</span><span class="p">;</span>
-</code></pre></div></div>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-by-ids</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
-                  </span><span class="no">:ids</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]})</span><span class="w">
-
-</span><span class="c1">;; 3 is missing</span><span class="w">
-</span><span class="p">[{</span><span class="no">:title</span><span class="w"> </span><span class="s">"hello"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>To insert multiple rows at once, use the <code class="language-plaintext highlighter-rouge">:t*</code> syntax which is short for “tuple
-list”. Such a parameter expects a sequence of sequences:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name insert-rows :&lt;!</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">title</span><span class="p">)</span> <span class="k">values</span> <span class="p">:</span><span class="n">t</span><span class="o">*</span><span class="p">:</span><span class="k">rows</span> <span class="n">returning</span> <span class="o">*</span><span class="p">;</span>
-</code></pre></div></div>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">insert-rows</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
-                   </span><span class="no">:rows</span><span class="w"> </span><span class="p">[[</span><span class="mi">10</span><span class="w"> </span><span class="s">"test10"</span><span class="p">]</span><span class="w">
-                          </span><span class="p">[</span><span class="mi">11</span><span class="w"> </span><span class="s">"test11"</span><span class="p">]</span><span class="w">
-                          </span><span class="p">[</span><span class="mi">12</span><span class="w"> </span><span class="s">"test12"</span><span class="p">]]})</span><span class="w">
-
-</span><span class="p">[{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test10"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">10</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test11"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">11</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test12"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">12</span><span class="p">}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Let’s update a single row by its id:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">update-title-by-id</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
-                          </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
-                          </span><span class="no">:title</span><span class="w"> </span><span class="s">"NEW TITLE"</span><span class="p">})</span><span class="w">
-</span><span class="p">[{</span><span class="no">:title</span><span class="w"> </span><span class="s">"NEW TITLE"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Finally, clean up the table:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">delete-from-table</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="p">})</span><span class="w">
-</span></code></pre></div></div>
-
-<h3 id="passing-the-source-of-a-connection">Passing the Source of a Connection</h3>
-
-<p>Above, we’ve been passing a <code class="language-plaintext highlighter-rouge">Connection</code> object called <code class="language-plaintext highlighter-rouge">conn</code> to all
-functions. But it can be something else as well: a config map or a pool
-object. Here is an example with a map:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">insert-rows</span><span class="w"> </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"..."</span><span class="w"> </span><span class="no">:port</span><span class="w"> </span><span class="n">...</span><span class="w"> </span><span class="no">:user</span><span class="w"> </span><span class="s">"..."</span><span class="p">}</span><span class="w">
-             </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
-              </span><span class="no">:rows</span><span class="w"> </span><span class="p">[[</span><span class="mi">10</span><span class="w"> </span><span class="s">"test10"</span><span class="p">]</span><span class="w">
-                     </span><span class="p">[</span><span class="mi">11</span><span class="w"> </span><span class="s">"test11"</span><span class="p">]</span><span class="w">
-                     </span><span class="p">[</span><span class="mi">12</span><span class="w"> </span><span class="s">"test12"</span><span class="p">]]})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Pay attention that, when the first argument is a config map, a Connection object
-is established from it, and then it gets closed afterward before exiting a
-function. This might break a pipeline if you rely on a state stored in a
-connection. A temporary table is a good example. Once you close a connection,
-all the temporary tables created within this connection get wiped. Thus, if you
-create a temp table in the first function, and select from it using the second
-function passing a config map, that won’t work: the second function won’t know
-anything about that table.</p>
-
-<p>The first argument might be a Pool instsance as well:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pool/with-pool</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">item1</span><span class="w"> </span><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">pool</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">10</span><span class="p">})</span><span class="w">
-        </span><span class="n">item2</span><span class="w"> </span><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">pool</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">11</span><span class="p">})]</span><span class="w">
-    </span><span class="p">{</span><span class="no">:item1</span><span class="w"> </span><span class="n">item1</span><span class="w">
-     </span><span class="no">:item2</span><span class="w"> </span><span class="n">item2</span><span class="p">}))</span><span class="w">
-
-</span><span class="p">{</span><span class="no">:item1</span><span class="w"> </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test10"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">10</span><span class="p">}</span><span class="n">,</span><span class="w">
- </span><span class="no">:item2</span><span class="w"> </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test11"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">11</span><span class="p">}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>When the source a pool, each function call borrows a connection from it and
-returns it back afterwards. But you cannot be sure that both <code class="language-plaintext highlighter-rouge">get-by-id</code> calls
-share the same connection. A parallel thread may interfere and borrow a
-connection used in the first <code class="language-plaintext highlighter-rouge">get-by-id</code> before the second <code class="language-plaintext highlighter-rouge">get-by-id</code> call
-acquires it. As a result, any pipeline that relies on a shared state across two
-subsequent function calls might break.</p>
-
-<p>To ensure the functions share the same connection, use either
-<code class="language-plaintext highlighter-rouge">pg/with-connection</code> or <code class="language-plaintext highlighter-rouge">pool/with-connection</code> macros:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pool/with-pool</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">pool/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
-    </span><span class="p">(</span><span class="nf">pg/with-tx</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="p">]</span><span class="w">
-      </span><span class="p">(</span><span class="nf">insert-into-table</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"AAA"</span><span class="p">})</span><span class="w">
-      </span><span class="p">(</span><span class="nf">insert-into-table</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"BBB"</span><span class="p">}))))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Above, there is 100% guarantee that both <code class="language-plaintext highlighter-rouge">insert-into-table</code> calls share the
-same <code class="language-plaintext highlighter-rouge">conn</code> object borrowed from the pool. It is also wrapped into transaction
-which produces the following session:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">BEGIN</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="n">demo123</span> <span class="p">(</span><span class="n">title</span><span class="p">)</span> <span class="k">values</span> <span class="p">(</span><span class="err">$</span><span class="mi">1</span><span class="p">);</span>
-  <span class="k">parameters</span><span class="p">:</span> <span class="err">$</span><span class="mi">1</span> <span class="o">=</span> <span class="s1">'AAA'</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="n">demo123</span> <span class="p">(</span><span class="n">title</span><span class="p">)</span> <span class="k">values</span> <span class="p">(</span><span class="err">$</span><span class="mi">1</span><span class="p">);</span>
-  <span class="k">parameters</span><span class="p">:</span> <span class="err">$</span><span class="mi">1</span> <span class="o">=</span> <span class="s1">'BBB'</span>
-<span class="k">COMMIT</span>
-</code></pre></div></div>
-
-<h3 id="passing-options">Passing Options</h3>
-
-<p>PG2 supports a lot of options when processing a query. To use them, pass a map
-into the third parameter of any function. Above, we override a function that
-processes column names. Let it be not the default <code class="language-plaintext highlighter-rouge">keyword</code> but
-<code class="language-plaintext highlighter-rouge">clojure.string/upper-case</code>:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">conn</span><span class="w">
-           </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
-           </span><span class="p">{</span><span class="no">:fn-key</span><span class="w"> </span><span class="n">str/upper-case</span><span class="p">})</span><span class="w">
-
-</span><span class="p">{</span><span class="s">"TITLE"</span><span class="w"> </span><span class="s">"AAA"</span><span class="n">,</span><span class="w"> </span><span class="s">"ID"</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>If you need such keys everywhere, submitting a map into each call might be
-inconvenient. The <code class="language-plaintext highlighter-rouge">def-db-fns</code> function accepts a map of predefined overrides:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">hug/def-db-fns</span><span class="w">
-  </span><span class="p">(</span><span class="nf">io/file</span><span class="w"> </span><span class="s">"test/demo.sql"</span><span class="p">)</span><span class="w">
-  </span><span class="p">{</span><span class="no">:fn-key</span><span class="w"> </span><span class="n">str/upper-case</span><span class="p">})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Now, all the generated functions return string column names in upper case by
-default:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">config</span><span class="w">
-           </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">})</span><span class="w">
-
-</span><span class="p">{</span><span class="s">"TITLE"</span><span class="w"> </span><span class="s">"AAA"</span><span class="n">,</span><span class="w"> </span><span class="s">"ID"</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>For more details, refer to the official <a href="https://www.hugsql.org/">HugSQL</a> documentation.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
                 <a class="post-link" href="/preview-text/">Preview и текст</a>
             </h2>
 
@@ -1101,6 +774,430 @@ pickle на json, не спать неделю, мониторить и все �
 ламы” (так автор себя называет)?</p>
 
 <p>Все это мне не понятно.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/pg-json">PG2 release 0.1.6: rich JSON capabilities</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-20T00:00:00+00:00">
+        Mar 20, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/json/" rel="tag">json</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><a href="https://github.com/igrishaev/pg2">PG2 version 0.1.6</a> is out, and it ships various improvements to JSON(b)
+handling.</p>
+
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-pg2-json">
+  <li><a href="#basic-usage" id="toc-item-pg2-json-basic-usage">Basic usage</a></li>
+  <li><a href="#json-wrapper" id="toc-item-pg2-json-json-wrapper">Json Wrapper</a></li>
+  <li><a href="#custom-object-mapper" id="toc-item-pg2-json-custom-object-mapper">Custom Object Mapper</a></li>
+  <li><a href="#utility-pgjson-namespace" id="toc-item-pg2-json-utility-pgjson-namespace">Utility pg.json namespace</a>    <ul>
+      <li><a href="#reading-json" id="toc-item-pg2-json-reading-json">Reading JSON</a></li>
+      <li><a href="#writing-json" id="toc-item-pg2-json-writing-json">Writing JSON</a></li>
+    </ul>
+  </li>
+  <li><a href="#ring-http-middleware" id="toc-item-pg2-json-ring-http-middleware">Ring HTTP middleware</a></li>
+</ul>
+
+<p>Postgres is amazing when dealing with JSON. There hardly can be a database that
+serves it better. Unfortunately, Postgres clients never respect the JSON
+feature, which is horrible. Take JDBC, for example: when querying a JSON(b)
+value, you’ll get a dull <code class="language-plaintext highlighter-rouge">PGObject</code> which should be decoded manually. The same
+applies to insertion: one cannot just pass a Clojure map or a vector. It should
+be packed into the <code class="language-plaintext highlighter-rouge">PGObject</code> as well.</p>
+
+<p>Of course, this can be automated by extending certain protocols. But it’s still
+slow as it’s done on Clojure level (not Java), and it forces you to copy the
+same code across projects.</p>
+
+<p>Fortunately, PG2 supports JSON out from the box. If you query a JSON value,
+you’ll get its Clojure counter-part: a map, a vector, etc. To insert a JSON
+value to a table, you pass either a Clojure map or a vector. No additional steps
+are required.</p>
+
+<p>PG2 relies on <a href="https://github.com/metosin/jsonista">jsonista</a> library to handle JSON. At the moment of
+writing, this is the fastest JSON library for Clojure. Jsonista uses a concept
+of object mappers: objects holding custom rules to encode and decode values. You
+can compose your own mapper with custom rules and pass it into the connection
+config.</p>
+
+<h2 id="basic-usage">Basic usage</h2>
+
+<p>Let’s prepare a connection and a test table with a jsonb column:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10140</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table test_json (
+  id serial primary key,
+  data jsonb not null
+)"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now insert a row:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into test_json (data) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[{</span><span class="no">:some</span><span class="w"> </span><span class="p">{</span><span class="no">:nested</span><span class="w"> </span><span class="p">{</span><span class="no">:json</span><span class="w"> </span><span class="mi">42</span><span class="p">}}}]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>No need to encode a map manually nor wrap it into a sort of <code class="language-plaintext highlighter-rouge">PGObject</code>. Let’s
+fetch the new row by id:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"select * from test_json where id = $1"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w">
+             </span><span class="no">:first?</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:some</span><span class="w"> </span><span class="p">{</span><span class="no">:nested</span><span class="w"> </span><span class="p">{</span><span class="no">:json</span><span class="w"> </span><span class="mi">42</span><span class="p">}}}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Again, the JSON data returns as a Clojure map with no wrappers.</p>
+
+<p>When using JSON with HoneySQL though, some circs are still needed. Namely, you
+have to wrap a value with <code class="language-plaintext highlighter-rouge">[:lift ...]</code> as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/insert-one</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                </span><span class="no">:test_json</span><span class="w">
+                </span><span class="p">{</span><span class="no">:data</span><span class="w"> </span><span class="p">[</span><span class="no">:lift</span><span class="w"> </span><span class="p">{</span><span class="no">:another</span><span class="w"> </span><span class="p">{</span><span class="no">:json</span><span class="w"> </span><span class="p">{</span><span class="no">:value</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]}}}]})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:another</span><span class="w"> </span><span class="p">{</span><span class="no">:json</span><span class="w"> </span><span class="p">{</span><span class="no">:value</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]}}}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Without the <code class="language-plaintext highlighter-rouge">[:lift ...]</code> tag, HoneySQL will treat the value as a nested SQL map
+and try to render it as a string, which will fail of course or lead to a SQL
+injection.</p>
+
+<p>Another way is to use HoneySQL parameters conception:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/insert-one</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                </span><span class="no">:test_json</span><span class="w">
+                </span><span class="p">{</span><span class="no">:data</span><span class="w"> </span><span class="p">[</span><span class="no">:param</span><span class="w"> </span><span class="no">:data</span><span class="p">]}</span><span class="w">
+                </span><span class="p">{</span><span class="no">:honey</span><span class="w"> </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">{</span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:some</span><span class="w"> </span><span class="p">[</span><span class="no">:json</span><span class="w"> </span><span class="p">{</span><span class="no">:map</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]}]}}}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>For details, see the “HoneySQL Integration” section.</p>
+
+<p>PG2 supports not only Clojure maps but vectors, sets, and lists. Here is an
+example with with a vector:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into test_json (data) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[</span><span class="no">:some</span><span class="w"> </span><span class="no">:vector</span><span class="w"> </span><span class="p">[</span><span class="no">:nested</span><span class="w"> </span><span class="no">:vector</span><span class="p">]]]})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="n">,</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="p">[</span><span class="s">"some"</span><span class="w"> </span><span class="s">"vector"</span><span class="w"> </span><span class="p">[</span><span class="s">"nested"</span><span class="w"> </span><span class="s">"vector"</span><span class="p">]]}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="json-wrapper">Json Wrapper</h2>
+
+<p>In rare cases you might store a string or a number in a JSON field. Say, 123 is
+a valid JSON value but it’s treated as a number. To tell Postgres it’s a JSON
+indeed, wrap the value with <code class="language-plaintext highlighter-rouge">pg/json-wrap</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/insert-one</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                </span><span class="no">:test_json</span><span class="w">
+                </span><span class="p">{</span><span class="no">:data</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/json-wrap</span><span class="w"> </span><span class="mi">42</span><span class="p">)})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">4</span><span class="n">,</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="mi">42</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The wrapper is especially useful to store a “null” JSON value: not the standard
+<code class="language-plaintext highlighter-rouge">NULL</code> but <code class="language-plaintext highlighter-rouge">"null"</code> which, when parsed, becomes <code class="language-plaintext highlighter-rouge">nil</code>. For this, pass
+<code class="language-plaintext highlighter-rouge">(pg/json-wrap nil)</code> as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/insert-one</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                </span><span class="no">:test_json</span><span class="w">
+                </span><span class="p">{</span><span class="no">:data</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/json-wrap</span><span class="w"> </span><span class="n">nil</span><span class="p">)})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">5</span><span class="n">,</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="n">nil</span><span class="p">}</span><span class="w"> </span><span class="c1">;; "null" in the database</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="custom-object-mapper">Custom Object Mapper</h2>
+
+<p>One great thing about Jsonista is a conception of mapper objects. A mapper is a
+set of rules how to encode and decode data. Jsonista provides a way to build a
+custom mapper. Once built, it can be passed to a connection config so the JSON
+data is written and read back in a special way.</p>
+
+<p>Let’s assume you’re going to tag JSON sub-parts to track their types. For
+example, if encoding a keyword <code class="language-plaintext highlighter-rouge">:foo</code>, you’ll get a vector of <code class="language-plaintext highlighter-rouge">["!kw",
+"foo"]</code>. When decoding that vector, by the <code class="language-plaintext highlighter-rouge">"!kw"</code> string, the mapper
+understands it a keyword and coerces <code class="language-plaintext highlighter-rouge">"foo"</code> to <code class="language-plaintext highlighter-rouge">:foo</code>.</p>
+
+<p>Here is how you create a mapper with Jsonista:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">
+</span><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">...</span><span class="w">
+  </span><span class="p">(</span><span class="no">:import</span><span class="w">
+   </span><span class="n">clojure.lang.Keyword</span><span class="w">
+   </span><span class="n">clojure.lang.PersistentHashSet</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+    </span><span class="p">[</span><span class="n">jsonista.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">j</span><span class="p">]</span><span class="w">
+    </span><span class="p">[</span><span class="n">jsonista.tagged</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">jt</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w">
+  </span><span class="p">(</span><span class="nf">j/object-mapper</span><span class="w">
+   </span><span class="p">{</span><span class="no">:encode-key-fn</span><span class="w"> </span><span class="n">true</span><span class="w">
+    </span><span class="no">:decode-key-fn</span><span class="w"> </span><span class="n">true</span><span class="w">
+    </span><span class="no">:modules</span><span class="w">
+    </span><span class="p">[(</span><span class="nf">jt/module</span><span class="w">
+      </span><span class="p">{</span><span class="no">:handlers</span><span class="w">
+       </span><span class="p">{</span><span class="n">Keyword</span><span class="w"> </span><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="s">"!kw"</span><span class="w">
+                 </span><span class="no">:encode</span><span class="w"> </span><span class="n">jt/encode-keyword</span><span class="w">
+                 </span><span class="no">:decode</span><span class="w"> </span><span class="nb">keyword</span><span class="p">}</span><span class="w">
+        </span><span class="n">PersistentHashSet</span><span class="w"> </span><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="s">"!set"</span><span class="w">
+                           </span><span class="no">:encode</span><span class="w"> </span><span class="n">jt/encode-collection</span><span class="w">
+                           </span><span class="no">:decode</span><span class="w"> </span><span class="nb">set</span><span class="p">}}})]}))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">object-mapper</code> function accepts even more options but we skip them for now.</p>
+
+<p>Now that you have a mapper, pass it into a config:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10140</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:object-mapper</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>All the JSON operations made by this connection will use the passed object
+mapper. Let’s insert a set of keywords:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into test_json (data) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[{</span><span class="no">:object</span><span class="w"> </span><span class="o">#</span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="no">:bar</span><span class="w"> </span><span class="no">:baz</span><span class="p">}}]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When read back, the JSON value is not a vector of strings any longer but a set
+of keywords:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from test_json"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:object</span><span class="w"> </span><span class="o">#</span><span class="p">{</span><span class="no">:baz</span><span class="w"> </span><span class="no">:bar</span><span class="w"> </span><span class="no">:foo</span><span class="p">}}}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To peek a raw JSON value, select it as a plain text and print (just to avoid
+escaping quotes):</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">printl</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select data::text json_raw from test_json where id = 10"</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; [{:json_raw {"object": ["!set", [["!kw", "baz"], ["!kw", "bar"], ["!kw", "foo"]]]}}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If you read that row using another connection with a default object mapper, the
+data is returned without expanding tags.</p>
+
+<h2 id="utility-pgjson-namespace">Utility pg.json namespace</h2>
+
+<p>PG2 provides an utility namespace for JSON encoding and decoding. You can use it
+for files, HTTP API, etc. If you already have PG2 in the project, there is no
+need to plug in Cheshire or another JSON library. The namespace is <code class="language-plaintext highlighter-rouge">pg.json</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">...</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg.json</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">json</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="reading-json">Reading JSON</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">read-string</code> function reads a value from a JSON string:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">json/read-string</span><span class="w"> </span><span class="s">"[1, 2, 3]"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The first argument might be an object mapper:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">json/read-string</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="s">"[\"!kw\", \"hello\"]"</span><span class="p">)</span><span class="w">
+
+</span><span class="no">:hello</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The functions <code class="language-plaintext highlighter-rouge">read-stream</code> and <code class="language-plaintext highlighter-rouge">read-reader</code> act the same but accept either an
+<code class="language-plaintext highlighter-rouge">InputStream</code> or a <code class="language-plaintext highlighter-rouge">Reader</code> object:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">in</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"[1, 2, 3]"</span><span class="w"> </span><span class="n">.getBytes</span><span class="w"> </span><span class="n">io/input-stream</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">json/read-stream</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="n">in</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">in</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"[1, 2, 3]"</span><span class="w"> </span><span class="n">.getBytes</span><span class="w"> </span><span class="n">io/reader</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">json/read-reader</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="n">in</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="writing-json">Writing JSON</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">write-string</code> function dumps an value into a JSON string:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">json/write-string</span><span class="w"> </span><span class="p">{</span><span class="no">:test</span><span class="w"> </span><span class="p">[</span><span class="no">:hello</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">true</span><span class="p">]})</span><span class="w">
+
+</span><span class="c1">;; "{\"test\":[\"hello\",1,true]}"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The first argument might be a custom object mapper. Let’s reuse our tagger
+mapper:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">json/write-string</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="p">{</span><span class="no">:test</span><span class="w"> </span><span class="p">[</span><span class="no">:hello</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">true</span><span class="p">]})</span><span class="w">
+
+</span><span class="c1">;; "{\"test\":[[\"!kw\",\"hello\"],1,true]}"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The functions <code class="language-plaintext highlighter-rouge">write-stream</code> and <code class="language-plaintext highlighter-rouge">write-writer</code> act the same. The only
+difference is, they accept either an <code class="language-plaintext highlighter-rouge">OutputStream</code> or <code class="language-plaintext highlighter-rouge">Writer</code> objects. The
+first argument might be a mapper as well:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">ByteArrayOutputStream</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">json/write-stream</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">[</span><span class="no">:a</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="no">:c</span><span class="p">]}</span><span class="w"> </span><span class="n">out</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">StringWriter</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">json/write-writer</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">[</span><span class="no">:a</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="no">:c</span><span class="p">]}</span><span class="w"> </span><span class="n">out</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="ring-http-middleware">Ring HTTP middleware</h2>
+
+<p>PG2 provides an HTTP Ring middleware for JSON. It acts like <code class="language-plaintext highlighter-rouge">wrap-json-request</code>
+and <code class="language-plaintext highlighter-rouge">wrap-json-response</code> middleware from the <a href="https://github.com/ring-clojure/ring-json">ring-json</a>
+library. Comparing to it, the PG2 stuff has the following advantages:</p>
+
+<ul>
+  <li>it’s faster because of Jsonista, whereas Ring-json relies on Cheshire;</li>
+  <li>it wraps both request and response at once with a shortcut;</li>
+  <li>it supports custom object mappers.</li>
+</ul>
+
+<p>Imagine you have a Ring handler that reads JSON body and returns a JSON
+map. Something like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">api-handler</span><span class="w"> </span><span class="p">[</span><span class="n">request</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">request</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="no">:user_id</span><span class="p">)</span><span class="w">
+        </span><span class="n">user</span><span class="w"> </span><span class="p">(</span><span class="nf">get-user-by-id</span><span class="w"> </span><span class="n">user-id</span><span class="p">)]</span><span class="w">
+    </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w">
+     </span><span class="no">:body</span><span class="w"> </span><span class="p">{</span><span class="no">:user</span><span class="w"> </span><span class="n">user</span><span class="p">}}))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Here is how you wrap it:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">...</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg.ring.json</span><span class="w"> </span><span class="no">:refer</span><span class="w"> </span><span class="p">[</span><span class="n">wrap-json</span><span class="w">
+                         </span><span class="n">wrap-json-response</span><span class="w">
+                         </span><span class="n">wrap-json-request</span><span class="p">]]))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">app</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">api-handler</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-this-foo</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-json</span><span class="w"> </span><span class="n">&lt;opt&gt;</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-that-bar</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, the <code class="language-plaintext highlighter-rouge">wrap-json</code> wrapper is a combination of <code class="language-plaintext highlighter-rouge">wrap-json-request</code> and
+<code class="language-plaintext highlighter-rouge">wrap-json-response</code>. You can apply them both explicitly:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">app</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">api-handler</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-this-foo</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-json-request</span><span class="w"> </span><span class="n">&lt;opt&gt;</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-json-response</span><span class="w"> </span><span class="n">&lt;opt&gt;</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-that-bar</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>All the three <code class="language-plaintext highlighter-rouge">wrap-json...</code> middleware accept a handler to wrap and a map of
+options. Here is the options supported:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Direction</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:object-mapper</code></td>
+      <td>request, response</td>
+      <td>An custom instance of <code class="language-plaintext highlighter-rouge">ObjectMapper</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:slot</code></td>
+      <td>request</td>
+      <td>A field to <code class="language-plaintext highlighter-rouge">assoc</code> the parsed JSON data (1)</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:malformed-response</code></td>
+      <td>request</td>
+      <td>A ring response returned when payload cannot be parsed (2)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Notes:</p>
+
+<ol>
+  <li>
+    <p>The default slot name is <code class="language-plaintext highlighter-rouge">:json</code>. Please avoid using <code class="language-plaintext highlighter-rouge">:body</code> or <code class="language-plaintext highlighter-rouge">:params</code> to
+prevent overriding existing request fields. This is especially important for
+<code class="language-plaintext highlighter-rouge">:body</code>! Often, you need the origin input stream to calculate an MD5 or
+SHA-256 hash-sum of the payload. If you overwrite the <code class="language-plaintext highlighter-rouge">:body</code> field, you
+cannot do that.</p>
+  </li>
+  <li>
+    <p>The default malformed response is something like 400 “Malformed JSON” (plain
+text).</p>
+  </li>
+</ol>
+
+<p>A full example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">json-opt</span><span class="w">
+  </span><span class="p">{</span><span class="no">:slot</span><span class="w"> </span><span class="no">:data</span><span class="w">
+   </span><span class="no">:object-mapper</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="c1">;; see above</span><span class="w">
+   </span><span class="no">:malformed-response</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">404</span><span class="w">
+                        </span><span class="no">:body</span><span class="w"> </span><span class="s">"&lt;h1&gt;Bad JSON&lt;/h1&gt;"</span><span class="w">
+                        </span><span class="no">:headers</span><span class="w"> </span><span class="p">{</span><span class="s">"content-type"</span><span class="w"> </span><span class="s">"text/html"</span><span class="p">}}})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">app</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">api-handler</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-this-foo</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-json</span><span class="w"> </span><span class="n">json-opt</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-that-bar</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
 
                 
             </div>
