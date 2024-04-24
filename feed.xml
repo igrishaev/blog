@@ -6,9 +6,186 @@
 </description>
     <link>https://grishaev.me/</link>
     <atom:link href="https://grishaev.me/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Wed, 24 Apr 2024 14:23:10 +0000</pubDate>
-    <lastBuildDate>Wed, 24 Apr 2024 14:23:10 +0000</lastBuildDate>
+    <pubDate>Wed, 24 Apr 2024 15:22:33 +0000</pubDate>
+    <lastBuildDate>Wed, 24 Apr 2024 15:22:33 +0000</lastBuildDate>
     <generator>Jekyll v4.2.0</generator>
+    
+      <item>
+        <title>Табы</title>
+        <description>&lt;p&gt;Иногда нам все-таки везет с дизайнерами.&lt;/p&gt;
+
+&lt;p&gt;В Firefox у вкладок есть особенность: когда их больше определенного числа, они
+перестают сжиматься и превращаются в прокрутку. Это прекрасно, потому что часть
+заголовка видна, и можно понять, где что.&lt;/p&gt;
+
+&lt;p&gt;А в Хроме и его форках наоборот: вкладки будут бесконечно уменьшаться, пока не
+останется крестик. Полный фейл: непонятно, что за вкладка, пока не тыкнешь на
+нее. Порой как дурак кликаешь методом перебора. Легко попасть на крестик и
+закрыть.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/static/aws/tabs/1.png&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Ясно, что табы нужно прореживать, чтобы не было открыто лишнее. Но в пиковые
+моменты, например, при лихорадочном поиске решения, их бывает много, хочешь того
+или нет.&lt;/p&gt;
+
+&lt;p&gt;Мораль в том, что табы хороши, но бесконечно сжимать их не нужно. В определенный
+момент их нужно прокручивать.&lt;/p&gt;
+</description>
+        <pubDate>Wed, 24 Apr 2024 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/tabs/</link>
+        <guid isPermaLink="true">https://grishaev.me/tabs/</guid>
+        
+        <category>tabs</category>
+        
+        <category>ui</category>
+        
+        <category>firefox</category>
+        
+        <category>chrome</category>
+        
+        
+      </item>
+    
+      <item>
+        <title>Soft delete</title>
+        <description>&lt;p&gt;Многие знают о технике мягкого удаления. Это когда записи не удаляются физически
+из базы, а помечаются флажком &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;is_deleted&lt;/code&gt; или выставляется время
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;deleted_at&lt;/code&gt;. Удобно, что ничего не удаляется, не нужно воевать с внешними
+ключами и ограничением целостности. Самое главное — если что-то пошло не так, то
+снял флажок, и данные на месте.&lt;/p&gt;
+
+&lt;p&gt;Все это хорошо, и я тоже так думал, пока не поработал в одном проекте. Там была
+огромная база с кучей таблиц и техникой мягкого удаления. Только тогда я понял,
+что это билет в ад.&lt;/p&gt;
+
+&lt;p&gt;Начнем с того, что удаленные записи отнимают место на диске. За несколько лет их
+набегает порядочное количество. Удаленные записи по-прежнему участвуют в
+индексах, и они тоже занимают место, замедляют обход. В Постгресе есть
+функциональные индексы когда запись попадает только при условии &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;NOT is_deleted&lt;/code&gt;
+или &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;deleted_at IS NULL&lt;/code&gt;. Но чаще всего этим не заморачиваются, и в индекс
+валится все.&lt;/p&gt;
+
+&lt;p&gt;Бывает, удаленная запись мешает критерию уникальности, и тогда ее выключают из
+уникального индекса. Например, поле &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;email&lt;/code&gt; уникально только среди не удаленных
+пользователей. Поэтому записи как в примере ниже&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;    email        | is_deleted
+-----------------|-------
+ivan@grishaev.me | false
+ivan@grishaev.me | true
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;могут спокойно сосуществовать. Но восстановить вторую запись нельзя, потому что
+она вступит в конфликт с первой. Спрашивается: зачем мы ее храним? Что с ней
+можно сделать? Ничего. Это просто балласт.&lt;/p&gt;
+
+&lt;p&gt;Что касается запросов, то разработчики часто забывают условие &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;WHERE NOT
+is_deleted&lt;/code&gt;, и в выборке оказываются удаленные данные.&lt;/p&gt;
+
+&lt;p&gt;А в другом проекте было по-другому: проблему удаления решали переносом в другие
+таблицы. Например, для таблицы messages создается ее аналог
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;messages_deleted&lt;/code&gt;. Запись переносится атомарно таким запросом:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;deleted&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;delete&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;messages&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;42&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;returning&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;messages_deleted&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;deleted&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Перенос обратно:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;deleted&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;delete&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;messages_deleted&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;42&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;returning&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;messages&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;deleted&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Есть и другой вариант этого запроса без выражения &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;WITH&lt;/code&gt;; можно сделать это
+триггером, хоть я и не люблю их. Важно, что запрос выполняется атомарно даже
+если не заключен в транзакцию. При этом запись переходит между таблицами на
+стороне сервера. Она даже не приходит клиенту.&lt;/p&gt;
+
+&lt;p&gt;На первый взгляд это неудобно, потому что нужны лишние таблицы. Но как
+замечательно это оказалось на практике! В основной таблице только актуальные
+данные, никаких флажков и предикатов. Выбирая что-то из messages, ты на 100%
+уверен, что нет риска выбрать что-то не то. Данные всегда в чистоте. Если
+однажды мы решим, что удаленные сообщения не нужны, мы грохнем таблицу
+messages_deleted без риска задеть живые данные.&lt;/p&gt;
+
+&lt;p&gt;С тех пор я придерживаюсь переноса, если это возможно.&lt;/p&gt;
+
+&lt;p&gt;Принцип “я ничего не удаляю” аналогичен принципу “я ничего не выбрасываю”. С ним
+база, простите меня, засирается. И хотя перенос данных не значит их удаление, он
+очищает рабочую область — а это крайне важно.&lt;/p&gt;
+</description>
+        <pubDate>Wed, 24 Apr 2024 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/soft-delete/</link>
+        <guid isPermaLink="true">https://grishaev.me/soft-delete/</guid>
+        
+        <category>programming</category>
+        
+        <category>postgres</category>
+        
+        <category>delete</category>
+        
+        
+      </item>
+    
+      <item>
+        <title>Чтение</title>
+        <description>&lt;p&gt;Когда говорят о пользе чтения, забывают еще кое-что: оно отлично снимает стресс.&lt;/p&gt;
+
+&lt;p&gt;Неважно, что вы читаете — классику и техническую вещь — но эффект чтения
+потрясен. Мир словно останавливается, и все проблемы ждут, пока ты
+читаешь. Отрываясь наконец от книги, не испытываешь сожаления о потраченном
+времени, как это часто бывает с телефоном.&lt;/p&gt;
+
+&lt;p&gt;Разумеется, речь идет о чтении с бумаги, а не с экрана, поэтому телефоны,
+читалки и планшеты идут мимо кассы. Они по-своему полезны, но того эффекта, что
+дает бумага, с ними достичь нельзя.&lt;/p&gt;
+
+&lt;p&gt;В интернете полно экспертов, которые советуют: технические книги надо читать на
+английском, а если классику, то именно то, а не другое. На самом деле только
+один человек знает, что нужно читать, и это вы. Пробуешь разные жанры и языки и
+что понравилось — то и читаешь, неважно что советуют псевдо-эксперты.&lt;/p&gt;
+
+&lt;p&gt;Я спокойно читаю технические книги на русском, если, конечно, перевод не совсем
+уж плохой. Все больше книг пишутся русскими авторами. Книги “Postgres изнутри”
+Егора Рогова и “Postgres: основы SQL” Моргунова — просто отпад. Они написаны на
+русском, а первую уже перевели на английский. Попадались хорошие книги русских
+авторов и по другим технологиям.&lt;/p&gt;
+
+&lt;p&gt;Классику, наоборот, пытаюсь осилить на английском, и это полно открытий. Другая
+грамматика, устаревшие слова и их порядок — казалось бы, английский, но не то,
+что читаешь в интернете. Старая книжка на английском — это прям квест. Даже
+Оруэлл сильно отличается от современного американского, хотя прошло-то чуть
+больше полувека.&lt;/p&gt;
+
+&lt;p&gt;Из классиков люблю Гоголя: беру наугад любой том и залипаю на полчаса. Булгаков
+тоже хорош, в том числе его раннее творчество. Люблю Дон Кихота, Остров
+сокровищ, Оруэлла. Имена не имеют значения, важно то, что в принципе есть что
+почитать.&lt;/p&gt;
+
+&lt;p&gt;Чтение дает мозгу отдых. Когда очередной погорелец заводит песню о том, что
+выгорел, я мысленно спрашиваю: когда ты в последний раз читал? Не Хакер-ньюз с
+телефона, а бумажную книжку? У тебя вообще книги есть или только телефон с
+ноутом?&lt;/p&gt;
+
+&lt;p&gt;При этом я не считаю себя Д’Артаньяном: я читаю мало, и лишь недавно очнулся
+после года тупняка. Это заметка — скорее напоминалка себе: меньше тупить в экран
+и больше читать.&lt;/p&gt;
+</description>
+        <pubDate>Wed, 24 Apr 2024 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/reading/</link>
+        <guid isPermaLink="true">https://grishaev.me/reading/</guid>
+        
+        <category>life</category>
+        
+        <category>reading</category>
+        
+        <category>literature</category>
+        
+        <category>english</category>
+        
+        
+      </item>
     
       <item>
         <title>Наедине</title>
@@ -52,6 +229,68 @@
         <guid isPermaLink="true">https://grishaev.me/hart-to-hart/</guid>
         
         <category>life</category>
+        
+        
+      </item>
+    
+      <item>
+        <title>Эмодзи</title>
+        <description>&lt;p&gt;Чего я не могу понять, так это эмодзи.&lt;/p&gt;
+
+&lt;p&gt;Скажем, человек пишет в объявлении, что продает щенка. И ставит морду
+щенка. Зачем? Речь о щенке, и после него морда щенка. Масло масляное. То же
+самое с автомобилем, ноутбуком и прочим: за словом следует иконка того, о чем
+написано. Зачем? Я уже понял, что речь о щенке или ноутбуке, зачем ставить то же
+самое?&lt;/p&gt;
+
+&lt;p&gt;Или списки. У нас были цифры, буллиты, тире — но нет, этого мало. Теперь
+канцелярские кнопки и желтые пальчики, которые указывают, где читать.&lt;/p&gt;
+
+&lt;p&gt;Или молнии: каждый клоун ставит молнию к новому сообщению в телеграме.&lt;/p&gt;
+
+&lt;p&gt;Иногда с эмодзи пытаются в пассивную агрессию: что-то пишут и ставят фейспалм
+или блюющий рот. Слабоватый прием, честно скажем.&lt;/p&gt;
+
+&lt;p&gt;Программисты тоже деградируют: в консоли все больше эмодзи. В основном этим
+страдает Node.js. Наверное, нет такого пакета, который бы не вывел единорога,
+искорки и прочего хлама.&lt;/p&gt;
+
+&lt;p&gt;Иные люди тратят дни и месяцы, чтобы затащить эмодзи туда, где их раньше не
+было. Даже не знаю, что им сказать. К счастью, эмодзи до сих пор плохо дружат с
+печатью. В мире InDesign и LaTeX их либо избегают, либо вставляют вручную. Это
+один их тех бастионов, что еще держатся.&lt;/p&gt;
+
+&lt;p&gt;С тем же непонимание я отношусь к лигатурам: какой смысл в завитушках в коде? У
+меня есть роскошное издание Дон Кихота, и там лигатуры очень кстати. И то не
+везде, а только в иллюстрациях и подписях к ним. Почему-то сорок лет назад
+понимали, что лигатуры отвлекают от чтения. А сегодня это знание утеряно.&lt;/p&gt;
+
+&lt;p&gt;Делают шрифты, где лигатуры охватывают три, четыре и больше символов. Написал
+TODO и вжух — оно стало неделимым блоком, по-дурацки выделятся на общем
+фоне. Всякие стрелочки и скобки слипаются в неожиданных местах. Мне хватило
+минуты, чтобы понять — никогда не поставлю лигатурный шрифт.&lt;/p&gt;
+
+&lt;p&gt;Напоминает проблему современных мессаджеров. Хочешь отправить текстовый смайлик
+— и он становится желтым колобком. Я не хочу колобок, я хочу текст. Раньше я
+добавлял ему нос из тире :—) и алгоритм пропускал его. Но технологии не стоят на
+месте: теперь и этот паттерн превращается в колобка.&lt;/p&gt;
+
+&lt;p&gt;Я не понимаю, почему никто не скажет — вы, программисты, которые затащили все
+это, молодцы. Умеете, могете. Но это лишнее. Оставьте эмодзи для тупых чатов с
+одноклассниками в ватсаппе. Оставьте лигатуры для иллюстраций и подарочных
+изданий. Не тащите это дерьмо во все щели. Не надо, правда.&lt;/p&gt;
+
+&lt;p&gt;Желаю вам больше эмодзи, пальчиков, смайликов, щеночков и лигатур.&lt;/p&gt;
+</description>
+        <pubDate>Wed, 24 Apr 2024 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/emoji/</link>
+        <guid isPermaLink="true">https://grishaev.me/emoji/</guid>
+        
+        <category>ui</category>
+        
+        <category>life</category>
+        
+        <category>emoji</category>
         
         
       </item>
@@ -566,453 +805,6 @@ PDF. И только потом заметил, что это PNG.&lt;/p&gt;
         <category>software</category>
         
         <category>preview</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Списки в интерфейсе</title>
-        <description>&lt;p&gt;Не понимаю, откуда у дизайнеров такие беды со списками.&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/lists-ui/01.jpg&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;Простое правило: список всегда упорядочен по алфавиту. Всегда и точка. Не по
-системной айдишке, не по важности, не по фазе Луны, а по алфавиту.&lt;/p&gt;
-
-&lt;p&gt;Если критериев сортировки несколько, список становится таблицей. Клик по колонке
-переключает сортировку на нее. Но у списка, повторю в третий раз, сортировка
-одна — по алфавиту. Без учета регистра, конечно.&lt;/p&gt;
-
-&lt;p&gt;На скриншотах видно, что дизайнеры не знают этого правила. Пункт “Turn off…”,
-хоть и начинается с T, идет первым. Edit message оказался ближе к
-концу. Refactor — еще до середины, Create gist — предпоследний.&lt;/p&gt;
-
-&lt;p&gt;Дизайнеры объединяют команды в группы, но сами группы идут от балды. В менюшках
-нет никакой организации. Их можно назвать одним словом — хаос. Каждый раз, когда
-выпадает такая менюха, как дурак сканируешь с самого начала, вместо того, чтобы
-прыгнуть на нужное место. O(N) и O(1)? Не слышали.&lt;/p&gt;
-
-&lt;p&gt;То же самое относится к якобы “списку настроек” Эпла. Он выглядит как список, но
-не ведитесь. Пункты разбиты на группы, между которыми едва заметные
-разделители. Заголовков у групп нет. Почему Lock Screen, Touch ID и Users в
-одной группе, а Passwords в другой? Такой вопрос можно задать к любой другой
-группе.&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/lists-ui/02.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;Цветовое кодирование сбивает с толку. Сетевые штучки нарисованы синим, а
-периферия — уши, клава, мышь — белым. Для других групп это правило нарушается:
-там все цвета. Дурдом.&lt;/p&gt;
-
-&lt;p&gt;Пункт Wifi, хоть и начинается с W, идет первым. Displays — в середине, Battery —
-ближе к концу.&lt;/p&gt;
-
-&lt;p&gt;Давайте договоримся: любой список идет по алфавиту. Да, пусть Delete окажется
-наверху, а Translate — внизу. Никто не умрет, и так будет лучше: человек сразу
-найдет то, что ему нужно.&lt;/p&gt;
-
-&lt;p&gt;Кстати, дурацкие иконки — карандаш, часики, мусорный бак, ножницы, что там
-еще… — нужно убрать. Никто не ищет Cut по иконке ножниц среди календарей и
-часов. Дизайнеры-обезьянки качают иконки паками, не понимая, что только мусорят
-ими.&lt;/p&gt;
-</description>
-        <pubDate>Sat, 13 Apr 2024 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/lists-ui/</link>
-        <guid isPermaLink="true">https://grishaev.me/lists-ui/</guid>
-        
-        <category>ui</category>
-        
-        <category>lists</category>
-        
-        <category>software</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Github IDE</title>
-        <description>&lt;p&gt;С тяжелым сердцем смотрю, как Микрософт уродует интерфейс Гитхаба.&lt;/p&gt;
-
-&lt;p&gt;Раньше Гитхаб просто показывал код. Ну, с минимальной подсветкой и ссылками на
-строки. Все изменилось, как только его купили Микрософты.&lt;/p&gt;
-
-&lt;p&gt;Теперь Гитхаб — что-то вроде онлайн-ИДЕ. Стоит куда-то кликнуть, как появляются
-попапы, колонки сдвигаются, открываются ссылки для переходов к определению и все
-остальное. Может быть, кому-то это нужно, но в своем случае не припомню.&lt;/p&gt;
-
-&lt;p&gt;До двойного клика:&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/github-ide/01.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;и после него:&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/github-ide/02.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;На скриншотах выше — типичный косяк веб-интерфейса. Я всего-то дважды кликнул на
-функцию read-non-quoted-string, чтобы выделить и скопировать название. В
-результате дерево каталогов исчезло, код переехал влево, а справа появилась
-новая выпадашка.&lt;/p&gt;
-
-&lt;p&gt;Разве не уроды? Кто просил двигать колонки и что-то скрывать-открывать? Я просто
-дважды кликнул.&lt;/p&gt;
-
-&lt;p&gt;Интерфейс словно перешел в режим редактирования, потому что курсор стал
-вертикальной чертой. При этом текст ввести нельзя — документ по-прежнему
-read-only. Это просто вынос мозга.&lt;/p&gt;
-
-&lt;p&gt;Обратите внимание, что в результате перестановок курсор оказался в неправильном
-месте. Я кликнул на середину &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;read-non-quoted-string&lt;/code&gt;, а на втором скриншоте он
-остался на конце сигнатуры за &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;...in]&lt;/code&gt;. При этом выделена правая квадратная
-скобка. Что происходит?&lt;/p&gt;
-
-&lt;p&gt;Разбудите меня, когда у нас, наконец, будут нормальные дизайнеры.&lt;/p&gt;
-</description>
-        <pubDate>Sat, 13 Apr 2024 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/github-ide/</link>
-        <guid isPermaLink="true">https://grishaev.me/github-ide/</guid>
-        
-        <category>software</category>
-        
-        <category>github</category>
-        
-        <category>ui</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>PG2 release 0.1.9: arrays</title>
-        <description>
-&lt;p&gt;The latest &lt;a href=&quot;https://github.com/igrishaev/pg2&quot;&gt;0.1.9 release&lt;/a&gt; of PG2 supports Postgres arrays.&lt;/p&gt;
-
-&lt;p&gt;In JDBC, arrays have always been a pain. Every time you’re about to pass an
-array to the database and read it back, you’ve got to wrap your data in various
-Java classes, extend protocols, and multimethods. In Postgres, the array type is
-quite powerful yet underestimated due to poor support of drivers. This is one
-more reason for running this project: to bring easy access to Postgres arrays.&lt;/p&gt;
-
-&lt;p&gt;PG2 tries its best to provide seamless connection between Clojure vectors and
-Postgres arrays. When reading an array, you get a Clojure vector. And vice
-versa: to pass an array object into a query, just submit a vector.&lt;/p&gt;
-
-&lt;p&gt;PG2 supports arrays of any type: not only primitives like numbers and strings
-but &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;uuid&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;numeric&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;timestamp(tz)&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;json(b)&lt;/code&gt;, and more as well.&lt;/p&gt;
-
-&lt;p&gt;Arrays might have more than one dimension. Nothing prevents you from having a 3D
-array of integers like &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;cube::int[][][]&lt;/code&gt;, and it becomes a nested vector when
-fetched by PG2.&lt;/p&gt;
-
-&lt;p&gt;&lt;em&gt;A technical note: PG2 supports both encoding and decoding of arrays in both
-text and binary modes.&lt;/em&gt;&lt;/p&gt;
-
-&lt;p&gt;Here is a short demo session. Let’s prepare a table with an array of strings:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/query&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;create table arr_demo_1 (id serial, text_arr text[])&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Insert a simple item:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/execute&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;insert into arr_demo_1 (text_arr) values ($1)&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:params&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;one&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;two&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;three&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]})&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;In arrays, some elements might be NULL:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/execute&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;insert into arr_demo_1 (text_arr) values ($1)&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:params&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;foo&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nil&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;bar&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]})&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Now let’s check what we’ve got so far:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/query&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;select * from arr_demo_1&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-
-&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:text_arr&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;one&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;two&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;three&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]}&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
- &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:text_arr&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;foo&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nil&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;bar&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]}]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Postgres supports plenty of operators for arrays. Say, the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&amp;amp;&amp;amp;&lt;/code&gt; one checks if
-there is at least one common element on both sides. Here is how we find those
-records that have either “tree”, “four”, or “five”:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/execute&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;select * from arr_demo_1 where text_arr &amp;amp;&amp;amp; $1&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:params&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;three&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;four&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;five&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]})&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-
-&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:text_arr&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;one&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;two&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;three&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Another useful operator is &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;@&amp;gt;&lt;/code&gt; that checks if the left array contains all
-elements from the right array:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/execute&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;select * from arr_demo_1 where text_arr @&amp;gt; $1&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:params&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;foo&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;bar&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]})&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-
-&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:text_arr&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;foo&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nil&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;bar&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Let’s proceed with numeric two-dimensional arrays. They’re widely used in math,
-statistics, graphics, and similar areas:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/query&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;create table arr_demo_2 (id serial, matrix bigint[][])&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Here is how you insert a matrix:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/execute&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;insert into arr_demo_2 (matrix) values ($1)&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:params&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[[[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-                       &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]]]})&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-
-&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:inserted&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Pay attention: each number can be NULL but you cannot have NULL for an entire
-sub-array. This will trigger an error response from Postgres.&lt;/p&gt;
-
-&lt;p&gt;Reading the matrix back:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/query&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;select * from arr_demo_2&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-
-&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:matrix&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-                 &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]]}]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;A crazy example: let’s have a three dimension array of timestamps with a time
-zone. No idea how it can be used but still:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/query&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;create table arr_demo_3 (id serial, matrix timestamp[][][])&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-
-&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;-matrix&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[[[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-    &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-    &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-   &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-    &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-    &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-   &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-    &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-    &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;OffsetDateTime/now&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)]]]])&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-
-&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/execute&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;insert into arr_demo_3 (matrix) values ($1)&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:params&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;-matrix&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]})&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Now read it back:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/query&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;select * from arr_demo_3&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-
-&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:matrix&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;...&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;truncated&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-   &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[[&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;java.time.LocalDateTime&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x5ed6e62b&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;2024-04-01T18:32:48.272169&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-      &lt;/span&gt;&lt;span class=&quot;o&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;java.time.LocalDateTime&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;xb9d6851&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;2024-04-01T18:32:48.272197&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-      &lt;/span&gt;&lt;span class=&quot;o&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;java.time.LocalDateTime&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x6e35ed84&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;2024-04-01T18:32:48.272207&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;...&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;java.time.LocalDateTime&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x7319d217&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;2024-04-01T18:32:48.272236&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-      &lt;/span&gt;&lt;span class=&quot;o&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;java.time.LocalDateTime&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x6153154d&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;2024-04-01T18:32:48.272241&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-      &lt;/span&gt;&lt;span class=&quot;o&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;java.time.LocalDateTime&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x2e4ffd44&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;2024-04-01T18:32:48.272247&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-    &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;...&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-    &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;java.time.LocalDateTime&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x32c6e526&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;2024-04-01T18:32:48.272405&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-      &lt;/span&gt;&lt;span class=&quot;o&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;java.time.LocalDateTime&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x496a5bc6&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;2024-04-01T18:32:48.272418&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-      &lt;/span&gt;&lt;span class=&quot;o&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;java.time.LocalDateTime&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x283531ee&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;2024-04-01T18:32:48.272426&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;...&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-     &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;java.time.LocalDateTime&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x677b3def&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;2024-04-01T18:32:48.272459&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-      &lt;/span&gt;&lt;span class=&quot;o&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;java.time.LocalDateTime&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x46d5039f&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;2024-04-01T18:32:48.272467&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-      &lt;/span&gt;&lt;span class=&quot;o&quot;&gt;#&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;java.time.LocalDateTime&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x3d0b906&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;2024-04-01T18:32:48.272475&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]]]]&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-  &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;You can have an array of JSON(b) objects, too:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/query&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;create table arr_demo_4 (id serial, json_arr jsonb[])&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Inserting an array of three maps:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;w&quot;&gt;  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/execute&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-              &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;insert into arr_demo_4 (json_arr) values ($1)&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-              &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:params&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:foo&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:bar&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:test&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]}]]})&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Elements might be everything that can be JSON-encoded: numbers, strings,
-boolean, etc. The only tricky case is a vector. To not break the algorithm that
-traverses the matrix, wrap a vector element with &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pg/json-wrap&lt;/code&gt;:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/execute&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;insert into arr_demo_4 (json_arr) values ($1)&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-            &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:params&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;42&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nil&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:some&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;object&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/json-wrap&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;])]]})&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-
-&lt;/span&gt;&lt;span class=&quot;c1&quot;&gt;;; Signals that the [1 2 3] is not a nested array but an element.&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Now read it back:&lt;/p&gt;
-
-&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pg/query&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;select * from arr_demo_4&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-
-&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:id&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:json_arr&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;42&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nil&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;:some&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;object&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]]}]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-</description>
-        <pubDate>Thu, 04 Apr 2024 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/en/pg-arrays</link>
-        <guid isPermaLink="true">https://grishaev.me/en/pg-arrays</guid>
-        
-        <category>clojure</category>
-        
-        <category>programming</category>
-        
-        <category>postgres</category>
-        
-        <category>array</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Microsoft Teams</title>
-        <description>&lt;p&gt;Худшая программа, с которой мне приходится работать — это Microsoft Teams, и вот
-почему.&lt;/p&gt;
-
-&lt;p&gt;Teams — это Слак семилетней давности: тормозной и глючный. Если сегодняшний Слак
-еще более-менее, то после него Тимс — словно сидишь под водой: каждое действие
-на долю секунды медленней.&lt;/p&gt;
-
-&lt;p&gt;Удивляет, что в Микрософте сделали быстрый редактор VS Code, но не осилили
-месаджер. По-моему, ребят из Teams надо запереть в комнате с командой VS Code,
-чтобы те передали опыт. Странно, что никому не приходит это в голову.&lt;/p&gt;
-
-&lt;p&gt;За короткую жизнь Teams сменил несколько приложений. Сначала был Teams
-Classic. Потом вышел Teams for School and Work. Теперь вышел Teams New. Это
-говорит о том, что первое приложение сделано настолько плохо, что проще
-выпустить новое, чем исправлять старое. Этого никто не скрывает: первый Teams
-был сделан тяп-ляп, чтобы не дать Слаке занять весь рынок.&lt;/p&gt;
-
-&lt;!-- more --&gt;
-
-&lt;p&gt;У Teams много технических проблем. Пожалуй, главная — это ререндер после долгого
-простоя. Предположим, вы долго писали код, затем переключились в Teams, чтобы
-написать коллеге. Вы уже выбрали коллегу и пишете текст, как вдруг Node.js
-решил, что виртуальное дерево устарело. Он обновляет содержимое, и набранный
-текст пропадает, а вместо выбранного контакта оказывается другой. Это страшно
-бесит. Этот кейс нельзя показать на картинке. Его нужно подстерегать полчаса и
-записывать на видео, что, конечно, никто делать не будет. Проще матюгнуться и
-сделать вид, что ничего не произошло.&lt;/p&gt;
-
-&lt;p&gt;Иногда движок Node.js умирает и показывает белый экран. Постоянно вижу его по
-понедельникам, когда Teams бездействует два выходных. Выглядит это так:&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/01.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;Приложение даже не закрывается, и его нужно снести через менеджер задач или
-kill.&lt;/p&gt;
-
-&lt;p&gt;В том же Слаке научились отлавливать эту ситуацию. Если Node.js умер, вместо
-белого экрана будет плашка с кнопкой перезагрузки. Она делает то же самое:
-насильно убивает процесс и запускает Слак заново.&lt;/p&gt;
-
-&lt;p&gt;Да, это нормальная ситуация: одна фирма продает программу, которая зависает
-через два дня. Другая фирма платит за нее подписку. Всех все устраивает.&lt;/p&gt;
-
-&lt;p&gt;Другая проблема в том, что Teams никогда не заткнется. Он постоянно сыпет
-выпадашками: поставь виртуальный аватар, скачай мобильное приложение, зайди
-сюда, сделай это. Заткнуть его невозможно — опции “не показывать это дерьмо”
-нет. Ему все равно, что этот попап я видел на другом ноуте — ничего, посмотришь
-опять. Ему все равно, что в нашем домене запрещено мобильное приложение — проще
-показывать попап каждую неделю, чем сходить в микросервис и проверить, что я
-действительно не могу его поставить.&lt;/p&gt;
-
-&lt;p&gt;Вот лишь малая часть того, что я заскринил:&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/02.jpg&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/03.jpg&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/04.jpg&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/05.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/06.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/07.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/08.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/09.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/10.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/11.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/12.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/13.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/14.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/15.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/16.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;Картинки отвратительны тем, что выполнены в цветах для дальтоников. Фиолетовый,
-серый, бурый, оранжевый — именно так видят те, у кого проблемы с восприятием
-цвета. Это что, какая-то новая повестка?&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&quot;/assets/static/aws/teams/17.png&quot; /&gt;&lt;/p&gt;
-
-&lt;p&gt;Умиляет попап с переходом на новый Teams. Все по классике: колхоз — дело
-добровольное. Можешь не переходить, неволить не будем. Просто плашка всплывает
-каждые 30 минут, в том числе на звонке. А так оставайся, выбор за тобой.&lt;/p&gt;
-
-&lt;p&gt;Наконец, в Teams есть то, что трудно передать словами — какая-то корпоративная
-духота. Кажется, что приложение заточено под офисный планктон, где все тихо
-ненавидят друг друга. На любую реплику предлагается ответить фразой
-AI-помощника: I’m good, Thank you, Will do it. Стоит навести на реплику, как
-всплывает попап с выбором эмодзи. Все сделано для того, чтобы ответ на сообщение
-был быстрым, механическим и требовал как можно меньше усилий мозга.&lt;/p&gt;
-
-&lt;p&gt;Всякие мелочи: в бейдже сотрудника указан его босс — чтобы ты знал, к кому
-обратиться, если коллега тебя игнорирует.&lt;/p&gt;
-
-&lt;p&gt;Ужасный шаринг файлов: после Телеграма он кажется чем-то на уровне ICQ. Если
-загрузил картинку, превью появляется спустя 10 секунд.&lt;/p&gt;
-
-&lt;p&gt;Радует шаринг видео: с момента, когда ты его включил, до момента, пока его
-увидит собеседник, проходит секунд 5-10. До этого — просто серый экран.&lt;/p&gt;
-
-&lt;p&gt;Любой офисный документ открывается во встроенном веб-офисе. Упаси бог кликнуть
-на CSV-файл: откроется веб-эксель со всеми своими скриптами, канвасом и
-прочим. Это страшно долго.&lt;/p&gt;
-
-&lt;p&gt;Словом, если у вас нет Teams, это уже повод для радости. И даже Слак в сравнении
-с ним — нечто прекрасное.&lt;/p&gt;
-</description>
-        <pubDate>Sat, 30 Mar 2024 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/ms-teams/</link>
-        <guid isPermaLink="true">https://grishaev.me/ms-teams/</guid>
-        
-        <category>software</category>
-        
-        <category>teams</category>
         
         
       </item>
