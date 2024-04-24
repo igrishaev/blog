@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>AWS, история четвертая. Когда null не совсем null</title>
+  <meta name="description" content="Все статьи из цикла AWS  Амазон  AWS, история первая. Внезапный мегабайт  AWS, история вторая. Афина прекрасная  AWS, история третья. Разрывы  AWS, история ч...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/aws-4/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">AWS, история четвертая. Когда null не совсем null</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-04-24T00:00:00+00:00">
+        Apr 24, 2024
+    </time>
+
+    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/athena/" rel="tag">athena</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Все статьи из цикла AWS</p>
+
+<ul>
+  <li><a href="/aws-0/">Амазон</a></li>
+  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
+  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
+  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
+  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
+</ul>
+
+<p>Еще одна история о том, как Амазон может попить крови.</p>
+
+<p>Напомню особенности нашей архитектуры. Сервисы записывают в S3 сущности разных
+типов. Их может быть много, например, полтора миллиона такого-то типа. Чтобы
+выгрести сущности разом, мы используем чудо-оружие Амазона — сервис Athena. Он
+собирает файлы из бакета и склеивает в один CSV.</p>
+
+<p>Среди сущностей встречаются выбракованные, и при обходе CSV их нужно
+игнорировать. Один из признаков брака — вложенное поле <code class="language-plaintext highlighter-rouge">attrs</code>, которое равно
+<code class="language-plaintext highlighter-rouge">null</code>. Не проблема: получаю ленивую коллекцию сущностей и накладываю на нее
+фильтр:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(-&gt;&gt; csv
+     (get-lazy-seq ...)
+     (filter
+      (fn [entity]
+        (-&gt; entity :attrs nil?))))
+</code></pre></div></div>
+
+<p>На проде, по различным логам и эксепшенам, вижу, что битые сущности просочились
+в обработку. Как так?</p>
+
+<p>А вот как: в оригинальном JSON поле attrs было <code class="language-plaintext highlighter-rouge">null</code>, все верно. Но при
+агрегации в CSV Амазон экранирует <code class="language-plaintext highlighter-rouge">null</code> кавычками и получается <code class="language-plaintext highlighter-rouge">\"null\"</code>. При
+этом его не волнует, что <code class="language-plaintext highlighter-rouge">null</code> находится в середине JSON-строки, которая уже
+экранирована. Какой-то парсер доходит до <code class="language-plaintext highlighter-rouge">null</code> и пишет его с кавычками.</p>
+
+<p>В результате при чтении JSON получается <code class="language-plaintext highlighter-rouge">{"attrs": "null"}</code>, то есть строка с
+буквами n, u, l, l. Чтобы выкинуть эту запись, я переписал фильтр так:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">aggregate</span><span class="w"> </span><span class="no">:attrs</span><span class="w"> </span><span class="nb">nil?</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">aggregate</span><span class="w"> </span><span class="no">:attrs</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="s">"null"</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Спрашивается, зачем я оставил первый вариант с чистым <code class="language-plaintext highlighter-rouge">nil?</code> Потому что, если
+однажды мы перейдем на другое хранилище, поле опять станет null вместо <code class="language-plaintext highlighter-rouge">"null"</code>,
+и фикс придется откатывать. А так оба случая покрыты: и нормальный, и кривой.</p>
+
+<p>Разумеется, прикол с <code class="language-plaintext highlighter-rouge">null</code> нигде не описан, в Гугле ничего нет. Счастливой
+отладки, уважаемые коллеги!</p>
+
+<p>Вот так я потерял еще один день. Каждый раз, распутав новый квест от Амазона,
+откидываюсь в кресле и тихо матерюсь. А затем иду дальше.</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/aws-4/">
+    <input required name="captcha" type="hidden" value="4 &#215; 1">
+
+    <div class="block">
+        <span class="comment-form-label"><small>4 &#215; 1 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
