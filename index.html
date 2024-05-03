@@ -104,6 +104,216 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/pg-0-1-12">PG2 release 0.1.12</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-05-01T00:00:00+00:00">
+        May 1, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><a href="https://github.com/igrishaev/pg2">PG2 version 0.1.12</a> is out. Aside from internal refactoring, there are
+several features I’d like to highlight.</p>
+
+<p><strong>First</strong>, the library is still getting faster. The latest benchmarks prove
+15-30% performance gain when consuming <code class="language-plaintext highlighter-rouge">SELECT</code> results. Actual numbers depend
+on the nature of a query. Simple queries with 1-2 columns work faster than
+before:</p>
+
+<p><img src="/assets/static/aws/pg-0.1.12/01.svg" class="svg-chart" /></p>
+
+<p>Metrics:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Platform</th>
+      <th>JDBC.Next</th>
+      <th>PG2 0.1.1</th>
+      <th>PG2 0.1.2</th>
+      <th>PG2 0.1.12</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>core i5 2 GHz Quad-Core 16G</td>
+      <td>127.677926</td>
+      <td>43.026307</td>
+      <td>44.36297</td>
+      <td>21.941113</td>
+    </tr>
+    <tr>
+      <td>core i9 2,4 GHz 8-Core 32G</td>
+      <td>83.932103</td>
+      <td>39.551719</td>
+      <td>27.672117</td>
+      <td>20.957904</td>
+    </tr>
+    <tr>
+      <td>arm m1 10 cores 32G</td>
+      <td>49.340986</td>
+      <td>18.517718</td>
+      <td>14.670815</td>
+      <td>9.468902</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Although queries with many columns are less sensitive to the new parsing
+algorithm, they’re still fast. Here is a chart for a complex query:</p>
+
+<p><img src="/assets/static/aws/pg-0.1.12/02.svg" class="svg-chart" /></p>
+
+<p>Metrics:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Platform</th>
+      <th>JDBC.Next</th>
+      <th>PG2 0.1.1</th>
+      <th>PG2 0.1.2</th>
+      <th>PG2 0.1.12</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>core i5 2 GHz Quad-Core 16G</td>
+      <td>579.59995</td>
+      <td>273.866142</td>
+      <td>80.352246</td>
+      <td>55.835803</td>
+    </tr>
+    <tr>
+      <td>core i9 2,4 GHz 8-Core 32G</td>
+      <td>447.326861</td>
+      <td>270.262248</td>
+      <td>54.34384</td>
+      <td>42.815123</td>
+    </tr>
+    <tr>
+      <td>arm m1 10 cores 32G</td>
+      <td>206.371502</td>
+      <td>117.241426</td>
+      <td>30.444798</td>
+      <td>29.92079</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>PG2 has become a bit faster with HTTP. The chart below measures a number of RPS
+of a Jetty server that fetches random data from a database and responds with
+JSON:</p>
+
+<p><img src="/assets/static/aws/pg-0.1.12/03.svg" class="svg-chart" /></p>
+
+<p>The tests were made using <code class="language-plaintext highlighter-rouge">ab</code> as follows:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ab <span class="nt">-n</span> 1000 <span class="nt">-c</span> 16 <span class="nt">-l</span> http://127.0.0.1:18080/
+</code></pre></div></div>
+
+<p>Timings:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Platform</th>
+      <th>JDBC.Next</th>
+      <th>PG2 0.1.1</th>
+      <th>PG2 0.1.2</th>
+      <th>PG2 0.1.12</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>core i5 2 GHz Quad-Core 16G</td>
+      <td>555.55</td>
+      <td>968.51</td>
+      <td>915.93</td>
+      <td>890.62</td>
+    </tr>
+    <tr>
+      <td>core i9 2,4 GHz 8-Core 32G</td>
+      <td>1304</td>
+      <td>1909.19</td>
+      <td>1688.72</td>
+      <td>1794.75</td>
+    </tr>
+    <tr>
+      <td>arm m1 10 cores 32G</td>
+      <td>1902.31</td>
+      <td>2999.06</td>
+      <td>3026</td>
+      <td>3363.36</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>The second feature</strong> is the <code class="language-plaintext highlighter-rouge">:read-only?</code> connection flag. When it’s set to
+true, the connection is run in <code class="language-plaintext highlighter-rouge">READ ONLY</code> mode, and every transaction opens
+being READ ONLY as well. This is useful for reading from replicas. A small
+example where an attempt to delete something leads to a negative response:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="w"> </span><span class="no">:read-only?</span><span class="w"> </span><span class="n">true</span><span class="p">}]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"delete from students"</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; PGErrorResponse: cannot execute DROP TABLE in a read-only transaction</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When set globally for connection, the flag overrides the same flag passed into
+the <code class="language-plaintext highlighter-rouge">with-tx</code> macro. Below, the transaction is READ ONLY anyway because the
+config flag is prioritized.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="w"> </span><span class="no">:read-only?</span><span class="w"> </span><span class="n">true</span><span class="p">}]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/with-tx</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:read-only?</span><span class="w"> </span><span class="n">false</span><span class="p">}]</span><span class="w"> </span><span class="c1">;; override won't do</span><span class="w">
+    </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table foo(id serial)"</span><span class="p">)))</span><span class="w">
+
+</span><span class="c1">;; PGErrorResponse: cannot execute CREATE TABLE in a read-only transaction</span><span class="w">
+</span></code></pre></div></div>
+
+<p><strong>Finally</strong>, there is a new reducer called “column” which fetches a single
+column as a vector. We often select IDs only, but the result is a vector of maps
+with a single <code class="language-plaintext highlighter-rouge">:id</code> field:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">100</span><span class="p">}</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">101</span><span class="p">}</span><span class="n">,</span><span class="w"> </span><span class="n">...</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To get the ids, either you pass the result into <code class="language-plaintext highlighter-rouge">(map :id ...)</code> or, which is
+better, specify the <code class="language-plaintext highlighter-rouge">:column</code> key as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"select id from users"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:column</span><span class="w"> </span><span class="no">:id</span><span class="p">}))</span><span class="w">
+
+</span><span class="c1">;; [100, 101, 102, ...]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Internally, the reducer fetches the field from each row on the fly as they come
+from the network. It’s more effective than passing the result into <code class="language-plaintext highlighter-rouge">map</code> as it
+takes only one passage.</p>
+
+<p>For more details, you’re welcome to the <a href="https://github.com/igrishaev/pg2/blob/master/README.md">readme file</a> of the repo.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tabs/">Табы</a>
             </h2>
 
@@ -942,62 +1152,6 @@ default:</p>
 </span></code></pre></div></div>
 
 <p>For more details, refer to the official <a href="https://www.hugsql.org/">HugSQL</a> documentation.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/preview-text/">Preview и текст</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-04-13T00:00:00+00:00">
-        Apr 13, 2024
-    </time>
-
-    <a href="/tag/mac/" rel="tag">mac</a>, <a href="/tag/software/" rel="tag">software</a>, <a href="/tag/preview/" rel="tag">preview</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Обнаружил, что программа Preview на Маке распознает текст на картинках. Выглядит
-так. Исходник:</p>
-
-<p><img src="/assets/static/aws/preview-text/01.png" /></p>
-
-<p>и процесс копирования:</p>
-
-<p><img src="/assets/static/aws/preview-text/02.png" /></p>
-
-<p>Озарение пришло после того, как я привычно выделил текст, думая, что работаю с
-PDF. И только потом заметил, что это PNG.</p>
-
-<p>Распознавание работает неплохо, разве что слетают лидирующие пробелы. Но это
-ничего: достаточно вставить в редактор, выделить и нажать TAB — и все починится.</p>
-
-<p>Это еще один довод в пользу Preview. <a href="/preview/">Я уже писал</a> об этой программе
-и повторю — это произведение искусства. Она умеет невероятно много для работы с
-картинками и PDF. Доступна из коробки, бесплатна.</p>
-
-<p>Больше всего я ценю ее за скромность. Preview не требует обновлений, не
-показывает Tip of the day, не открывает попапы “смотри что я могу”. Она одна
-стоит того, чтобы купить Мак.</p>
-
-<p>Возможно, она поможет вам скопировать код из скриншота. Об этом я, кстати, тоже
-<a href="/codepic/">давненько писал</a>: иногда, чтобы месаджер не испортил код, его проще
-переслать картинкой. А с помощью Preview — восстановить обратно.</p>
-
-<p>Или скачал ноты для дочки в PDF, а там в подвале реклама. Не беда, накрыл белым
-прямоугольником — и нет рекламы. Красота же. Где еще так можно?</p>
 
                 
             </div>

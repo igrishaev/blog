@@ -104,6 +104,120 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/pg2-bench-1">PG2 early announce and benchmarks, part 1</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-01-22T00:00:00+00:00">
+        Jan 22, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><em>TL;DR: <a href="https://github.com/igrishaev/pg2">https://github.com/igrishaev/pg2</a></em></p>
+
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-pg2-bench-1">
+  <li><a href="#introduction" id="toc-item-pg2-bench-1-introduction">Introduction</a></li>
+  <li><a href="#how-the-benchmarks-were-made" id="toc-item-pg2-bench-1-how-the-benchmarks-were-made">How the benchmarks were made</a></li>
+  <li><a href="#test-1-querying-a-single-column-series-based-query-with-50000-rows" id="toc-item-pg2-bench-1-test-1-querying-a-single-column-series-based-query-with-50000-rows">Test 1. Querying a single-column, series-based query with 50000 rows</a></li>
+  <li><a href="#benchmark-2-a-complex-multi-column-randomly-generated-select-query" id="toc-item-pg2-bench-1-benchmark-2-a-complex-multi-column-randomly-generated-select-query">Benchmark 2. A complex, multi-column, randomly generated SELECT query</a></li>
+  <li><a href="#test-3-querying-randomly-generated-json" id="toc-item-pg2-bench-1-test-3-querying-randomly-generated-json">Test 3. Querying randomly generated JSON</a></li>
+  <li><a href="#test-4-inserting-a-single-row-with-no-transaction" id="toc-item-pg2-bench-1-test-4-inserting-a-single-row-with-no-transaction">Test 4. Inserting a single row with no transaction</a></li>
+  <li><a href="#test-5-inserting-a-row-in-a-transaction" id="toc-item-pg2-bench-1-test-5-inserting-a-row-in-a-transaction">Test 5. Inserting a row in a transaction</a></li>
+  <li><a href="#test-6-copy-in-a-vast-csv-file-from-disk" id="toc-item-pg2-bench-1-test-6-copy-in-a-vast-csv-file-from-disk">Test 6. COPY IN a vast CSV file from disk</a></li>
+  <li><a href="#test-7-copy-in-a-collection-of-rows-in-csv-format" id="toc-item-pg2-bench-1-test-7-copy-in-a-collection-of-rows-in-csv-format">Test 7. Copy IN a collection of rows in CSV format</a></li>
+  <li><a href="#test-8-copy-in-a-collection-of-rows-in-binary-format" id="toc-item-pg2-bench-1-test-8-copy-in-a-collection-of-rows-in-binary-format">Test 8. Copy IN a collection of rows in binary format</a></li>
+  <li><a href="#test-9-copy-out-a-table-into-an-outputstream" id="toc-item-pg2-bench-1-test-9-copy-out-a-table-into-an-outputstream">Test 9. COPY OUT a table into an OutputStream</a></li>
+  <li><a href="#test-10-measuring-connection-pools" id="toc-item-pg2-bench-1-test-10-measuring-connection-pools">Test 10. Measuring connection pools</a></li>
+</ul>
+
+<h2 id="introduction">Introduction</h2>
+
+<p>During the last year, I was working on <a href="https://github.com/igrishaev/pg">PG</a> — JDBC-free PostgreSQL driver in
+pure Clojure. By purity it means, there is only a TCP socket to read and write
+bytes according to the official PostgreSQL protocol, and nothing more.</p>
+
+<p>It was fun: the very idea of implementing something low-level in Clojure was a
+challenge. I’ve made a series of tricks to squeeze the performance: mutable
+collections in favour of Clojure’s ones, special macros to traverse collections
+using Iterator and .forEach, and so on. After all, my driver was about 1.5 times
+slower than Next.JDBC, and I still think there is room for further improvement.</p>
+
+<p>One may ask what is the point of making a driver from scratch in 2024. The
+reason is, I’m still missing plenty of Postgres features when working with it
+from Clojure. Namely:</p>
+
+<ul>
+  <li>
+    <p>no built-in JSON support. In every project, I’ve got to extend some protocols
+with PGObject, encode and decode the JSON manually;</p>
+  </li>
+  <li>
+    <p>no COPY support. In Postgres, COPY IN/OUT is one of the best features I can
+remember. But there is no built-in CSV nor binary encoding, for example.</p>
+  </li>
+  <li>
+    <p>Poor time support: selecting a timestamp returns an instance of
+<code class="language-plaintext highlighter-rouge">java.sql.Timestamp</code> which is based on <code class="language-plaintext highlighter-rouge">java.util.Date</code>: a mutable object
+deprecated in Java 1.1.</p>
+  </li>
+  <li>
+    <p>Poor array support: only a certain number of types, no multidimensional
+arrays, etc.</p>
+  </li>
+  <li>
+    <p>No built-in connection pool.</p>
+  </li>
+</ul>
+
+<p>Today I deprecated the PG project in favour of <a href="https://github.com/igrishaev/pg2">PG2</a>. This is a successor
+of PG(one), my second attempt to make a JDBC-free driver for Postgres. This time
+around, it’s written completely in Java with a thin Clojure layer. I’ve made
+some benchmarks and it looks like PG2 2-3 times faster than Next.JDBC. There is
+no documentation yet, only integration tests that cover plenty of cases (I
+borrowed the old tests and improved then). Although the documentation is highly
+required, I could not wait to announce PG2 and share the benchmarks.</p>
+
+<h2 id="how-the-benchmarks-were-made">How the benchmarks were made</h2>
+
+<p>I’ve got three Mac devices with core i5, i9, and ARM M1 processors. On each
+device, I’ve got PostgreSQL installed. All the settings are default, no changes
+are made. JVM is version 21 although the 16th is the minimum version. The
+benchmarks are made with Criterium version 0.4.6.</p>
+
+<p>There are two types of benchmarks, actually. In the first group, I measure
+query/execute functions using the Criterium framework. In the second group, I’m
+running a simple HTTP server using Ring + Jetty + JSON and measuring requests
+per second with Apache Benchmark (ab). For each test, I show the source code
+with a chart and comments.</p>
+
+<p>The source code of benchmarks can be found <a href="https://github.com/igrishaev/pg2/blob/master/pg-bench/src/pg/bench.clj">in the repository</a>.</p>
+
+
+                    <p><a href="/en/pg2-bench-1">Read more &rarr;</a></p>
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/pre-2024/">Предновогоднее</a>
             </h2>
 
@@ -597,67 +711,6 @@ intelligence”:</p>
 
 <p>Поэтому раз: какую проблему я решаю? И два: отвечает ли ей мое решение? Чередуя
 эти вопросы, можно сделать любую задачу точно и в срок.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/pauses/">Паузы в играх</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-12-29T00:00:00+00:00">
-        Dec 29, 2023
-    </time>
-
-    <a href="/tag/games/" rel="tag">games</a>, <a href="/tag/pause/" rel="tag">pause</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Я играю только в старые игры: те, которые были популярны, когда мне было 13-17
-лет. В основном это эмулятор PlayStation и ранний PC. Играя сегодня, наблюдаю
-забавные вещи, на которые не обращал внимания раньше. Например, паузы или
-перезарядка оружия.</p>
-
-<p>Далеко не везде пауза останавливает мир полностью. Например, в старой сеговской
-игрушке General Chaos есть прикол: если бросить гранату и нажать паузу, она
-спокойно долетает и наносит урон. При этом работает анимация урона и смерти
-врага. За счет этого можно пройти игру одним бойцом.</p>
-
-<p>В игре Parasite Eve 2 на PlayStation был мощный лазер (насадка на карабин
-“Javelin”). Лазер хорош, но с большим интервалом между выстрелами. Однако если
-выстрелить и нажать паузу, то за это время его отпустит, и после паузы можно
-стрелять снова. С точки зрения игры лазер спамит непрерывно.</p>
-
-<p>В игре Alien Shooter 2 на PC нечто схожее с переключением и перезарядкой. Есть
-ракетница по принципу “мощно, но редко”. Пока она перезаряжается, можно
-переключиться на другое оружие и пострелять из него, а потом вернуться к
-ракетнице — она будет готова к выстрелу.</p>
-
-<p>В Quake 2 на PlayStation был прикол с путаницей патронов от одного оружия к
-другому. Если во время стрельбы переключиться с шоги на рейл и обратно, то рейл
-тратил дробь, а шога — обедненный уран.</p>
-
-<p>Почему так происходит? Хоть я ничего не понимаю в играх, но хотя бы
-предположу. Пауза ставит логический флаг, при котором игровой цикл не обновляет
-объекты. А перезарядка оружия и некоторые другие вещи работают от прерывания
-процессора. Другими словами, процессору говорят: через две секунды выполни код,
-который находится по этому адресу. Таймер можно только отменить, но не
-продлить. Поэтому даже если мир заморожен, через две секунды сработает код,
-который снимет с оружия статус “перезадяка” и выставит ему нужное число
-патронов. Отсюда такие приколы.</p>
-
-<p>Морали нет, просто вспомнилось.</p>
 
                 
             </div>
