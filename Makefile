@@ -64,5 +64,13 @@ wget-github:
 slug ?= $(error Please specify the slug=... argument)
 post_date = $(shell date +'%Y-%m-%d')
 
+new_file = _posts/${post_date}-${slug}.md
+
 new-post:
-	touch _posts/${post_date}-${slug}.md
+	touch ${new_file}
+	echo '---' >> ${new_file}
+	echo 'layout: post' >> ${new_file}
+	echo 'title: ""' >> ${new_file}
+	echo "permalink: /${slug}/" >> ${new_file}
+	echo 'tags: programming' >> ${new_file}
+	echo '---' >> ${new_file}
