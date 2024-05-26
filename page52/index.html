@@ -104,6 +104,438 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/sql-no-orm/">Без ORM</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2016-11-11T00:00:00+00:00">
+        Nov 11, 2016
+    </time>
+
+    <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/orm/" rel="tag">orm</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><em>UPD</em> <a href="/sql-no-orm-more">Продолжение</a></p>
+
+<p><img src="/assets/static/nosql-expert.png" alt="sql" /></p>
+
+<p>В текущем проекте мы используем SQL. Запросы, миграции, триггеры – все это
+чистый скуль, написанный нами. Сперва было непривычно, за годы работы с Джангой
+я напрочь забыл язык запросов. Теперь, напротив, меня дико прет. Рассказываю
+плюсы и минусы такого подхода.</p>
+
+<p>Прежде всего, мы используем библиотеку
+<a href="http://www.hugsql.org/">HugSQL</a>. Работает она любопытным образом. Вы пишете
+обычный <code class="language-plaintext highlighter-rouge">.sql</code> файл с запросами. Перед каждым запросом размещаете
+структурированный комментарий. В нем указываете имя функции и дополнительные
+директивы. Затем библиотека парсит файл и динамически создает в модуле функции с
+аналогичными названиями.</p>
+
+<p>Пример:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name create-user! :&lt;!</span>
+<span class="c1">-- :doc creates a new user record</span>
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">users</span>
+<span class="p">(</span><span class="n">first_name</span><span class="p">,</span> <span class="n">last_name</span><span class="p">,</span> <span class="n">email</span><span class="p">,</span> <span class="n">username</span><span class="p">,</span> <span class="n">password</span><span class="p">,</span> <span class="n">phone</span><span class="p">)</span>
+<span class="k">VALUES</span> <span class="p">(:</span><span class="n">first_name</span><span class="p">,</span> <span class="p">:</span><span class="n">last_name</span><span class="p">,</span> <span class="p">:</span><span class="n">email</span><span class="p">,</span> <span class="p">:</span><span class="n">username</span><span class="p">,</span> <span class="p">:</span><span class="n">password</span><span class="p">,</span> <span class="p">:</span><span class="n">phone</span><span class="p">)</span>
+<span class="n">RETURNING</span> <span class="o">*</span>
+
+</code></pre></div></div>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">user</span><span class="w"> </span><span class="p">(</span><span class="nf">db/create-user!</span><span class="w"> </span><span class="p">{</span><span class="no">:username</span><span class="w"> </span><span class="s">"ivan"</span><span class="w">
+                             </span><span class="no">:email</span><span class="w"> </span><span class="s">"test@test.com"</span><span class="w">
+                             </span><span class="no">:password</span><span class="w"> </span><span class="s">"123"</span><span class="w">
+                             </span><span class="no">:phone</span><span class="w"> </span><span class="s">"223-322"</span><span class="w">
+                             </span><span class="no">:first_name</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+                             </span><span class="no">:last_name</span><span class="w"> </span><span class="s">"test"</span><span class="p">})])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Разберу минусы данного подхода. Во-первых, приходится писать больше кода. В
+Джанге или Рельсах достаточно вызвать у объекта метод <code class="language-plaintext highlighter-rouge">.save()</code>. В зависимости
+от состояния объекта будет выполнен запрос вставки или обновления. В нашем
+случае нужно писать два отдельных запроса.</p>
+
+<p>Во-вторых, приходется потратить время на повторное изучение SQL и конкретной
+базы данных, в нашем случе – Постгреса. Потому что все ORM-системы превращают
+базу в хранилище, то есть черный ящик. Есть модели, пользуйся, а внутрь не
+лезь. И вообще, объекты предлагают больше синтаксического сахара.</p>
+
+<p>Плюсов, на мой взгляд, больше. Прежде всего, приходит понимание того, что
+происходит в БД. Как устроена структура, какие фукнции и триггеры объявлены, как
+связаны сущности.</p>
+
+<p>Появляется возможность свободно строить джоины, объединения. Мы активно
+используем триггеры чтобы нормализовать поля. Добавляем констрейнты
+(ограничения), чтобы предотвратить запись неверных данных.</p>
+
+<p>Если база сопровождается ORM-системой, скорее всего, работать с ней из другого
+языка будет невозможно. Потому что значения по-умолчанию, триггеры и авторизация
+пользователей, как правило, реализованы силами ORM, а другая система ничего про
+это не знает. У нас такое невозможно. Что Кложа, что Питон не смогут записать в
+базу кривые данные.</p>
+
+<p>Мы активно используем расширения Постгреса и специальные типы данных. JSON,
+геолокация, генерация токенов и случайных величин. Не приходится писать это в
+коде. Например, если из двух разных мест выполнить вставку в эту таблицу, будет
+сгенерирован случайый токен на уровне БД. А если делать это в коде, придется
+копипастить.</p>
+
+<p>В логах Постргреса я вижу написанные в своем стиле запросы. ORM, как правило,
+генерит адский поток, который невозможно прочесть. Если ORM-запрос содержит
+что-то посложней чтения или вставки, например, <code class="language-plaintext highlighter-rouge">group by</code>, <code class="language-plaintext highlighter-rouge">having</code>, <code class="language-plaintext highlighter-rouge">join</code>,
+<code class="language-plaintext highlighter-rouge">union</code>, приходится его дебажить. Потому что далеко не факт, что результат будет
+таким, как вы хотите. Например, Алхимия в Питоне не может правильно сделать
+<code class="language-plaintext highlighter-rouge">union</code>, хоть убей. А как указать, что тебе нужен именно левый джоин, а не
+внутренний?</p>
+
+<p>Не приходится перенастраивать мозги с одной ORM на другую. Помню, одновременно
+работал в двух проектах, в одном Джанга, в другом Алхимия. Так замучился
+запоминать особенности каждой. А чистый скуль не врет.</p>
+
+<p>Выражаясь терминами Рича Хики, ORM это легко (easy), а SQL – просто
+(simple). Это не синонимы. Легко значит – быстро, а просто – прозрачно. Здесь
+я не буду умничать, а просто советую послушать доклад.</p>
+
+<iframe width="854" height="480" src="https://www.youtube.com/embed/rI8tNMsozo0" allowfullscreen=""></iframe>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/yourself/">Поменьше о себе, пожалуйста</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2016-11-10T00:00:00+00:00">
+        Nov 10, 2016
+    </time>
+
+    <a href="/tag/life/" rel="tag">life</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Бывает, делишься с кем-то впечатлениями о книге, статье или фильме и получаешь
+примерно такой ответ:</p>
+
+<p>– Я не смотрю аниме.</p>
+
+<p>– Я не посещаю этот сайт.</p>
+
+<p>– Я не читаю книги.</p>
+
+<p>Удивительно, этим грешат даже порядочные на первый взгляд люди. Подобный ответ
+вводит меня в ступор, я не знаю, как дальше строить разговор. Объясню почему.</p>
+
+<h3 id="это-нелогично">Это нелогично</h3>
+
+<p>– Зацени, какая интересная статья.</p>
+
+<p>– Я не читаю Хабр.</p>
+
+<p>Минуточку. Тебя никто не спрашивал, читаешь ты Хабр или нет. Зачем ломать линию
+разговора? Очевидно, полное сообщение ответной реплики звучит так: я не буду
+читать, потому что не посещаю этот ресурс. Но в исходном сообщении уже
+содержится контр-аргумент. Он звучит так: даже если ты не открываешь этот сайт,
+сделай это ради полезного материала! Ответ “я не делаю Х” в ответ на призыв –
+нелепый.</p>
+
+<p>Что отвечать, если вам советуют что-то, что вы еще не пробовали, не читали, не
+смотрели? Задавать открытые вопросы. Напомню, открытые – это те, что начинаются
+со слов что, когда, где и т.д. Если предмет беседы того стоит, собеседник внятно
+опишет его преимущества.</p>
+
+<p>– Чем привлекает этот фильм?</p>
+
+<p>– Какие особенности в этом языке программирования?</p>
+
+<p>– Какая главная мысль автора?</p>
+
+<p>Если слышите в ответ “да там вообще ништяк зацени”, вежливо заканчивайте
+разговор.</p>
+
+<h3 id="это-эгоистично">Это эгоистично</h3>
+
+<p>– В этой книге подробно описано…</p>
+
+<p>– Я не читаю книги.</p>
+
+<p>Что движит тем, кто делится информацией? Положительные чувства, эмпатия. Если
+это не <em>смишные картинки</em>, конечно. Что содержится в ответе? Ничего кроме
+эгоизма. Смотри какой я крутой. Я не читаю, не смотрю, это для лохов. Даже
+высказанный вежливым тоном, ответ содержит презрение.</p>
+
+<h3 id="это-предубедительно">Это предубедительно</h3>
+
+<p>Нужно понимать, что не делая чего-то, тем самым себя ограничиваешь. Трудно
+предугадать, откуда придет новая мысль, идея, вдохновение. Например, я не смотрю
+сериалы, хоть все о них только и говорят. Но прекрасно понимаю, что упускаю
+что-то интересное. Поэтому не обрываю тех, кто делится впечатлениями от
+просмотренной за ужином новой серии Игры престолов. Может, когда-то меня
+проберет, и тоже посмотрю.</p>
+
+<h3 id="вывод">Вывод</h3>
+
+<p>Если вам что-то предлагают, не спешите рассказывать какой вы крутой, и что вы
+делаете, а что нет. Задавайте вопросы, чтобы быстро узнать суть. Вежливо
+отвечайте “спасибо”, чтобы не продолжать дальше. И поменьше о себе, я прошу.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/deep-ref-chat/">Перенесли чат в Телеграм</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2016-11-07T00:00:00+00:00">
+        Nov 7, 2016
+    </time>
+
+    <a href="/tag/deep-refactoring/" rel="tag">deep-refactoring</a>, <a href="/tag/chat/" rel="tag">chat</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>На прошлой неделе провели с коллегами оптимизацию. Вынесли общение, связанное с
+Глубоким рефакторингом, в Телеграм. Общаться стало проще, удобней и веселей. В
+первый же день случился срач про Гоу, сейчас что-то трут за Руби.</p>
+
+<p>После Фейсбука это как глоток свежего воздуха. Я не знаю, как можно сидеть в
+Фейсбуке. Писать что-то длиннее твитов – невозможно, комментировать –
+невозможно, следить за общением, искать по истории, трекать – невозможно. Это
+мамонт, раздавленный собственным весом.</p>
+
+<p>Телеграм, конечно, тоже <a href="/telegram">добавляет проблем</a>. Теперь это лишний софт,
+нотификации, учетная запись. В идеале хотелось бы свести все к электронной почте
+и рассылкам, как принято в среде профессионалов.</p>
+
+<p>А пока что прошу зайти в канал Телеграма
+<a href="https://telegram.me/deeprefactoring">DeepRefactoring</a>. В нем раньше появятся
+анонсы и обсуждение докладов и встреч. В Фейсубке мы стараемся теперь не
+общаться, будем только кросспостить анонсы.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/meetup11/">Одиннадцатая встреча</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2016-11-04T00:00:00+00:00">
+        Nov 4, 2016
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/meetup/" rel="tag">meetup</a>, <a href="/tag/deep-refactoring/" rel="tag">deep-refactoring</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Провели одиннадцатую встречу.</p>
+
+<p>Я топил за Лисп. Рассказал историю, применение, особенности и сильные
+стороны. Доклад длился почти два часа. К моей радости, слушателям было
+интересно. Наверное, потому что Лисп – то немногое, в чем я действительно
+разбираюсь.</p>
+
+<p>Фрагмент записи:</p>
+
+<iframe width="854" height="480" src="https://www.youtube.com/embed/gIod3apuulE" allowfullscreen=""></iframe>
+
+<p><a href="http://grishaev.me/talks/lisp/lisp.html">Слайды</a></p>
+
+<p>Второй доклад проходил в другом формате. Миша показывал с монитора в реальном
+времени как делать всякие крутые штуки. Генерить ХТМЛ, перемещаться по файлам,
+быстро искать классы и функции в проекте и т.д. Записи, к сожалению, не
+осталось.</p>
+
+<p>С записью вообще беда в этот раз. Сначала я по ошибке не включил запись на
+Маке. Два часа выступал уверенный, что все ок. Потом Миша не сохранил файл на
+диск. Получились эксклюзивные доклады. Не пришел на митап – теперь не догонишь.</p>
+
+<p>Про Лисп я планирую написать текстовую расшифровку со слайдов по горячим следам.</p>
+
+<p>В этот раз вели трансляцию в Перископе. Батареи Айфона хватило на час. Именно
+оттуда удалось вытащить фрагмент доклада про Лисп. Так что не удивляйтесь
+странному интерфейсу поверх видео, комментариям и смайликам. На трансляции было
+94 человека.</p>
+
+<p>Кстати, мы решили перенести общение в Телеграм и даже создали группу. Об этом –
+в отдельном посте.</p>
+
+<p>Скоро анонс двенадцатой встречи, годовой юбилей. Год, Карл! Хотите выступить?
+Пишите в личку.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/twitter-feed/">Twitter Feed закрывается</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2016-10-18T00:00:00+00:00">
+        Oct 18, 2016
+    </time>
+
+    <a href="/tag/twitter/" rel="tag">twitter</a>, <a href="/tag/feed/" rel="tag">feed</a>, <a href="/tag/rss/" rel="tag">rss</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Сервис <a href="http://twitterfeed.com/">Twitterfeed</a> объявил о скором
+закрытии. Предлагают переходить на <a href="http://buffer.com/">Buffer</a> или
+<a href="http://dlvr.it/">Dlvr</a>.</p>
+
+<p><img src="/assets/static/twitter-feed.png" alt="twitter-feed" /></p>
+
+<p>Сервис транслировал записи из РСС в социальные сети: Твиттер, Фейсбук и что-то
+еще. Полезно для блога: анонсы о свежих постах сами появляются в соцсетях.</p>
+
+<p>Сервис принадлежит компании <a href="https://bitly.com/">Бит.ли</a>, той самой, что владеет
+известной сокращалкой ссылок. Twitterfeed был побочным продуктом. Он совсем не
+развивался на протяжении последних лет, хотя счетчик лент на главной показывал
+сумашедшее количество.</p>
+
+<p>Почему не ввели платную подписку? Думаю, если бы каждый тысячный пользователь
+заплатил 5 долларов, этого бы хватило на хостинг и зарплату хотя бы одного
+инженера.</p>
+
+<p>Словом, жаль, очень жаль.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/old-pages/">Листая желтые страницы</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2016-10-17T00:00:00+00:00">
+        Oct 17, 2016
+    </time>
+
+    <a href="/tag/drupal/" rel="tag">drupal</a>, <a href="/tag/cms/" rel="tag">cms</a>, <a href="/tag/legacy/" rel="tag">legacy</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Девять лет назад зарегистрировался на Друпал.ру. Я был в то время ПХП-неофитом и
+смотрел в рот каждому, кто хоть что-то понимал в веб-программировании.</p>
+
+<p>То были веселые денечки. Друпал.ру хостился черт знает где, чуть ли не на
+балконе, ложился под малейшей нагрузкой. Чего только не случалось на
+форуме. Любое техническое обсуждение сводилось к личностным вопросам. Спорили о
+легализации наркотиков, неравенстве рас, словом, треш и угар.</p>
+
+<p>Однажды один неадекват втерся в доверие админу, получил права супер-пользователя
+и положил сайт. Зачем? Хотел привлечь внимание к тому, что его троллят. Был
+клевый чел Анатолий, у которого Путин виноват в каждой неудаче. Работу долго не
+мог найти, маркетолог по образованию. Он часто создавал голосования, а я
+накручивал скриптом, отчего у Толи бомбило.</p>
+
+<p>Были клевые ребята, которые вели блоги, регулярно постили полезные штуки. Каждое
+утро я начинал с чтения их материалов. Ни про какие RSS я в то время не знал,
+тупо лазил по сайтам.</p>
+
+<p><a href="/2013/03/25/1/">С уходом с Друпал.ру</a> читать эти блоги я перестал, а недавно
+вспомнил и полез проверять – что стало с ребятами? На что перешли со своего
+Друпала? Все-таки четыре года прошло с последнего посещения.</p>
+
+<p>Зашел, и стало грустно. Кое-кто тупо забросил блог, домены не работают. Не
+смогли писать в долгосрочной перспективе. Я называю это “сошли с дистанции”, это
+правда печально, когда подававший надежды блоггер вдруг замолчал.</p>
+
+<p>Но вторая категория еще грустней. Это те, кто так и остались сидеть на Друпале,
+стругая кривые сайты из готовых модулей. Печальное зрелище, потому что
+заниматься одной и той же деятельностью без смены инструмента – ужасно. Самые
+продвинутые перелезли на другую CMS, но это превозносится с таким пафосом, что
+песец.</p>
+
+<p>Глянул форум, полный застой. Восемь лет назад обсужали, как вывести блок в
+футере, сегодня то же самое.</p>
+
+<p>Для меня стало шоком, что кто-то считает себя специалистом и до сих пор работает
+с Друпалом. Как можно всерьез на него опираться? Старая, деградирующая система,
+раздавленная собственным весом и возрастом.</p>
+
+<p>Восемь лет назад сайты на Друпале выглядели грубыми табуретками. Все кривое,
+косое, тема оформления натягивается с косяками, всюду мусор, ошметки
+непереведенного текста. Вы действительнохотите edit your comment? И сегодня все
+так же.</p>
+
+<p>Я к тому, что должно быть движение, развитие. Оставаться подолгу в одной среде
+– путь к деградации. Тут тонкая грань, либо становишься признанным гуру, либо
+отстаешь от процесса, и центробежная сила уводит на обочину. Поработал три года
+с ПХП, перелез на Питон, потом на Скалу, позанимался Хаскелем, ковырнул
+Эрланг. И это только языки. Впереди еще Вим с Емаксом, SICP, Латех, шифрование,
+протоколы. Столько возможностей!</p>
+
+<p>Впрочем, от тех, кто застыл в развитии, есть два положительных момента. Первый
+– кто-то должен делать их работу. Второй – проходя мимо них по прямой
+развития, невольно ускоряешь шаг.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/win-start/">Кнопка Пуск</a>
             </h2>
 
@@ -323,795 +755,13 @@
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/task/">Practical task</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2016-09-18T00:00:00+00:00">
-        Sep 18, 2016
-    </time>
-
-    <a href="/tag/interview/" rel="tag">interview</a>, <a href="/tag/python/" rel="tag">python</a>, <a href="/tag/fp/" rel="tag">fp</a>, <a href="/tag/english/" rel="tag">english</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>I’m looking for a new job these days. I have had a set of interviews so far. One
-time, I faced an interesting practical task. In this post, I want to discuss a
-way how I’ve solved it.</p>
-
-<p>The original text took two pages of A4 because of lots of unuseful details. Let
-me retell the task by memory.</p>
-
-<blockquote>
-  <p>Imagine you have a surface of Mars divided by cells. A robot moves on it. The
-robot knows its position represented by (x, y) coordinates and orientation
-(North, East, South, West, or just N, E, S, W). You may pass a command to the
-robot. A possible command might be to turn left (L), to turn right (R) and to
-move forward (F). When the robot rotates, it just changes its orientation
-without moving across the cell. When it moves forward, it changes the
-coordinates but keeps the orientation.</p>
-</blockquote>
-
-<blockquote>
-  <p>A robot will be lost when goes out of the surface. But before it has been
-lost, it marks the last cell it stands as “dangerous”. When another robot
-steps on a dangerous cell, it cannot be lost. Instead, it ignores all the
-commands that lead to being lost.</p>
-</blockquote>
-
-<blockquote>
-  <p>So you have a surfacers dimensions and a bunch of robots. For each robot, you
-know its initial position, orientation and a list of commands. Write a program
-that moves the robots in series. For each robot, print its final position and
-orientation. Also, if the robot has been lost, add “LOST” to that line.</p>
-</blockquote>
-
-<blockquote>
-  <p>Input sample (don’t pay attention at the comments):</p>
-</blockquote>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>5 3             # world's width and height
-1 1 E           # x, y and orientation of the first robot
-RFRFRFRF        # and its list of commands
-
-3 2 N           # the second robot pos and orientation
-FRRFLLFFRRFLL   # and its list of commands
-
-0 3 W           # the third one
-LLFFFLFLFL      # ...
-                # etc...
-</code></pre></div></div>
-
-<blockquote>
-  <p>Expected output:</p>
-</blockquote>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>1 1 E
-3 3 N LOST
-2 3 S
-</code></pre></div></div>
-
-<p>I know what are you thinking about. Let’s have a class <code class="language-plaintext highlighter-rouge">World</code> and a class
-<code class="language-plaintext highlighter-rouge">Robot</code>. Than I’ll make an instance of class <code class="language-plaintext highlighter-rouge">Game</code> and will move the robots
-across the world. But this way seems a bit weird to me because we start with the
-entities but not the process.</p>
-
-<p>All these entities do not say how to organize them. We have a common “Paper and
-Pen” problem. How should I connect my entities: <code class="language-plaintext highlighter-rouge">Pen.writeOn(Paper)</code> or
-<code class="language-plaintext highlighter-rouge">Paper.writeWith(Pen)</code>? Which OOP pattern says directly what are the best
-practices? SOLID, Composition or whatever? Should I store an array of robots
-inside a <code class="language-plaintext highlighter-rouge">World</code> instance or just keep a reference to the world in each robot?
-What if a robot has been lost? Should I null that reference?</p>
-
-<p>See, we’ve got lots of questions, but none of them move us to the solution.</p>
-
-<p>Moreover, once you have solved the task using classical OOP, it would be
-difficult to port you code to such FP languages as Clojure or Haskell, because
-they do not have classes, just types. Even a Javascript programmer may face some
-problems because JS has its own OOP system that differs from Python/Java.</p>
-
-<p>So let me provide a simple solution that do not use classes and tend to be
-functional. I will do it using Python, not Clojure to make it clean to everyone.</p>
-
-<p>One famous programmer said: when somebody asks me on an error in their code, I
-always respond the following. Imagine your program is a black box. What data
-does it receive?  What data does it return? Once you know the answers, it
-becomes easy to find a mistake in logic.</p>
-
-<p>I’d like to follow this way. Let’s abstract from the entities and OOP
-patterns. We read parameters from the input, process them and print on a
-screen. So here is a scheme:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>read_params() --&gt; play_game() --&gt; print_results()
-</code></pre></div></div>
-
-<p>Note that reading and writing functions do IO, so they are not pure. Instead,
-<code class="language-plaintext highlighter-rouge">play_game</code> accepts plain data structures and has no side effects. That makes it
-easy to test in both REPL and unit tests.</p>
-
-<p>When we have basic knowledge of the task, it’s time to write some code. The
-following skeleton shows my decision as well:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
-<span class="k">def</span> <span class="nf">parse_input</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
-    <span class="p">...</span>
-
-
-<span class="k">def</span> <span class="nf">play</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
-    <span class="p">...</span>
-
-
-<span class="k">def</span> <span class="nf">compose_results</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
-    <span class="p">...</span>
-
-
-<span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
-    <span class="n">params</span> <span class="o">=</span> <span class="n">parse_input</span><span class="p">(</span><span class="n">sys</span><span class="p">.</span><span class="n">stdin</span><span class="p">)</span>
-    <span class="n">results</span> <span class="o">=</span> <span class="n">play</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
-    <span class="k">print</span> <span class="n">compose_results</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
-
-
-<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">"__main__"</span><span class="p">:</span>
-    <span class="n">main</span><span class="p">()</span>
-
-</code></pre></div></div>
-
-<p>On the next step we need to clarify what data exactly we expect inside <code class="language-plaintext highlighter-rouge">play</code>
-function. There should be world’s limits for each dimension first. And we also
-need robots’ data.</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">play</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">routes</span><span class="p">):</span>
-</code></pre></div></div>
-
-<p>Because parsing input stream is boring, let’s just return a sample data from
-<code class="language-plaintext highlighter-rouge">parse_input</code> for now:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
-<span class="k">def</span> <span class="nf">parse_input</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
-    <span class="k">return</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="p">(</span>
-        <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">"N"</span><span class="p">,</span> <span class="s">"LLLL"</span><span class="p">),</span>
-    <span class="p">))</span>
-</code></pre></div></div>
-
-<p>Now let’s look closer to the <code class="language-plaintext highlighter-rouge">play</code> function. It’ a black box for now, but we
-could imagine what is behind it. I believe, it should build the world at
-first. Then, we iterate on robots to process them in series. That is an outer
-cycle.</p>
-
-<p>For each robot, we evaluate a bunch of commands: rotate left/right or
-move. That’s an inner cycle.</p>
-
-<p>For each robot, we collect its final state with a special flag that indicates
-whether a robot has been lost.</p>
-
-<p>Looks simple, let’s code that logic:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">play</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">routes</span><span class="p">):</span>
-    <span class="n">world</span> <span class="o">=</span> <span class="n">make_world</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">)</span>
-    <span class="n">results</span> <span class="o">=</span> <span class="p">()</span>
-
-    <span class="k">for</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">ori</span><span class="p">,</span> <span class="n">steps</span><span class="p">)</span> <span class="ow">in</span> <span class="n">routes</span><span class="p">:</span>
-        <span class="n">robot</span> <span class="o">=</span> <span class="n">make_robot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">ori</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="n">steps</span><span class="p">:</span>
-            <span class="n">ok</span><span class="p">,</span> <span class="n">world</span><span class="p">,</span> <span class="n">robot</span> <span class="o">=</span> <span class="n">update</span><span class="p">(</span><span class="n">world</span><span class="p">,</span> <span class="n">robot</span><span class="p">,</span> <span class="n">step</span><span class="p">)</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="n">ok</span><span class="p">:</span>
-                <span class="k">break</span>
-        <span class="n">results</span> <span class="o">+=</span> <span class="p">((</span><span class="n">ok</span><span class="p">,</span> <span class="n">robot</span><span class="p">),</span> <span class="p">)</span>
-
-    <span class="k">return</span> <span class="n">results</span>
-
-</code></pre></div></div>
-
-<p>Now we have some undefined functions that we must populate before launch the
-code. What we should know about the world? Only width, height and what cells are
-marked as dangerous. So let the world will be a tuple something like <code class="language-plaintext highlighter-rouge">(20, 30,
-((2, 3), (15, 34)))</code>.</p>
-
-<p>The following function returns a new world ready to play:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">make_world</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">):</span>
-    <span class="k">return</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="p">()</span>
-</code></pre></div></div>
-
-<p>Next, what data represent a robot on every turn? Both x and y coordinates plus
-orientation. In Python, let it be just a tuple like <code class="language-plaintext highlighter-rouge">(1, 5, "N")</code> or <code class="language-plaintext highlighter-rouge">(10, 5,
-"S")</code> for example.</p>
-
-<p>The function below is to create a new robot:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">make_robot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">ori</span><span class="p">):</span>
-    <span class="k">return</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">ori</span><span class="p">)</span>
-</code></pre></div></div>
-
-<p>Our <code class="language-plaintext highlighter-rouge">update</code> function takes the world, the robot and a command to evaluate. It
-returns a tuple of three values. The first one is a boolean flag that indicates
-whether the robot is still on the surface. You see, if we get <code class="language-plaintext highlighter-rouge">False</code>, that will
-mean the robot has gone away from the world and there is no reason to continue
-evaluation for that robot.</p>
-
-<p>The second and the third values are the new world and robot. The thing is I
-return new values instead of changing the previous ones. Avoiding state gives us
-more freedom in data manipulation. I’ll cover more on that a bit later.</p>
-
-<p>Moving on to the <code class="language-plaintext highlighter-rouge">update</code> function. First, we need to distinguish the command
-whether it is to rotate or to move a robot. The case of rotate is really easy to
-handle:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="n">world</span><span class="p">,</span> <span class="n">robot</span><span class="p">,</span> <span class="n">step</span><span class="p">):</span>
-
-    <span class="k">if</span> <span class="n">step</span> <span class="ow">in</span> <span class="s">"LR"</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">True</span><span class="p">,</span> <span class="n">world</span><span class="p">,</span> <span class="n">rotate_robot</span><span class="p">(</span><span class="n">robot</span><span class="p">,</span> <span class="n">step</span><span class="p">)</span>
-
-    <span class="c1"># to be continued
-</span></code></pre></div></div>
-
-<p>The code above clearly shows we can rotate a robot without any limits. Notice I
-return a new rotated robot instead of changing the one I have in my
-function. The rotate function is simple:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">rotate_robot</span><span class="p">(</span><span class="n">robot</span><span class="p">,</span> <span class="n">step</span><span class="p">):</span>
-    <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">ori</span> <span class="o">=</span> <span class="n">robot</span>
-
-    <span class="n">rules</span> <span class="o">=</span> <span class="p">{</span>
-        <span class="p">(</span><span class="s">"N"</span><span class="p">,</span> <span class="s">"L"</span><span class="p">):</span> <span class="s">"W"</span><span class="p">,</span>
-        <span class="p">(</span><span class="s">"N"</span><span class="p">,</span> <span class="s">"R"</span><span class="p">):</span> <span class="s">"E"</span><span class="p">,</span>
-
-        <span class="p">(</span><span class="s">"E"</span><span class="p">,</span> <span class="s">"L"</span><span class="p">):</span> <span class="s">"N"</span><span class="p">,</span>
-        <span class="p">(</span><span class="s">"E"</span><span class="p">,</span> <span class="s">"R"</span><span class="p">):</span> <span class="s">"S"</span><span class="p">,</span>
-
-        <span class="p">(</span><span class="s">"S"</span><span class="p">,</span> <span class="s">"L"</span><span class="p">):</span> <span class="s">"E"</span><span class="p">,</span>
-        <span class="p">(</span><span class="s">"S"</span><span class="p">,</span> <span class="s">"R"</span><span class="p">):</span> <span class="s">"W"</span><span class="p">,</span>
-
-        <span class="p">(</span><span class="s">"W"</span><span class="p">,</span> <span class="s">"L"</span><span class="p">):</span> <span class="s">"S"</span><span class="p">,</span>
-        <span class="p">(</span><span class="s">"W"</span><span class="p">,</span> <span class="s">"R"</span><span class="p">):</span> <span class="s">"N"</span><span class="p">,</span>
-    <span class="p">}</span>
-
-    <span class="n">new_ori</span> <span class="o">=</span> <span class="n">rules</span><span class="p">[(</span><span class="n">ori</span><span class="p">,</span> <span class="n">step</span><span class="p">)]</span>
-    <span class="k">return</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">new_ori</span>
-</code></pre></div></div>
-
-<p>Important thing is having a dict of rules is much better then a bunch of nested
-<code class="language-plaintext highlighter-rouge">if</code>s. It’s possible to add new rotate rules at any times as well.</p>
-
-<p>The movement forward command is a little bit trickier because of complicated
-logic. First of all, we need to know whether the robots stands on a dangerous
-cell. Wee also need to check whether the next turn will move the robot out from
-the surface.</p>
-
-<p>Remember, if it’s a dangerous cell at the moment, the bad movement is just
-ignored. If it isn’t, move the robot. And if it has lost, mark that cell as
-dangerous. I’ve finished with the following code:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="c1"># continues the `update` function
-</span>
-    <span class="k">if</span> <span class="n">step</span> <span class="o">==</span> <span class="s">"F"</span><span class="p">:</span>
-
-        <span class="n">robot_next</span> <span class="o">=</span> <span class="n">move_robot</span><span class="p">(</span><span class="n">robot</span><span class="p">)</span>
-        <span class="n">placed_next</span> <span class="o">=</span> <span class="n">is_placed</span><span class="p">(</span><span class="n">world</span><span class="p">,</span> <span class="n">robot_next</span><span class="p">)</span>
-
-        <span class="k">if</span> <span class="n">is_scent</span><span class="p">(</span><span class="n">world</span><span class="p">,</span> <span class="n">robot</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">placed_next</span><span class="p">:</span>
-                <span class="k">return</span> <span class="bp">True</span><span class="p">,</span> <span class="n">world</span><span class="p">,</span> <span class="n">robot_next</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="k">return</span> <span class="bp">True</span><span class="p">,</span> <span class="n">world</span><span class="p">,</span> <span class="n">robot</span>
-
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">placed_next</span><span class="p">:</span>
-                <span class="k">return</span> <span class="bp">True</span><span class="p">,</span> <span class="n">world</span><span class="p">,</span> <span class="n">robot_next</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="k">return</span> <span class="bp">False</span><span class="p">,</span> <span class="n">set_scent</span><span class="p">(</span><span class="n">world</span><span class="p">,</span> <span class="n">robot</span><span class="p">),</span> <span class="n">robot</span>
-</code></pre></div></div>
-
-<p>A tree of nested ifs looks ugly to me and may be reduced. But it’s not so
-important at the moment. The key feature of the code above is kept in a line:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">robot_next</span> <span class="o">=</span> <span class="n">move_robot</span><span class="p">(</span><span class="n">robot</span><span class="p">)</span>
-</code></pre></div></div>
-
-<p>Remember, I spoke about immutable data structures. Instead of moving the robot,
-we’ve got a new one that stands on the next cell. You see? Dealing with
-immutable data gives us <strong>opportunity to have objects in the future</strong>. When I
-have a future state of a robot, I can easy check whether its state fits to the
-requirements. And if it does not, just return an old copy of a robot.</p>
-
-<p>Now imagine I had a mutable object with <code class="language-plaintext highlighter-rouge">x</code> and <code class="language-plaintext highlighter-rouge">y</code> fields. To check that robot,
-I would move it forward, e.g. change its state, than check the conditions and
-rollback the state if they failed. Should I say that way is weird and tends to a
-buggy code?</p>
-
-<p>Here is a code for the missing functions. To move a robot:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">move_robot</span><span class="p">(</span><span class="n">robot</span><span class="p">):</span>
-    <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">ori</span> <span class="o">=</span> <span class="n">robot</span>
-
-    <span class="n">rules</span> <span class="o">=</span> <span class="p">{</span>
-        <span class="s">"N"</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
-        <span class="s">"W"</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
-        <span class="s">"S"</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span>
-        <span class="s">"E"</span><span class="p">:</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
-    <span class="p">}</span>
-
-    <span class="n">dx</span><span class="p">,</span> <span class="n">dy</span> <span class="o">=</span> <span class="n">rules</span><span class="p">[</span><span class="n">ori</span><span class="p">]</span>
-
-    <span class="k">return</span> <span class="p">(</span>
-        <span class="n">x</span> <span class="o">+</span> <span class="n">dx</span><span class="p">,</span>
-        <span class="n">y</span> <span class="o">+</span> <span class="n">dy</span><span class="p">,</span>
-        <span class="n">ori</span><span class="p">,</span>
-    <span class="p">)</span>
-</code></pre></div></div>
-
-<p>To check if a robot is on the surface:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">is_placed</span><span class="p">(</span><span class="n">world</span><span class="p">,</span> <span class="n">robot</span><span class="p">):</span>
-    <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">world</span>
-    <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">robot</span>
-
-    <span class="k">return</span> <span class="p">(</span>
-        <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">x</span> <span class="o">&lt;=</span> <span class="n">w</span>
-        <span class="ow">and</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">y</span> <span class="o">&lt;=</span> <span class="n">h</span>
-    <span class="p">)</span>
-</code></pre></div></div>
-
-<p>And to check whether a robot stands on the dangerous cell:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">is_scent</span><span class="p">(</span><span class="n">world</span><span class="p">,</span> <span class="n">robot</span><span class="p">):</span>
-    <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">scents</span> <span class="o">=</span> <span class="n">world</span>
-    <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">robot</span>
-
-    <span class="k">return</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="ow">in</span> <span class="n">scents</span>
-</code></pre></div></div>
-
-<p>So we’ve done with the solution. What wee are missing for now are parsing input
-data and formatting the game result functions. I’m not sure they are so
-important to place them here. Check the Git repo if you are interested.</p>
-
-<p>Let’s check the data sample given in the task. Say we have sample.txt file with
-the input:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>5 3
-1 1 E
-RFRFRFRF
-
-3 2 N
-FRRFLLFFRRFLL
-
-0 3 W
-LLFFFLFLFL
-</code></pre></div></div>
-
-<p>We perform:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat sample.txt | python mars.py
-1 1 E
-3 3 N LOST
-2 3 S
-</code></pre></div></div>
-
-<p>Just as the expected results provided in the task.</p>
-
-<p>To sum up, I’ll list the key points that I’ve got from that task.</p>
-
-<ol>
-  <li>
-    <p>Try to think on the program like a black box, that accepts some data and
-produces the result. Your mission is to uncover that black box.</p>
-  </li>
-  <li>
-    <p>Use plain data structures like hash-tables, lists or tuples rather than
-classes and objects. Just because it keeps you from all that OOP complexity.</p>
-  </li>
-  <li>
-    <p>Keep data immutable while it is possible rather then modify them.</p>
-  </li>
-  <li>
-    <p>Don’t be afraid of implementing you logic with undefined functions. Or
-functions that return hard-coded result. You may correct them later.</p>
-  </li>
-  <li>
-    <p>Separate functions that don’t have side effects from those that have. They
-become really easier to test.</p>
-  </li>
-</ol>
-
-<p>Find the whole code on <a href="https://github.com/igrishaev/mars-task">Github</a>. And by the way, it’s my first post
-written in English. I hope you enjoyed that reading.</p>
-
-<p>Thanks!</p>
-
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/chrome/">Хром</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2016-09-16T00:00:00+00:00">
-        Sep 16, 2016
-    </time>
-
-    <a href="/tag/chrome/" rel="tag">chrome</a>, <a href="/tag/fun/" rel="tag">fun</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Когда число вкладок в мобильном Хроме переваливает за 100, Гугл тонко троллит
-смайликом:</p>
-
-<p><img src="/assets/static/chrome.png" alt="smile" /></p>
-
-<p>Это не я такой упоротый, если что. Просто каждый раз, когда переходишь в браузер
-из другого приложения, открывается новая вкладка.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/sn/">Почему социальные сети -- рак</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2016-09-12T00:00:00+00:00">
-        Sep 12, 2016
-    </time>
-
-    <a href="/tag/social/" rel="tag">social</a>, <a href="/tag/networks/" rel="tag">networks</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Я не понимаю, как люди пользуются социальными сетями. Перепробовал и Фейсбук, и
-Твиттер. Постил что-то в Гугл-Базз – вы его, наверное, и не вспомните. Листал
-Гугло-плюс. Не обошел вниманием отечественные ВКонтакт и Одноклассники. И каждая
-сеть – это полный пиздец и мрак. У меня полное непонимаение того, как это говно
-работает и привлекает деньги.</p>
-
-<p>Наверное, схожее чувство испытал бы сельский рабочий перед картиной Пабло
-Пикассо – это, блеять, что? Давайте разберемся, что не так с социальными
-сетями.</p>
-
-<p><strong>Сети максимально закрыты от сторонних посетителей.</strong> Анонимному посетителю
-вставляют все палки, чтобы он поскорей зарегистрировался. Иначе нет навигации и
-поиска, сплошные попапы.</p>
-
-<p><strong>В соцсетях пользователь пребывает в информационном пузыре.</strong> Когда ты новый
-пользователь, сеть не знает, что тебе нужно, и обучается наивным
-Байесом. Показывают Путина и котенка. Если тыкнул в котенка, больше Путина не
-покажут. Вырваться из пузыря невозможно.</p>
-
-<p><strong>При малейших трениях сети кладут на пользователей болт.</strong> Никто не будет
-разбирать случай угона аккаунта или несправедливого бана. У сети 1М
-хомячков. Хомячок с номером (1М + 1) никого не интересует.</p>
-
-<p><strong>Только здесь и сейчас.</strong> Каждая сеть показывает только то, что происходит
-сейчас. Отыскать публикации пятилетней давности нереально не только из-за
-уродского интерфейса. Сети официально подтверждают, что выкидывают из индекса
-старые записи.</p>
-
-<p><strong>Дикие требования к пользователям.</strong> Требуется раскрыть много персональных
-данных. В любой момент сеть может заподозрить обман и требовать подтверждение
-телефона или емейла. Если вы не знали: чтобы удалить аккаунт из Одноклассников,
-нужно прислать нотариально заверенную копию паспорта.</p>
-
-<p><strong>Любая социальная сеть – смесь рекламы и пропаганды.</strong> Ни одна публикация не
-появляется просто так. Ее оплачивает либо бизнес (реклама), либо государство (9
-Мая, патриотизм).</p>
-
-<p>Обратите внимание, что доля публикаций, сделанных обычными пользователями,
-ничтожно мала. Откройте страницу любого юзера. Его лента состоит только из
-репостов. То есть даже в условиях, когда требования к контенту ничтожно малы,
-пользователи тупо репостят. Пропускают через себя говно, как черви.</p>
-
-<p><strong>Интерфейс.</strong> Покажите сеть с нормальным интерфейсом. Я не знаю такой.</p>
-
-<p><strong>В модераторах сидят дуболомы</strong>, которым запрещено думать. Фотография голой
-девочки, спасающейся от напалма, оказывается, может трактоваться как призыв к
-педофилии.</p>
-
-<p><strong>Часто соцесеть вырастает из одной раковой идеи.</strong> Давайте писать короткими
-фразами! Так появился Твиттер. Создали ограничение, теперь героически пытаются
-его превзойти.</p>
-
-<p>Например, один придурок задает в Твиттере вопрос, на который нельзя ответить да
-или нет – требуется развернутый текст. Как же я его, блядь, умещу в 140
-символов, ты подумал? Почту Твиттер не выдает. Оставить ее в вопросе автор не
-догадался.</p>
-
-<p>Видел, как некоторые публикуют длинные высказывания в Твиттере, но как! Они бьют
-текст на серию твитов по 140 букв каждый, а потом постят в <strong>обратном порядке</strong>,
-чтобы в ленте они шли подряд! В обратном, Карл! Это же явно либо какой-то
-скрипт, либо ручная работа на час.</p>
-
-<p><strong>Пафос.</strong> Что Дуров, что Закерберг любят закатывать пафосные обращения о том,
-как они меняют мир. Брехня! Мир меняют открытые и децентрализорованные
-технологии, которые работают прозрачно и принадлежат всем. Это интернет,
-электронная почта, торренты, Биткоин. Но никак не поделка, где пользователя в
-любой момент может прихлопнуть модератор-дебил без объяснения причин.</p>
-
-<p><strong>Сеть аппелирует к низким потребностям человека.</strong> В сети каждый желает
-снискать свои 15 минут славы в виде смешной картинки или наплыва лайков. Попытки
-заполнить собой информационное пространство выглядят жалко и выдают нужду.</p>
-
-<p><strong>Сети делают людей несчастными.</strong> Соцесть – место, где публикуют только
-лучшее, но не говорят о неудачах. Какая-нибудь девушка выглядит в Инстаграме как
-королева, а на самом деле живет с мамой за МКАДом, ездит в электричке по 4 часа
-в сутки, по уши в кредитах и вообще без планов на будущее. Другие, видя только
-успех своих друзей, впадают в комплексы и депрессию, думая, что одни такие
-неудачники.</p>
-
-<p><strong>Сети – источник постоянных отвечений.</strong> Страшно подсчитать, сколько часов вы
-потеряли, прокрастинируя в смешных пабликах Вконтактика. Сколько раз проверяли
-зря телефон, не поставил ли кто из друзей лайк?</p>
-
-<p><strong>Интеллект среднего пользователя сети стремится к уровню 12-летнего ребенка.</strong>
-Сети созданы для молодых, пожилые вынуждены принимать правила. Когда я вижу, как
-преподаватель за сорок постит с детскими ошибками и смайликами, хочется разбить
-ему лицо.</p>
-
-<p><strong>Социальные сети – необходимое зло.</strong> Бывает, никак иначе не связаться с
-человеком. Но блин, как же все это достало. Безумие и мракобесие.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/maniacs/">Маньяки</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2016-09-09T00:00:00+00:00">
-        Sep 9, 2016
-    </time>
-
-    <a href="/tag/idiots/" rel="tag">idiots</a>, <a href="/tag/fp/" rel="tag">fp</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Самое главное в споре – вовремя определить, имеешь ли дело с адекватом или
-маньяком. Маньяками я называю тех, кто фанатично уверовал в превосходство той
-или иной технологии и не считается ни с какими доводами. У таких людей один
-аргумент – вера. Пока человек придерживается веры, он игнорирует любые
-аргументы. Пусть считает себя правым, что нам с того?</p>
-
-<p>Так, пенсионер доказывает, что в СССР жилось лучше, а Сталин был мудрым
-вождем. Верующий освящает машину и поощрает уроки православия в школах. А наш
-маньяк убежден, что Хаскель – лучший в мире язык программирования. Теперь он
-лепит иконки языка в виде монадного оператора и любую беседу сводит на одну
-тему.</p>
-
-<p>Чем он лучше религиозного фанатика или коммуниста?</p>
-
-<p>Существует единственно верный способ проверить маньяка. Попросите его дать
-ссылку на рабочий проект, написанный на Хаскеле. Вы должны либо перейти на сайт,
-либо скачать утилиту. Короче, отклик должен быть мгновенным, либо есть, либо
-нет.</p>
-
-<p>Если маньяк кидается ссылками на Гитхаб, то он балабол. Потому что написать код,
-пусть даже на Хаскеле – это меньше половины дела. Гораздо больше уходит на
-деплой, обновления, сборки, поддержку. Если проект хоть немного популярный, вам
-начнут писать пользователи, им придется отвечать. Придется мониторить сервер,
-настраивать автозапуск, уведомления на почту при аварийных ситуациях.</p>
-
-<h3 id="рассуждать-о-технологии-имеет-право-только-тот-у-кого-крутится-рабочий-проект">Рассуждать о технологии имеет право только тот, у кого крутится рабочий проект.</h3>
-
-<p>Проект должен приносить пользу. Если я повесил какой-то мешап, где твиты
-накладываются на гугло-карту, это фигня. Подойдет для собеседования, потому что
-заинтересует только разработчиков. Настоящий проект должен помогать простым
-смертным решать задачи: поиск билетов, агрегация региональных новостей, учет
-личных финансов.</p>
-
-<p>Мы все читаем книжки и любим почесать языком. Но, ребят, знайте меру. Задачки с
-<a href="https://projecteuler.net/">Эйлер-проджект</a> или
-<a href="http://exercism.io/">Экзорцизма</a> не доказывают ничего. Точнее, они
-подтверждают, что в какой-то момент у автора было свободное время и упорство,
-чтобы посвятить себя этому занятию.</p>
-
-<p>Например, я <a href="/atomic-scala">прочитал книжку</a> о Скале, но предпочитаю не говорить
-о ней, хоть и писал простейшие примеры. Нет опыта в продакшене. Любой специалист
-меня застыдит, реши я хоть сто задач на Скале на поиск палиндрома или вроде
-того.</p>
-
-<p>Маньяк зыбывает очевидную вещь. Целое больше суммы деталей. По отдельности
-обращаться к базе, отдавать джейсон и писать логи легко. Гораздо труднее делать
-это в рамках единого приложения. Когда сначала идешь в кэш, если нету, запрос в
-базу, кладешь в кэш, отдаешь джейсон и на каждом шаге логируешь потенциальные
-исключения. И сразу становится сложно, неважно Хаскель у тебя или Питон.</p>
-
-<p>В итоге выясняется, что ничего кроме задачек и мертвого проекта, которого нет в
-продакшене, маньяк не может предоставить публике. Только Громкие Заявления. И
-зарплату он получает за какой-нибудь Перл или С++. Все понятно.</p>
-
-<p>Мудрый человек – это человек сомневающийся. Когда нет никаких сомнений в
-превосходстве чего-то или кого-то, срочно меняйте точку зрения. Мы просто хотим
-избавиться от выбора, снять ответственность за ошибочное решение. “Мы берем
-технологию Х, потому что это убер-круто” – большая ошибка.</p>
-
-<p>Словом, взялся говорить за Хаскель, Эрланг, ФП, ООП – покажи проект. Чтобы я
-увидел прямо сейчас. Не трать наше время.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/business-game/">Бизнес как игра</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2016-09-06T00:00:00+00:00">
-        Sep 6, 2016
-    </time>
-
-    <a href="/tag/books/" rel="tag">books</a>, <a href="/tag/business/" rel="tag">business</a>, <a href="/tag/game/" rel="tag">game</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><img src="/assets/static/business-game.png" alt="cover" /></p>
-
-<p>Еще одна отличная книжка. Авторы – те мужики, кто сделали
-<a href="http://www.mosigra.ru/">Мосигру</a>. Напомню, Мосигра знаменита тем, что не только
-продает замечательные игры для детей и взрослых, но и имеет к этому особый
-подход.</p>
-
-<p>В книге с юмором, кратко и по делу описаны основные трудности, с которыми
-сталкиваются начинающие бизнесмены, и как их решать. Правовая организация, поиск
-помещения, аренда, найм, переписка, коммуникация. Все это важно в любом бизнесе,
-не только игровом.</p>
-
-<p>Отдельно отмечу, что книга написана кратко, вернее – плотно. Глава может
-состоять из одного параграфа, где высказана простая и убедительная мысль. КПД
-книги стремится к единице. Вместо воды, повторов и прохладных историй читатель
-получит пачку мощных тезисов с короткими доказательствами их работы.</p>
-
-<p>Порадовало, что некоторые правила авторов совпадают с моими. Например,
-<a href="/mail">только почта</a> для переписки. Меседжеры <a href="/telegram">отвлекают внимание</a> и
-снижают продуктивность. Интересен подход к смотру помещений. Приведу по памяти
-цитату из книги:</p>
-
-<blockquote>
-  <p>В начале поиска у вас нет опыта. Поэтому на первых порах вы ищете не для того,
-чтобы заполучить лучшее предложение, а чтобы набраться опыта. Первые 10
-помещений вы смотрите, чтобы понять, что вам вообще нужно. И ни за что не
-берете, даже если вариант фантастический. Только с опытом становится ясно, по
-каким критериям нужно отбирать на самом деле.</p>
-</blockquote>
-
-<p>Полезный принцип, взял на вооружение. Теперь, когда нужно выбрать что-то, о чем
-я не имею представления, смотрю первые 10 раз только чтобы увидеть разнообразие
-ряда.</p>
-
-<p>Другой принцип о том, как правильно делать работу:</p>
-
-<blockquote>
-  <p>Предположим, директор звонит дизайнеру из другого города и требует подготовить
-дизайн листовки. Выслал текст, обсудили основные положения. Затем директор
-садится в самолет и летит в другой город. А дизайнер забыл спросить, будет ли
-листовка одно- или двусторонняя. Что делать?</p>
-
-  <p>Здесь становится ясно, хороший ли сотрудник этот дизайнер или нет. Плохой
-будет ждать три часа прилета директора, чтобы перезвонить и выяснить. То есть
-пропинает время зазря и будет отпираться – мне не сказали.</p>
-
-  <p>Хороший дизайнер сделает два варианта: с одной стороной и двумя. Когда директор
-прилетит, понадобится 10 минут, чтобы скомпоновать финальный результат.</p>
-</blockquote>
-
-<p>Словом, классная книженция, бодрая, полезная, читается запоем. Даже думаю
-бумажную версию прикупить, чтобы время от времени черпать идеи.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/meetup9/">Девятая встреча</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2016-09-02T00:00:00+00:00">
-        Sep 2, 2016
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/meetup/" rel="tag">meetup</a>, <a href="/tag/deep-refactoring/" rel="tag">deep-refactoring</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Провели девятый митап!</p>
-
-<p><img src="/assets/static/deep-ref-9.jpg" alt="cover" /></p>
-
-<p>Что у нас нового. Во-первых, перенесли мероприятие в центр города. Теперь это
-паб <a href="http://to-dublin.ru/">Ту Даблин</a> на проспекте Революции. Добираться стало в
-разы проще.</p>
-
-<p>Во-вторых, я купил петличный микрофон. После программного подавления шума
-получается вполне хороший звук.</p>
-
-<p>Было два доклада. Первым выступил Евгений Рыжков с темой о качестве разработки.</p>
-
-<iframe width="640" height="360" src="https://www.youtube.com/embed/TIRzBDE3_sA" allowfullscreen=""></iframe>
-
-<p><a href="http://www.slideshare.net/IvanGrishaev/ss-65546024">Слайды</a></p>
-
-<p>Юрий Хрусталев продолжил с темой о поиске удаленной работы.</p>
-
-<iframe width="640" height="360" src="https://www.youtube.com/embed/addo892Eoxc" allowfullscreen=""></iframe>
-
-<p><a href="http://www.slideshare.net/IvanGrishaev/ss-65548201">Слайды</a></p>
-
-<p>Напомню, сообщество тусит в <a href="https://www.facebook.com/groups/deeprefactoring/">группе Фейсбука</a>.</p>
-
-<p>Скоро анонс десятой, юбилейной встречи. Хотите выступить? Пишите в группу.</p>
-
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page51" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 52 из 75</span>
+        <span class="page_number ">Страница 52 из 76</span>
         
         <a href="/page53" class="next">&rarr;</a>
         
