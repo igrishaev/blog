@@ -74,3 +74,5 @@ new-post:
 	echo "permalink: /${slug}/" >> ${new_file}
 	echo 'tags: programming' >> ${new_file}
 	echo '---' >> ${new_file}
+	echo '' >> ${new_file}
+	echo "{% include static.html path=\"${slug}/1.png\" %}" >> ${new_file}
