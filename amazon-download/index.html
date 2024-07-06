@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Загрузка в Амазоне</title>
+  <meta name="description" content="У веб-панели S3 есть особенность: если скачать оттуда файл, Амазон поправитрасширение в зависимости от Content-Type, который назначили файлу присоздании. Нап...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/amazon-download/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Загрузка в Амазоне</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-07-06T00:00:00+00:00">
+        Jul 6, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/s3/" rel="tag">s3</a>, <a href="/tag/files/" rel="tag">files</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>У веб-панели S3 есть особенность: если скачать оттуда файл, Амазон поправит
+расширение в зависимости от Content-Type, который назначили файлу при
+создании. Например, если у файла нет расширения, а Content-Type равен
+<code class="language-plaintext highlighter-rouge">application/json</code>, то Амазон допишет в конец .json, чтобы файлик открылся.</p>
+
+<p>Казалось бы, хорошо? А вот что имеем на практике.</p>
+
+<p>Если залить файл <code class="language-plaintext highlighter-rouge">hello.json.gzip</code>, внутри которого сжатый Gzip-ом JSON, и
+указать заголовки <code class="language-plaintext highlighter-rouge">Content-Type: application/json</code>, <code class="language-plaintext highlighter-rouge">Content-Encoding: gzip</code>, то
+при загрузке произойдет следующее.</p>
+
+<p>Файл будет декодирован Амазоном, чтобы клиенту не пришлось делать это руками. Не
+бог весть какая помощь, потому что и текстовые редакторы, и файловые менеджеры
+открывают gzip-файлы. Но ладно.</p>
+
+<p>После раскодировки Амазон смотрит: что там внутри? Application/json? Значит
+удалим <code class="language-plaintext highlighter-rouge">.gzip</code> и добавим <code class="language-plaintext highlighter-rouge">.json</code>. В результате получается файл
+<code class="language-plaintext highlighter-rouge">hello.json.json</code>. Я не шучу, проверьте сами.</p>
+
+<p>Второй случай: я залил в Амазон файл <code class="language-plaintext highlighter-rouge">report.xlsx</code>, но указал не тот
+Content-Type. Указал старый <code class="language-plaintext highlighter-rouge">application/vnd.ms-excel</code> для xls документов, а
+надо было такую колбасу:
+<code class="language-plaintext highlighter-rouge">application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</code>. При
+загрузке Амазон молча исправил расширение с <code class="language-plaintext highlighter-rouge">.xlsx</code> на <code class="language-plaintext highlighter-rouge">.xls</code>. А Эксель тоже
+хорош: по клику на файл он пишет, что формат битый, ничего не знаю – нет бы
+первые 100 байтов проверить, тупица.</p>
+
+<p>На ровном месте Амазон заруинил файл, хотя никто об этом не просил.</p>
+
+<p>Понимаете, не нужно мне помогать! Не нужно что-то тайно переименовывать для моей
+же пользы. Если прям чешется в одном месте – спроси, и я нажму “больше не
+спрашивать”.</p>
+
+<p>Кроме того, надо помнить: в Амазоне работают не боги, а такие же кодеры, как и
+везде. Перед нами обычный баг, который живет в проде не один год, и никому нет
+дела. Баг состоит в том, что махинации с расширением нужно производить только
+если у файла нет расширения. Вдобавок у расширения приоритет выше, чем у
+Content-Type, потому что последний – это метаинформация, которая может
+потеряться или исказиться. Вероятность потерять расширение гораздо ниже, нежели
+Content-Type.</p>
+
+<p>Верю, что когда-нибудь в Амазоне это поймут.</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/amazon-download/">
+    <input required name="captcha" type="hidden" value="1 &#215; 9">
+
+    <div class="block">
+        <span class="comment-form-label"><small>1 &#215; 9 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
