@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Clojure AntiPatterns: the with-retry macro </title>
+  <meta name="description" content="Most of clojurians write good things about Clojure only. I decided to startsharing techniques and patterns that I consider bad practices. We still haveplenty...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/en/clojure-with-retry/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Clojure AntiPatterns: the with-retry macro </h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-07-18T00:00:00+00:00">
+        Jul 18, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/retry/" rel="tag">retry</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Most of clojurians write good things about Clojure only. I decided to start
+sharing techniques and patterns that I consider bad practices. We still have
+plenty of them in Clojure projects, unfortunately.</p>
+
+<p>My first candidate is widely used, casual macro called <code class="language-plaintext highlighter-rouge">with-retry</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defmacro</span><span class="w"> </span><span class="n">with-retry</span><span class="w"> </span><span class="p">[[</span><span class="n">attempts</span><span class="w"> </span><span class="n">timeout</span><span class="p">]</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">body</span><span class="p">]</span><span class="w">
+  </span><span class="o">`</span><span class="p">(</span><span class="nb">loop</span><span class="w"> </span><span class="p">[</span><span class="n">n</span><span class="o">#</span><span class="w"> </span><span class="o">~</span><span class="n">attempts</span><span class="p">]</span><span class="w">
+     </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[[</span><span class="n">e</span><span class="o">#</span><span class="w"> </span><span class="n">result</span><span class="o">#</span><span class="p">]</span><span class="w">
+           </span><span class="p">(</span><span class="nf">try</span><span class="w">
+             </span><span class="p">[</span><span class="n">nil</span><span class="w"> </span><span class="p">(</span><span class="nf">do</span><span class="w"> </span><span class="o">~@</span><span class="n">body</span><span class="p">)]</span><span class="w">
+             </span><span class="p">(</span><span class="nf">catch</span><span class="w"> </span><span class="n">Throwable</span><span class="w"> </span><span class="n">e</span><span class="o">#</span><span class="w">
+               </span><span class="p">[</span><span class="n">e</span><span class="o">#</span><span class="w"> </span><span class="n">nil</span><span class="p">]))]</span><span class="w">
+       </span><span class="p">(</span><span class="k">cond</span><span class="w">
+
+         </span><span class="p">(</span><span class="nb">nil?</span><span class="w"> </span><span class="n">e</span><span class="o">#</span><span class="p">)</span><span class="w">
+         </span><span class="n">result</span><span class="o">#</span><span class="w">
+
+         </span><span class="p">(</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">n</span><span class="o">#</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w">
+         </span><span class="p">(</span><span class="nf">do</span><span class="w">
+           </span><span class="p">(</span><span class="nf">Thread/sleep</span><span class="w"> </span><span class="o">~</span><span class="n">timeout</span><span class="p">)</span><span class="w">
+           </span><span class="p">(</span><span class="nf">recur</span><span class="w"> </span><span class="p">(</span><span class="nb">dec</span><span class="w"> </span><span class="n">n</span><span class="o">#</span><span class="p">)))</span><span class="w">
+
+         </span><span class="no">:else</span><span class="w">
+         </span><span class="p">(</span><span class="nf">throw</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">Exception</span><span class="w"> </span><span class="s">"all attempts exhausted"</span><span class="w"> </span><span class="n">e</span><span class="o">#</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This is a very basic implementation. It catches all possible exceptions, has a
+strict number of attempts, and the constant delay time. Typical usage:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-retry</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">2000</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">get-file-from-network</span><span class="w"> </span><span class="s">"/path/to/file.txt"</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Should network blink, most likely you’ll get a file anyway.</p>
+
+<p>Clojure people who don’t like macros write a function like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">with-retry</span><span class="w"> </span><span class="p">[[</span><span class="n">attempts</span><span class="w"> </span><span class="n">timeout</span><span class="p">]</span><span class="w"> </span><span class="n">func</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">loop</span><span class="w"> </span><span class="p">[</span><span class="n">n</span><span class="w"> </span><span class="n">attempts</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[[</span><span class="n">e</span><span class="w"> </span><span class="n">result</span><span class="p">]</span><span class="w">
+          </span><span class="p">(</span><span class="nf">try</span><span class="w">
+            </span><span class="p">[</span><span class="n">nil</span><span class="w"> </span><span class="p">(</span><span class="nf">func</span><span class="p">)]</span><span class="w">
+            </span><span class="p">(</span><span class="nf">catch</span><span class="w"> </span><span class="n">Throwable</span><span class="w"> </span><span class="n">e</span><span class="w">
+              </span><span class="p">[</span><span class="n">e</span><span class="w"> </span><span class="n">nil</span><span class="p">]))]</span><span class="w">
+      </span><span class="p">(</span><span class="k">cond</span><span class="w">
+
+        </span><span class="p">(</span><span class="nb">nil?</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w">
+        </span><span class="n">result</span><span class="w">
+
+        </span><span class="p">(</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">n</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w">
+        </span><span class="p">(</span><span class="nf">do</span><span class="w">
+          </span><span class="p">(</span><span class="nf">Thread/sleep</span><span class="w"> </span><span class="n">timeout</span><span class="p">)</span><span class="w">
+          </span><span class="p">(</span><span class="nf">recur</span><span class="w"> </span><span class="p">(</span><span class="nb">dec</span><span class="w"> </span><span class="n">n</span><span class="p">)))</span><span class="w">
+
+        </span><span class="no">:else</span><span class="w">
+        </span><span class="p">(</span><span class="nf">throw</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">Exception</span><span class="w"> </span><span class="s">"all attempts exhausted"</span><span class="w"> </span><span class="n">e</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It acts the same but accepts not arbitrary code but a function. A form can be
+easily turned into a function by putting a sharp sign in front of it. After all,
+it looks almost the same:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-retry</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">2000</span><span class="p">]</span><span class="w">
+  </span><span class="o">#</span><span class="p">(</span><span class="nf">get-file-from-network</span><span class="w"> </span><span class="s">"/path/to/file.txt"</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Although it is considered being a good practice, here is the outcome of using it
+in production.</p>
+
+<p>Practice proves that, even if you wrap something into that macro, you cannot
+recover from a failure anyway. Imagine you’re downloading a file from S3 and
+pass wrong credentials. You cannot recover no matter how many times you
+retry. Wrong creds remain wrong forever. Now there is missing file: again, no
+matter how hard you retry, it’s all in vain and you only waste resources. Should
+you put a file into S3, and submit wrong headers, it’s the same. If your network
+is misconfigured or some resources are blocked, or you have no permissions, it’s
+the same again: <strong>no matter how long have you been trying, it’s useless</strong>.</p>
+
+<p>There might be dozens of reasons when your request fails, and there is no way to
+recover. Instead of invoking a resource again and again, you must investigate
+what went wrong.</p>
+
+<p>There might be some rare cases which are worth retrying though. One of them is
+an <code class="language-plaintext highlighter-rouge">IOException</code> caused by a network blink. But in fact, modern HTTP clients
+already handle it for you. If you <code class="language-plaintext highlighter-rouge">GET</code> a resource and receive an <code class="language-plaintext highlighter-rouge">IOException</code>,
+most likely your client has already done three attempts silently with growing
+timeouts. By wrapping the call <code class="language-plaintext highlighter-rouge">with-retry</code>, you perform 9 attempts or so under
+the hood.</p>
+
+<p>Another case might be 429 error code which stands for rate limitation on the
+server side. Personally I don’t think that a slight delay may help. Most likely
+you need to bump the limits, rotate API keys and so on but not <code class="language-plaintext highlighter-rouge">Thread.sleep</code> in
+the middle of code.</p>
+
+<p>I’ve seen terrible usage of <code class="language-plaintext highlighter-rouge">with-retry</code> macro across various projects. One
+developer specified 10 attempts with 10 seconds timeout to reach a remote API
+for sure. But he was calling the wrong API handler in fact.</p>
+
+<p>Another developer put two nested <code class="language-plaintext highlighter-rouge">with-macro</code> forms. They belonged to different
+functions and this could not be visible at once. I’m reproducing a simplified
+version:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-retry</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="mi">1000</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">do-this</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">do-that</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">with-retry</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">2000</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">do-something-else...</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>According to math, 4 times 3 is 12. When the <code class="language-plaintext highlighter-rouge">(do-something-else)</code> function
+failed, the whole top-level block started again. It led to 12 executions in
+total with terrible side effects and logs which I could not investigate.</p>
+
+<p>One more case: a developer wrapped a chunk of logic that inserted something into
+the database. He messed up with foreign keys so the records could not be
+stored. Postgres replied with an error “foreign key constraint violation” yet
+the macro tried to store them three times before failing completely. Three
+broken SQL invocations… for what? Why?</p>
+
+<p>So. Whenever you use <code class="language-plaintext highlighter-rouge">with-retry</code>, most likely it’s a bad sign. Most often you
+cannot recover from a failure no matter if you add two numbers, upload a file,
+or write into a database. You should only retry in certain situations like
+<code class="language-plaintext highlighter-rouge">IOException</code> or rate limiting. But even those cases are questionable and might
+be mitigated with no retrying.</p>
+
+<p>Next time you’re going to cover a block of logic <code class="language-plaintext highlighter-rouge">with-retry</code>, think hard if you
+really need to retry. Will it really help in case of wrong creds, a missing
+file, incorrect signature or similar things? Perhaps not. Thus, don’t retry in
+vain. Just fail and write detailed logs. Then find the real problem, fix it and
+let it never happen again.</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/en/clojure-with-retry/">
+    <input required name="captcha" type="hidden" value="2 &#215; 9">
+
+    <div class="block">
+        <span class="comment-form-label"><small>2 &#215; 9 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
