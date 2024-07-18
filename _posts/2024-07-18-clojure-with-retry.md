@@ -2,6 +2,7 @@
 layout: post
 title: "Clojure AntiPatterns: the with-retry macro "
 permalink: /en/clojure-with-retry/
+lang: en
 tags: programming clojure retry s3
 ---
 
