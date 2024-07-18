@@ -83,7 +83,7 @@ in production.
 Practice proves that, even if you wrap something into that macro, you cannot
 recover from a failure anyway. Imagine you’re downloading a file from S3 and
 pass wrong credentials. You cannot recover no matter how many times you
-retry. Wrong creds remain wrong forever. Now there is missing file: again, no
+retry. Wrong creds remain wrong forever. Now there is a missing file: again, no
 matter how hard you retry, it’s all in vain and you only waste resources. Should
 you put a file into S3, and submit wrong headers, it’s the same. If your network
 is misconfigured or some resources are blocked, or you have no permissions, it’s
@@ -110,7 +110,7 @@ developer specified 10 attempts with 10 seconds timeout to reach a remote API
 for sure. But he was calling the wrong API handler in fact.
 
 Another developer put two nested `with-macro` forms. They belonged to different
-functions and this could not be visible at once. I’m reproducing a simplified
+functions and thus could not be visible at once. I’m reproducing a simplified
 version:
 
 ~~~clojure
