@@ -104,6 +104,214 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/sql/">SQL</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-09-27T00:00:00+00:00">
+        Sep 27, 2023
+    </time>
+
+    <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgresql/" rel="tag">postgresql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Язык SQL — прекрасная вещь, пожалуй, одна из лучших, что мы имеем в айти.
+Научиться ему значит повысить свою квалификацию на голову. Бекендеров я бы
+вообще оценивал по одному критерию — насколько хорошо они работают с базой.</p>
+
+<p>SQL выручал меня не только по работе. У нас в ЖК стоят шлагбаумы, и однажды я
+запросил логи, чтобы посмотреть, кто и когда и открывает. Мне скинули несколько
+страшных CSV. Разбирать их Экселе было адом, и я загнал в Постгрес и построил
+отчеты по всем мыслимым критериям.</p>
+
+<p>Импорт:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">COPY</span> <span class="n">logs</span><span class="p">(</span><span class="nb">time</span><span class="p">,</span> <span class="n">account</span><span class="p">,</span> <span class="k">type</span><span class="p">,</span> <span class="n">ident</span><span class="p">,</span> <span class="n">status</span><span class="p">,</span> <span class="n">barrier</span><span class="p">)</span>
+<span class="k">FROM</span> <span class="s1">'/Users/ivan/work/barriers/65_Ш6.csv'</span>
+<span class="k">DELIMITER</span> <span class="s1">';'</span> <span class="n">CSV</span> <span class="n">HEADER</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Статусы:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select distinct status from logs
+
+| status
+|---------------------------------------
+| Добавлен
+| Отказ (пульт)
+| Отказ (нет в базе или ошибка кнопка)
+| Открыто (карта в базе)
+| Допуск (пульт)
+...
+</code></pre></div></div>
+
+<p>Типы доступа:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select distinct type from logs
+
+| type
+|--------------
+| Событие
+| Карта, метка
+| Звонок
+| Удаление
+...
+</code></pre></div></div>
+
+<p>Общее число открываний в разрезе помещений:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">account</span><span class="p">,</span> <span class="k">count</span><span class="p">(</span><span class="n">ident</span><span class="p">)</span> <span class="k">as</span> <span class="k">count</span> <span class="k">from</span> <span class="n">logs</span>
+<span class="k">where</span> <span class="n">account</span> <span class="o">&lt;&gt;</span> <span class="s1">'Нет в базе'</span>
+<span class="k">and</span> <span class="nb">time</span> <span class="o">&gt;</span> <span class="s1">'2022-05-01 00:00:00'</span>
+<span class="k">and</span> <span class="n">status</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'Допуск (телефон)'</span><span class="p">,</span> <span class="s1">'Допуск (пульт)'</span><span class="p">)</span>
+<span class="k">and</span> <span class="k">type</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'PP'</span><span class="p">,</span> <span class="s1">'Звонок'</span><span class="p">)</span>
+<span class="k">group</span> <span class="k">by</span> <span class="n">account</span>
+<span class="k">order</span> <span class="k">by</span> <span class="k">count</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">50</span>
+</code></pre></div></div>
+
+<p>Данные по конкретной квартире по дням:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">date_trunc</span><span class="p">(</span><span class="s1">'day'</span><span class="p">,</span> <span class="nb">time</span><span class="p">)</span> <span class="k">as</span> <span class="k">day</span><span class="p">,</span> <span class="k">count</span><span class="p">(</span><span class="n">ident</span><span class="p">)</span> <span class="k">from</span> <span class="n">logs</span>
+<span class="k">where</span> <span class="n">account</span> <span class="o">=</span> <span class="s1">'ООО "Рога и копыта"'</span>
+<span class="k">and</span> <span class="nb">time</span> <span class="o">&gt;</span> <span class="s1">'2022-05-01 00:00:00'</span>
+<span class="k">and</span> <span class="n">status</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'Допуск (телефон)'</span><span class="p">,</span> <span class="s1">'Допуск (пульт)'</span><span class="p">)</span>
+<span class="k">and</span> <span class="k">type</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'PP'</span><span class="p">,</span> <span class="s1">'Звонок'</span><span class="p">)</span>
+<span class="k">group</span> <span class="k">by</span> <span class="k">day</span>
+<span class="k">order</span> <span class="k">by</span> <span class="k">day</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">50</span>
+</code></pre></div></div>
+
+<p>Число телефонов и пультов на помещение:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">account</span><span class="p">,</span> <span class="k">count</span><span class="p">(</span><span class="k">distinct</span> <span class="n">ident</span><span class="p">)</span> <span class="k">as</span> <span class="n">amount</span> <span class="k">from</span> <span class="n">logs</span>
+<span class="k">where</span> <span class="n">account</span> <span class="o">&lt;&gt;</span> <span class="s1">'Нет в базе'</span>
+<span class="k">and</span> <span class="nb">time</span> <span class="o">&gt;</span> <span class="s1">'2022-05-01 00:00:00'</span>
+<span class="k">and</span> <span class="n">status</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'Допуск (телефон)'</span><span class="p">,</span> <span class="s1">'Допуск (пульт)'</span><span class="p">)</span>
+<span class="k">group</span> <span class="k">by</span> <span class="n">account</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">amount</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span>
+</code></pre></div></div>
+
+<p>Среднее число открываний в день:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">account</span><span class="p">,</span> <span class="k">count</span><span class="p">(</span><span class="n">ident</span><span class="p">)</span> <span class="o">/</span> <span class="k">count</span><span class="p">(</span><span class="k">distinct</span> <span class="n">date_trunc</span><span class="p">(</span><span class="s1">'day'</span><span class="p">,</span> <span class="nb">time</span><span class="p">))</span> <span class="k">as</span> <span class="n">per_day</span>
+<span class="k">from</span> <span class="n">logs</span>
+<span class="k">where</span> <span class="n">account</span> <span class="o">&lt;&gt;</span> <span class="s1">'Нет в базе'</span>
+<span class="k">and</span> <span class="nb">time</span> <span class="o">&gt;</span> <span class="s1">'2022-05-01 00:00:00'</span>
+<span class="k">and</span> <span class="n">status</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'Допуск (телефон)'</span><span class="p">,</span> <span class="s1">'Допуск (пульт)'</span><span class="p">)</span>
+<span class="k">and</span> <span class="k">type</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'PP'</span><span class="p">,</span> <span class="s1">'Звонок'</span><span class="p">)</span>
+<span class="k">group</span> <span class="k">by</span> <span class="n">account</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">per_day</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span>
+</code></pre></div></div>
+
+<p>И еще штук десять подобных запросов. В итоге нашли несколько аномалий, с
+нарушителями был разговор.</p>
+
+<p>Из недавнего: понадобилось считать рабочие часы по неделям. Что в Экселе, что
+Гугле это оказался адский ад, потому что тип <code class="language-plaintext highlighter-rouge">time</code> не переполняется. То есть если
+сложить 7 + 7 + 7 + 7 + 7 часов (пять рабочих дней), получим 11 часов, потому что 24
+уйдут в перекрут. Просидел час, думая, как это решить, и так и не решил.</p>
+
+<p>Но выручил Постгрес! Его тип <code class="language-plaintext highlighter-rouge">time</code> тоже не поддерживает переполнение, но есть
+тип <code class="language-plaintext highlighter-rouge">interval</code>, который прекрасно складывается сам с собой. Поэтому создаем
+таблицу с двумя колонками: дата и интервал:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="k">work</span> <span class="p">(</span><span class="nb">date</span> <span class="nb">date</span><span class="p">,</span> <span class="n">hours</span> <span class="n">interval</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Импорт:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">\</span><span class="k">copy</span> <span class="k">work</span> <span class="k">from</span> <span class="o">/</span><span class="n">Users</span><span class="o">/</span><span class="n">ivan</span><span class="o">/</span><span class="n">Downloads</span><span class="o">/</span><span class="n">foobar</span><span class="p">.</span><span class="n">csv</span>
+  <span class="k">with</span> <span class="p">(</span><span class="n">format</span> <span class="n">csv</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Удаляем пустые интервалы:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">delete</span> <span class="k">from</span> <span class="k">work</span> <span class="k">where</span> <span class="n">hours</span> <span class="k">is</span> <span class="k">null</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Всего часов:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="k">sum</span><span class="p">(</span><span class="n">hours</span><span class="p">)</span> <span class="k">from</span> <span class="k">work</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Отчет по неделям:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">date_trunc</span><span class="p">(</span><span class="s1">'week'</span><span class="p">,</span> <span class="nb">date</span><span class="p">)</span> <span class="k">as</span> <span class="n">week</span><span class="p">,</span> <span class="k">sum</span><span class="p">(</span><span class="n">hours</span><span class="p">)</span>
+<span class="k">from</span> <span class="k">work</span>
+<span class="k">group</span> <span class="k">by</span> <span class="n">week</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">week</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>И все это — не выходя из консоли <code class="language-plaintext highlighter-rouge">psql</code>. Представьте, какой гемор был бы
+построить это в Экселе, Гугле или даже на языке программирования вроде
+Питона. Там с одним только парсингом дат и времени наешься, а тут все из
+коробки.</p>
+
+<p>Можно сбросить все отчеты в CSV одной командой, чтобы пересохранить в Excel и
+отправить кому-то по работе.</p>
+
+<p>Словом, одно из немногих утешений сегодня — это SQL/Postgres. Надежный как
+скала, полезный, простой и востребованный.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/so-popups/">Выпадашки на StackOverflow</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-09-27T00:00:00+00:00">
+        Sep 27, 2023
+    </time>
+
+    <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/stackoverflow/" rel="tag">stackoverflow</a>, <a href="/tag/so/" rel="tag">so</a>, <a href="/tag/popups/" rel="tag">popups</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><img src="/assets/static/aws/so-popups/1.jpeg" /></p>
+
+<p>Я как-то <a href="/cookie-popups/">уже писал</a>: нам не везет с дизайнерами. Всякие Гуглы
+и StackOverflow берут ребят с выпадашечным мышлением. Каждый раз, чтобы донести
+информацию до пользователя, дизайнер ставит выпадашку. При этом все равно, что
+выпадашка Васи наползает на выпадашку Пети. Это не его проблема, он добавил, а
+остальное его не касается.</p>
+
+<p>Сегодняшняя страница Stack Overflow как я ее вижу. Слой с бессмысленным текстом
+наползает на какое-то дерьмо про искусственный интеллект. Выпадашка на
+выпадашке. Интересно, как в SO устроена работа дизайнеров и контроль качества?
+Это же Провал Провалыч, и причина одна — несогласованность между дизайнерами.</p>
+
+<p>Нельзя так.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/slack-outdated/">Слак устарел</a>
             </h2>
 
@@ -553,349 +761,13 @@ https://objective-see.org/products/lulu.html</p>
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/with-http/">With-http: a Clojure library for testing HTTP</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-21T00:00:00+00:00">
-        Sep 21, 2023
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/tests/" rel="tag">tests</a>, <a href="/tag/http/" rel="tag">http</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>The <a href="https://github.com/igrishaev/with-http">with-http library</a> provides a macro to stub HTTP calls with a
-local Jetty server. it’s declarative, flexible, and extremely useful. I’ve been
-copying it through many projects, and now it’s time to ship it as a standalone
-library.</p>
-
-<p><strong>ToC</strong></p>
-
-<!-- toc -->
-
-<ul>
-  <li><a href="#installation">Installation</a></li>
-  <li><a href="#about">About</a></li>
-  <li><a href="#the-app-routes">The App routes</a></li>
-  <li><a href="#default-handler">Default handler</a></li>
-  <li><a href="#basic-test">Basic test</a></li>
-  <li><a href="#json">JSON</a></li>
-  <li><a href="#slow-responses">Slow responses</a></li>
-  <li><a href="#files--resources">Files &amp; Resources</a></li>
-  <li><a href="#capturing-requests">Capturing requests</a></li>
-</ul>
-
-<!-- tocstop -->
-
-<h2 id="installation">Installation</h2>
-
-<p>Lein:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/with-http</span><span class="w"> </span><span class="s">"0.1.1"</span><span class="p">]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Deps.edn</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">com.github.igrishaev/with-http</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.1"</span><span class="p">}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p><em>Pay attention</em>: since the library is primarily used for tests, put the
-dependency in the corresponding profile or alias. Storing it in global
-dependencies is not a good idea as it becomes a part of the production code
-otherwise.</p>
-
-<h2 id="about">About</h2>
-
-<p>The library provides a <code class="language-plaintext highlighter-rouge">with-http</code> macro of the following form:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-http</span><span class="w"> </span><span class="p">[</span><span class="n">port</span><span class="w"> </span><span class="n">app</span><span class="p">]</span><span class="w">
-  </span><span class="n">...body</span><span class="p">)</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">port</code> is the number (1..65535) and the <code class="language-plaintext highlighter-rouge">app</code> is a map of routes. When
-entering the macro, it spawns a local Jetty server on that port in the
-background. The <code class="language-plaintext highlighter-rouge">app</code> map tells the server how to respond to calls.</p>
-
-<p>Now that you have a running server, point your HTTP API clients to
-<code class="language-plaintext highlighter-rouge">http://localhost:&lt;port&gt;</code> to imitate real network interaction. For example, for
-prod, a third-party base URL is https://api.some.cool.service but for tests, it
-is http://localhost:8088. This can be done using environment variables or the
-<a href="https://github.com/juxt/aero">Aero library</a>.</p>
-
-<p>Why not use <code class="language-plaintext highlighter-rouge">with-redefs</code>, would you ask? Well, although <code class="language-plaintext highlighter-rouge">with-redefs</code> looks like a solution at first glance, it’s questionable. Using <code class="language-plaintext highlighter-rouge">with-redefs</code> means lying to yourself. You temporarily
-mute some pieces of the codebase pretending it’s OK, but it’s not.</p>
-
-<p>Often, bugs lurk in the code that you actually substitute using <code class="language-plaintext highlighter-rouge">with-redefs</code>,
-namely:</p>
-
-<ul>
-  <li>
-    <p>you’ve messed up with MD5/SHA/etc algorithms to sign a request. Calling
-localhost would trigger that code and lead to an exception, but <code class="language-plaintext highlighter-rouge">with-redefs</code>
-would not.</p>
-  </li>
-  <li>
-    <p>you process the response poorly, e.g. not taking Content-Type header or
-non-200 status code into account.</p>
-  </li>
-  <li>
-    <p>you cannot imitate delays and timeout exceptions when interacting with HTTP
-API.</p>
-  </li>
-</ul>
-
-<p>The good news is, that the <code class="language-plaintext highlighter-rouge">with-http</code> macro can test all the cases mentioned above and much more.</p>
-
-<h2 id="the-app-routes">The App routes</h2>
-
-<p>The <code class="language-plaintext highlighter-rouge">app</code> parameter is a two-level map of the form:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="nb">path</span><span class="w"> </span><span class="p">{</span><span class="n">method</span><span class="w"> </span><span class="n">response</span><span class="p">}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>For example:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"it was GET"</span><span class="p">}</span><span class="w">
-         </span><span class="no">:post</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">201</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"it was POST"</span><span class="p">}}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Calling <code class="language-plaintext highlighter-rouge">GET /foo</code> and <code class="language-plaintext highlighter-rouge">POST /foo</code> would return 200 and 201 status codes with
-different messages.</p>
-
-<p>The response might be:</p>
-
-<ul>
-  <li>a Ring map;</li>
-  <li>a Ring handler function that accepts a request map and returns a response map;</li>
-  <li>an instance of <code class="language-plaintext highlighter-rouge">java.io.File</code>;</li>
-  <li>a resource: <code class="language-plaintext highlighter-rouge">(clojure.java.io/resource "some/file.txt")</code>;</li>
-  <li>a string.</li>
-</ul>
-
-<p>Other examples:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">params</span><span class="p">]}]</span><span class="w">
-                </span><span class="p">(</span><span class="nf">log/infof</span><span class="w"> </span><span class="s">"Params: %s"</span><span class="w"> </span><span class="n">params</span><span class="p">)</span><span class="w">
-                </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"OK"</span><span class="p">})}}</span><span class="w">
-
-</span><span class="p">{</span><span class="s">"/some/json"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">(</span><span class="nf">io/resource</span><span class="w"> </span><span class="s">"file.json"</span><span class="p">)}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The path might be a vector as well. During the preparation step, it will be
-compiled into a string, for example:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{[</span><span class="s">"/foo/bar/"</span><span class="w"> </span><span class="mi">42</span><span class="w"> </span><span class="s">"/test"</span><span class="p">]</span><span class="w">
- </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"hello"</span><span class="p">}}}</span><span class="w">
-
-</span><span class="c1">;; becomes</span><span class="w">
-
-</span><span class="p">{</span><span class="s">"/foo/bar/42/test"</span><span class="w">
- </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"hello"</span><span class="p">}}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>This is useful when the paths contain parameters.</p>
-
-<p>The <code class="language-plaintext highlighter-rouge">make-url</code> function helps to build a local URL like
-<code class="language-plaintext highlighter-rouge">http://localhost:&lt;port&gt;/&lt;path&gt;</code>. Its second <code class="language-plaintext highlighter-rouge">path</code> argument is either a string
-or a vector which gets compiled into a string:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">make-url</span><span class="w"> </span><span class="n">PORT</span><span class="w"> </span><span class="s">"/foo?a=1&amp;b=2"</span><span class="p">)</span><span class="w">
-</span><span class="c1">;; http://localhost:8899/foo?a=1&amp;b=2</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">make-url</span><span class="w"> </span><span class="mi">8899</span><span class="w"> </span><span class="p">[</span><span class="s">"/users/"</span><span class="w"> </span><span class="mi">42</span><span class="w"> </span><span class="s">"/reports/"</span><span class="w"> </span><span class="mi">99999</span><span class="p">])</span><span class="w">
-</span><span class="c1">;; http://localhost:8899/users/42/reports/99999</span><span class="w">
-</span></code></pre></div></div>
-
-<h2 id="default-handler">Default handler</h2>
-
-<p>The App mapping has a default handler which gets triggered when the client calls
-a non-existing route. By default, it’s 404 status page with the following JSON
-payload:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">NOT-FOUND</span><span class="w">
-  </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">404</span><span class="w">
-   </span><span class="no">:body</span><span class="w"> </span><span class="p">{</span><span class="no">:error</span><span class="w"> </span><span class="s">"with-http: route not found"</span><span class="p">}})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>You can override it by adding the <code class="language-plaintext highlighter-rouge">:default</code> key to the app map. The value might
-be a map, a function, a file and so on.</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"hello"</span><span class="p">}}</span><span class="w">
- </span><span class="no">:default</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">202</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"I'm the default!"</span><span class="p">}}</span><span class="w">
-</span></code></pre></div></div>
-
-<h2 id="basic-test">Basic test</h2>
-
-<p>A simple test to ensure the macro works:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">test-with-http-test-json</span><span class="w">
-
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">app</span><span class="w">
-        </span><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w">
-                       </span><span class="no">:body</span><span class="w"> </span><span class="s">"test"</span><span class="p">}}}</span><span class="w">
-
-        </span><span class="n">url</span><span class="w">
-        </span><span class="p">(</span><span class="nf">make-url</span><span class="w"> </span><span class="n">PORT</span><span class="w"> </span><span class="s">"/foo"</span><span class="p">)</span><span class="w">
-
-        </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">status</span><span class="w"> </span><span class="n">body</span><span class="p">]}</span><span class="w">
-        </span><span class="p">(</span><span class="nf">with-http</span><span class="w"> </span><span class="p">[</span><span class="n">PORT</span><span class="w"> </span><span class="n">app</span><span class="p">]</span><span class="w">
-          </span><span class="p">(</span><span class="nf">client/get</span><span class="w"> </span><span class="n">url</span><span class="p">))]</span><span class="w">
-
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="n">status</span><span class="p">))</span><span class="w">
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="s">"test"</span><span class="w"> </span><span class="n">body</span><span class="p">))))</span><span class="w">
-</span></code></pre></div></div>
-
-<h2 id="json">JSON</h2>
-
-<p>The Ring handler function produced from the <code class="language-plaintext highlighter-rouge">app</code> mapping is wrapped with
-<code class="language-plaintext highlighter-rouge">wrap-json-response</code> and <code class="language-plaintext highlighter-rouge">wrap-json-params</code> middleware layers. It means the body
-of the response might be a collection that gets dumped into JSON:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">test-with-http-test-json</span><span class="w">
-
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">body</span><span class="w">
-        </span><span class="p">{</span><span class="no">:hello</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="s">"test"</span><span class="w"> </span><span class="n">true</span><span class="p">]}</span><span class="w">
-
-        </span><span class="n">app</span><span class="w">
-        </span><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w">
-                       </span><span class="no">:body</span><span class="w"> </span><span class="n">body</span><span class="p">}}}</span><span class="w">
-
-        </span><span class="n">url</span><span class="w">
-        </span><span class="p">(</span><span class="nf">make-url</span><span class="w"> </span><span class="n">PORT</span><span class="w"> </span><span class="s">"/foo"</span><span class="p">)</span><span class="w">
-
-        </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">status</span><span class="w"> </span><span class="n">body</span><span class="p">]}</span><span class="w">
-        </span><span class="p">(</span><span class="nf">with-http</span><span class="w"> </span><span class="p">[</span><span class="n">PORT</span><span class="w"> </span><span class="n">app</span><span class="p">]</span><span class="w">
-          </span><span class="p">(</span><span class="nf">client/get</span><span class="w"> </span><span class="n">url</span><span class="w"> </span><span class="p">{</span><span class="no">:as</span><span class="w"> </span><span class="no">:json</span><span class="p">}))]</span><span class="w">
-
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="n">status</span><span class="p">))</span><span class="w">
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">{</span><span class="no">:hello</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="s">"test"</span><span class="w"> </span><span class="n">true</span><span class="p">]}</span><span class="w"> </span><span class="n">body</span><span class="p">))))</span><span class="w">
-</span></code></pre></div></div>
-
-<h2 id="slow-responses">Slow responses</h2>
-
-<p>To imitate slow responses, provide a function that sleeps for a certain amount
-of time:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">_</span><span class="p">]</span><span class="w">
-                </span><span class="p">(</span><span class="nf">Thread/sleep</span><span class="w"> </span><span class="mi">10000</span><span class="p">)</span><span class="w">
-                </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"OK"</span><span class="p">})}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Then ensure you pass the timeout limit into your API call.</p>
-
-<h2 id="files--resources">Files &amp; Resources</h2>
-
-<p>Storing JSON responses in files is a good idea. Here is how you can serve them
-with the macro:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">(</span><span class="nf">io/file</span><span class="w"> </span><span class="s">"dev-resources/test.txt"</span><span class="p">)}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>or</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">(</span><span class="nf">io/file</span><span class="w"> </span><span class="s">"dev-resources/test.json"</span><span class="p">)}}</span><span class="w">
-</span></code></pre></div></div>
-
-<h2 id="capturing-requests">Capturing requests</h2>
-
-<p>Another trick to improve your tests: ensure you pass the right parameters or
-headers to the HTTP API. Provide an atom and a handler function closed over that
-atom. Each time you receive a request, save it’s data to the atom and then
-validate them:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">test-with-http-capture-params</span><span class="w">
-
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">capture!</span><span class="w">
-        </span><span class="p">(</span><span class="nf">atom</span><span class="w"> </span><span class="n">nil</span><span class="p">)</span><span class="w">
-
-        </span><span class="n">app</span><span class="w">
-        </span><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">params</span><span class="p">]}]</span><span class="w">
-                        </span><span class="p">(</span><span class="nf">reset!</span><span class="w"> </span><span class="n">capture!</span><span class="w"> </span><span class="n">params</span><span class="p">)</span><span class="w">
-                        </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"OK"</span><span class="p">})}}</span><span class="w">
-
-        </span><span class="n">url</span><span class="w">
-        </span><span class="p">(</span><span class="nf">make-url</span><span class="w"> </span><span class="n">PORT</span><span class="w"> </span><span class="s">"/foo?a=1&amp;b=2"</span><span class="p">)</span><span class="w">
-
-        </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">status</span><span class="w"> </span><span class="n">body</span><span class="p">]}</span><span class="w">
-        </span><span class="p">(</span><span class="nf">with-http</span><span class="w"> </span><span class="p">[</span><span class="n">PORT</span><span class="w"> </span><span class="n">app</span><span class="p">]</span><span class="w">
-          </span><span class="p">(</span><span class="nf">client/get</span><span class="w"> </span><span class="n">url</span><span class="p">))]</span><span class="w">
-
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="n">status</span><span class="p">))</span><span class="w">
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="s">"OK"</span><span class="w"> </span><span class="n">body</span><span class="p">))</span><span class="w">
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">{</span><span class="no">:a</span><span class="w"> </span><span class="s">"1"</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="s">"2"</span><span class="p">}</span><span class="w"> </span><span class="o">@</span><span class="n">capture!</span><span class="p">))))</span><span class="w">
-</span></code></pre></div></div>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/windows-snapshots/">Скриншоты на винде</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-18T00:00:00+00:00">
-        Sep 18, 2023
-    </time>
-
-    <a href="/tag/windows/" rel="tag">windows</a>, <a href="/tag/screenshot/" rel="tag">screenshot</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>На винде есть утилита для скриншотов рабочего стола, называется “Ножницы” или
-вроде того (clip). И надо сказать, программа люто, бешено тупая.</p>
-
-<p>Делаю скриншот и хочу сохранить — открывает диалог с именем “безымянный.PNG” (в
-английской версии untitled.PNG). Не будем комментировать расширение капсом; но
-блин, почему файл безымянный? Что мешало назвать его текущей датой с точность до
-минуты?</p>
-
-<p>Далее, если в папке уже есть “безымянный” с прошлого раза, программа предложит
-его перезаписать. Что мешает проверить, что такой файл уже есть и хотя бы
-поставить единичку (двойку, тройку)?</p>
-
-<p>В итоге как дурак дописываешь в конец чушь вроде 123, чтобы сохранить скриншот и
-куда-то отправить.</p>
-
-<p>Вот как на Маке: когда делаешь скриншот, он сперва улетает в угол, и в течении
-10 секунд его можно куда-то перетащить без сохранения на диск. А если не успел,
-он сохранится на рабочий стол с датой и временем в названии. Не нужно париться,
-сохранил или нет, перезаписал или нет.</p>
-
-<p>Что мешало сделать также Микрософту? Они вообще своими программами пользуются?</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page12" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 13 из 78</span>
+        <span class="page_number ">Страница 13 из 79</span>
         
         <a href="/page14" class="next">&rarr;</a>
         

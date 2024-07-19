@@ -104,6 +104,309 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/aws-1/">AWS, история первая. Внезапный мегабайт</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Все статьи из цикла AWS</p>
+
+<ul>
+  <li><a href="/aws-0/">Амазон</a></li>
+  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
+  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
+  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
+  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
+</ul>
+
+<p><a href="/aws-0/">Прошлая заметка</a> про AWS была затравкой. Теперь расскажу о случаях в
+Амазоне, от которых трещали мозги.</p>
+
+<p>Первая история касается сервиса Lambda. Он выполняет произвольный код на
+любом языке и возвращает результат. Особенность Лямбды в том, что клиент
+платит только за те ресурсы, что потребил. Считаются время процессора, память и
+диск в секунду. Если не вызывать Лямбду, ее стоимость будет нулевой.</p>
+
+<p>Это выгодно отличает Лямбду от EC2, за который клиент платит всегда. Наверное,
+все видели мемы про бомжа, который скатился в бедность, не выключив инстанс
+EC2.</p>
+
+<p>Кто-то считает, что Лямбда — простой сервис, но это не так. Наоборот, он один из
+самых сложных в AWS. Он работает как огромная очередь задач. Лямбду можно
+скрестить с HTTP-сервером, чтобы принимать сообщения прямо из браузера. Лямбду
+можно прицепить к любому сервису AWS в качестве реакции на что угодно.
+Загрузили файл в S3 — вызвалась лямбда. Отправили сообщеньку в очередь —
+вызвалась лямбда и так далее.</p>
+
+<p>Я работаю в проекте, в котором все на лямбдах. Раньше мне казалось это
+фантасмагорией, но со временем привыкаешь. В порядке вещей, когда лямбда дергает
+лямбду, которая дергает лямбду, которая дергает лямбду. Постепенно видишь в этом
+особый шарм.</p>
+
+<p>У лямбды жесткие лимиты, которые нельзя нарушать. Время работы не может быть
+дольше 15 минут. Если его превысить, лямбда умирает и запускается опять.
+Максимальное число повторов — 4. Ответ не может быть больше 6 мегабайтов. В теле
+может быть только текст, бинарные данные запрещены.</p>
+
+<p>Про размер тела я и хотел рассказать.</p>
+
+<p>Одна из лямбд распухла и стала отдавать JSON, который не пролазил в 6
+мегабайтов. Это нетрудно поправить. Нужно сжать тело Gzip-ом и обернуть в
+base64. Зачем? Как я сказал, в теле не может быть бинарь, потому что данные
+передаются в JSON. Такой вот костылик, но что поделаешь.</p>
+
+<p>Не обошлось без приключений: клиенты лямбды использовали кривую библиотеку,
+которая не учитывала сжатие Gzip. Пришлось починить ее тоже: проверять Content-
+Encoding и оборачивать стрим, если там gzip. В общем, кое-как все подружились, и
+сообщения пошли как надо.  Как-то раз я задался вопросом: какого размера был тот
+ответ, что не влез в лимит?</p>
+
+<p>Добавил лог с размером JSON до сжатия. Оказалось, он был 5.2 мегабайта.</p>
+
+<p>Может быть, не всем понятно это противоречие, но я впал в ступор. Сказано ясно:
+тело не больше 6 мегабайтов, а у нас 5. Почему сообщение не проходит? Откуда
+лишний мегабайт?  Это страшно взволновало меня: происходит какая-то фигня, о
+которой я не догадываюсь.</p>
+
+<p>Я полез в интернет и выяснил, что какой-то бедняга уже наступал на эти
+грабли. На <a href="https://stackoverflow.com/questions/66971400/aws-lambda-body-size-is-too-large-error-but-body-size-is-under-limit">StackOverflow</a> нашелся вопрос, и автор долго искал ответа. Он
+даже писал сводки с апдейтами! Были разные предположения, в том числе такие, что
+AWS дописывает мету в сообщения. Но не мегабайт же! Они что, Анну Каренину в
+заголовках передают?</p>
+
+<p>На сегодняшний день у вопроса 21 тысяча просмотров и ни одного верного ответа
+(за исключением моего). Этот вопрос был скопирован в сервис <a href="https://repost.aws/questions/QU57r4NMQIQROXqW4Vl6YDBQ/">Repost.AWS</a>
+— базу знаний AWS, и там тоже ничего не сказали по делу. Это доказывает: в
+Амазоне бывает нечто, что никто не может объяснить.</p>
+
+<p>Мысль о лишнем мегабайте не отпускала меня. И вот однажды, прогуливаясь, я все
+понял.</p>
+
+<p>Когда лямбда отдает HTTP-сообщение, она строит примерно такой ответ. В его теле
+— строка JSON с данными:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>return HTTPResponse(
+    200,
+    body=json.encode(data),
+    content_type="application/json"
+)
+</code></pre></div></div>
+
+<p>На этом работа программы кончается. А что происходит с ответом? Он
+перестраивается в такой словарик:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{:statusCode 200,
+ :body &lt;JSON-string&gt;,
+ :headers {"content-type" "application/json"}}
+</code></pre></div></div>
+
+<p>Потом словарик кодируется в JSON и отправляется в дебри AWS, которые называются
+Lambda Runtime API. Это очередь, которая отвечает за прием и отдачу
+сообщений. Ваша лямбда — клиент, который забирает оттуда сообщеньки и рапортует
+об исполнении. Примерно как Consumer в Кафке.</p>
+
+<p>Теперь про этот мегабайт. Напомню, что до кодирования наш словарик выглядел так
+(кложурный синтаксис):</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{:statusCode 200,
+ :body "{\"foo\":{\"bar\":[\"a\",\"b\",\"c\"]}}",
+ :headers {"Content-Type" "application/json"}}
+</code></pre></div></div>
+
+<p>Далее он кодируется в JSON. А в поле <code class="language-plaintext highlighter-rouge">:body</code> уже закодированный JSON! Получается
+двойное кодирование: данные перегнали в JSON первый раз, чтобы получить
+текстовое поле body, а потом еще раз, чтобы закодировать верхний словарь!  При
+кодировании JSON происходит экранирование некоторых символов. Например, если в
+строке двойная кавычка, перед ней будет обратный слэш. Покажу это на примере:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(pg.json/write-string "aaa \" bbb")
+"\"aaa \\\" bbb\""
+</code></pre></div></div>
+
+<p>Интересно, сколько же будет этих слэшей? Примерно x2 от числа ключей в словарях
+и строк в значениях. Например, если в словаре два ключа и в значениях строки, то
+слэшей получится 8. Легко посчитать отношение длины JSON с одним и двойным
+кодированием. Оно получится примерно 1.4:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="p">[</span><span class="no">:a</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="no">:c</span><span class="p">]}}</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="nb">count</span><span class="p">)</span><span class="w">
+</span><span class="mi">29</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="p">[</span><span class="no">:a</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="no">:c</span><span class="p">]}}</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w"> </span><span class="nb">count</span><span class="p">)</span><span class="w">
+</span><span class="mi">41</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">/</span><span class="w"> </span><span class="mf">41.0</span><span class="w"> </span><span class="mi">29</span><span class="p">)</span><span class="w">
+</span><span class="mf">1.4137931034482758</span><span class="w">
+
+</span></code></pre></div></div>
+
+<p>Проверим это на больших файлах. В интернете нашелся большой публичный JSON. Вот
+цифры для него:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"https://github.com/seductiveapps/largeJSON/raw/master/100mb.json"</span><span class="w">
+    </span><span class="n">java.net.URL.</span><span class="w">
+    </span><span class="nb">slurp</span><span class="w">
+    </span><span class="n">pg.json/read-string</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="nb">count</span><span class="p">)</span><span class="w">
+</span><span class="mi">60129867</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"https://github.com/seductiveapps/largeJSON/raw/master/100mb.json"</span><span class="w">
+    </span><span class="n">java.net.URL.</span><span class="w">
+    </span><span class="nb">slurp</span><span class="w">
+    </span><span class="n">pg.json/read-string</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="nb">count</span><span class="p">)</span><span class="w">
+
+</span><span class="mi">70361681</span><span class="w">
+</span><span class="p">(</span><span class="nb">/</span><span class="w"> </span><span class="mf">70361681.0</span><span class="w"> </span><span class="mi">60129867</span><span class="p">)</span><span class="w">
+
+</span><span class="mf">1.170161926351841</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Коэффициент вышел 1.17, а размер вырос аж на 10 мегабайтов.</p>
+
+<p><strong>Резюмируя:</strong> двойное JSON-кодирование прибавляет от 5 до 17% к длине строки.
+Прибавка состоит из обратных слэшей из-за экранирования кавычек. В моем случае
+было примерно 800 Кб слешей. 5.3 + 0.8 = 6.1 мегабайтов. Все сходится.
+Напоминает шутку про украденный код на Lisp, где были одни закрывающие скобки.
+Тут то же самое, только слэши.</p>
+
+<p>Вот такая штука. Когда все шаги пройдены, она не кажется загадкой, но как же
+напрягала тогда! Ее нельзя назвать багом, потому что документация не врет: шесть
+мегабайтов. Но дело в том, что эти шесть мегабайтов касаются финального
+сообщения, которое уходит в Runtime API. Это не длина данных, что возвращает ваш
+код, вот в чем дело. И конечно, документация ничего не знает о двойном
+кодировании и проблеме слэшей.</p>
+
+<p><strong>Важно понять:</strong> если вы отдаете HTTP-сообщеньки из Лямбды, и в теле JSON, вы
+кодируете его <strong>дважды</strong>. Это добавляет 5-17% процентов от исходной длины. Лучше
+сразу использовать Gzip+base64, чтобы не выстрелить в ногу.</p>
+
+<p>Итак, с лямбдой разобрались. В следующей заметке будет кулстори про AWS Athena
+(читается “Афина”). Там тоже трещали мозги.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/aws-0/">Амазон</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Все статьи из цикла AWS</p>
+
+<ul>
+  <li><a href="/aws-0/">Амазон</a></li>
+  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
+  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
+  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
+  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
+</ul>
+
+<p>Последние три года я плотно работают с Амазоном. Все больше утверждаюсь в мысли:
+для своих нужд я никогда не возьму Амазон, какими бы пряниками он меня не
+заманивал.</p>
+
+<p>Двадцать лет назад, когда я только познакомился с AWS, он был набором
+сервисов. Если тогда это был город, то сегодня он — целая планета. Число
+сервисов выросло на порядок или два, усложнилось взаимодействие между ними.</p>
+
+<p>Разрабатывая на AWS, важно иметь особый навык — знание AWS. Языка
+программирования и базы данных уже недостаточно. Нужно понимать концепции AWS,
+систему прав и полиси, квоты и много чего другого.</p>
+
+<p>В фирме редко бывает человек, который знает AWS целиком. Чаще всего каждый, как
+муравей, видит маленький ландшафтик, и когда начинаются проблемы взаимодействия,
+их тяжело расследовать.</p>
+
+<p>AWS — это дичайший вендор-лок, то есть зависимость от поставщика. Байки на тему
+“посидим и слезем” остаются байками. Амазон, как пылесос, со временем
+перетягивает на себя все решения — файлы, базу, сообщения — и портировать их
+обратно очень дорого.</p>
+
+<p>Важно понимать, что второго Амазона в мире нет. Бывают сервисы, которые
+повторяют некоторые API Амазона, например S3. Но переехать на что-то другое
+целиком будет очень затратно, причем даже не в плане денег, а нервов.</p>
+
+<p>Амазон дорогой. Разумеется, я не могу назвать, сколько платят заказчики, но это
+весьма дорого даже по западным меркам. Реляционные базы данных —
+дорогие. Лямбды, если их вызывать постоянно — дорогие. Если использовать S3 как
+шину данных между сервисами, это тоже дорого.</p>
+
+<p>Пожалуй, моя главная претензия к AWS — его трудно имитировать локально. Когда у
+вас Постгрес и Редис, все это запускается в Докере и покрывает 99%
+случаев. Постгрес в Докере — это настоящий Постгрес, тот самый, что работает на
+серверах. Любую ситуацию можно повторить локально: блокировку транзакций,
+медленный запрос, загрузку миллиарда записей, попадание в индекс.</p>
+
+<p>С Амазоном так не получится: сервисы DynamoDB, SNS/SQS или Athena нельзя
+запустить в Докере. Можно заткнуть их имитацией, которая выплевывает нужный
+JSON, но… это имитация. В проде случается масса вещей, о которых вы и не
+подозревали.</p>
+
+<p>Для разработки под Амазон нужно dev-окружение. Это такой же Амазон, только он не
+пересекается с продом. Там своя база, инстансы, очереди задач. Вы пишете код,
+заливаете в Амазон, гоняете и смотрите логи. Что-то упало — исправляете код и
+все по-новой. Это долго, потому что каждый шаг выполняется не мгновенно, а по
+нескольку минут.</p>
+
+<p>Разумеется, dev-окружение тарифицируется как обычное. За все нужно
+платить. Кроме прода, заказчик платит за 5-10 dev-окружений. Если вы
+расчитываете стоимость AWS, умножайте хотя бы на два, чтобы заложить бюджет на
+dev-окружения.</p>
+
+<p>Амазон радует крайне неочевидным поведением. Не могу назвать его багами, потому
+что оно описано в докуменации. Но документация огромна, читать ее никогда, да и
+требует усилий. Каждый раз, разобравшись, думаешь: ну все, теперь сюрпризов не
+будет. И буквально через два дня — новая головоломка.</p>
+
+<p>В следующих заметках я расскажу о случаях с AWS, над которыми изрядно поломал
+голову. Надеюсь, они будут кому-то полезны и сэкономят нервы.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/avito-2/">Авито (2)</a>
             </h2>
 
@@ -1221,141 +1524,13 @@ the new processing algorithm works.</p>
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/gzip/">Gzip</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-26T00:00:00+00:00">
-        Jan 26, 2024
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/gzip/" rel="tag">gzip</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Коллеги, используйте gzip! Это простой способ уменьшить трафик в разы, если не
-на порядок. Буквально двумя строчками можно превратить гигабайты CSV в 200-300
-мегабайтов. Разве не чудо? И делается это парой строк.</p>
-
-<p>Теперь подробней. Gzip — старый алгоритм потокового сжатия. Ключевое слово
-“потоковый”. Это значит, алгоритму не нужен файл целиком; он читает окно байтов
-и выдает сжатое окно. За счет этого можно пережать любой поток, в том числе
-бесконечный.</p>
-
-<p>В джаве потоки байтов используют часто. В ней легко втиснуть <code class="language-plaintext highlighter-rouge">GzipInputStream</code>
-или <code class="language-plaintext highlighter-rouge">GzipOutputStream</code>, чтобы закодировать или декодировать поток. Например,
-если источник сжат Gzip, то обернем его так:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"some.file.gzip"</span><span class="w">
-    </span><span class="p">(</span><span class="nf">io/file</span><span class="p">)</span><span class="w">
-    </span><span class="p">(</span><span class="nf">io/input-stream</span><span class="p">)</span><span class="w">
-    </span><span class="p">(</span><span class="nf">GzipInputStream.</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>При чтении получим нормальный текст. А чтобы закодировать поток, делаем иначе:
-навесим на выходной поток <code class="language-plaintext highlighter-rouge">GzipOutputStream</code> и колбасим в него. Только в конце
-надо вызвать <code class="language-plaintext highlighter-rouge">.finish</code>, чтобы добить незавершенное окно.</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"myfile.out.gzip"</span><span class="w">
-              </span><span class="n">io/file</span><span class="w">
-              </span><span class="n">io/input-stream</span><span class="p">)</span><span class="w">
-      </span><span class="n">gzip</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">GzipOutputStream</span><span class="w"> </span><span class="n">out</span><span class="p">)]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">while</span><span class="w"> </span><span class="n">...</span><span class="w">
-    </span><span class="p">(</span><span class="nf">.write</span><span class="w"> </span><span class="n">gzip</span><span class="w"> </span><span class="n">&lt;bytes&gt;</span><span class="p">))</span><span class="w">
-  </span><span class="p">(</span><span class="nf">.finish</span><span class="w"> </span><span class="n">gzip</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Удивляет, что при всей банальности gzip используют мало. А ведь он отлично
-подходит для текстовых данных: HTML, JSON, CSS, JS, CSV. В текущем проекте
-сервисы гоняют гигабайты CSV и JSON, и хоть кто-нибудь подумал о сжатии…</p>
-
-<p>Простой эксперимент: несжатый CSV — 146 мегабайтов, сжатый — 26. Почти в шесть
-раз. Даже если закодировать результат в base64, это даст +30% от 26 мегабайтов,
-то есть всего 35. Выгода все равно 4 раза. В том же Nginx сжатие gzip включается
-одной строкой в конфиге.</p>
-
-<p>Еще больше мою веру укрепил крит на проде. Один из сервисов выплюнул 6
-мегабайтов JSON, что не помещается в квоту AWS Lambda. Пришлось в спешке
-прикручивать сжатие, чтобы сообщенька пролезла.</p>
-
-<p>Соответственно, бесят HTTP-клиенты, которые ничего не знают о Gzip. Работа с
-ними превращается в ад: сам проверь заголовки, сам закодируй-раскодируй… и в
-проекте используется именно такой! Он читает ответ как строку, не проверяя
-Content-Encoding, и если там gzip, получается чешуя. Авторам — большой ай-ай за
-игнор веб-стандартов.</p>
-
-<p>Чем раньше вы возьмете gzip в проект, тем лучше. Потом все равно придется, но
-будет больно.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/women-stories/">Женские истории</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-25T00:00:00+00:00">
-        Jan 25, 2024
-    </time>
-
-    <a href="/tag/women/" rel="tag">women</a>, <a href="/tag/sex/" rel="tag">sex</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Когда читаю женские истории — Твиттер, блоги, журналистику, — вижу один и тот же
-паттерн:</p>
-
-<ul>
-  <li>он мне не нравился, но я осталась на свидании;</li>
-  <li>он мне не нравился, но мы целовались;</li>
-  <li>он мне не нравился, но мы поехали к нему;</li>
-  <li>он мне не нравился, но у нас был секс.</li>
-</ul>
-
-<p>То есть он всю дорогу не нравился, но программа шла по плану — от кафе до
-постели.</p>
-
-<p>Тут два момента: либо женщина и правда не знает, что если человек не нравится,
-то и секс с ним будет плохим. Надеюсь, теперь она это знает.</p>
-
-<p>Либо женщина все знает, но понимает, что в данный момент на мужчину лучше она
-рассчитывать не может. Поэтому все, что случилось, выставляется как одолжение с
-ее стороны.</p>
-
-<p>Чем раньше женщина прервет эту цепочку, тем лучше.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page7" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 8 из 78</span>
+        <span class="page_number ">Страница 8 из 79</span>
         
         <a href="/page9" class="next">&rarr;</a>
         
