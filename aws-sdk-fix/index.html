@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>SDK, работа над ошибками</title>
+  <meta name="description" content="Давайте поможем инженерам из Amazon с их SDK 2.0. Разберем наиболее серьезнуюошибку – частичную инициализацию объекта.">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/aws-sdk-fix/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">SDK, работа над ошибками</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-07-20T00:00:00+00:00">
+        Jul 20, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/sdk/" rel="tag">sdk</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Давайте поможем инженерам из Amazon с их SDK 2.0. Разберем наиболее серьезную
+ошибку – частичную инициализацию объекта.</p>
+
+<p>В прошлой заметке я упоминал, как создаются объекты в SDK. Если коротко, у
+классов скрыты конструкторы, и нужно пользоваться билдером. Получается что-то
+вроде такого:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">GetObjectRequest</span> <span class="n">request</span> <span class="o">=</span> <span class="nc">GetObjectRequest</span><span class="o">.</span><span class="na">builder</span><span class="o">()</span>
+  <span class="o">.</span><span class="na">bucket</span><span class="o">(</span><span class="s">"acme-releases"</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">key</span><span class="o">(</span><span class="s">"path/to/file.txt"</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">ifEtagMatches</span><span class="o">(</span><span class="s">"...."</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">ifModifiedSince</span><span class="o">(</span><span class="s">"..."</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">build</span><span class="o">()</span>
+</code></pre></div></div>
+
+<p>Билдер не знает, какие из параметров обязательны, а какие нет. В примере выше
+код работает. Если убрать вызов .bucket или .key, все скомпилируется, но при
+запуске получим:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Execution error (IllegalArgumentException)
+at ....xml.internal.marshall.SimpleTypePathMarshaller
+
+Parameter 'Bucket' must not be null
+</code></pre></div></div>
+
+<p>Обратите внимание, что ошибка приехала из какого-то XML-маршаллера, хотя
+никакого XML и тем более маршаллизации здесь нет. Тело пустое, и просто
+составляется URL.</p>
+
+<p>Подчеркну: программистам из Амазона вполне ОК, что объект инициирован
+частично. Спрашивается, что можно сделать с объектом <code class="language-plaintext highlighter-rouge">GetObjectRequest</code>, если у
+него не заполнен бакет? Ничего. Зачем тогда позволять такую ситуацию?</p>
+
+<p>Как они вообще представляют работу со своим SDK? Пользователь садится и
+перебором проверяет, какие поля нужны, а какие нет? Ладно я знаю, что бакет и
+ключ необходимы, но ведь кто-то не знает. И узнает он только когда бахнет прод.</p>
+
+<p>Проблема решается просто. Все поля объекта делятся на обязательные и нет – по
+аналогии с аргументами <code class="language-plaintext highlighter-rouge">args</code> и <code class="language-plaintext highlighter-rouge">kwargs</code> в Питоне. Обязательные поля потому так
+и называются, что без них невозможно дернуть конструктор или порождающий
+статичный метод. В нашем случае обязательны бакет и ключ. С ними код становится
+таким:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">GetObjectRequest</span> <span class="n">request</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">GetObjectRequest</span><span class="o">(</span>
+  <span class="s">"acme-releases"</span><span class="o">,</span> <span class="s">"path/to/file"</span>
+<span class="o">).</span><span class="na">withEtag</span><span class="o">(</span><span class="s">"..."</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">withModifiedSince</span><span class="o">(</span><span class="s">"..."</span><span class="o">)</span>
+</code></pre></div></div>
+
+<p>либо то же самое с билдером:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">GetObjectRequest</span> <span class="n">request</span> <span class="o">=</span> <span class="nc">GetObjectRequest</span><span class="o">.</span><span class="na">builder</span><span class="o">(</span>
+  <span class="s">"acme-releases"</span><span class="o">,</span> <span class="s">"path/to/file"</span><span class="o">)</span>
+<span class="o">.</span><span class="na">etag</span><span class="o">(</span><span class="s">"..."</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">modifiedSince</span><span class="o">(</span><span class="s">"..."</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">build</span><span class="o">()</span>
+</code></pre></div></div>
+
+<p>То есть хоть разбейся в лепешку, но обязательные параметры передай.</p>
+
+<p>Ну? Что мешало так сделать? Здесь даже паттерны сохранены, чтобы не пострадало
+чувство прекрасного.</p>
+
+<p>Заметим, что я не говорю отсебятину: все это сказано в книге Effective Java
+авторства Джошуа Блоха. Он так и пишет: используйте неизменяемые объекты, не
+допускайте частичной инициализации, требуйте обязательные поля сразу – не
+надейтесь, что кто-то заполнит из позже. Кумир джавистов говорит, как делать
+правильно. Почему в Амазоне решили, что сами с усами?</p>
+
+<p>Впрочем, пока я писал это, подумал – может, все гораздо проще? Может быть, за
+SDK сажают мидлов и стажеров, пока они без задач? Скажем, наняли стажера, а у
+тимлида релиз, погружать человека некогда, поэтому его сажают за SDK. Вполне
+похоже на правду.</p>
+
+<p>У нас так было в Датаарте: пока человек без работы, его сажали за всякий
+внутренний хлам. Форму заказа пиццы, аукцион парковочных мест, каталог
+сотрудников. Все это было крайне низкого качества, потому что шло через десятки
+джунов и мидлов без какого-либо контроля качества.</p>
+
+<p>Может и в Амазоне такой же порядок? Кто знает, расскажите. Потому что чем иначе
+объяснить такое качество SDK – я не знаю.</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/aws-sdk-fix/">
+    <input required name="captcha" type="hidden" value="3 &#215; 1">
+
+    <div class="block">
+        <span class="comment-form-label"><small>3 &#215; 1 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
