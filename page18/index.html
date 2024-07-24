@@ -104,6 +104,169 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/sql-logs-2/">Логи SQL (2)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-06-02T00:00:00+00:00">
+        Jun 2, 2023
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/postgresql/" rel="tag">postgresql</a>, <a href="/tag/logs/" rel="tag">logs</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В последнее время я много занимаюсь SQL, поэтому вот еще пара приемов.</p>
+
+<p>Настройка <code class="language-plaintext highlighter-rouge">log_duration = on</code> добавляет в лог длительность каждого запроса. Удобно, потому что избавляет от мусорного кода, который перед каждым запросом запоминает текущее время, выполняет его, находит новое время и печатает разницу в консоль. Postgres берет все это на себя:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>statement: create table table8855 (id integer)
+duration: 11.607 ms
+statement: BEGIN
+duration: 0.046 ms
+statement: insert into table8855 values (1), (2)
+duration: 0.368 ms
+statement: ROLLBACK
+duration: 0.052 ms
+statement: select * from table8855
+duration: 0.414 ms
+</code></pre></div></div>
+
+<p>Вторая настройка <code class="language-plaintext highlighter-rouge">log_line_prefix</code> отвечает за информацию, которая показана в логе перед запросом. По умолчанию это время с точностью до миллисекунд и номер процесса:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>2023-06-02 14:45:52.395 MSK [57002] LOG:  statement: BEGIN
+</code></pre></div></div>
+
+<p>Я предпочитаю вот что:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>log_line_prefix = '%t [%v]'
+</code></pre></div></div>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">%t</code> выводит время без миллисекунд, что короче;</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">%v</code> означает виртуальный номер транзакции. Виртуальный потому, что до ее завершения система не знает, какой номер будет в итоге. Поэтому выводится пара <code class="language-plaintext highlighter-rouge">[tmin/tmax]</code> — диапазон транзакций, доступный запросу в текущий момент.</p>
+  </li>
+</ul>
+
+<p>Зачем это нужно? Бывают баги, когда разработчик ошибается с транзакциями, например открывает ее, но шлет запросы через старое соединение. Если что-то упадет в процессе, изменения будут частичными, что выливается проблемы на проде.</p>
+
+<p>С логами ниже легко понять, кто на ком стоял. Запросы с меткой <code class="language-plaintext highlighter-rouge">[3/5]</code> относятся к одной транзакции, а <code class="language-plaintext highlighter-rouge">[4/2]</code> — к другой.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[3/4]LOG: create table table8856 (id integer)
+[3/5]LOG: BEGIN
+[3/5]LOG: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE
+[3/5]LOG: insert into table8856 values (1), (2)
+[3/5]LOG: select * from table8856
+[4/2]LOG: select * from table8856
+[3/5]LOG: COMMIT
+</code></pre></div></div>
+
+<p>Заодно можно посчитать, сколько было транзакций, насколько они пересекаются и, возможно, разнести их по времени.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/sql-logs/">Логи SQL</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-05-26T00:00:00+00:00">
+        May 26, 2023
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/postgresql/" rel="tag">postgresql</a>, <a href="/tag/logs/" rel="tag">logs</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Расскажу один прием, полезный в разработке.</p>
+
+<p>Если я работаю с PostgreSQL, то включаю логирование всех выражений. В Докере это
+делается передачей параметра <code class="language-plaintext highlighter-rouge">-E</code> как в примере ниже:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">version</span><span class="pi">:</span> <span class="s2">"</span><span class="s">3.6"</span>
+<span class="na">services</span><span class="pi">:</span>
+  <span class="na">postgres</span><span class="pi">:</span>
+    <span class="na">image</span><span class="pi">:</span> <span class="s">postgres:14</span>
+    <span class="na">command</span><span class="pi">:</span> <span class="s">-E</span>
+</code></pre></div></div>
+
+<p>С ним все запросы видны в терминале, где запущен Докер.</p>
+
+<p>Если база работает нативно, в файлик <code class="language-plaintext highlighter-rouge">postgresql.conf</code> добавляю выражение:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>log_statement = 'all'
+</code></pre></div></div>
+
+<p>Оно там есть из коробки, но закомментировано. В отдельной вкладке вызываю вечный <code class="language-plaintext highlighter-rouge">tail</code>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;</span> <span class="nb">tail</span> <span class="nt">-f</span> <span class="s1">'/path/to/postgresql.log'</span>
+</code></pre></div></div>
+
+<p>Далее я пишу код, гоняю тесты и посматриваю логи. Зачем? Потому что за много лет
+я выявил столько чуши, что просто не описать. Например:</p>
+
+<ul>
+  <li>
+    <p>запросы <code class="language-plaintext highlighter-rouge">WHERE ID IN</code> на тысячи айдишников;</p>
+  </li>
+  <li>
+    <p>группировка по всем(!) полям таблицы: <code class="language-plaintext highlighter-rouge">GROUP BY id, name, email, etc...</code>;</p>
+  </li>
+  <li>
+    <p>молчаливый откат транзакции без выброса исключения. Запрос упал, но
+разработчик молча идет дальше;</p>
+  </li>
+  <li>
+    <p>изменения без транзакции там, где она должна быть;</p>
+  </li>
+  <li>
+    <p>мусорные запросы в <code class="language-plaintext highlighter-rouge">pg_catalog</code> и другие служебные таблицы, потому что
+какие-то свойства не заданы в коде;</p>
+  </li>
+  <li>
+    <p>чтение записей поштучно по ID в цикле (200, 500 шагов и больше);</p>
+  </li>
+  <li>
+    <p>просто всякие дикие конструкции.</p>
+  </li>
+</ul>
+
+<p>Все это я собираю и открывают тикеты. Некоторые даже удается исправить.</p>
+
+<p>Лог базы — своего рода осиное гнездо. Открой его — и почти наверняка уйдешь в
+ступор от того, какую дичь генерит ORM или “умная” библиотека. Или разработчик,
+вооруженный всем этим добром.</p>
+
+<p>Так и живем.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/pascal-exercises/">Задачник по Паскалю</a>
             </h2>
 
@@ -678,101 +841,6 @@ you can easily serve HTTP requests with Ring stack.</li>
 
 
                     <p><a href="/en/lambda/">Read more &rarr;</a></p>
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/ai/">Заменят ли ИИ разработчиков и почему? Если да, то на каких задачах?</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-04-04T00:00:00+00:00">
-        Apr 4, 2023
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/ai/" rel="tag">ai</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><em>Меня попросили ответить на вопросы из заголовка. Думал, будет абзац, но как обычно вышла простыня. Впрочем, мысли об ИИ были уже давно, и это отличный повод собрать их в статью.</em></p>
-
-<p>Что ж, если коротко, то нет: ИИ, который у нас сегодня, не заменит программистов. Волноваться незачем, продолжайте работу. Если вы учитесь на программиста и испытываете тревогу, успокойтесь и продолжайте. Никакие чаты и боты программистам не угрожают. А также журналистам, учителям и вообще — любым профессионалам своего дела.</p>
-
-<p>Да, про ИИ говорят и пишут из каждого утюга. Но важно знать, что информационная волна всегда сильнее повода, который ее вызвал. Изданиям нужен трафик, а люди склонны экстраполировать: если сегодня бот написал Тетрис, то через год он сделает Киберпанк. Увы, это не так.</p>
-
-<p>Причина моего скепсиса в том, что все помощники и боты слабы в деталях. У меня есть колонка Яндекса, она прекрасно играет музыку и говорит погоду. Но ее крайне легко ввести в ступор. Например, играет песня, и я хочу послушать альбом, которому она принадлежит (пусть даже первый, если их несколько). Однако этой функции не предусмотрено: какую бы фразу я ни высказал — перейди к альбому, включи альбом, из какого это альбома, — Алиса не понимает. Хотя в мобильном приложении это одна кнопка “show album”.</p>
-
-
-                    <p><a href="/ai/">Read more &rarr;</a></p>
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/the-same/">Такой же</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-03-27T00:00:00+00:00">
-        Mar 27, 2023
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Наверное, вы слышали вопрос о корабле, заданный еще до нашей эры. Если постепенно заменить в корабле все детали, будет ли это тот самый корабль?</p>
-
-<p>Проблема в том, что на вопрос отвечают, не разобравшись с определениями. Если не договориться, что значит “тот же самый”, можно спорить весь день, имея в виду не то, о чем думает оппонент.</p>
-
-<p>В программировании эта проблема известна: равенство не означает “то же самость”. В современных языках есть отдельные операторы для сравнения указателей и сравнения значений. Хорошие языки пытаются избежать путаницы и сводят две эти вещи к одной. Например, если коллекции неизменяемы, то их можно сравнить в лоб, не заботясь о ссылках. Кроме того, хеш неизменяемой коллекции рассчитывается один раз при создании. Из-за этого сравнение не делает полный обход, а сводится к равенству двух чисел.</p>
-
-<p>Еще один довод в адрес “то же самости” — это мы сами. Тело человека обновляется постоянно. Скелет меняется за три года, а у кожи, волос и ногтей срок исчисляется днями. Жидкости поступают и выходят.</p>
-
-<p>Мы сегодня и мы три года назад — это разный набор атомов. Тот человек, что изображен в паспорте, уже сотни раз обновил каждую клетку организма. Однако ни у кого нет сомнений, что человек в паспорте и вы — один и тот же. Просто потому что так удобней.</p>
-
-<p>Поэтому и корабль, в котором обновили все доски, тот же самый. Если, конечно, понимать под “тем же самым” то, что удобно большинству.</p>
-
-<p>Забавный эпиграф к библиотеке re-frame8:</p>
-
-<blockquote>
-  <p>This, milord, is my family’s axe. We have owned it for almost nine hundred years, see. Of course, sometimes it needed a new blade. And sometimes it has required a new handle, new designs on the metalwork, a little refreshing of the ornamentation … but is this not the nine hundred-year-old axe of my family? And because it has changed gently over time, it is still a pretty good axe, y’know. Pretty good.</p>
-</blockquote>
-
-<p>Вкратце: господин, этот топор служит нашей семье девять столетий. Иногда ему меняли рукоять, а иногда клинок. Но поскольку это делали постепенно, это все тот же топор.</p>
-
-<p>В этом и проявляется забавное свойство “той  же самости”: если ее размазать по времени, предмет будет тем же самым (менять ручку и клинок раз в сто лет). Если потерять топор и заказать новый, это будет другой топор.</p>
-
-<p>Принцип плавных изменений очень полезен. Например, ничто не бесит так сильно, как внезапное обновление интерфейса. Хорошо, когда его плавно меняют в нужном русле.</p>
-
-<p>Команда может саботировать новые правила, если их слишком много. Внедряйте по одному с интервалом в месяц.</p>
-
-<p>Добавить линтер в огромную кодовую базу кому-то покажется невозможным. А нужно всего ничего: задать список путей, которые подвергаются линтингу, и плавно его наращивать.</p>
-
-<p>В завершение — пазл, который висит у меня на стене (Яцек Йерка):</p>
-
-<p><img src="/assets/static/aws/same/1.jpeg" /></p>
-
-
                 
             </div>
 

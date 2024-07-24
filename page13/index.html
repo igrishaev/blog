@@ -104,6 +104,393 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/pg-docs/08/">PG docs, part 8. HoneySQL</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-10-31T00:00:00+00:00">
+        Oct 31, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/honeysql/" rel="tag">honeysql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><em>(This is a new documentation chapter from the <a href="https://github.com/igrishaev/pg">PG project</a>.)</em></p>
+
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+  <li><a href="/en/pg-docs/04/">Arrays</a></li>
+  <li><a href="/en/pg-docs/05/">Notifications</a></li>
+  <li><a href="/en/pg-docs/06/">SSL</a></li>
+  <li><a href="/en/pg-docs/07/">COPY</a></li>
+  <li><a href="/en/pg-docs/08/">HoneySQL</a></li>
+</ul>
+
+<p>In this chapter:</p>
+
+<!-- toc -->
+
+<ul>
+  <li><a href="#about">About</a></li>
+  <li><a href="#installation">Installation</a></li>
+  <li><a href="#usage">Usage</a></li>
+</ul>
+
+<!-- tocstop -->
+
+<p><a href="https://github.com/seancorfield/honeysql">HoneySQL</a> is a well-known library for building SQL expressions from
+Clojure maps. It’s convenient for making complex queries, for example, when you
+have optional JOIN operators. Or you’re unaware of the final WHERE conditions as
+the filtering parameters come from the request. HoneySQL frees you from building
+raw SQL queries by concatenating strings, which is unsafe and leads to SQL
+injections.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">pg-honey</code> is a small wrapper on top of HoneySQL. It provides special
+versions of <code class="language-plaintext highlighter-rouge">query</code> and <code class="language-plaintext highlighter-rouge">execute</code> functions that accept not a SQL string but
+Clojure maps. The maps get transformed into SQL under the hood and get executed.</p>
+
+<h2 id="installation">Installation</h2>
+
+<p>Install the <code class="language-plaintext highlighter-rouge">pg-honey</code> package as follows.</p>
+
+<p>Lein:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-honey</span><span class="w"> </span><span class="s">"0.1.10"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Deps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">com.github.igrishaev/pg-honey</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.10"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="usage">Usage</h2>
+
+<p>Import the library:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.honey</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pgh</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">query</code> function accepts a connection object, a Clojure map representing a
+query and a map of options.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/query</span><span class="w">
+  </span><span class="n">conn</span><span class="w">
+  </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w"> </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+   </span><span class="no">:as</span><span class="w"> </span><span class="n">as/first</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The third parameter combines HoneySQL parameters and the standard <code class="language-plaintext highlighter-rouge">query</code>
+options. In the example above, we passed a custom reducer into the <code class="language-plaintext highlighter-rouge">:as</code>
+parameter, and we also specified the <code class="language-plaintext highlighter-rouge">:pretty</code> HoneySQL option to true. With the
+pretty flag enabled, HoneySQL produces a formatted SQL expression, which is
+easier to read in logs.</p>
+
+<p>Please note: since the <code class="language-plaintext highlighter-rouge">query</code> function doesn’t allow you to pass any
+parameters, the following example will lead to an error response:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/query</span><span class="w">
+  </span><span class="n">conn</span><span class="w">
+  </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w"> </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">42</span><span class="p">]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+   </span><span class="no">:as</span><span class="w"> </span><span class="n">as/first</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This is a limitation of the PostgreSQL wire protocol: the <code class="language-plaintext highlighter-rouge">Query</code> message bears
+only a pure SQL expression with no parameters. For parameters, use the <code class="language-plaintext highlighter-rouge">execute</code>
+function described below.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">execute</code> function acts the same but accepts a Clojure map that might have
+values that become parameters when rendering the map. Here is an example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/execute</span><span class="w">
+  </span><span class="n">conn</span><span class="w">
+  </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w"> </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">42</span><span class="p">]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+   </span><span class="no">:as</span><span class="w"> </span><span class="n">as/first</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Or:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/execute</span><span class="w">
+  </span><span class="n">conn</span><span class="w">
+  </span><span class="p">{</span><span class="no">:insert-into</span><span class="w"> </span><span class="no">:demo</span><span class="w">
+   </span><span class="no">:values</span><span class="w"> </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"test1"</span><span class="p">}</span><span class="w">
+            </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}</span><span class="w">
+            </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"test3"</span><span class="p">}]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Under the hood, the <code class="language-plaintext highlighter-rouge">{:inset-into ...}</code> map gets rendered into a SQL vector:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="s">"insert into ... values ($1, $2), ($3, $4), ($5, $6)"</span><span class="w">
+ </span><span class="mi">1</span><span class="w"> </span><span class="s">"test1"</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="s">"test2"</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="s">"test3"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It gets split on the SQL expression and the parameters, which are passed into
+the underlying <code class="language-plaintext highlighter-rouge">pg.client/execute</code> function.</p>
+
+<p>You can use named parameters that HoneySQL does support. Place a specific
+keyword into the <code class="language-plaintext highlighter-rouge">[:param ...]</code> vector, and pass a map of params into the
+options as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+             </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:title</span><span class="p">]</span><span class="w">
+              </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:demo</span><span class="p">]</span><span class="w">
+              </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:and</span><span class="w">
+                      </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+                      </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="p">[</span><span class="no">:param</span><span class="w"> </span><span class="no">:title</span><span class="p">]]]}</span><span class="w">
+             </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+              </span><span class="no">:params</span><span class="w"> </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To familiarise yourself with HoneySQL features, please refer to the <a href="https://github.com/seancorfield/honeysql">official
+documentation</a>.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/virtuoso/">Virtuoso: a Clojure wrapper for virtual threads</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-10-16T00:00:00+00:00">
+        Oct 16, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/virtual/" rel="tag">virtual</a>, <a href="/tag/threads/" rel="tag">threads</a>, <a href="/tag/java21/" rel="tag">java21</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><a href="https://github.com/igrishaev/virtuoso">Virtuoso</a> is small wrapper on top of <a href="https://docs.oracle.com/en/java/javase/21/core/virtual-threads.html">virtual threads</a>
+introduced in Java 21.</p>
+
+<h2 id="about">About</h2>
+
+<p>The recent release of Java 21 introduced virtual threads to the scene. It’s a
+nice feature that allows you to run imperative code, such as it was written in
+an asynchronous way. This library is a naive attempt to gain something from the
+virtual threads.</p>
+
+<h2 id="installation">Installation</h2>
+
+<p>Lein</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/virtuoso</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Deps/CLI</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">com.github.igrishaev/virtuoso</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="usage">Usage</h2>
+
+<p>First, import the library:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">virtuoso.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">v</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="with-executor">with-executor</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">with-executor</code> wraps a block of code binding a new instance of
+<code class="language-plaintext highlighter-rouge">VirtualThreadPerTaskExecutor</code> to the passed symbol:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">v/with-executor</span><span class="w"> </span><span class="p">[</span><span class="n">exe</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">do-this</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">do-that</span><span class="w"> </span><span class="n">...</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, the executor is bound to the <code class="language-plaintext highlighter-rouge">exe</code> symbol. Exiting from the macro will
+trigger closing the executor, which, in turn, leads to blocking until all the
+tasks sent to it are complete. The <code class="language-plaintext highlighter-rouge">with-executor</code> macro, although it might be
+used on your code, is instead a building material for other macros.</p>
+
+<h3 id="future-via">future-via</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">future-via</code> macro spawns a new virtual future through a previously open
+executor. You can generate as many futures as you want due to the nature of
+virtual threads: there might be millions of them.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">v/with-executor</span><span class="w"> </span><span class="p">[</span><span class="n">exe</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">f1</span><span class="w"> </span><span class="p">(</span><span class="nf">v/future-via</span><span class="w"> </span><span class="n">exe</span><span class="w">
+             </span><span class="p">(</span><span class="nf">do-this</span><span class="w"> </span><span class="n">...</span><span class="p">))</span><span class="w">
+        </span><span class="n">f2</span><span class="w"> </span><span class="p">(</span><span class="nf">v/future-via</span><span class="w"> </span><span class="n">exe</span><span class="w">
+             </span><span class="p">(</span><span class="nf">do-that</span><span class="w"> </span><span class="n">...</span><span class="p">))]</span><span class="w">
+    </span><span class="p">[</span><span class="o">@</span><span class="n">f1</span><span class="w"> </span><span class="o">@</span><span class="n">f2</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Virtual futures give performance gain only when the code they wrap makes
+IO. Instead, if you run CPU-based computations in virtual threads, the
+performance suffers due to continuations and moving the stack trace from the
+stack to the heap and back.</p>
+
+<h3 id="futures">futures(!)</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">futures</code> macro takes a series of forms. It spawns a new virtual thread
+executor and wraps each form into a future bound to that executor. The result is
+a vector of <code class="language-plaintext highlighter-rouge">Future</code> objects. To obtain values, pass the result through
+<code class="language-plaintext highlighter-rouge">(map/mapv deref ...)</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">futs</span><span class="w">
+      </span><span class="p">(</span><span class="nf">v/futures</span><span class="w">
+       </span><span class="p">(</span><span class="nf">io-heavy-task-1</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+       </span><span class="p">(</span><span class="nf">io-heavy-task-2</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+       </span><span class="p">(</span><span class="nf">io-heavy-task-3</span><span class="w"> </span><span class="n">...</span><span class="p">))]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">mapv</span><span class="w"> </span><span class="nb">deref</span><span class="w"> </span><span class="n">futs</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Right before you exit the macro, it closes the executor, which leads to blicking
+until all the tasks are complete.</p>
+
+<p>Pay attention that <code class="language-plaintext highlighter-rouge">deref</code>-ing a failed future leads to throwing an
+exception. That’s why the macro doesn’t dereference the futures for you, as it
+doesn’t know how to handle errors. But if you don’t care about exception
+handling, there is a <code class="language-plaintext highlighter-rouge">futures!</code> macro that does it for you:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">v/futures!</span><span class="w">
+  </span><span class="p">(</span><span class="nf">io-heavy-task-1</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">io-heavy-task-2</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">io-heavy-task-3</span><span class="w"> </span><span class="n">...</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The result will be vector of dereferenced values.</p>
+
+<h3 id="thread">thread</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">thread</code> macro spawns and starts a new virtual thread using the
+<code class="language-plaintext highlighter-rouge">(Thread/ofVirtual)</code> call. Threads in Java do not return values; they can only
+be <code class="language-plaintext highlighter-rouge">join</code>-ed or interrupted. Use this macro when interested in a <code class="language-plaintext highlighter-rouge">Thread</code> object
+but not the result.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">thread1</span><span class="w">
+      </span><span class="p">(</span><span class="nf">v/thread</span><span class="w">
+        </span><span class="p">(</span><span class="nf">some-long-task</span><span class="w"> </span><span class="n">...</span><span class="p">))</span><span class="w">
+
+      </span><span class="n">thread2</span><span class="w">
+      </span><span class="p">(</span><span class="nf">v/thread</span><span class="w">
+        </span><span class="p">(</span><span class="nf">some-long-task</span><span class="w"> </span><span class="n">...</span><span class="p">))]</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">.join</span><span class="w"> </span><span class="n">thread1</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">.join</span><span class="w"> </span><span class="n">thread2</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="pmap">pmap(!)</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">pmap</code> function acts like the standard <code class="language-plaintext highlighter-rouge">clojure.core/pmap</code>: it takes a
+function and a collection (or more collections). It opens a new virtual executor
+and submits each calculation step to the executor. The result is a vector of
+futures. The function closes the executor afterwards, blocking until all the
+tasks are complete.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">futs</span><span class="w">
+      </span><span class="p">(</span><span class="nf">v/pmap</span><span class="w"> </span><span class="n">get-user-from-api</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">])]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">mapv</span><span class="w"> </span><span class="nb">deref</span><span class="w"> </span><span class="n">futs</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Or:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">futs</span><span class="w">
+      </span><span class="p">(</span><span class="nf">v/pmap</span><span class="w"> </span><span class="n">get-some-entity</span><span class="w">                </span><span class="c1">;; assuming it accepts id and status</span><span class="w">
+              </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">                        </span><span class="c1">;; ids</span><span class="w">
+              </span><span class="p">[</span><span class="s">"active"</span><span class="w"> </span><span class="s">"pending"</span><span class="w"> </span><span class="s">"deleted"</span><span class="p">]</span><span class="w"> </span><span class="c1">;; statuses</span><span class="w">
+              </span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">mapv</span><span class="w"> </span><span class="nb">deref</span><span class="w"> </span><span class="n">futs</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">pmap!</code> version of this function dereferences all the results for you with
+no exception handling:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">v/pmap!</span><span class="w"> </span><span class="n">get-user-from-api</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">])</span><span class="w">
+</span><span class="c1">;; [{:id 1...}, {:id 2...}, {:id 3...}]</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="each">each(!)</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">each</code> macro is a wrapper on top of <code class="language-plaintext highlighter-rouge">pmap</code>. It binds each item from a
+collection to a given symbol and submits a code block into a virtual
+executor. The result is a vector of futures; exiting the macro closes the
+executor.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">futs</span><span class="w">
+      </span><span class="p">(</span><span class="nf">v/each</span><span class="w"> </span><span class="p">[</span><span class="n">id</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]]</span><span class="w">
+        </span><span class="p">(</span><span class="nf">log/info...</span><span class="p">)</span><span class="w">
+        </span><span class="p">(</span><span class="nf">try</span><span class="w">
+          </span><span class="p">(</span><span class="nf">get-entity-by-id</span><span class="w"> </span><span class="n">id</span><span class="p">)</span><span class="w">
+          </span><span class="p">(</span><span class="nf">catch</span><span class="w"> </span><span class="n">Throwable</span><span class="w"> </span><span class="n">e</span><span class="w">
+            </span><span class="p">(</span><span class="nf">log/error</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="n">...</span><span class="p">))))]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">[{</span><span class="n">...</span><span class="p">}</span><span class="n">,</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}</span><span class="n">,</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}]</span><span class="w"> </span><span class="p">(</span><span class="nf">mapv</span><span class="w"> </span><span class="nb">deref</span><span class="w"> </span><span class="n">futs</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">each!</code> macro acts the same but dereferences all the futures with no error handling.</p>
+
+<h2 id="measurements">Measurements</h2>
+
+<p>There is a development <code class="language-plaintext highlighter-rouge">dev/src/bench.clj</code> file with some trivial
+measurements. Imagine you want to download 100 of URLs. You can do it
+sequentially with <code class="language-plaintext highlighter-rouge">mapv</code>, semi-parallel with <code class="language-plaintext highlighter-rouge">pmap</code>, and fully parallel with
+<code class="language-plaintext highlighter-rouge">pmap</code> from this library. Here are the timings made on my machine:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">time</span><span class="w">
+ </span><span class="p">(</span><span class="nb">count</span><span class="w">
+  </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="n">download</span><span class="w"> </span><span class="n">URLS</span><span class="p">)))</span><span class="w">
+</span><span class="s">"Elapsed time: 45846.601717 msecs"</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">time</span><span class="w">
+ </span><span class="p">(</span><span class="nb">count</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pmap</span><span class="w"> </span><span class="n">download</span><span class="w"> </span><span class="n">URLS</span><span class="p">)))</span><span class="w">
+</span><span class="s">"Elapsed time: 3343.254302 msecs"</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">time</span><span class="w">
+ </span><span class="p">(</span><span class="nb">count</span><span class="w">
+  </span><span class="p">(</span><span class="nf">v/pmap!</span><span class="w"> </span><span class="n">download</span><span class="w"> </span><span class="n">URLS</span><span class="p">)))</span><span class="w">
+</span><span class="s">"Elapsed time: 1452.514165 msecs"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>45, 3.3, and 1.4 seconds favour the virtual threads approach.</p>
+
+<h2 id="links-and-resources">Links and Resources</h2>
+
+<p>The following links helped me a lot to dive into virtual threads, and I highly
+recommend reading and watching them:</p>
+
+<ul>
+  <li><a href="https://docs.oracle.com/en/java/javase/21/core/virtual-threads.html">Virtual Threads, Oracle Help Center</a></li>
+  <li><a href="https://www.youtube.com/watch?v=5E0LU85EnTI">Java 21 new feature: Virtual Threads #RoadTo21</a></li>
+</ul>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/en/pg-docs/07/">PG docs, part 7. COPY IN/FROM</a>
             </h2>
 
@@ -1174,120 +1561,6 @@ ssl_ca_file = '/Users/ivan/work/pg/certs/root.crt'
 <p>Повторюсь, к ПАО ТНС Энерго Воронеж претензий особо нет. Большая фирма,
 бюрократия, и ничего кроме “примите извинения” они не могут.
 Для нас главное — не допустить такого в своей работе.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/masked-input/">Ввод по маске</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/frontend/" rel="tag">frontend</a>, <a href="/tag/jquery/" rel="tag">jquery</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Каждый мамкин фронтендер знает: если в форме есть поле телефона, ставим плагин
-jQuery под названием Masked Input и не паримся. С ним нельзя ввести буквы,
-скобки, дефисы и прочий мусор.</p>
-
-<p><img src="/assets/static/aws/masked-input/1.jpeg" /></p>
-
-<p>Но мамкин фронтендер не знает: если вставить в поле “89623289677” (скажем, из
-Экселя или менеджера паролей), то всратый плагин поместит восьмерку после +7 и
-отбросит последнюю цифру. Результат будет как на второй картинке.</p>
-
-<p><img src="/assets/static/aws/masked-input/2.jpeg" /></p>
-
-<p>То есть всего-то испортили данные, но никого это не волнует. Подумаешь, не
-придет смс, не дозвонится курьер, не выдадут посылку. Фронтендеру не до этих
-мелочей.</p>
-
-<p>Недаром говорят: благие намерения ведут в ад. Хотели сделать удобно на фронте, в
-итоге добавили баг.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/it-errors/">Ошибки</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/it/" rel="tag">it</a>, <a href="/tag/errors/" rel="tag">errors</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Главная беда этой нашей айтишечки — сообщения об ошибках, не связанные с их
-устранением. Примеров можно найти миллион, но вот вам один.</p>
-
-<p>Собираю одну фигню в докере, и команда <code class="language-plaintext highlighter-rouge">apt-get update</code> падает с сообщением, что
-репозиторий не подписан:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>The repository 'http://archive.ubuntu.com/ubuntu focal InRelease' is not signed.
-</code></pre></div></div>
-
-<p>При этом на другом ноуте все собирается как надо.</p>
-
-<p>Оказалось, что это мулька самого Докера, и лечится она командой prune:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker image prune <span class="nt">-f</span>
-docker container prune <span class="nt">-f</span>
-</code></pre></div></div>
-
-<p>Очевидно, без гугла и SO эту проблему не решить в принципе.</p>
-
-<p>В современной айтишке много абстракций, и каждая из них не знает о
-другой. Отсюда эти уродские сообщения: абстракция А считает что-то
-неподписанным, потому что в Б нет места. А не находит файлы, потому что они не
-смонтированы в Б. А валится, потому что в Б другая локаль или кодировка по
-умлочанию.</p>
-
-<p>Задача хорошего программиста в том, чтобы давать понятные сообщения об
-ошибках. Наверное, вас тоже бесило, когда Java говорит: <code class="language-plaintext highlighter-rouge">port is already in
-use</code>. Блин, какой порт? У меня их десять в проекте, тяжело добавить цифру в
-сообщение?</p>
-
-<p>Или тот же Вим. По всему миру люди страдают, не знают как из него выйти. Вопрос
-на SO набрал миллион просмотров и растет дальше. И что делают разработчики вима?
-Вместо того, чтобы добавить бар с действиями как в Nano, объясняют, что
-пользователи тупые.</p>
-
-<p>Напоминает мост в Питере со знаком “Газель не проедет”, где разбились сто
-Газелей. Вместо того, чтобы порвать на тряпки мэра и начальника ГИБДД, ставят
-знаки и постят картинки в Контакте.</p>
-
-<p>То же самое происходит у нас. Вместо понятного сообщения мы ждем, что его
-предоставит вышестоящий слой. Но это бессмысленно: не сделаем мы — не сделает
-никто.</p>
 
                 
             </div>

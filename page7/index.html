@@ -104,6 +104,484 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/bin-dump/">Бинарный дамп</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-29T00:00:00+00:00">
+        Mar 29, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/binary/" rel="tag">binary</a>, <a href="/tag/dump/" rel="tag">dump</a>, <a href="/tag/json/" rel="tag">json</a>, <a href="/tag/nippy/" rel="tag">nippy</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Простое правило: никогда не пользуйтесь бинарными дампами. Если нужно сбросить
+данные на диск, используйте JSON, EDN, YAML, что угодно. Но не нужно брать
+библиотеку, которая сериализует любой объект в байтики — это плохо кончится.</p>
+
+<p>Десять лет назад я работал в Wargaming, и для очереди задач там использовали
+pickle. Кто не знает, это бинарный дамп объектов PyObject. И пока был только
+Питон, все работало. Но потом в качестве эксперимента завезли Эрланг, и
+приехали: он не мог читать эти дампы. Ребятам пришлось писать парсер, который с
+горем пополам вытягивал оттуда данные. Потом пришлось мигрировать сообщеньки с
+pickle на json, не спать неделю, мониторить и все такое.</p>
+
+<p>В мире Clоjure есть похожая поделка — nippy. Это сброс чего угодно в байты с
+последующим чтением. Ужасная библиотека с интерфейсом а-ля “чужой для
+хищников”. Самое главное — с ней везде проблемы. Кастомные классы не читаются
+без приседаний. Ошибки игнорируются, вместо них мапы “тут что-то не то”. Стоит
+внедрить, как найдется потребитель с Питоном или Lua, для которых реализаций
+нет.</p>
+
+<p>Потерял два дня, пытаясь заставить работать nippy в Граале. Не работает. Черная
+магия десериализации валится со страшными трейсами.</p>
+
+<p>Хочется впасть в отчаяние: почему люди не учатся? Почему я ходил по этим граблям
+10 лет назад, и меня заставили снова? Если хочется бинарей, возьми протобуф:
+стандарт с реализацией под все платформы. Зачем брать поделку от “опен-сорс
+ламы” (так автор себя называет)?</p>
+
+<p>Все это мне не понятно.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/pg-json">PG2 release 0.1.6: rich JSON capabilities</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-20T00:00:00+00:00">
+        Mar 20, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/json/" rel="tag">json</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><a href="https://github.com/igrishaev/pg2">PG2 version 0.1.6</a> is out, and it ships various improvements to JSON(b)
+handling.</p>
+
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-pg2-json">
+  <li><a href="#basic-usage" id="toc-item-pg2-json-basic-usage">Basic usage</a></li>
+  <li><a href="#json-wrapper" id="toc-item-pg2-json-json-wrapper">Json Wrapper</a></li>
+  <li><a href="#custom-object-mapper" id="toc-item-pg2-json-custom-object-mapper">Custom Object Mapper</a></li>
+  <li><a href="#utility-pgjson-namespace" id="toc-item-pg2-json-utility-pgjson-namespace">Utility pg.json namespace</a>    <ul>
+      <li><a href="#reading-json" id="toc-item-pg2-json-reading-json">Reading JSON</a></li>
+      <li><a href="#writing-json" id="toc-item-pg2-json-writing-json">Writing JSON</a></li>
+    </ul>
+  </li>
+  <li><a href="#ring-http-middleware" id="toc-item-pg2-json-ring-http-middleware">Ring HTTP middleware</a></li>
+</ul>
+
+<p>Postgres is amazing when dealing with JSON. There hardly can be a database that
+serves it better. Unfortunately, Postgres clients never respect the JSON
+feature, which is horrible. Take JDBC, for example: when querying a JSON(b)
+value, you’ll get a dull <code class="language-plaintext highlighter-rouge">PGObject</code> which should be decoded manually. The same
+applies to insertion: one cannot just pass a Clojure map or a vector. It should
+be packed into the <code class="language-plaintext highlighter-rouge">PGObject</code> as well.</p>
+
+<p>Of course, this can be automated by extending certain protocols. But it’s still
+slow as it’s done on Clojure level (not Java), and it forces you to copy the
+same code across projects.</p>
+
+<p>Fortunately, PG2 supports JSON out from the box. If you query a JSON value,
+you’ll get its Clojure counter-part: a map, a vector, etc. To insert a JSON
+value to a table, you pass either a Clojure map or a vector. No additional steps
+are required.</p>
+
+<p>PG2 relies on <a href="https://github.com/metosin/jsonista">jsonista</a> library to handle JSON. At the moment of
+writing, this is the fastest JSON library for Clojure. Jsonista uses a concept
+of object mappers: objects holding custom rules to encode and decode values. You
+can compose your own mapper with custom rules and pass it into the connection
+config.</p>
+
+<h2 id="basic-usage">Basic usage</h2>
+
+<p>Let’s prepare a connection and a test table with a jsonb column:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10140</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table test_json (
+  id serial primary key,
+  data jsonb not null
+)"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now insert a row:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into test_json (data) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[{</span><span class="no">:some</span><span class="w"> </span><span class="p">{</span><span class="no">:nested</span><span class="w"> </span><span class="p">{</span><span class="no">:json</span><span class="w"> </span><span class="mi">42</span><span class="p">}}}]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>No need to encode a map manually nor wrap it into a sort of <code class="language-plaintext highlighter-rouge">PGObject</code>. Let’s
+fetch the new row by id:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"select * from test_json where id = $1"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w">
+             </span><span class="no">:first?</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:some</span><span class="w"> </span><span class="p">{</span><span class="no">:nested</span><span class="w"> </span><span class="p">{</span><span class="no">:json</span><span class="w"> </span><span class="mi">42</span><span class="p">}}}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Again, the JSON data returns as a Clojure map with no wrappers.</p>
+
+<p>When using JSON with HoneySQL though, some circs are still needed. Namely, you
+have to wrap a value with <code class="language-plaintext highlighter-rouge">[:lift ...]</code> as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/insert-one</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                </span><span class="no">:test_json</span><span class="w">
+                </span><span class="p">{</span><span class="no">:data</span><span class="w"> </span><span class="p">[</span><span class="no">:lift</span><span class="w"> </span><span class="p">{</span><span class="no">:another</span><span class="w"> </span><span class="p">{</span><span class="no">:json</span><span class="w"> </span><span class="p">{</span><span class="no">:value</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]}}}]})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:another</span><span class="w"> </span><span class="p">{</span><span class="no">:json</span><span class="w"> </span><span class="p">{</span><span class="no">:value</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]}}}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Without the <code class="language-plaintext highlighter-rouge">[:lift ...]</code> tag, HoneySQL will treat the value as a nested SQL map
+and try to render it as a string, which will fail of course or lead to a SQL
+injection.</p>
+
+<p>Another way is to use HoneySQL parameters conception:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/insert-one</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                </span><span class="no">:test_json</span><span class="w">
+                </span><span class="p">{</span><span class="no">:data</span><span class="w"> </span><span class="p">[</span><span class="no">:param</span><span class="w"> </span><span class="no">:data</span><span class="p">]}</span><span class="w">
+                </span><span class="p">{</span><span class="no">:honey</span><span class="w"> </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">{</span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:some</span><span class="w"> </span><span class="p">[</span><span class="no">:json</span><span class="w"> </span><span class="p">{</span><span class="no">:map</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]}]}}}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>For details, see the “HoneySQL Integration” section.</p>
+
+<p>PG2 supports not only Clojure maps but vectors, sets, and lists. Here is an
+example with with a vector:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into test_json (data) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[</span><span class="no">:some</span><span class="w"> </span><span class="no">:vector</span><span class="w"> </span><span class="p">[</span><span class="no">:nested</span><span class="w"> </span><span class="no">:vector</span><span class="p">]]]})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="n">,</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="p">[</span><span class="s">"some"</span><span class="w"> </span><span class="s">"vector"</span><span class="w"> </span><span class="p">[</span><span class="s">"nested"</span><span class="w"> </span><span class="s">"vector"</span><span class="p">]]}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="json-wrapper">Json Wrapper</h2>
+
+<p>In rare cases you might store a string or a number in a JSON field. Say, 123 is
+a valid JSON value but it’s treated as a number. To tell Postgres it’s a JSON
+indeed, wrap the value with <code class="language-plaintext highlighter-rouge">pg/json-wrap</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/insert-one</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                </span><span class="no">:test_json</span><span class="w">
+                </span><span class="p">{</span><span class="no">:data</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/json-wrap</span><span class="w"> </span><span class="mi">42</span><span class="p">)})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">4</span><span class="n">,</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="mi">42</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The wrapper is especially useful to store a “null” JSON value: not the standard
+<code class="language-plaintext highlighter-rouge">NULL</code> but <code class="language-plaintext highlighter-rouge">"null"</code> which, when parsed, becomes <code class="language-plaintext highlighter-rouge">nil</code>. For this, pass
+<code class="language-plaintext highlighter-rouge">(pg/json-wrap nil)</code> as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/insert-one</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                </span><span class="no">:test_json</span><span class="w">
+                </span><span class="p">{</span><span class="no">:data</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/json-wrap</span><span class="w"> </span><span class="n">nil</span><span class="p">)})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">5</span><span class="n">,</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="n">nil</span><span class="p">}</span><span class="w"> </span><span class="c1">;; "null" in the database</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="custom-object-mapper">Custom Object Mapper</h2>
+
+<p>One great thing about Jsonista is a conception of mapper objects. A mapper is a
+set of rules how to encode and decode data. Jsonista provides a way to build a
+custom mapper. Once built, it can be passed to a connection config so the JSON
+data is written and read back in a special way.</p>
+
+<p>Let’s assume you’re going to tag JSON sub-parts to track their types. For
+example, if encoding a keyword <code class="language-plaintext highlighter-rouge">:foo</code>, you’ll get a vector of <code class="language-plaintext highlighter-rouge">["!kw",
+"foo"]</code>. When decoding that vector, by the <code class="language-plaintext highlighter-rouge">"!kw"</code> string, the mapper
+understands it a keyword and coerces <code class="language-plaintext highlighter-rouge">"foo"</code> to <code class="language-plaintext highlighter-rouge">:foo</code>.</p>
+
+<p>Here is how you create a mapper with Jsonista:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">
+</span><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">...</span><span class="w">
+  </span><span class="p">(</span><span class="no">:import</span><span class="w">
+   </span><span class="n">clojure.lang.Keyword</span><span class="w">
+   </span><span class="n">clojure.lang.PersistentHashSet</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+    </span><span class="p">[</span><span class="n">jsonista.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">j</span><span class="p">]</span><span class="w">
+    </span><span class="p">[</span><span class="n">jsonista.tagged</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">jt</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w">
+  </span><span class="p">(</span><span class="nf">j/object-mapper</span><span class="w">
+   </span><span class="p">{</span><span class="no">:encode-key-fn</span><span class="w"> </span><span class="n">true</span><span class="w">
+    </span><span class="no">:decode-key-fn</span><span class="w"> </span><span class="n">true</span><span class="w">
+    </span><span class="no">:modules</span><span class="w">
+    </span><span class="p">[(</span><span class="nf">jt/module</span><span class="w">
+      </span><span class="p">{</span><span class="no">:handlers</span><span class="w">
+       </span><span class="p">{</span><span class="n">Keyword</span><span class="w"> </span><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="s">"!kw"</span><span class="w">
+                 </span><span class="no">:encode</span><span class="w"> </span><span class="n">jt/encode-keyword</span><span class="w">
+                 </span><span class="no">:decode</span><span class="w"> </span><span class="nb">keyword</span><span class="p">}</span><span class="w">
+        </span><span class="n">PersistentHashSet</span><span class="w"> </span><span class="p">{</span><span class="no">:tag</span><span class="w"> </span><span class="s">"!set"</span><span class="w">
+                           </span><span class="no">:encode</span><span class="w"> </span><span class="n">jt/encode-collection</span><span class="w">
+                           </span><span class="no">:decode</span><span class="w"> </span><span class="nb">set</span><span class="p">}}})]}))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">object-mapper</code> function accepts even more options but we skip them for now.</p>
+
+<p>Now that you have a mapper, pass it into a config:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10140</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:object-mapper</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>All the JSON operations made by this connection will use the passed object
+mapper. Let’s insert a set of keywords:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into test_json (data) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[{</span><span class="no">:object</span><span class="w"> </span><span class="o">#</span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="no">:bar</span><span class="w"> </span><span class="no">:baz</span><span class="p">}}]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When read back, the JSON value is not a vector of strings any longer but a set
+of keywords:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from test_json"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="p">{</span><span class="no">:object</span><span class="w"> </span><span class="o">#</span><span class="p">{</span><span class="no">:baz</span><span class="w"> </span><span class="no">:bar</span><span class="w"> </span><span class="no">:foo</span><span class="p">}}}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To peek a raw JSON value, select it as a plain text and print (just to avoid
+escaping quotes):</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">printl</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select data::text json_raw from test_json where id = 10"</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; [{:json_raw {"object": ["!set", [["!kw", "baz"], ["!kw", "bar"], ["!kw", "foo"]]]}}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If you read that row using another connection with a default object mapper, the
+data is returned without expanding tags.</p>
+
+<h2 id="utility-pgjson-namespace">Utility pg.json namespace</h2>
+
+<p>PG2 provides an utility namespace for JSON encoding and decoding. You can use it
+for files, HTTP API, etc. If you already have PG2 in the project, there is no
+need to plug in Cheshire or another JSON library. The namespace is <code class="language-plaintext highlighter-rouge">pg.json</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">...</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg.json</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">json</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="reading-json">Reading JSON</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">read-string</code> function reads a value from a JSON string:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">json/read-string</span><span class="w"> </span><span class="s">"[1, 2, 3]"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The first argument might be an object mapper:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">json/read-string</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="s">"[\"!kw\", \"hello\"]"</span><span class="p">)</span><span class="w">
+
+</span><span class="no">:hello</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The functions <code class="language-plaintext highlighter-rouge">read-stream</code> and <code class="language-plaintext highlighter-rouge">read-reader</code> act the same but accept either an
+<code class="language-plaintext highlighter-rouge">InputStream</code> or a <code class="language-plaintext highlighter-rouge">Reader</code> object:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">in</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"[1, 2, 3]"</span><span class="w"> </span><span class="n">.getBytes</span><span class="w"> </span><span class="n">io/input-stream</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">json/read-stream</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="n">in</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">in</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"[1, 2, 3]"</span><span class="w"> </span><span class="n">.getBytes</span><span class="w"> </span><span class="n">io/reader</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">json/read-reader</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="n">in</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="writing-json">Writing JSON</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">write-string</code> function dumps an value into a JSON string:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">json/write-string</span><span class="w"> </span><span class="p">{</span><span class="no">:test</span><span class="w"> </span><span class="p">[</span><span class="no">:hello</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">true</span><span class="p">]})</span><span class="w">
+
+</span><span class="c1">;; "{\"test\":[\"hello\",1,true]}"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The first argument might be a custom object mapper. Let’s reuse our tagger
+mapper:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">json/write-string</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="p">{</span><span class="no">:test</span><span class="w"> </span><span class="p">[</span><span class="no">:hello</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="n">true</span><span class="p">]})</span><span class="w">
+
+</span><span class="c1">;; "{\"test\":[[\"!kw\",\"hello\"],1,true]}"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The functions <code class="language-plaintext highlighter-rouge">write-stream</code> and <code class="language-plaintext highlighter-rouge">write-writer</code> act the same. The only
+difference is, they accept either an <code class="language-plaintext highlighter-rouge">OutputStream</code> or <code class="language-plaintext highlighter-rouge">Writer</code> objects. The
+first argument might be a mapper as well:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">ByteArrayOutputStream</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">json/write-stream</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">[</span><span class="no">:a</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="no">:c</span><span class="p">]}</span><span class="w"> </span><span class="n">out</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">StringWriter</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">json/write-writer</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">[</span><span class="no">:a</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="no">:c</span><span class="p">]}</span><span class="w"> </span><span class="n">out</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="ring-http-middleware">Ring HTTP middleware</h2>
+
+<p>PG2 provides an HTTP Ring middleware for JSON. It acts like <code class="language-plaintext highlighter-rouge">wrap-json-request</code>
+and <code class="language-plaintext highlighter-rouge">wrap-json-response</code> middleware from the <a href="https://github.com/ring-clojure/ring-json">ring-json</a>
+library. Comparing to it, the PG2 stuff has the following advantages:</p>
+
+<ul>
+  <li>it’s faster because of Jsonista, whereas Ring-json relies on Cheshire;</li>
+  <li>it wraps both request and response at once with a shortcut;</li>
+  <li>it supports custom object mappers.</li>
+</ul>
+
+<p>Imagine you have a Ring handler that reads JSON body and returns a JSON
+map. Something like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">api-handler</span><span class="w"> </span><span class="p">[</span><span class="n">request</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">request</span><span class="w"> </span><span class="no">:data</span><span class="w"> </span><span class="no">:user_id</span><span class="p">)</span><span class="w">
+        </span><span class="n">user</span><span class="w"> </span><span class="p">(</span><span class="nf">get-user-by-id</span><span class="w"> </span><span class="n">user-id</span><span class="p">)]</span><span class="w">
+    </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w">
+     </span><span class="no">:body</span><span class="w"> </span><span class="p">{</span><span class="no">:user</span><span class="w"> </span><span class="n">user</span><span class="p">}}))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Here is how you wrap it:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">...</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg.ring.json</span><span class="w"> </span><span class="no">:refer</span><span class="w"> </span><span class="p">[</span><span class="n">wrap-json</span><span class="w">
+                         </span><span class="n">wrap-json-response</span><span class="w">
+                         </span><span class="n">wrap-json-request</span><span class="p">]]))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">app</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">api-handler</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-this-foo</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-json</span><span class="w"> </span><span class="n">&lt;opt&gt;</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-that-bar</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, the <code class="language-plaintext highlighter-rouge">wrap-json</code> wrapper is a combination of <code class="language-plaintext highlighter-rouge">wrap-json-request</code> and
+<code class="language-plaintext highlighter-rouge">wrap-json-response</code>. You can apply them both explicitly:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">app</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">api-handler</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-this-foo</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-json-request</span><span class="w"> </span><span class="n">&lt;opt&gt;</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-json-response</span><span class="w"> </span><span class="n">&lt;opt&gt;</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-that-bar</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>All the three <code class="language-plaintext highlighter-rouge">wrap-json...</code> middleware accept a handler to wrap and a map of
+options. Here is the options supported:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Direction</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:object-mapper</code></td>
+      <td>request, response</td>
+      <td>An custom instance of <code class="language-plaintext highlighter-rouge">ObjectMapper</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:slot</code></td>
+      <td>request</td>
+      <td>A field to <code class="language-plaintext highlighter-rouge">assoc</code> the parsed JSON data (1)</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:malformed-response</code></td>
+      <td>request</td>
+      <td>A ring response returned when payload cannot be parsed (2)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Notes:</p>
+
+<ol>
+  <li>
+    <p>The default slot name is <code class="language-plaintext highlighter-rouge">:json</code>. Please avoid using <code class="language-plaintext highlighter-rouge">:body</code> or <code class="language-plaintext highlighter-rouge">:params</code> to
+prevent overriding existing request fields. This is especially important for
+<code class="language-plaintext highlighter-rouge">:body</code>! Often, you need the origin input stream to calculate an MD5 or
+SHA-256 hash-sum of the payload. If you overwrite the <code class="language-plaintext highlighter-rouge">:body</code> field, you
+cannot do that.</p>
+  </li>
+  <li>
+    <p>The default malformed response is something like 400 “Malformed JSON” (plain
+text).</p>
+  </li>
+</ol>
+
+<p>A full example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">json-opt</span><span class="w">
+  </span><span class="p">{</span><span class="no">:slot</span><span class="w"> </span><span class="no">:data</span><span class="w">
+   </span><span class="no">:object-mapper</span><span class="w"> </span><span class="n">tagged-mapper</span><span class="w"> </span><span class="c1">;; see above</span><span class="w">
+   </span><span class="no">:malformed-response</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">404</span><span class="w">
+                        </span><span class="no">:body</span><span class="w"> </span><span class="s">"&lt;h1&gt;Bad JSON&lt;/h1&gt;"</span><span class="w">
+                        </span><span class="no">:headers</span><span class="w"> </span><span class="p">{</span><span class="s">"content-type"</span><span class="w"> </span><span class="s">"text/html"</span><span class="p">}}})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">app</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">api-handler</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-this-foo</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-json</span><span class="w"> </span><span class="n">json-opt</span><span class="p">)</span><span class="w">
+      </span><span class="p">(</span><span class="nf">wrap-that-bar</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/en/pg-migration">PG2 release 0.1.5: Migrations</a>
             </h2>
 
@@ -1109,242 +1587,6 @@ information at hand in terms of your request.</p>
 
 <p>Главное, теперь мы знаем: форму даже с одним импутом можно растянуть на 80
 процентов площади. Дизайнерам воздушных интерфейсов взять на заметку.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/ff-update/">Firefox и обновления</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/firefox/" rel="tag">firefox</a>, <a href="/tag/updates/" rel="tag">updates</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>У меня сложные отношения с Firefox. Все как в песне: мое тело говорит да, но мое
-сердце говорит нет. Иногда я пытаюсь начать с чистого листа, но Firefox делает
-все, чтобы этого не случилось.</p>
-
-<p>Когда вышел Хром, он поразил меня отладочной консолью. Сегодня это норма, но
-тогда, десять лет назад, нигде не было такого легкого доступа к сетевым
-запросам, логам и реплу Javascript. В FF было что-то на голову ниже, но в виде
-плагина, а тут — из коробки. Пока писал, вспомнил — Firebug, вот как он
-назывался.</p>
-
-<p>Когда FF догнал Хром плане консоли, я пользовался им какое-то время. Потом
-устроился в фирму, где были токены Yubikey. В Хроме они работали из коробки, а
-что в FF? Надо скачать и поставить OpenSCP, затем добавить девайс в FF и
-прописать путь к бинарнику. Сам он не может. В итоге худо-бедно работало, но с
-перебоями и перезапуском браузера. Вернулся в Хром.</p>
-
-<p>Сегодня я работаю в фирме, где тоже выдают Yubikey. Я открыл FF, и он сходу
-кидает модалку, которая просит пароль к токену. Минуточку, кто тебя просил? Нет
-ни одной вкладки, которая просит авторизации. Зачем кидаешь модалку? Тем более
-что токен нужен bash-скрипту для VPN, а в браузере он не используется. Какой-то
-бред.</p>
-
-<p><img src="/assets/static/aws/ff-updates/1.jpeg" /></p>
-
-<p>Ладно, стерпим и это. Но с какой-то версии FF запретил опцию “не ставить
-обновления”. Либо они ставятся автоматом, либо браузер долбит мозг постоянной
-плашкой “вышел апдейт, поставь немедленно”. А у меня пунктик — если программа
-кричит об обновлениях, я либо отключаю их, либо не пользуюсь программой. И
-отключить никак не выходит.</p>
-
-<p><img src="/assets/static/aws/ff-updates/2.jpeg" /></p>
-
-<p>Я пошел в <code class="language-plaintext highlighter-rouge">about://config</code> и прошелся по всем атрибутам, содержащим “update” в
-названии. Таковых нашлось штук двадцать. Менял так и этак, ставил 0, -1 и false
-— ничего не помогает. Проклятая плашка регулярно вылазит.</p>
-
-<p>Похоже, опять не судьба выстроить отношения с FF, но я все-таки спрошу. Как в FF
-ставить обновления по требованию? Чтобы я нажал “install update” и оно
-обновилось, а до этого молчало? Неужели Firefox, наше все, звезда опенсорса и все
-такое, больше на это не способен?</p>
-
-<p>Верю, что способен. Вам слово.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/ff-policy/">Firefox и полиси</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/firefox/" rel="tag">firefox</a>, <a href="/tag/policy/" rel="tag">policy</a>, <a href="/tag/updates/" rel="tag">updates</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>На выходных посидел с Firefox. Понял, как заблокировать обновления, а также
-много чего другого.</p>
-
-<p>Если коротко: демократия закончилась. Начиная с какой-то версии Firefox перешел
-на систему полиси для расширенных настроек. Редактор about:config по-прежнему
-работает, но нужно понимать: многие опции теперь — бутафория. Можете до
-посинения что-то включать и выключать, эффекта не будет.</p>
-
-<p>Теперь Firefox работает с полиси. Это JSON-файл с директивами, которые включают
-ту или иную функцию. По сравнению с about:config преимущество в коллекциях: в
-полиси можно задать массив объектов, например, для настройки расширений или
-mime-типов, а в <code class="language-plaintext highlighter-rouge">about:config</code> все было плоским.</p>
-
-<p>Полиси описаны в формате JSON, но на Маке используется яблочный формат plist.
-Может быть, JSON тоже можно, но я не проверял.</p>
-
-<p>Преимущество полиси в том, что можно задать поведение браузера до последних
-мелочей. И все это — в текстовом файле, который хранится в Github. Не нужна
-облачная учетка для синхронизации — вы сами решаете, как раскидывать файл по
-машинам. Я положил в приватный dotfiles, но приведу копию ниже.</p>
-
-<p>Firefox не пытается оспорить то, что указано в полиси. Если сказано не ставить
-обновления — он не ставит. Сказано не проверять браузер по умолчанию — не
-проверяет. Никаких попапов, бейджей, нотификаций, алертов, всплывающих полосок и
-прочей ахинеи.</p>
-
-<p>Теперь технические шаги. Все примеры будут под мак; на другие системы, думаю,
-переложить будет не трудно.</p>
-
-<p>Firefox ищет полиси в разных местах, но самое очевидное — файл <code class="language-plaintext highlighter-rouge">~/Library/
-Preferences/org.mozilla.firefox.plist</code>. Опция <code class="language-plaintext highlighter-rouge">EnterprisePoliciesEnabled</code>
-означает, использовать ли полиси или пропускать их. Установите ее в истину
-командой:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>defaults write ~/Library/Preferences/org.mozilla.firefox EnterprisePoliciesEnabled -bool  TRUE
-</code></pre></div></div>
-
-<p>Обратите внимание, что расширение <code class="language-plaintext highlighter-rouge">.plist</code> указывать не нужно.</p>
-
-<p>Чтобы выключить обновления, задайте <code class="language-plaintext highlighter-rouge">DisableAppUpdate</code> в истину:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>defaults write ~/Library/Preferences/org.mozilla.firefox DisableAppUpdate -bool true
-</code></pre></div></div>
-
-<p>Перезапустите браузер и откройте About Firefox или настройки — там будет
-следующее:</p>
-
-<p><img src="/assets/static/aws/ff-policy/1.jpeg" /></p>
-
-<p><img src="/assets/static/aws/ff-policy/2.jpeg" /></p>
-
-<p>Обновления запрещены, никто не пройдет.</p>
-
-<p>Список полиси можно посмотреть во вкладке <code class="language-plaintext highlighter-rouge">about:policies</code>. Выглядит так:</p>
-
-<p><img src="/assets/static/aws/ff-policy/3.jpeg" /></p>
-
-<p>Назревает два вопроса. Первый: как узнать, какие полиси есть в принципе и их
-значения? Второй: ты предлагаешь вводить их в консоли вручную?</p>
-
-<p>Полный список полиси находится <a href="https://mozilla.github.io/policy-templates/">на этой странице</a>, и он довольно
-велик. Проще скачать заголовку под вашу систему и поправить руками. Названия
-директив говорят сами за себя.</p>
-
-<p>По второму пункту — разумеется, нужно создать файл в редакторе, но в случае с
-plist есть нюанс. Файлы plist бывают двух форматов: текстовый и бинарный. В
-первом случае это XML с тегами <code class="language-plaintext highlighter-rouge">&lt;plist&gt;</code>, <code class="language-plaintext highlighter-rouge">&lt;dict&gt;</code> и <code class="language-plaintext highlighter-rouge">&lt;key&gt;</code>. Во втором случае
-там байты вперемешку с текстом.</p>
-
-<p>Беда в том, что Firefox работает только с бинарным plist: если положить
-текстовый, он его игнорирует. Бинарник можно поправить в XCode, но это неудобно:
-не станете же вы хранить бинарь в Github и редактировать программой, которой
-нужно 15 гигов. К счастью, утилита plutil умеет импорт-экспорт, а заодно
-проверяет формат на корректность.</p>
-
-<p>У меня получилась папка в dotfiles со следующими файлами. Прежде всего это
-org.mozilla.firefox.plist, который я <a href="https://gist.github.com/igrishaev/4e0603f0129a62c335f2f38676059753">выложил в Gist</a>. Вот неполный список
-того, что он делает:</p>
-
-<ul>
-  <li>отключает обновления</li>
-  <li>отключает проверку браузера по умолчанию</li>
-  <li>отключает менеджер паролей, мастер-пароль</li>
-  <li>отключает Pocket</li>
-  <li>убирает партнерские ссылки, top-sites и прочий шлак на главной</li>
-  <li>открывает PDF-файлы в Preview.app. Для меня это важно, потому что встроенные
-открывашки PDF, как правило, убогие</li>
-  <li>отключает всякий трекинг и фингерпринт</li>
-  <li>включает запросы нотификаций, локации</li>
-  <li>блокирует попапы</li>
-  <li>отключает “что новенького”, рекомендованные расширения, фичи.</li>
-</ul>
-
-<p>Второй файл — конфиг Make, чтобы управлять конфигурацией. Он короткий,
-приведу полностью:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DOMAIN = ~/Library/Preferences/org.mozilla.firefox.plist
-SOURCE = org.mozilla.firefox.plist
-
-policy-import: policy-check
- defaults import ${DOMAIN} ${SOURCE}
-
-policy-false:
- defaults write ${DOMAIN} EnterprisePoliciesEnabled -bool FALSE
-
-policy-true:
- defaults write ${DOMAIN} EnterprisePoliciesEnabled -bool TRUE
-
-policy-check:
- plutil ${SOURCE}
-</code></pre></div></div>
-
-<p>Команда <code class="language-plaintext highlighter-rouge">policy-import</code> переносит настройки из текстового .plist-файла в бинарный в
-домашней папке. Она зависит от <code class="language-plaintext highlighter-rouge">policy-check</code>, которая проверяет конфигурацию на
-корректность.</p>
-
-<p>Команды <code class="language-plaintext highlighter-rouge">policy-false</code> и <code class="language-plaintext highlighter-rouge">policy-true</code> отключают и включают полиси. Дело в том,
-что пока они включены, вы не можете обновиться даже если захотите — функция
-запрещена. Чтобы это сделать, отключите полиси, перезапустите браузер,
-обновитесь, затем снова включите. На короткое время ужаснитесь тому, как жили
-раньше: браузер выплюнет сто попапов, что пора обновиться, сделать его главным
-по умолчанию, а вот здесь у нас новая менюшка, а вот новое расширение, ну и все
-такое.</p>
-
-<p>В общем, разобраться с полиси было полезно. По аналогии с Емаксом и прочими
-утилитами, я храню конфиг в дотфайлах и синхронизирую через Гитхаб. Опасение
-вызывает лишь то, что полиси все еще на этапе разработки. Не ровен час,
-обновишься — и все слетит.</p>
-
-<p>Вроде бы хороший конец, но все равно — с толикой грусти. Эта борьба вызвана тем,
-что некие придурки спрятали опции из интерфейса. Не будь придурков — не было бы
-суеты, конфигов и прочего. Энтропия и трение — вот есть то, что здесь описано.</p>
-
-<p>Напоследок — ссылки:</p>
-
-<ul>
-  <li><a href="https://mozilla.github.io/policy-templates/">Официальный список полиси</a></li>
-  <li><a href="https://github.com/mozilla/policy-templates/blob/master/mac/org.mozilla.firefox.plist">Готовые шаблоны</a></li>
-  <li><a href="https://gist.github.com/igrishaev/4e0603f0129a62c335f2f38676059753">Мой конфиг</a></li>
-</ul>
 
                 
             </div>
