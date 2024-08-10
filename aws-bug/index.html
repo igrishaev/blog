@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Баг в AWS</title>
+  <meta name="description" content="Расскажу, какой баг отлаживал недавно. Как обычно, он оказался вложенным, когдаодин баг основывается на другом, тот — на третьем и так далее.">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/aws-bug/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Баг в AWS</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-08-10T00:00:00+00:00">
+        Aug 10, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/bug/" rel="tag">bug</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Расскажу, какой баг отлаживал недавно. Как обычно, он оказался вложенным, когда
+один баг основывается на другом, тот — на третьем и так далее.</p>
+
+<p>Ситуация: один сервис генерит CSV-файл и складывает в S3. После чего вызывает
+почтовый сервис со словами “отправь этот файл по почте тому чуваку”. Все это
+работало до тех пор, пока народ не пожаловался, что файлы не приходят на почту.</p>
+
+<p>Смотрю логи, файл сгенерился и лежит в S3. Почтовый сервис при попытке скачать
+его кидает исключение “stream is closed”. Оказалось, особо умный разработчик
+намудрил с классами. Ему нужен был не только <code class="language-plaintext highlighter-rouge">InputStream</code>, но и поле из
+заголовков. Вместо того, чтобы вернуть пару <code class="language-plaintext highlighter-rouge">(stream, field)</code> или мапу с ключами
+<code class="language-plaintext highlighter-rouge">stream</code> и <code class="language-plaintext highlighter-rouge">field</code>, он строит анонимный экземпляр <code class="language-plaintext highlighter-rouge">InputStream</code>, который
+проксирует исходный стрим и несет дополнительное поле.</p>
+
+<p>Разумеется, он не протестировал все как следует, и при особых условиях стрим был
+nil, а JVM считает, что нулевой стрим означает его закрытие. Отсюда “stream is
+closed”, хотя причина в другом.</p>
+
+<p>Эта шелуха отняла порядочно времени. Но я все-таки выяснил, что исключение было
+от того, что файла в S3 нет.</p>
+
+<p>Лезу в бакет — файл есть.</p>
+
+<p>Смотрю логи еще раз. Выясняется, что файл появился через секунду после того, как
+почтовый сервис обратился к нему. Это бред, потому что файл записан в S3 еще до
+вызова почтового сервиса!</p>
+
+<p>Смотрю внимательней и замечаю: я записываю файл csv, а почтовый сервис ищет
+такой же, но с расширением .xlsx. И до сих пор это срабатывало: рядом с CSV
+автоматом появляется xlsx, и кто его генерит — не понятно.</p>
+
+<p>После нескольких часов выяснилось следующее.</p>
+
+<p>Люди, которые получали по почте CSV, пытались открыть его экселем, что кончалось
+слезами и болью. В точности то, что я описал в другой заметке. Они попросили
+выслать эксель, но разработчики сервиса слишком заняты, чтобы делать другим
+удобно. Нашелся девопс, который сделал следующее:</p>
+
+<ul>
+  <li>
+    <p>он повесил на бакет хук, который срабатывал при загрузке файла с расширением
+csv</p>
+  </li>
+  <li>
+    <p>этот хук вызывал лямбду с именем файла</p>
+  </li>
+  <li>
+    <p>лямбда была скриптом на Питоне, который переколбашивал CSV в эксель и
+записывал рядом</p>
+  </li>
+  <li>
+    <p>он поправил сервис отчетов так, что при вызове почтового сервиса расширение
+файла менялось с csv на xls.</p>
+  </li>
+</ul>
+
+<p>Вот как это работало: сервис отчета сбрасывал файл csv в S3. Запускался хук с
+лямбдой, которая писала рядом xlsx. К тому времени как вызывался почтовый
+сервис, файл xlsx был уже в бакете, и отправка работала без ошибок.</p>
+
+<p>А потом что-то случилось: то ли Амазон поправил тайминги, то ли слишком много
+сообщений в очереди, то ли Луна повернулась не тем боком, но — хук стал
+вызываться чуть позже, буквально на секунду или около. Этой секунды оказалось
+достаточно, чтобы почтовый сервис запустился раньше и упал.</p>
+
+<p>Разумеется, нужно выкорчевать это осиное гнездо и сделать так, чтобы сервис
+отчетов писал готовый xlsx безо всяких хуков. Но у нас все срочно, сроки горят,
+поэтому просто подняли тайминги с обещанием сделать все как надо в следующий
+раз.</p>
+
+<p>За это я и не люблю облачную инфраструктуру. Код в ней играет лишь малую
+роль. Много логики можно задать какими-то хуками, эвентами, очередями и прочими
+штучками. Они не прописаны в коде, они могут быть заданы вручную в дашборде
+AWS. Они могут быть в зарыты в YAML-файлах в devops-репозиториях. Человек,
+который воткнул этот костыль, может быть в отпуске, и кроме него о нем никто не
+знает.</p>
+
+<p>Это подводка к следующему посту на тему айти. Кто-то думает, что разработчик
+учит Питон и пишет код, зарабатывая 300 тысяч в секунду. На деле разработчик
+занимается в том числе тем, что описано выше: два дня ищет баг в стоге сена
+размером со стадион, и правит его сменой цифры в конфиге.</p>
+
+<p>Вы точно хотите в айти?</p>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/aws-bug/">
+    <input required name="captcha" type="hidden" value="4 &#215; 3">
+
+    <div class="block">
+        <span class="comment-form-label"><small>4 &#215; 3 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="tg://resolve?domain=igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
