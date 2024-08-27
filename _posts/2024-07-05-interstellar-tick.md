@@ -27,4 +27,4 @@ tags: life interstellar
 Впрочем, потом меня отпускает, и я снова иду править чужой код и косяки. И так
 постоянно.
 
-<iframe width="100%" height="500" src="https://www.youtube.com/embed/60h6lpnSgck" title="Interstellar | “Tidal Wave&quot; Full Scene (Anne Hathaway, Matthew McConaughey) | Paramount Movies" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+{% include youtube.html id="60h6lpnSgck" %}
