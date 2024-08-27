@@ -12,8 +12,6 @@ youtube: ISANJ69EdvE
 В прошлом месяце ездил в Москву, выступал на кложурном митапе. Выкладываю видос
 с чистым звуком:
 
-<iframe width="743" height="418" src="https://www.youtube.com/embed/ISANJ69EdvE"
-allow="accelerometer; autoplay; encrypted-media; gyroscope;
-picture-in-picture" allowfullscreen></iframe>
+{% include youtube.html id="ISANJ69EdvE" %}
 
 [Слайды][slides]

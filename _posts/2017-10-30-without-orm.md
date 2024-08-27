@@ -10,8 +10,7 @@ youtube: qEfNez0Ht7s
 Выступил на последнем митапе с докладом про ORM. Редкий случай, когда самому
 понравилось. По этой причине решил поделиться с вами.
 
-<iframe width="854" height="480" src="https://www.youtube.com/embed/qEfNez0Ht7s"
-gesture="media" allowfullscreen></iframe>
+{% include youtube.html id="qEfNez0Ht7s" %}
 
 [Слайды](https://speakerdeck.com/deeprefactoring/biez-orm)
 

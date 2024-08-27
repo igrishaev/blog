@@ -11,6 +11,4 @@ Last Sunday, I tried to stream some Clojure coding commenting it in
 English. Although I was nervous a bit and thus sounded weird, I think the result
 worth publishing it here:
 
-<iframe width="640" height="360" src="https://www.youtube.com/embed/cLL_5rETLWY"
-gesture="media" allow="encrypted-media"
-allowfullscreen></iframe>
+{% include youtube.html id="cLL_5rETLWY" %}

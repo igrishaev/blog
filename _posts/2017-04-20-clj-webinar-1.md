@@ -7,10 +7,9 @@ lang: en
 youtube: UNMRdi0j6HY
 ---
 
-<iframe width="640" height="360" src="https://www.youtube.com/embed/UNMRdi0j6HY"
-allowfullscreen></iframe>
+{% include youtube.html id="UNMRdi0j6HY" %}
 
-In this video, I'm speaking on Emacs advantages when using Clojure.
+In this video, I'm talking on Emacs advantages when using Clojure.
 
 Links from the video:
 
