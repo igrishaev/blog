@@ -66,8 +66,7 @@ youtube: rl8NRFZ2Sbw
 дает преимущество в споре с любым кложуристом, верно? Под конец с ним можно было
 даже сфотаться, но я что-то тупанул. Зато стал свидетелем этих кадров:
 
-<iframe width="854" height="480" src="https://www.youtube.com/embed/rl8NRFZ2Sbw"
-allowfullscreen></iframe>
+{% include youtube.html id="rl8NRFZ2Sbw" %}
 
 Кложе 10 лет, Рич режет юбилейный торт. Шок, смотреть до конца.
 
