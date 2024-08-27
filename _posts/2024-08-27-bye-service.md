@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Расстование с сервисом"
+title: "Расставание с сервисом"
 permalink: /bye-service/
 tags: life service
 ---
