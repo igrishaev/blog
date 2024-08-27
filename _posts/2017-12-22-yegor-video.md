@@ -8,12 +8,8 @@ lang: ru
 
 Егор выступил в клубе Глубокого Рефакторинга:
 
-<iframe width="640" height="360" src="https://www.youtube.com/embed/B1MkVQb-hy0"
-gesture="media" allow="encrypted-media"
-allowfullscreen></iframe>
+{% include youtube.html id="B1MkVQb-hy0" %}
 
 Особенно рекомендую второй доклад:
 
-<iframe width="640" height="360" src="https://www.youtube.com/embed/ZhWOlaMqppM"
-gesture="media" allow="encrypted-media"
-allowfullscreen></iframe>
+{% include youtube.html id="ZhWOlaMqppM" %}
