@@ -104,6 +104,443 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/pg-arrays">PG2 release 0.1.9: arrays</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-04-04T00:00:00+00:00">
+        Apr 4, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/array/" rel="tag">array</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>The latest <a href="https://github.com/igrishaev/pg2">0.1.9 release</a> of PG2 supports Postgres arrays.</p>
+
+<p>In JDBC, arrays have always been a pain. Every time you’re about to pass an
+array to the database and read it back, you’ve got to wrap your data in various
+Java classes, extend protocols, and multimethods. In Postgres, the array type is
+quite powerful yet underestimated due to poor support of drivers. This is one
+more reason for running this project: to bring easy access to Postgres arrays.</p>
+
+<p>PG2 tries its best to provide seamless connection between Clojure vectors and
+Postgres arrays. When reading an array, you get a Clojure vector. And vice
+versa: to pass an array object into a query, just submit a vector.</p>
+
+<p>PG2 supports arrays of any type: not only primitives like numbers and strings
+but <code class="language-plaintext highlighter-rouge">uuid</code>, <code class="language-plaintext highlighter-rouge">numeric</code>, <code class="language-plaintext highlighter-rouge">timestamp(tz)</code>, <code class="language-plaintext highlighter-rouge">json(b)</code>, and more as well.</p>
+
+<p>Arrays might have more than one dimension. Nothing prevents you from having a 3D
+array of integers like <code class="language-plaintext highlighter-rouge">cube::int[][][]</code>, and it becomes a nested vector when
+fetched by PG2.</p>
+
+<p><em>A technical note: PG2 supports both encoding and decoding of arrays in both
+text and binary modes.</em></p>
+
+<p>Here is a short demo session. Let’s prepare a table with an array of strings:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table arr_demo_1 (id serial, text_arr text[])"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Insert a simple item:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into arr_demo_1 (text_arr) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[</span><span class="s">"one"</span><span class="w"> </span><span class="s">"two"</span><span class="w"> </span><span class="s">"three"</span><span class="p">]]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In arrays, some elements might be NULL:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into arr_demo_1 (text_arr) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[</span><span class="s">"foo"</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="s">"bar"</span><span class="p">]]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now let’s check what we’ve got so far:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from arr_demo_1"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:text_arr</span><span class="w"> </span><span class="p">[</span><span class="s">"one"</span><span class="w"> </span><span class="s">"two"</span><span class="w"> </span><span class="s">"three"</span><span class="p">]}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:text_arr</span><span class="w"> </span><span class="p">[</span><span class="s">"foo"</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="s">"bar"</span><span class="p">]}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Postgres supports plenty of operators for arrays. Say, the <code class="language-plaintext highlighter-rouge">&amp;&amp;</code> one checks if
+there is at least one common element on both sides. Here is how we find those
+records that have either “tree”, “four”, or “five”:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"select * from arr_demo_1 where text_arr &amp;&amp; $1"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[</span><span class="s">"three"</span><span class="w"> </span><span class="s">"four"</span><span class="w"> </span><span class="s">"five"</span><span class="p">]]})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:text_arr</span><span class="w"> </span><span class="p">[</span><span class="s">"one"</span><span class="w"> </span><span class="s">"two"</span><span class="w"> </span><span class="s">"three"</span><span class="p">]</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Another useful operator is <code class="language-plaintext highlighter-rouge">@&gt;</code> that checks if the left array contains all
+elements from the right array:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"select * from arr_demo_1 where text_arr @&gt; $1"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[</span><span class="s">"foo"</span><span class="w"> </span><span class="s">"bar"</span><span class="p">]]})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:text_arr</span><span class="w"> </span><span class="p">[</span><span class="s">"foo"</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="s">"bar"</span><span class="p">]</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Let’s proceed with numeric two-dimensional arrays. They’re widely used in math,
+statistics, graphics, and similar areas:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table arr_demo_2 (id serial, matrix bigint[][])"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Here is how you insert a matrix:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into arr_demo_2 (matrix) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[[[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="mi">6</span><span class="p">]]</span><span class="w">
+                       </span><span class="p">[[</span><span class="mi">6</span><span class="w"> </span><span class="mi">5</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">1</span><span class="p">]]]]})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:inserted</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Pay attention: each number can be NULL but you cannot have NULL for an entire
+sub-array. This will trigger an error response from Postgres.</p>
+
+<p>Reading the matrix back:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from arr_demo_2"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:matrix</span><span class="w"> </span><span class="p">[[[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="mi">6</span><span class="p">]]</span><span class="w">
+                 </span><span class="p">[[</span><span class="mi">6</span><span class="w"> </span><span class="mi">5</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">1</span><span class="p">]]]}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>A crazy example: let’s have a three dimension array of timestamps with a time
+zone. No idea how it can be used but still:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table arr_demo_3 (id serial, matrix timestamp[][][])"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">-matrix</span><span class="w">
+  </span><span class="p">[[[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]</span><span class="w">
+    </span><span class="p">[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]</span><span class="w">
+    </span><span class="p">[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]]</span><span class="w">
+   </span><span class="p">[[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]</span><span class="w">
+    </span><span class="p">[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]</span><span class="w">
+    </span><span class="p">[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]]</span><span class="w">
+   </span><span class="p">[[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]</span><span class="w">
+    </span><span class="p">[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]</span><span class="w">
+    </span><span class="p">[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]]])</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into arr_demo_3 (matrix) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="n">-matrix</span><span class="p">]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now read it back:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from arr_demo_3"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:matrix</span><span class="w">
+  </span><span class="p">[</span><span class="n">...</span><span class="w"> </span><span class="n">truncated</span><span class="w">
+   </span><span class="p">[[[</span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x5ed6e62b</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272169"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">xb9d6851</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272197"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x6e35ed84</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272207"</span><span class="p">]]</span><span class="w">
+     </span><span class="n">...</span><span class="w">
+     </span><span class="p">[</span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x7319d217</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272236"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x6153154d</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272241"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x2e4ffd44</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272247"</span><span class="p">]]]</span><span class="w">
+    </span><span class="n">...</span><span class="w">
+    </span><span class="p">[[</span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x32c6e526</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272405"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x496a5bc6</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272418"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x283531ee</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272426"</span><span class="p">]]</span><span class="w">
+     </span><span class="n">...</span><span class="w">
+     </span><span class="p">[</span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x677b3def</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272459"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x46d5039f</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272467"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x3d0b906</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272475"</span><span class="p">]]]]]</span><span class="n">,</span><span class="w">
+  </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>You can have an array of JSON(b) objects, too:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table arr_demo_4 (id serial, json_arr jsonb[])"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Inserting an array of three maps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">  </span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+              </span><span class="s">"insert into arr_demo_4 (json_arr) values ($1)"</span><span class="w">
+              </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[{</span><span class="no">:foo</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w"> </span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="mi">2</span><span class="p">}</span><span class="w"> </span><span class="p">{</span><span class="no">:test</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]}]]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Elements might be everything that can be JSON-encoded: numbers, strings,
+boolean, etc. The only tricky case is a vector. To not break the algorithm that
+traverses the matrix, wrap a vector element with <code class="language-plaintext highlighter-rouge">pg/json-wrap</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into arr_demo_4 (json_arr) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[</span><span class="mi">42</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span><span class="no">:some</span><span class="w"> </span><span class="s">"object"</span><span class="p">}</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/json-wrap</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">])]]})</span><span class="w">
+
+</span><span class="c1">;; Signals that the [1 2 3] is not a nested array but an element.</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now read it back:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from arr_demo_4"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="no">:json_arr</span><span class="w"> </span><span class="p">[</span><span class="mi">42</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span><span class="no">:some</span><span class="w"> </span><span class="s">"object"</span><span class="p">}</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]]}]</span><span class="w">
+</span></code></pre></div></div>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/ms-teams/">Microsoft Teams</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-30T00:00:00+00:00">
+        Mar 30, 2024
+    </time>
+
+    <a href="/tag/software/" rel="tag">software</a>, <a href="/tag/teams/" rel="tag">teams</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Худшая программа, с которой мне приходится работать — это Microsoft Teams, и вот
+почему.</p>
+
+<p>Teams — это Слак семилетней давности: тормозной и глючный. Если сегодняшний Слак
+еще более-менее, то после него Тимс — словно сидишь под водой: каждое действие
+на долю секунды медленней.</p>
+
+<p>Удивляет, что в Микрософте сделали быстрый редактор VS Code, но не осилили
+месаджер. По-моему, ребят из Teams надо запереть в комнате с командой VS Code,
+чтобы те передали опыт. Странно, что никому не приходит это в голову.</p>
+
+<p>За короткую жизнь Teams сменил несколько приложений. Сначала был Teams
+Classic. Потом вышел Teams for School and Work. Теперь вышел Teams New. Это
+говорит о том, что первое приложение сделано настолько плохо, что проще
+выпустить новое, чем исправлять старое. Этого никто не скрывает: первый Teams
+был сделан тяп-ляп, чтобы не дать Слаке занять весь рынок.</p>
+
+
+                    <p><a href="/ms-teams/">Read more &rarr;</a></p>
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/meaning-of-life-2/">Смысл жизни</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-30T00:00:00+00:00">
+        Mar 30, 2024
+    </time>
+
+    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/meaning/" rel="tag">meaning</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Опасаюсь, что после сорока лет я начну искать смысл жизни. Знаете, бывает: живет
+человек, вроде бы все хорошо, а потом раз — на столе Евангелие, Будда и все
+такое. Начинаются брожения и поиски бога.</p>
+
+<p>Но пока мне 38, и вроде бы ничего не предвещает беды. Я по-прежнему уверен, что
+бога нет, души нет, мир случаен. Вселенная конечна. Любовь — гормоны и
+инстинкты.</p>
+
+<p>Философы — балаболы. Ни у одного я не видел крупицы смысла. А если крупицы и
+есть, то искать их среди 600 страниц — так себе удовольствие.</p>
+
+<p>У Ницше не понял ни абзаца. Читал Гегеля — ощущения, словно вода сквозь
+пальцы. Слова понятны, смысла не вижу даже отдаленно.</p>
+
+<p>Самый клевый чел — Иван Павлов. Он один сделал больше, чем все Гегели, Вольтеры
+и Канты вместе взятые.</p>
+
+<p>Читал изыскания Толстого: долгий трактат о том, как он искал бога. Каким-то
+образом, много раз воздвигнув и разрушив всякие доводы, он построил модель мира,
+в которой прожил остаток дней. Мне как стороннему наблюдателю это кажется
+странным. Да, построил свою модель. Это примерно как написать свою версию
+популярной библиотеки: интересно, стимулирует мозг, не сидишь без дела. Главное
+— процесс.</p>
+
+<p>Я не вижу проблем в том, что нет смысла. Зачем смысл? Все, кто утверждали, что
+нашли его, фактически обманули себя. Подобно Толстому, построили свою модель,
+которая со стороны смотрится нелепо. Я не хочу жить в модели.</p>
+
+<p>Нам навязывают смысл еще на этапе сада и школы. И во взрослой жизни найдутся те,
+кто подскажут: смысл такой-то, нужно делать то и это. А ведь самое лучшее — жить
+без смысла. Делать то, что хочется прямо сейчас. И не бояться это признать: да,
+моя жизнь бессмысленна. Но зато интересна!</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/song-meaning/">Смысл песен</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-29T00:00:00+00:00">
+        Mar 29, 2024
+    </time>
+
+    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/music/" rel="tag">music</a>, <a href="/tag/meaning/" rel="tag">meaning</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Хороши те песни, где кроме хорошей мелодии присутствует смысл. Например, Анна
+Герман:</p>
+
+<blockquote>
+  <p>Нужно только выучиться ждать,</p>
+
+  <p>Нужно быть спокойным и упрямым,</p>
+
+  <p>Чтоб порой от жизни получать</p>
+
+  <p>Радости скупые телеграммы.</p>
+</blockquote>
+
+<p>В четырех строках — жизнь человека. Другой пример, Pink Floyd, Time:</p>
+
+<blockquote>
+  <p>Tired of lying in the sunshine, staying home to watch the rain</p>
+
+  <p>You are young and life is long, and there is time to kill today</p>
+
+  <p>And then one day you find ten years have got behind you</p>
+
+  <p>No one told you when to run, you missed the starting gun</p>
+</blockquote>
+
+<p>Опять, в четырех строчках — жизнь человека.</p>
+
+<p>А если взять условный Linkin Park, то их текст окажется набором бессмысленных
+фраз. Я устал от этой лжи, мне нужны ответы, ты стал тем, к чему я стремился,
+давление ломает меня и так далее.</p>
+
+<p>Это не отменяет того, то старые песни у них задорные. Просто любой задор со
+временем выветривается, а смысл остается.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/no-dsl/">DSL</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-29T00:00:00+00:00">
+        Mar 29, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/dsl/" rel="tag">dsl</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>У программистов на функциональных языках есть болезнь — выдумывать DSL. Не
+важно, какую задачу они решают, главное — навертеть что-то похожее на язык и
+назвать его DSL. Потом поехать на конференцию и выступить, чтобы адепты
+растаскивали толк по телеграм-каналам.</p>
+
+<p>Почему-то все забывают, что в аббревиатуре DSL буква D означает домен. Язык,
+специфичный для своего домена. Вопрос: есть ли у вас домен, под который вы
+пытаетесь подогнать язык? Как правило, нет.</p>
+
+<p>Главное свойство домена в том, что он ортогонален другим доменам. Рассмотрим три
+вещи: Perl, HTML и SQL. Каждая технология занимает свою нишу. Они не
+пересекаются, а взаимно дополняют друг друга. Поэтому у каждой технологии — свой
+язык.</p>
+
+<p>Другой пример: язык команд Redis, XML/XSLT, язык R. Все три — разные сущности,
+пересечения нет, везде свой язык.</p>
+
+<p>То, что программисты называют DSL — это либо данные, по которым бегает
+фреймворк, либо макросы, чтобы код был короче. Оба подхода хороши до
+определенной черты, пока проблем не станет больше, чем пользы. Но называть их
+DSL — делать себе слишком много чести.</p>
+
+<p>Бывает, макросы становятся такими сложными, что их и вправду можно назвать
+языком. Возможно, в этом случае их проще удалить. В одном из проектов я выкинул
+библиотеку meander и заменил на линейный код. Божечки, как это было хорошо!
+Никакой черной магии, все открыто.</p>
+
+<p>Вот почему слово “DSL” пробуждает во мне плохие эмоции. Вам не нужен
+DSL. Прогуляйтесь до парка, вернитесь и сделайте задачу без DSL.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/bin-dump/">Бинарный дамп</a>
             </h2>
 
@@ -1314,292 +1751,13 @@ conflict, rename 20240315 to 20240317.</p>
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/slack-update/">Дело раскрыто</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/slack/" rel="tag">slack</a>, <a href="/tag/updates/" rel="tag">updates</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>Однажды я писал о том, что <a href="/slack-outdated/">Слак отказался работать</a> с
-интересной формулировкой: устарела операционная система. Я обновил приложение,
-но не помогло. Очевидно, Слак захотел доступ к какой-то функции, которой нет в
-текущей операционке. Я решил, что эта функция нужна маркетингу или “более
-удобным” обновлениям.</p>
-
-<p>Так и вышло!</p>
-
-<p>На ноуте, которым я пользуюсь реже всего, я обновился по самые помидоры, чтобы
-знать, к чему готовиться. Накатил операционку, Слак и прочий хлам. И вот что
-происходит: когда Слак находит обновление, он хочет поставить его автоматом. Но
-не хватает прав, и выскакивает такая модалка:</p>
-
-<p><img src="/assets/static/aws/slack-outdated/1.jpeg" /></p>
-
-<p>Приложи пальчик, а дальше я сама.</p>
-
-<p>Эта модалка действует на всю систему. Она вылазит не в Слаке, а на уровне
-операционки. Если бы пишете код, шарите экран, смотрите ютучик — будте готовы,
-что в любой момент она вылезет и потребует реакции.</p>
-
-<p>На минуточку: она загораживает все! Вот такой прикол. Через час после закрытия
-Слак проделает то же самое, и модалка вылезет опять.</p>
-
-<p>Разумеется, никаких настроек, чтобы это отключить, нет. С трудом нахожу слова в
-адрес людей, кто программировал эту дичь. Взята новая высота — или, скорее,
-пробито дно.</p>
-
-<p>Но есть способ. Помните я писал про <a href="/firewall/">фаервол Lulu</a>? С его помощью я
-отбираю у программ доступ в сеть, в том числе — к обновлениям. Оказалось, нужно
-добавить запрет как на картинке, и готово — доступа к обновлениям нет, модалка
-не появляется.</p>
-
-<p><img src="/assets/static/aws/slack-outdated/2.jpeg" /></p>
-
-<p>Все довольны, все смеются. Но блядским Слаком все равно стараюсь пользоваться
-реже.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/services/">Сервисы</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/services/" rel="tag">services</a>, <a href="/tag/programming/" rel="tag">programming</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Приходилось работать в проекте со множеством сервисов. Решил пожаловаться, какое
-же это неблагодарное дело — выскребать данные по углам, чтобы собрать конфету.</p>
-
-<p>Ощущение, что сервисы делают люди, лишенные эмпатии. Например, есть метод
-<code class="language-plaintext highlighter-rouge">get-by-id</code>, чтобы взять сущность по айдишке. Угадайте, сколько сервисов
-поддерживают <code class="language-plaintext highlighter-rouge">get-by-idS</code> — получить список по айдишкам? В лучшем случае
-половина. У оставшейся половины <code class="language-plaintext highlighter-rouge">get-by-ids</code> возвращает сущности порциями по
-сто. Тебе нужно 250? Пиши обертку с пагинацией, <code class="language-plaintext highlighter-rouge">next-page</code>, <code class="language-plaintext highlighter-rouge">limit/offset</code>, вот
-это все.</p>
-
-<p>Вызывал сервис несколько тысяч раз? Начинаются разборки “кто нас
-дидосит”. Вызывай редко, не больше десяти раз, а еще лучше никогда. И везде
-проблемы с сообщением об ошибке. Передал что-то не то — иди смотри логи.</p>
-
-<p>Я согласен с тем, что логику нужно разносить по сервисам. Но сервисы должны
-использовать общую шину данных: базу, очередь сообщений, файлы в S3 в конце
-концов. Гонять друг другу JSON выглядит хорошо в теории, но на практике — фу.</p>
-
-<p>Условный Постгрес выплюнет миллион записей за доли секунды. Забрать этот же
-миллион из другого сервиса — приключение на неделю. Тут и метрики, лимиты,
-квоты, сетевые спайки, etc… А когда таких запросов несколько, сервис ложится
-спать.</p>
-
-<p>Эти сервисы напоминают современного айтишника: хрупкого, тряпковатого мужчину 25
-лет, который чуть что — выгорает. У которого все токсичны и вообще — отстаньте.</p>
-
-<p>Удивляет, что подобные архитектуры строятся намеренно, и их создателям платят
-большие деньги. При этом опция “легкий доступ к данным” в архитектуру не входит.</p>
-
-<p>А мне разгребать.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/kargo-2/">Карго-культ (2)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/kargo/" rel="tag">kargo</a>, <a href="/tag/cult/" rel="tag">cult</a>, <a href="/tag/monkeys/" rel="tag">monkeys</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В комментариях к <a href="/kargo-1/">прошлой заметке</a> один из читателей заметил, что
-эксперимент с обезьянами — выдумка и никогда не проводился. Похоже, он прав!</p>
-
-<p>Впервые эксперимент упоминется в книге <a href="https://www.amazon.com/dp/0875847161">Competing for the Future</a> by Gary
-Hamel and C. K. Prahalad. Вот дословная цитата:</p>
-
-<blockquote>
-  <p>4 monkeys in a room. In the center of the room is a tall pole with a bunch of
-bananas suspended from the top. One of the four monkeys scampers up the pole and
-grabs the bananas. Just as he does, he is hit with a torrent of cold water from
-an overhead shower. He runs like hell back down the pole without the
-bananas. Eventually, the other three try it with the same outcome. Finally, they
-just sit and don’t even try again. To hell with the damn bananas. But then, they
-remove one of the four monkeys and replace him with a new one. The new monkey
-enters the room, spots the bananas and decides to go for it. Just as he is about
-to scamper up the pole, the other three reach out and drag him back down. After
-a while, he gets the message. There is something wrong, bad or evil that happens
-if you go after those bananas. So, they kept replacing an existing monkey with a
-new one and each time, none of the new monkeys ever made it to the top. They
-each got the same message. Don’t climb that pole. None of them knew exactly why
-they shouldn’t climb the pole, they just knew not to. They all respected the
-well established precedent. EVEN AFTER THE SHOWER WAS REMOVED!</p>
-</blockquote>
-
-<p>Эксперимент зашел публике, и его стали широко использовать. Позже несколько
-людей пытались узнать подробности: кто и когда проводил этот эксперимент. Но
-один из авторов умер, а второй отвечал отписками через секретаря. Самое
-интересное, что удалось из него выжать:</p>
-
-<blockquote>
-  <p>Our apologies, but Professor Hamel does not have the original source
-information at hand in terms of your request.</p>
-</blockquote>
-
-<p>Похоже, эксперимент был выдуман авторами, чтобы придать вес другой
-идее. Возможно, они слышали что-то краем уха от зоологов, а остальное
-додумали. Надо иметь в виду, что книга написана в 1996 году, когда интернет был
-убогим, и проверить информацию было невозможно.</p>
-
-<p>Напоминает историю про 25 кадр, который, в отличие от обезьян, был полностью
-развенчан.</p>
-
-<p>Я получил урок, что все популярные истории нужно проверять. Не так уж и трудно
-было погуглить несколько минут. Александру, который написал об этом, больше
-спасибо.</p>
-
-<p>См. обсуждение на <a href="https://skeptics.stackexchange.com/questions/6828/was-the-experiment-with-five-monkeys-a-ladder-a-banana-and-a-water-spray-condu">Stack Exchange</a>.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/kargo-1/">Карго-культ (1)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/kargo/" rel="tag">kargo</a>, <a href="/tag/cult/" rel="tag">cult</a>, <a href="/tag/monkeys/" rel="tag">monkeys</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Возможно, не все знают, как работает карго-культ у обезьян. А это очень
-интересно.</p>
-
-<p>В вольер с обезьянами вешают приманку: всякие сласти и ништяки. Если к ней
-притронуться, обезьян обливают холодной водой. Из-за своей физиологии им это
-очень неприятно, гораздо неприятней, чем людям.</p>
-
-<p>Обезьяны быстро понимают, что приманку трогать нельзя. Когда в вольер
-подсаживают новую обезьяну, старожилы запрещают ей приближаться к приманке.</p>
-
-<p>Дальше самое интересное: постепенно из вольера убирают обезьян, которых
-обливали. Остаются те, которым только запрещали трогать приманку, но которые не
-знают последствий. И все равно: они рьяно запрещают подходить к приманке
-новичкам.</p>
-
-<p>Мораль — команда не должна быть обезьянами в вольере. Все запреты нужно время от
-времени пересматривать, чтобы не растить карго-культ. Удивляет, как часто я
-слышу объяснение в духе “мы делаем так, потому что мы так делаем”. Пусть не все,
-но некоторое из этого нужно сесть и пересмотреть.</p>
-
-<p>Сказанное не значит, что нужно быть бунтарем и расшатывать основы. Здоровый
-баланс между крайностями — вот что нужно соблюдать.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/google-look/">Лук</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/google/" rel="tag">google</a>, <a href="/tag/interface/" rel="tag">interface</a>, <a href="/tag/io/" rel="tag">io</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><img src="/assets/static/aws/google-look/1.jpeg" /></p>
-
-<p>Что ж, таки подъехал новый лук от Гугла. И не соврали: современный и
-прочувственный, что бы это ни значило.</p>
-
-<p>Главное, теперь мы знаем: форму даже с одним импутом можно растянуть на 80
-процентов площади. Дизайнерам воздушных интерфейсов взять на заметку.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page8" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 9 из 81</span>
+        <span class="page_number ">Страница 9 из 82</span>
         
         <a href="/page10" class="next">&rarr;</a>
         
