@@ -66,6 +66,8 @@ post_date = $(shell date +'%Y-%m-%d')
 
 new_file = _posts/${post_date}-${slug}.md
 
+slug_dir = assets/static/aws/${slug}
+
 new-post:
 	touch ${new_file}
 	echo '---' >> ${new_file}
@@ -76,3 +78,5 @@ new-post:
 	echo '---' >> ${new_file}
 	echo '' >> ${new_file}
 	echo "{% include static.html path=\"${slug}/1.png\" %}" >> ${new_file}
+	mkdir -p ${slug_dir}
+	open ${slug_dir}
