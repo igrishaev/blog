@@ -104,6 +104,315 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/clj-format">Use format rather than str</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-07-02T00:00:00+00:00">
+        Jul 2, 2022
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/strings/" rel="tag">strings</a>, <a href="/tag/format/" rel="tag">format</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>I’d like to share a Clojure trick I’ve been using for years. It’s simple, it makes your code safer; I always highlight it when making reviews. The trick is: don’t use the <code class="language-plaintext highlighter-rouge">str</code> function to concatenate strings. Instead, use <code class="language-plaintext highlighter-rouge">format</code>. A couple of examples:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">username</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"The user `"</span><span class="w"> </span><span class="n">username</span><span class="w"> </span><span class="s">"` has been created."</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; "The user `Ivan` has been created."</span><span class="w">
+
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="w"> </span><span class="mi">5234</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"/files/uploads/"</span><span class="w"> </span><span class="n">user-id</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; "/files/uploads/5234"</span><span class="w">
+</span></code></pre></div></div>
+
+<p><strong>The first point</strong> in favour of this approach is, <code class="language-plaintext highlighter-rouge">str</code> turns nil into an empty string. Thus, when printing the final message, that’s unclear if a variable was an empty string or <code class="language-plaintext highlighter-rouge">nil</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">username</span><span class="w"> </span><span class="n">nil</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"The user `"</span><span class="w"> </span><span class="n">username</span><span class="w"> </span><span class="s">"` has been created."</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; "The user `` has been created."</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The difference between these two is important. Say, an empty string means broken validation; a title of a book, a name of a person must not be blank. But if I got nil, most likey I missed the key in a map because of a namespace:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">user</span><span class="w">
+  </span><span class="p">{</span><span class="no">:acme.user/id</span><span class="w"> </span><span class="mi">5234</span><span class="w">
+   </span><span class="no">:acme.user/name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">username</span><span class="w"> </span><span class="p">(</span><span class="nb">get</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="no">:id</span><span class="p">)]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>or the keyword/string case:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">user</span><span class="w">
+  </span><span class="p">(</span><span class="nf">parse-json</span><span class="w"> </span><span class="s">"user.json"</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; {"id" 5234 "name" "Ivan"}</span><span class="w">
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">username</span><span class="w"> </span><span class="p">(</span><span class="nb">get</span><span class="w"> </span><span class="n">user</span><span class="w"> </span><span class="no">:name</span><span class="p">)]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now compare it to the <code class="language-plaintext highlighter-rouge">format</code> function. The <code class="language-plaintext highlighter-rouge">nil</code> value becomes <code class="language-plaintext highlighter-rouge">"null"</code> when passed to <code class="language-plaintext highlighter-rouge">format</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">username</span><span class="w"> </span><span class="n">nil</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"The user `%s` has been created."</span><span class="w"> </span><span class="n">username</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; "The user `null` has been created."</span><span class="w">
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="w"> </span><span class="n">nil</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"/files/uploads/%s"</span><span class="w"> </span><span class="n">user-id</span><span class="p">))</span><span class="w">
+</span><span class="c1">;; "/files/uploads/null"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If I had my way, I would produce not <code class="language-plaintext highlighter-rouge">"null"</code> but <code class="language-plaintext highlighter-rouge">"nil"</code> string from <code class="language-plaintext highlighter-rouge">nil</code>, but that’s not so important.</p>
+
+<p><strong>The second point</strong> is much more serious. <code class="language-plaintext highlighter-rouge">Nil</code> values are extremely dangerous when building file paths or URLs. Imagine you’re about to delete files of a person who’s terminating their account. Most likely you store files on disk like this:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>files/&lt;user-id&gt;/avatars/...
+files/&lt;user-id&gt;/attachments/...
+files/&lt;user-id&gt;/uploads/...
+</code></pre></div></div>
+
+<p>Then you have a function that accepts the <code class="language-plaintext highlighter-rouge">user-id</code> parameter, then builds the right path and does recursive deletion:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">drop-user-files</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="nb">path</span><span class="w">
+        </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"files/"</span><span class="w"> </span><span class="n">user-id</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">rm-rf-recur</span><span class="w"> </span><span class="nb">path</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If you pass <code class="language-plaintext highlighter-rouge">nil</code> for <code class="language-plaintext highlighter-rouge">user-id</code>, the path will be <code class="language-plaintext highlighter-rouge">"files/"</code>. Running that code will erase all the files of all users which would be a disaster. But if you have used format, the path would have been <code class="language-plaintext highlighter-rouge">"files/null"</code>, which would just have thrown an exception saying there is no such a directory.</p>
+
+<p>One may say: add an assert clause for user-id right before you build a path. Like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">drop-user-files</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">assert</span><span class="w"> </span><span class="n">user-id</span><span class="w"> </span><span class="s">"User-id is empty!"</span><span class="p">)</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; or</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">drop-user-files</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="p">]</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pre</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="p">]}</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In practice, you easily forget doing this and recall when the data is lost. I don’t see any reason for skipping that minor fix — change <code class="language-plaintext highlighter-rouge">str</code> to <code class="language-plaintext highlighter-rouge">format</code> — to reduce chances of a disaster.</p>
+
+<p>The same applies to S3 URLs. Although it’s a web-service, we all treat it as a file system. Composing S3 URLs reminds me of ordinary file paths. Again, if you’re about to drop user’s directory with uploads, be aware of the the same thing: <code class="language-plaintext highlighter-rouge">str</code> + <code class="language-plaintext highlighter-rouge">nil</code> for <code class="language-plaintext highlighter-rouge">user-id</code> produce a broken path:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">drop-s3-user-files</span><span class="w"> </span><span class="p">[</span><span class="n">s3-client</span><span class="w"> </span><span class="n">user-id</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="nb">path</span><span class="w">
+        </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="s">"files/"</span><span class="w"> </span><span class="n">user-id</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">s3.client/delete-files</span><span class="w"> </span><span class="n">s3-client</span><span class="w"> </span><span class="nb">path</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If you pass <code class="language-plaintext highlighter-rouge">nil</code> into a function that recursively drops S3 files, the data is all gone.</p>
+
+<p>Of course, such an issue can be held with special Java classes like <code class="language-plaintext highlighter-rouge">Path</code> or <code class="language-plaintext highlighter-rouge">URI</code>. But in fact, in Clojure we use them quite rarely. Most often we just concatenate plain strings as it’s enough for the task. It’s simpler and takes less code.</p>
+
+<p>I recommend using <code class="language-plaintext highlighter-rouge">str</code> for one purpose only — to coerce a non-string value to a string. For example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="mi">5</span><span class="p">)</span><span class="w"> </span><span class="c1">;; =&gt; "5"</span><span class="w">
+</span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="p">(</span><span class="nf">random-uuid</span><span class="p">))</span><span class="w"> </span><span class="c1">;; =&gt; "154ac...b2642"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Briefly, it’s safe when the <code class="language-plaintext highlighter-rouge">str</code> function accepts strictly one argument. When there are more than one, I feel worried.</p>
+
+<p>I always keep in mind a real story about a guy who owned a small hosting company. He released the <code class="language-plaintext highlighter-rouge">rm -rf $FOO/$BAR</code> command among the whole park. Too sad for him, both of the env vars were unset, nor special bash flags terminating a script were set as well. The command turned into <code class="language-plaintext highlighter-rouge">rm -rf /</code> with known consequences. A couple of missing vars has ruined one’s business. By <code class="language-plaintext highlighter-rouge">str</code>-ing strings, especially when building file paths, you may easily mess up the same way (but I wish you won’t).</p>
+
+<p>Let’s recap:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">str</code> turns <code class="language-plaintext highlighter-rouge">nil</code> into an empty string;</li>
+  <li>by reading such a message, you never know if a value was an empty string or nil;</li>
+  <li>the difference between these two <strong>does</strong> matter;</li>
+  <li>with that behaviour, it’s easy to build a weird file/S3 path and lost the data;</li>
+  <li>instead, <code class="language-plaintext highlighter-rouge">format</code> turns <code class="language-plaintext highlighter-rouge">nil</code> into <code class="language-plaintext highlighter-rouge">"null"</code>. This is much better than emptiness and solves the troubles mentioned above;</li>
+  <li>use <code class="language-plaintext highlighter-rouge">str</code> only to coerce a value to a string.</li>
+</ul>
+
+<p>Safe coding!</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/dobrofile/">Книга на Доброфайле</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-06-23T00:00:00+00:00">
+        Jun 23, 2022
+    </time>
+
+    <a href="/tag/book/" rel="tag">book</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>Сервис <a href="https://gum.co/clojure-in-prod">Gumroad</a>, где продается электронная версия книги, ожидаемо перестал работать с российскими картами (а также остановил выплаты). Поэтому выкладываю книжку на российской площадке “Доброфайл”:</p>
+
+<p><a href="https://dobrofile.ru/?s=c2f86cd04">https://dobrofile.ru/?s=c2f86cd04</a></p>
+
+<p>Все просто: переходите по ссылке, жмете “купить файл”. Никакой авторизации: ввели емейл и оплатили картой. На почту падает ссылка, которая действует 48 часов. Только что купил сам — работает.</p>
+
+<p>Сервис довольно забавный: простой как лопата, весь такой спартанский. После тормозного, обвешанного скриптами Gumroad воспринимается как глоток воздуха. Админка товара открывается секунду — так можно было?</p>
+
+<p>В общем, покупайте книжку на Доброфайле. В ближайшее время обновлю страницу проекта, публикацию на Хабре и другие места.</p>
+
+<p>Напомню, что книжку, как печатную, так и электронную, всегда можно купить напрямую у меня. Напишите в личку, и я скину архив или вышлю почтой России в любую страну.</p>
+
+<p>А еще я почти закончил черновик второй части, но об этом в следующий раз.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/mail-rules/">Правила пользования почтой</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-06-13T00:00:00+00:00">
+        Jun 13, 2022
+    </time>
+
+    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/email/" rel="tag">email</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Начинающие программисты спрашивают, какую технологию учить: Питон, Джаву и прочее. Отвечая на эти вопросы, часто забываешь об электронной почте. Закрываю упущение: учитесь электронной почте! Это не так просто: вокруг почты сложился особый этикет, о котором не расскажут в онлайн-курсах. Вы должны знать его перед тем, как начнете искать работу.</p>
+
+<p>Прежде всего: в деловой переписке почта важнее мессаджеров. Если есть несколько способов связаться с человеком, сначала пишите на почту. В мессаджер можно писать только по взаимному согласию или если нет других контактов.</p>
+
+<p>Раздражает, когда в личку врывается незнакомый человек и вываливает стену текста. Или, наоборот, пишет сто сообщений словосочетаниями. Если у вас долгий разговор, представьтесь в мессаджере и попросите почту, чтобы написать туда развернутый текст.</p>
+
+<p>В отправителе не должно быть ников вроде “nagibator666” или LenuSiK. Плохо, когда имя сгенерировано по шаблону “фамилия.годрождения”, например <code class="language-plaintext highlighter-rouge">semenova.81@mail.ru</code>. В отправителе должны быть имя и фамилия, желательно на том языке, на котором говорит получатель, скажем, Ivan Grishaev. Имя не должно быть двояким: вместо Alex пишите Alexey или Alexander.</p>
+
+<p>Самое важное правило: <strong>при ответе не цитируйте все письмо</strong>. Прямо сейчас, не читая этот текст до конца, откройте почтовый клиент и поставьте нужную настройку. На маке это последний чекбокс на закладке Composing. Называется он странно, но работает как надо: при ответе будет процитирован только выделенный текст, а если не выделено ничего, то ответ будет по умолчанию пустым.</p>
+
+<p><img src="/assets/static/aws/mail/1.png" /></p>
+
+<p>Не помню, как сделать то же самое в Gmail, но там у меня выработалась привычка: после нажатия кнопки Reply я автоматом выполнял Ctrl-A Delete, чтобы стереть все из поля ввода.</p>
+
+<p>Цитирование письма уходит корнями в прошлое. Раньше почтовые сервера не умели строить цепочки писем. Каждое письмо считалось отдельным. Чтобы был ясен контекст, старое письмо добавлялось цитатой к новому. Это в высшей степени избыточно и неэффективно. Позже письма научились сопоставлять по теме и префиксам <code class="language-plaintext highlighter-rouge">Re</code>, что тоже уродливо. И лишь затем придумали машинные заголовки с идентификаторами, где указано, на что отвечает это письмо.</p>
+
+<p>Беду с цитированием знает каждый, кто работал в больших фирмах. В обсуждении по почте борода старых писем растет как снежный ком, и каждый клиент работает с ними по своим правилам: отступами, тильдами или вертикальными чертами. Рано или поздно в тред отвечает красноглазик с консольным клиентом на Perl, где борода цитат выделена какими-нибудь <code class="language-plaintext highlighter-rouge">&gt;&gt;&gt;</code>. В результате все видят пять экранов мусора с текстом недельной давности. Не недо так.</p>
+
+<p><img src="/assets/static/aws/mail/2.png" /></p>
+
+<p>Заполняйте письмо снизу вверх. Как это понимать? Обычно мы указываем получателя, тему, пишем текст и прикладываем файл. Из всех этих полей обязательно только первое — получатель. Как только он заполнен, легко отправить письмо неверным нажатием или комбинацией клавиш. За подобное письмо стыдно, оно вносит непонимание, приходится в спешке отправлять другое. Этого легко избежать методом “снизу вверх”.</p>
+
+<p>Если вы отправляете файл, сначала приложите файл. Затем напишите текст. Введите тему. И только потом — отправителя. С таким подходом невозможно отправить письмо, пока оно не заполнено.</p>
+
+<p>Что делать, если вы забыли приложить файл? Обычно его отправляют вдогонку со словами “забыл файлик, вот он”. Не делайте так, потому что на стороне получателя файл будет оторван от основного письма. Как его потом найти? Письмо с текстом человек найдет по ключевым словам, но как быть с файлом? Правильно сделать так: отправить повторное письмо с файлом и написать, что прошлое письмо без файла ушло по ошибке и его надо удалить. В этом случае все останутся довольны.</p>
+
+<p>Ближайшая аналогия: вы отправили исходный код, и затем пишете: ой, не хватает одного файлика. Положите его в папку <code class="language-plaintext highlighter-rouge">foobar/lulz</code>, и все заработает. Это непрофессионально. Вы либо сдаете работу, либо нет. Письмо без файла, когда он должен там быть — испорченное письмо. Вместо попыток его исправить отправьте новое, на этот раз правильное.</p>
+
+<p><em>Еще о файлах.</em> Если вы отправляете документы для просмотра, используйте PDF. Не ждите, что у собеседника установлен Word, Excel или Powerpoint — эти программы платные и открываются в сто раз медленней, чем PDF. Исключение возможно, когда вы оба работаете в этих программах.</p>
+
+<p>Архивируйте файлы только в случаях, когда важна структура папок. Например, исходный код проекта. Распаковав архив, собеседник получит систему папок, готовую для сборки. Сжимать текстовые документы не нужно — это повышает энтропию и требует кликов. Не жмите изображения и другие бинарные файлы — экономия будет не более пяти процентов.</p>
+
+<p>Если архиватор, то только zip. Своими rar, tar.gz и прочими платформо-зависимыми штучками вы огорчите получателя.</p>
+
+<p>Файлы больше 10 Мб выносите в облачные хранилища. Желательно такие, что отдают файл по прямой ссылке, например S3. Если ссылка ведет на веб-страницу, где нужно доказать, что ты не робот, это грусть и печаль. По той же причине не пользуйтесь хостингом изображений — там показывают рекламу, открывают дичь в новых вкладках, словом, сплошное издевательство.</p>
+
+<p><em>О композиции.</em> Письмо начинается с обращения, затем с новой строки следует текст. Он состоит из предложений, каждое заканчивается точкой или знаками вопроса или восклицания. Три-пять предложений составляют абзац, которые отделяют пустой строкой. Абзацы обязательны, чтобы дать человеку передохнуть. Письмо заканчивается подписью без точки.</p>
+
+<p>Подпись должна быть короткой, в идеале только имя. В крайнем случае — должность и минимальные контакты: телефон и ник в мессаджерах. Писать туда домашний телефон, номер ICQ и прочую дрянь не нужно. В подписи не должно быть логотипов и ссылок.</p>
+
+<p>Если это вручную написанное письмо, а не рекламная рассылка, его тип должен быть plain text (без форматирования). Никаких болдов, италиков и прочих офисных штучек, ведь текст — уже мощный инструмент. Поток сознания нужно разбить на абзацы или пункты, важные вещи прописать отдельно. В крайнем случае поставить восклицательный знак или выделить звездочками.</p>
+
+<p><em>На одно письмо приходится одна мысль.</em> Нет ничего хуже письма, где просят собрать информацию по пяти пунктам. Очевидно, составить ответ на это письмо стоит всего дня, а то и недели. Если вы отправитель, пошлите пять писем, и желательно с паузами. Если вы получатель, ответьте на первый пункт с просьбой написать вам отдельные письма по остальным вопросам. Конечно, не в грубой манере “перепиши, пес”, а с пояснением, что так вам будет легче ответить.</p>
+
+<p>Как видите, правил вышло прилично. Никто не ждет исполнения их всех, но применять их однозначно стоит. Остановитесь на чем-нибудь простом, например не цитировать все письмо в ответе, а затем каждый месяц вводите новую практику. Через несколько лет вы сами будете учить новичков почтовому этикету.</p>
+
+<p>Важно понимать: оформление письма может сказать о вас многое. Изучая языки программирования и технологии, нужно помнить, что в конечном счете все сводится к общению. Чтобы запрограммировать задачу, ее сперва обсуждают и фиксируют результаты, и только потом садятся за код. Письмо — это первый ход при приеме на работу, и пусть он выглядит достойно.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/no-bw-color/">Черно-белый режим</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-06-04T00:00:00+00:00">
+        Jun 4, 2022
+    </time>
+
+    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/monitor/" rel="tag">monitor</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>Иногда встречаю в интернете статьи о том, как уменьшить вред от гаджетов для глаз. Пишут обычные вещи: уменьшить яркость, включить ночной режим (меньше синего и больше желтого) и в том числе — черно-белый режим, когда цвета меняются на градации серого. Типа, меньше нагрузка на сетчатку и все такое.</p>
+
+<p>Опровергаю: включать черно-белый режим не нужно. Несколько лет назад я <a href="/2015/10/24/1/">проводил эксперимент</a> — включил на ноуте и телефоне такой режим. В MacOS это делается галкой в меню Settings / Accessibility / Display / Color Filters, на айфоне — схожим образом.</p>
+
+<p><img src="/assets/static/aws/bw/ui.png" /></p>
+
+<p>Интерфейс выглядел так:</p>
+
+<p><img src="/assets/static/Screen-Shot-2015-10-24-at-12.07.09.png" /></p>
+
+<p>Почему этого делать не нужно? Ответ — при выключенном цвете нагрузка на глаза, как ни странно, больше. Объяснение этому простое: на сетчатке находятся разные рецепторы, в том числе палочки и колбочки. У них разные функции: первые отвечают за свет, вторые за цвет. Это ортогональные вещи: например, кошки отлично видят в темноте, но хуже нас различают цвета.</p>
+
+<p>Убрав цвет, вы по сути выключаете колбочки, а это две трети сетчатки. Теперь палочки отвечают за поиск иконки или строки кода на мониторе. Я работал в таком режиме и быстро заметил: в черно-белом режиме трудно найти нужный элемент, глаза напрягаются. Выходит обратная вещь — вместо помощи только вредишь глазам.</p>
+
+<p>Восприимчивость к цвету крайне важна. У нас, людей, этот навык крайне развит по сравнению с животными. Кто сорвал красный плод, тот выжил, а кому достался зеленый — увы. Мозг получает колоссальную информацию из цвета, и добровольно лишать себя этого по крайней мере странно.</p>
+
+<p>Возвращаясь к первоначальному вопросу — как защитить глаза от гаджетов в вечернее и ночное время? Очень просто — не пользоваться гаджетами. Ночной там режим или нет, желтый фон, пониженное мерцания — все это ерунда. Экран — это тысяча мелких фонариков, которые светят вам в глаза. Регулируйте гаджет как угодно, сути это не меняет: вы смотрите на источник света, пусть и рассеянный. При любых настройках он будет вреден в вечернее время.</p>
+
+<p>Наоборот, книга и вообще бумага не светятся. Она только отражает свет лампы, но это свет другого рода. Будучи отраженным от бумаги, он не вредит вам.</p>
+
+<p>Это не значит, что я не туплю в экран вечером. Увы, порой случается. Однако понимаю грань допустимого и не обманываю себя режимами. Лучший режим гаджета перед сном — ВЫКЛ.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/vertical-mode/">Вертикальный режим</a>
             </h2>
 
@@ -611,240 +920,6 @@ tinkering with Bogus gave me some good material for the book.</p>
 <h3 id="other">Other</h3>
 
 <p>Copyright © 2022 Ivan Grishaev</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/terminated/">Увольнение</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-03-05T00:00:00+00:00">
-        Mar 5, 2022
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/life/" rel="tag">life</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>Прошлый понедельник запомнился слитыми письмами, где фирмы разрывали контракты с российскими удаленьщиками. Вроде того, что <a href="/assets/static/aws/term/google.jpeg">от Гугла по ссылке</a>. Тенденция не обошла меня стороной. Понедельник я провел в смутной тревоге, понимая, что работодатель способен на этот шаг. В пять вечера получил письмо об увольнении.</p>
-
-<p>По этическим причинам не будут постить сюда скрин — по моим меркам слив переписки находится ниже любого дна. Это был такой же абстрактный текст, как и у Гугла. Что-то в духе “мы ценим твою работу, ничего личного, прощай”.</p>
-
-<p>Дело в том, Иван, что как бы мы ни ценили три с половиной года твоей работы, есть некие полиси, которые предписывают порвать наши отношения. Что это за полиси, где их увидеть и прочесть – начальство не уточнило.</p>
-
-<p>Не то чтобы меня расстроила потеря работы — не конец света, найду другую. Но такой стремительный конец отношений заставляет мысленно к нему возвращаться. Еще в пятницу расписываешь коллегам задачи, проводишь созвоны, планов громадье. В понедельник — до свидания.</p>
-
-<p>Казалось бы, кому как не мне, удаленьщику с семилетним стажем, понимать, насколько ты не защищен от подобных ситуаций. В отличие от всяких EULA, договор с заказчиком я читаю по слогам до подписания. Прекрасно знаю, что одним пинком меня могут выставить. Но на созвоне все улыбаются, и это кажется невозможным. Оттого пинок ощущается сильнее.</p>
-
-<p>Удивила скорость всей процедуры. В 17:00 я получаю персональное письмо. Через пятнадцать минут приходит анонс всей команде: Иван больше не с нами, будем скучать. Еще через десять минут отваливается доступ ко всей инфраструктуре. Никаких обсуждений, торгов: все линейно, от тебя ничего не зависит.</p>
-
-<p>Интересно, что адекватная реакция была только у одного человека – украинского коллеги. Он эмоционально ответил в тред с анонсом, что увольнение русских не поможет Украине и ваша гнилая солидарность никому не нужна. Но разве его кто-то слушал? Швейцария знает лучше Украины, как ей помочь.</p>
-
-<p>Начальство взялось отвечать на выпад: теперь мы не можем платить Ивану. Сухо возражу — никаких проблем с оплатой не было. МодульБанк, в котором я счастлив обслуживаться, не под санкциями, свифты доходят. Кроме свифта, в нем работает альтернативная система Visa B2B Connect, доступная и в Швейцарии. На какое-то время я бы согласился получать Пейпал или Transfer Wise. Можно попробовать крипту: биток, USD-токены. Тоже норм, есть знать как обращаться (а я знаю).</p>
-
-<p>Да что там: на худой конец я бы мог формально уволиться и поработать бесплатно, а потом, как все наладится, заключить контракт по новой ставке, чтобы компенсировать потери. За пять минут я назвал пять вариантов, а если подумать, найдутся другие. Но если сказано “не можем” — значит не можем.</p>
-
-<p>Украинский коллега, кстати, тоже попал в поле зрения “помогаторов” Украине. Если мой контракт расторгнут (агрессор), то его — “временно приостановлен” до тех пор, пока “ситуация не придет в норму” (жертва). Временно — это на сколько? Норма — как это понимать?</p>
-
-<p>Не надо быть гением, чтобы понять: “временно” означает “пока ты сам не уволишься”. Будешь заморожен месяц, год, пять. Ты жертва, поэтому увольнять тебя опасно: еще сольешь переписку в Твиттер и подорвешь репутацию фирмы. Поэтому прояви инициативу.</p>
-
-<p>Схожее происходит и в других фирмах: от русских надо избавиться, агрессоры, все дела. Но от украинцев тоже, только слегка по-другому. “Временно отключим” вас, пока ситуация “не придет в норму”.</p>
-
-<p>По идее я должен ругать Путина и его “спецоперацию”. Но дело в том, что уволил меня не Путин — это сделали конкретные люди. Которые, в свою очередь, вешают на меня груз: это не мы, это ваш президент, к нему и обращайтесь. Со мной это не работает. Я потерял работу потому, что менеджеры решили что-то доказать. Не сегодня Путин, так завтра нашелся бы другой предлог.</p>
-
-<p>Наши с фирмой отношения не прошли проверку на прочность. Фирме важнее следовать международной повестке, чем сохранить ведущего разработчика, взятого три с половиной года назад. Хорошо, как считаете нужным.</p>
-
-<p>Не вздумайте меня жалеть: уже подсуетился, собеседуюсь туда-сюда. Назревают два варианта. Пишу не ради нытья, а чтобы сбросить мысли в текст и двигаться дальше.</p>
-
-<p>То, что происходит с нами сегодня, ново и непонятно. Замечаю тенденции, которых раньше не было; жизнь стремительно меняется, и не так уж важно, в какую сторону. Искренне надеюсь, что смогу как-то выразить мысли на эту тему в следующем тексте.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/what-if-i-told-you/">Если бы тебе сказали</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-02-24T00:00:00+00:00">
-        Feb 24, 2022
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>У демагогов популярен дешевый прием — если бы десять лет назад тебе сказали X, ты бы не поверил. Например:</p>
-
-<p>— если бы десять лет назад вам сказали, что Россия нападет на Украину, вы бы не поверили.</p>
-
-<p>— Если бы десять лет назад вам сказали, что мир сойдет с ума из-за ковида, вы бы не поверили.</p>
-
-<p>Этим трюком демагог пытается усилить свою позицию — никто не верил в то, что случилось, но оно случилось. Поэтому в то, что я говорю сейчас, тоже сперва не верят, а потом оно сбудется.</p>
-
-<p>Не дайте вас обмануть. Мир непредсказуем и сложен, и никакой прогноз на десять лет не будет точным. Прогнозы не учитывают открытия, изобретения, психические отклонения политиков и прочие вещи, которые вокруг нас. Прогноз подразумевает, что за десять лет окружение не изменится, и за это время придет в то состояние, что показывает модель. А это неверно, неважно обычный у вас машын-лернинг или дип-машин-лернинг с подкреплением (Греф.jpeg).</p>
-
-<p>Возьмите любое событие и подставьте впереди “если бы десять лет назад”. Результат всегда будет истинным:</p>
-
-<p>— Если бы десять лет назад вам сказали, что биткоин будет стоить пять миллионов, вы бы не поверили.</p>
-
-<p>— Если бы десять лет назад вам сказали, что незаконно построенный павильон на остановке снесут, вы бы не поверили.</p>
-
-<p>— Если назвать человеку дату смерти за десять лет до нее, он бы не поверил.</p>
-
-<p>— За десять лет до Pokemon Go никто бы не поверил, что люди будут ловить виртуальных зверей на улице.</p>
-
-<p>— За десять лет до Чернобыля никто бы не поверил.</p>
-
-<p>— За десять лет до Титаника…</p>
-
-<p>— За десять лет до Чечни…</p>
-
-<p>— За десять лет до Гитлера…</p>
-
-<p>Короче, вы поняли — важные события предсказать невозможно. Отдельным личностям остается спекулировать: если случилось то, значит случится другое. Но это неверно.</p>
-
-<p>Любопытно, что то же самое было и сто, и двести лет назад. Достаточно взять Толстого, Достоевского или хронику. Их персонажи живут в изменчивой среде, никто не знает, что будет через год и каждый движется как может. И это нормально: спокойным может быть только час или день. Будущее всего тревожит — как положительно, так и негативно — своей неизвестностью.</p>
-
-<p>Меньше слушайте тех, кто говорит про прогнозы десятилетней давности.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/opposition/">Мысли об оппозиции</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-02-18T00:00:00+00:00">
-        Feb 18, 2022
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/opposition/" rel="tag">opposition</a>, <a href="/tag/politics/" rel="tag">politics</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Когда кто-то говорит об оппозиции в России, я удивляюсь. На мой взгляд, в России давно нет оппозиции. Есть партии и лица, которые называют себя оппозицией, и есть сочувствующие им СМИ, которые тоже их так называют. На реальность это никак не влияет: с таким же успехом я могу назвать себя хакером, потому что так думают в студии йоги за стеной.</p>
-
-<p>Особую роль в российской оппозиции сыграл Алексей Навальный. При всем сочувствии к нему как к жертве режима, я не считаю его ни политиком, ни оппозиционером. Всегда раздражался, когда читал сочувствующие ему сайты вроде Медузы, например:</p>
-
-<blockquote>
-  <p>Алексей Навальный посетил Ростов. Вместе с волонтерами политик посетил… Оппозиционер высказался на тему … и подчеркнул, что…</p>
-</blockquote>
-
-<p>Ох, нет.</p>
-
-<p>Называть Навальным политиком неправильно потому, что мы обманываем себя: приписываем ложные черты и смешиваем понятия. Политик — и тем более, если он оппозиционер, — это человек, который борется за власть. Его цель в том, чтобы сбросить текущий режим и сесть сверху. Политиками и оппозиционерами были Ленин, Троцкий, Сталин, Зиновьев и прочие люди той эпохи. Нынешние лидеры “оппозиционных” партий в корне отличаются от них.</p>
-
-<p>Проблема современной оппозиции в том, что она не борется за власть. Если точнее, бесконечная борьба становится целью, смыслом ее существования. Наиболее яркие примеры — партии ЛДПР и КПРФ с их бессменными лидерами. Обе они давно превратились в семейный бизнес их основателей. Подобно сетевому маркетингу вроде Amway, от низов к верхам движутся огромные суммы денег. Крохи оседают на промежуточных уровнях, а львиная доля переходит членам семьи.</p>
-
-<p>И ЛДПР, и КПРФ бесконечно лояльны режиму, с которым они якобы борются. Изредка они могут позволить себе демарш вроде голосования против повышения пенсионного возраста. Но представить их голосующими против ввода войск в Украину невозможно. Ясно всем: сладкая жизнь лидеров быстро закончится.</p>
-
-<p>Чем дольше я наблюдал за Навальным, тем более мне очевиден схожий подход. Цель структуры Навального — не бороться за власть, а наращивать аудиторию, с которой собирать пожертвования. Выпустить на них ролик про дачу условного Шойгу, собрать донатов, выпустить ролик про Медведева, собрать еще и так до бесконечности.</p>
-
-<p>Разница в том, что Навальный моложе и потому действует агрессивней. Он умнее и использует современные технологии: Твиттер, Ютуб, Телеграм, мобильное приложение. Сути это не меняет: последние несколько лет Навальный не боролся за власть, а раскручивал медиа-проект имени себя. Это можно назвать журналистикой, блоггингом, но не политикой.</p>
-
-<p>Одно время Навальный увлекся теледебатами. Быстрый их обзор показывает, что его оппонентами никогда не были политики высшего ранга или крупные (читай — окологосударственные) бизнесмены. Что говорит об уровне Навального в иерархии. Оппоненты Навального — Собчак, Лебедев, Гоблин-Пучков и прочие — это представители среднего и малого бизнеса, которые дополнительно ведут медийную активность: пишут в ЖЖ или инстаграм. Отношения к политике у них нет никакого. С какой стати “политику” Навальному выходить с ними в эфир? Представить дебаты Навального с условным Лавровым или Грефом просто невозможно — слишком видна разница в весовой категории.</p>
-
-<p>Сходство медиа-машины Навального с КПРФ и ЛДПР уже в том, что это проекты одного человека. Может кто-нибудь из вас, не прибегая к Гуглу, назвать хотя бы пять сторонников их лидеров? Я помню только коммуниста Грудинина, который по неосторожности выиграл выборы в какой-то области. По неосторожности — потому что все, включая коммунистов, засуетились. По итогам “переговоров” Грудинин, как и положено “оппозиции”, согласился на пересмотр итогов с заведомо известным результатом. Скорее всего, не в ущерб своим материальным интересам.</p>
-
-<p>Когда мы говорим о классических революционерах, они никогда не упоминаются в одиночку. Возьмите школьный учебник за восьмой класс: семнадцатый год, революция. Ленин никогда не упоминается один. Эпоху революции всегда проходят, изучая Троцкого, Сталина и прочих. Да, в конце они замочили друг друга, но это в конце. Действие велось многими людьми и по разным направлениям. Ничего подобно сегодня нет.</p>
-
-<p>Что касается Навального, то из его структуры я назову только Волкова, и то потому, что он запомнился мне лютейшим скандалом. Сравнительно недавно у ФБК увели личные данные пользователей, собранных в рамках “умного” голосования (в кавычках, потому что ничего умного там нет). В принципе, не такая уж и трагедия: Сбер, Тиньков и Билайн сливались не раз, но проехали. Мог бы проехать и ФБК, тем более, что пользователи были к ним лояльны, если бы не дискуссия с Волковым в интернете.</p>
-
-<p>Сначала в ФБК не признавали слива; затем признали, но переложили вину на хостера, почтовую рассылку и бог знает кого еще. Затем пластинка опять сменилась: персональные данные были не такими уж и персональными, поэтому что вы разнылись. Версии менялись каждый час. Волков потерял лицо: айтишников, которые нашли уязвимости в ФБК, назвал агентами Кремля и путиноидами. Все это было ужасно, хотя, повторюсь, изначально аудитория была настроена с пониманием.</p>
-
-<p>На мой взгляд, Навальный никогда не понимал, что нужно людям. Его повестка была настолько инфантильной и детской, что я молча удивлялся. Повысить пенсии, удвоить расходы на образование, сократить военные расходы. Проще написать — я за все хорошее и против всего плохого. Если под этой программой вписать Милонова или Жириновского, не заметишь разницы.</p>
-
-<p>Ни разу (ну или, может, недостаточно громко) Навальный не озвучил то, что действительно нужно сделать в России прямо сейчас.</p>
-
-<ul>
-  <li>
-    <p>Немедленно выйти из всех войн. На Украине и Сирии, неважно на каких условиях. Не через год, а завтра. То же самое с частными наемниками в Ливии и других странах Африки. За все эти упражнения платит честный гражданин.</p>
-  </li>
-  <li>
-    <p>Прекратить ковидно-вакцинный террор населения. Отменить глобальные ограничения и масочный режим — все равно их никто не соблюдает. Вакцинировать только тех, кто в этом нуждается. Восстановить убитую массовую медицинскую помощь.</p>
-  </li>
-  <li>
-    <p>Разогнать Росгвардию, суть которой сводится к избиению людей на митингах. Сократить прочих силовиков, полчища которых сосут бюджет почем зря. Массово сменить судей, ментов, чиновников.</p>
-  </li>
-  <li>
-    <p>Самое главное — разработать проект будущего России на ближайшие 30-50 лет. Предложить новую идеологию, ценности. Зачем мы живем в России, к чему стремится, что строим?</p>
-  </li>
-</ul>
-
-<p>Вот что я бы хотел услышать от Навального и его людей. А не про дачу Медведева, дворец Путина или чью-то виллу в Греции. Навальный так и не понял запросов взрослых людей. Он ориентировался на молодежь, живущую в интернете. А молодежь несамостоятельна — им помогают родители, они не платят коммуналку, не замечают ухудшения продуктов после “нашего Крыма”. Все это проходит мимо них. Молодежь хочет нового ролика про вора-чиновника, чтобы сделать репост и обсудить в курилке.</p>
-
-<p>При этом я не умаляю несправедливости, выпавшей на долю Алексея. То, что произошло с ним — полный беспредел. Суд и следствие по его процессу можно назвать только фарсом, а людей, которые принимали в этом участе — преступниками.</p>
-
-<p>С другой стороны, непонятно, зачем вообще власти травили Навального. Он занял идеальную нишу в своей медиа-среде. Навальный прошел зенит после ролика про дворец, и очевидно, за ним бы последовал спад. После сюжета с Путиным другой чиновник с виллой на Канарах стал бы шагом назад — кому он теперь интересен? Власть оказала Навальному услугу: сюжет с отравлением оказался покруче сериалов. Не будь его, Навальному пришлось бы искать новый формат, потому что после путинского дворца продолжать тему было уже невозможно.</p>
-
-<p>Как бы то ни было, желаю Алексею сохранить здоровье в тюрьме и поскорее выйти оттуда. Таковы мои мысли о русской оппозиции. Не берите близко к сердцу, если не совпадают с вашими.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/pact/">Единомышленники (+18)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-02-16T00:00:00+00:00">
-        Feb 16, 2022
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/burnout/" rel="tag">burnout</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Давно не читал Торшину и вдруг. Скриню для истории, на Фейсбук полагаться
-нельзя.</p>
-
-<p><img src="/assets/static/aws/burnout/torshina.png" /></p>
-
 
                 
             </div>
