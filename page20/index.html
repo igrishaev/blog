@@ -104,6 +104,319 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/pg-docs/02/">PG docs, part 2</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-08-31T00:00:00+00:00">
+        Aug 31, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+  <li><a href="/en/pg-docs/04/">Arrays</a></li>
+  <li><a href="/en/pg-docs/05/">Notifications</a></li>
+  <li><a href="/en/pg-docs/06/">SSL</a></li>
+  <li><a href="/en/pg-docs/07/">COPY</a></li>
+  <li><a href="/en/pg-docs/08/">HoneySQL</a></li>
+</ul>
+
+<p>In this chapter, we’ll discuss how to reach Postgres using the <a href="https://github.com/igrishaev/pg">Client library</a>.</p>
+
+<ul>
+  <li><a href="#basic-usage">Basic usage</a></li>
+  <li><a href="#queries">Queries</a></li>
+  <li><a href="#execute">Execute</a></li>
+  <li><a href="#prepared-statements">Prepared Statements</a></li>
+  <li><a href="#processing-result-with-fn-result">Processing result with :fn-result</a></li>
+  <li><a href="#column-names">Column names</a></li>
+  <li><a href="#column-duplicates">Column duplicates</a></li>
+  <li><a href="#reducers-and-bundles">Reducers and bundles</a>
+    <ul>
+      <li><a href="#java">Java</a></li>
+      <li><a href="#kebab-keys">Kebab-keys</a></li>
+      <li><a href="#matrix">Matrix</a></li>
+      <li><a href="#index-by">Index by</a></li>
+      <li><a href="#group-by">Group by</a></li>
+      <li><a href="#key-value">Key-value</a></li>
+      <li><a href="#custom-reducers">Custom reducers</a></li>
+    </ul>
+  </li>
+  <li><a href="#transactions">Transactions</a>
+    <ul>
+      <li><a href="#always-rollback">Always Rollback</a></li>
+      <li><a href="#read-only">Read-only</a></li>
+      <li><a href="#isolation-level">Isolation level</a></li>
+      <li><a href="#manual-transactions-and-status-check">Manual transactions and status check</a></li>
+    </ul>
+  </li>
+  <li><a href="#configuration">Configuration</a></li>
+  <li><a href="#authorization">Authorization</a></li>
+  <li><a href="#cloning-a-connection">Cloning a connection</a></li>
+  <li><a href="#cancelling-a-query">Cancelling a query</a></li>
+  <li><a href="#notices">Notices</a></li>
+  <li><a href="#thread-safety">Thread safety</a></li>
+  <li><a href="#debugging">Debugging</a></li>
+</ul>
+
+<!-- tocstop -->
+
+<h2 id="basic-usage">Basic usage</h2>
+
+<p>Here is a brief example of using the client library:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">scratch</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg.client</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pg</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:database</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select 1 as one"</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; [{:one 1}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>First, you import the <code class="language-plaintext highlighter-rouge">pg.client</code> namespace which brings the top-level API functions to interact with Postgres. The <code class="language-plaintext highlighter-rouge">config</code> map above specifies the minimal configuration;
+it might have more fields which we will explore in a separate section.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">with-connection</code> macro establishes a new connection, binds it to the <code class="language-plaintext highlighter-rouge">conn</code>
+symbol, and executes the body. The connection is closed afterward, even if an
+exception pops up.</p>
+
+<p>Technically you can open and terminate a connection manually like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/connect</span><span class="w"> </span><span class="n">config</span><span class="p">)</span><span class="w">
+      </span><span class="n">data</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select 1 as one"</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/terminate</span><span class="w"> </span><span class="n">conn</span><span class="p">)</span><span class="w">
+  </span><span class="n">data</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; [{:one 1}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>but it’s not recommended. Also, since the <code class="language-plaintext highlighter-rouge">Connection</code> object implements
+<code class="language-plaintext highlighter-rouge">java.io.Closeable</code>, it’s possible to use it in <code class="language-plaintext highlighter-rouge">with-open</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/connect</span><span class="w"> </span><span class="n">config</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select 1 as one"</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; [{:one 1}]</span><span class="w">
+</span></code></pre></div></div>
+
+
+                    <p><a href="/en/pg-docs/02/">Read more &rarr;</a></p>
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/pg-docs/01/">PG docs, part 1</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-08-28T00:00:00+00:00">
+        Aug 28, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><em>TL;DR: I’m writing a Postgres driver in pure Clojure. In general, works! Now I
+proceed with the most miserable part of the project: writing documentation. I
+decided to do it step by step and share it on my blog.</em></p>
+
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+  <li><a href="/en/pg-docs/04/">Arrays</a></li>
+  <li><a href="/en/pg-docs/05/">Notifications</a></li>
+  <li><a href="/en/pg-docs/06/">SSL</a></li>
+  <li><a href="/en/pg-docs/07/">COPY</a></li>
+  <li><a href="/en/pg-docs/08/">HoneySQL</a></li>
+</ul>
+
+<h2 id="about">About</h2>
+
+<p><a href="https://github.com/igrishaev/pg">This project</a> is a set of libraries related to the <a href="https://www.postgresql.org/">PostgreSQL</a>
+database. The primary library called <code class="language-plaintext highlighter-rouge">pg-client</code> is a driver for Postgres
+written in pure Clojure. By purity I mean, neither JDBC nor any other
+third-party Java libraries are involved. Everything is driven by a TCP socket
+and implementation of the Posrgres Wire protocol. Fun!</p>
+
+<p>Besides the client, the project provides such various additions as a connection
+pool (see <code class="language-plaintext highlighter-rouge">pg-pool</code>). The <code class="language-plaintext highlighter-rouge">pg-types</code> library holds the encoding and decoding
+logic which determines how to write and read Clojure data from and into the
+database. You can use this library separately in pair with JDBC.next and <code class="language-plaintext highlighter-rouge">COPY</code>
+for efficient data transcoding in binary format.</p>
+
+<p>The question you would probably ask is, why would create a Postgres client from
+scratch? JDBC has been around for decades, and there are also good
+<code class="language-plaintext highlighter-rouge">clojure.java.jdbc</code> and <code class="language-plaintext highlighter-rouge">jdbc.next</code> wrappers on top of it?</p>
+
+<p>The answer is: that although these two libraries are amazing, they don’t
+disclose all Postgres features. JDBC is an abstraction whose main goal is to
+satisfy all the DB engines. A general library that works with MS SQL, MySQL, and
+Postgres at the same time would reduce the variety of features each backend is
+capable of.</p>
+
+
+                    <p><a href="/en/pg-docs/01/">Read more &rarr;</a></p>
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/book2-anounce/">Анонс второй книги</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-08-01T00:00:00+00:00">
+        Aug 1, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/book/" rel="tag">book</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><img src="/assets/static/aws/clj-book2/IMG_2527.jpeg" /></p>
+
+<p>Вышел второй том “Сlojure на производстве” — продолжение первой книги. Без той
+помпы, что в прошлый раз, когда я каждую неделю выкладывал апдейты, фото
+черновиков и прочее. На всё это не хватает времени, плюс хочется меньше пафоса.</p>
+
+<p>В книге три главы, черновые версии которых я выкладывал в блоге. Это
+<a href="/clj-zippers-1/">зипперы</a>, <a href="/clj-jdbc-1/">базы данных</a> и
+<a href="/clj-repl-part-1/">REPL</a>. Всё это можно прочесть здесь на сайте, но каждую
+главу я многократно улучшил. Кроме банальных опечаток, изменилась структура, а
+примеры стали убедительней.</p>
+
+<p>Книжка выполнена в том же стиле и манере повествования. Текст чередуется с
+кодом, каждый тезис подтверждается примером. Длинный код разбит на части с
+пояснением, что происходит. Код “подсвечен” с помощью градаций серого и
+начертания. Ссылки, коих много по тексту, вынесены в QR-коды на поля.</p>
+
+<p>Твёрдая обложка, B5, 364 страницы. Форматы для мобильных устройств появятся
+позже. Издано в ДМК-Пресс тиражом в 100 экземпляров. Двадцать из них — мои,
+полученные в качестве гонорара, и я готов разослать их читателям.</p>
+
+<p>Все подробности – где купить, открывок, галерея – указаны <a href="/clojure-in-prod-2/">на странице
+книги</a>.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/node-js/">Node.js</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-07-28T00:00:00+00:00">
+        Jul 28, 2023
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/javascript/" rel="tag">javascript</a>, <a href="/tag/vue/" rel="tag">vue</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Удивляюсь, до чего же хрупок этот Node.js. Месяц назад я делал фронт на Vue, и
+настало время кое-что поправить. Обновляю пакеты, запускаю билд — сотня
+ошибок. Мудрил так и сяк, пока коллега не сказал — удали node_modules и все
+заработает.</p>
+
+<p>Вот это “удали” меня поражает. Вместо того, чтобы решить корень проблемы, решают
+симптомы. Подумаешь не работает! Просто начни с чистого листа. Ситуация КРИЧИТ о
+системной проблеме, но никому нет дела. В платформу вливают огромные деньги, ей
+пользуются миллионы, и никто не может это починить.</p>
+
+<p>Была б моя воля, я бы посадил разработчиков Node.js за компы и сказал: чини, но
+без удаления файлов. Найди источник проблемы и реши его. За удаление — пытка
+током на месте. И тогда бы все починили.</p>
+
+<p>Помню, была та же беда в проекте с React Native, только хуже. Проект перестал
+собираться, и я по привычке удалил node_modules. Оказалось, в его недрах лежат
+бинарники для устройства, которые генерируется на старте. При повторной
+установке этот шаг пропускается, и где взять эти бинарники — неизвестно. На
+StackOverflow так и пишут — перед удалением скопируй такие-то файлы в папочку,
+иначе будешь плакать. Плакал я, конечно, уже после того, как это прочел.</p>
+
+<p>Вы, наверное, подумали, что после удаления node_modules все заработало? Это было
+бы слишком просто. Я получил другие непонятные ошибки, и коллега предположил,
+что моя версия Node.js слишком высока. Проверили — да, у него 16, у меня 20. Но
+ведь месяц назад все работало на версии 20! Мало того, что за месяц случились
+такие изменения, так эти клоуны не оставили обратную совместимость! Не иначе как
+цирком с клоунами эту ситуацию назвать нельзя.</p>
+
+<p>В целом Node.js вызывает ощущение, что убираешь какашки за годовалым
+ребенком. Те, у кого есть дети, знают, о чем я говорю. Когда делаешь это
+постоянно, ощущения притупляются, и можно спокойно чистить говно, жуя
+бутерброд. Разница в том, что к двум годам проблема с туалетом уходит, а с семи
+лет ребенок уже поддерживает чистоту сам.</p>
+
+<p>Node.js, напротив, обречен срать под себя как инвалид. Если через восемь лет за
+ним нужно чистить какие-то папки, то, похоже, проблема не уйдет никогда. Бог с
+ним, пусть живет как хочет. Но непонятно, зачем с этим работать, и что в голове
+у людей, которые добровольно идут в разработку на Node.js.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/paysys/">Платежные системы</a>
             </h2>
 
@@ -714,285 +1027,6 @@ Jinja2. Получается набор статичных страниц, но 
 <p>Проблема “умных” вещей в том, что они пытаются быть умнее, чем есть на самом
 деле. Нет-нет и вылезет какая-то тупизна, от которой нет слов. Только вздохнёшь
 и идёшь дальше.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/neuro-daub/">Нейромазня</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-07-01T00:00:00+00:00">
-        Jul 1, 2023
-    </time>
-
-    <a href="/tag/ai/" rel="tag">ai</a>, <a href="/tag/daub/" rel="tag">daub</a>, <a href="/tag/pictures/" rel="tag">pictures</a>, <a href="/tag/cat/" rel="tag">cat</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Что ж, мы дожили до момента, когда нейросеть по запросу рисует кота-хакера за
-компьютером. Потрачены усилия, сделан прорыв, взяты рубежи.</p>
-
-<p><img src="/assets/static/aws/daub/1.jpg" /></p>
-
-<p>Верю, что доживу до момента, когда нейросеть объяснит, зачем мне этот кот. В какой текст его вставить, к чему подавать и что им объяснить.</p>
-
-<p>Потому что сейчас не понятно: на что этот кот? Зачем? Какую мысль он несет? Ладно кот, но все эти картинки туда же: ни малейшей идеи, чем они могут быть полезны.</p>
-
-<p>Чувак пишет статью о четвертом измерении и ставит такое:</p>
-
-<p><img src="/assets/static/aws/daub/2.jpg" /></p>
-
-<p>Какой-то алмаз, в нем пузыри, блики, крошки, капли смолы, планеты.</p>
-
-<p>Другая картинка: вензеля, стекла, то ли башня, то ли корабль. Что это вообще?</p>
-
-<p><img src="/assets/static/aws/daub/3.jpg" /></p>
-
-<p>Конечно, у женщин осиная талия и шестой размер груди. И нет трусов. По улице
-только такие и ходят.</p>
-
-<p><img src="/assets/static/aws/daub/4.jpg" /></p>
-
-<p>Никто не может сказать, какой смысл несут эти картинки? Что они добавляют в текст? Что потеряет текст, если их убрать? Хорошая иллюстрация несет смысловую нагрузку, помогает понять то, что трудно описать словами. Делает акцент на особых случаях, когда что-то отличается от повседневного.</p>
-
-<p>Как вы уже поняли, ничего полезного в нейромазне нет. Это мусор, который заполняет интернет, и нет от него спасения.</p>
-
-<p>Пара ссылок про иллюстрации:</p>
-
-<ul>
-  <li><a href="https://maximilyahov.ru/blog/all/image-shit/">Почему ваша картинка к статье — говно (грубая версия)</a></li>
-  <li><a href="https://maximilyahov.ru/blog/all/illustrated-decorated/">Иллюстрация или декорация</a></li>
-</ul>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/indesign-list/">Списки в In Design</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-07-01T00:00:00+00:00">
-        Jul 1, 2023
-    </time>
-
-    <a href="/tag/indesign/" rel="tag">indesign</a>, <a href="/tag/ui/" rel="tag">ui</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><img src="/assets/static/aws/indesign-list/1.jpeg" /></p>
-
-<p>Опять Индизайн. Уж наверное, если сделали длинный список, нужно упорядочить его
-по алфавиту, нет? Секунд двадцать искал пункт Units в подвале, а он еще до
-середины находится. Интересно, что глаз скользит по списку, замечает Units, и
-тут же теряет, потому что мозг ожидает его не там. Сущее издевательство.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/remote-nuance/">Удаленка, но есть нюанс</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-06-25T00:00:00+00:00">
-        Jun 25, 2023
-    </time>
-
-    <a href="/tag/remote/" rel="tag">remote</a>, <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/nuance/" rel="tag">nuance</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Удаленная работа за рубежом имеет несколько преимуществ перед обычной
-офисной. Кроме очевидных, связанных оплатой — в валюте и выше рынка — я бы
-отметил автономность и самостоятельность. Ты как будто мини-фирма: сам себя
-продаешь, оформляешь, ведешь расчеты, платишь налоги. Претендуя на удалённую
-вакансию, конкурируешь не с тремя разработчиками из твоего города, а со всеми
-разработчиками смежных часовых поясов. Победа в такой борьбе значит больше.</p>
-
-<p>Есть, однако, и недостаток удаленной работы, о котором не пишут. Будучи
-удаленщиком, ты не будешь принимать решений. Вам просто не дадут полномочий. Вы
-будете делать только то, что скажет начальство и тимлид. Чтобы что-то внедрить
-или переделать, понадобится много сил — гораздо больше, чем у того, кто сидит в
-офисе и регулярно видится с начальством.</p>
-
-<p>Не нужно подробно описывать, почему так происходит. В любой группе людей
-коммуникация первична. Какие бы средства связи нас ни окружали — телефоны, Zoom,
-очки реальности, — общаться лицом к лицу проще. Поэтому сотрудник, который пьет
-кофе с боссом и ходит с ним в курилку, получит его расположение. Даже если
-офисный сотрудник что-то делает не так, его проще похлопать по плечу и наставить
-на путь истинный — в отличие от удаленщика, который появляется на экране раз в
-сутки.</p>
-
-<p>Будет неверно говорить о всех разработчиках, но мой опыт подтверждает сказанное
-выше. Где бы я ни работал, повторяется одно и то же. Если на горизонте
-появляется интересная задача, ее проработка достается тому, кто в тесном
-контакте с руководством. Это, кстати, не гарантирует навыков в разработке;
-гораздо чаще я вижу что-то вроде обратной зависимости.</p>
-
-<p>Может быть, вы пошли на обед, обдумывая новый сервис. В это время тимлид и
-коллега из офиса тоже пошли в “Жареный жир” и славно поболтали. К возвращению в
-офис уже все решено, формальности обговорены. На следующий день на созвоне вы
-излагаете свое видение сервиса, не зная, что в этом нет смысла. Вас вежливо
-выслушают и скажут, что решение отличное и его приберегут для будующих
-проектов. А пока что Джон уже приступил к разработке, и мы с нетерпением ждем.</p>
-
-<p>Сделав черновик, Джон с пафосом презентует его фирме, после чего его роль
-выполнена. Он уходит в другую команду или приступает к проработке нового
-проекта. Дальше наступает рутина удаленщика — поддержка этого чуда. Ваш выход!
-Моментально находятся краевые случаи, которые Джон не предусмотрел, недостаток
-тестов, банальные баги. Ты их чинишь. Дни становятся неделями, месяцами,
-годами. Когда проект заработает стабильно, вас перебросят на поддержку новой
-сырой поделки.</p>
-
-<p>Бывают, конечно, и маленькие победы: путем рефакторинга удается заменить
-самописный треш на библиотеку или, наоборот, отказаться от жирной библиотеки в
-пользу десятка строк. Если в фирме совсем все плохо, правильные решения говорят
-лучше тысячи слов. К примеру, нормальное тестирование, которое можно развернуть
-локально, не прибегая к удаленным машинам; линтинг, внутренний гайд разработки и
-прочее.</p>
-
-<p>Кто-то подумает, что пост носит жалобный характер, но это не так. Со временем я
-понял, что, во-первых, навозну кучу разгребая, что-то да найдешь. Совершенно
-точно поймешь, как не надо делать. Роль поддержки освобождает от тесного общения
-с начальством — а это много митингов и поездок в офис. Свободное время можно
-потратить на блог, книгу, опен-сорс, семью.</p>
-
-<p>Все мои годы удаленки — это поддержка чужих решений. Да, что-то делал и внедрял,
-но в гораздо меньших пропорциях. В одной фирме я пробыл 3.5 года, и это был
-самый длинный период работы на одном месте. При этом только на четвертый год мне
-доверили делать важную функциональность почти самостоятельно. Почти — потому что
-и в этом случае были жесткие рамки в плане технологий и фреймворка, местами
-неудачные.</p>
-
-<p>Вот, пожалуй, что нужно держать в уме, собираясь на удаленку. Да, она сделает
-вас самостоятельным и пробивным, да, вы будете получать больше коллег из
-яндексов и сберов. Но чтобы обсуждать ключевые вопросы, чтобы принимать решения,
-нанимать, руководить — будьте добры в офис.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/indesign-startup/">Запуск InDesign</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-06-19T00:00:00+00:00">
-        Jun 19, 2023
-    </time>
-
-    <a href="/tag/video/" rel="tag">video</a>, <a href="/tag/adobe/" rel="tag">adobe</a>, <a href="/tag/indesign/" rel="tag">indesign</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Готовлю книжку к печати и поэтому вынужден иметь дело с Адобом. Избежать этого
-шага невозможно — некоторые программы заменить нечем. Несмотря на то, что в
-адобовских программах я работаю буквально 20 лет, поминутно матерюсь из-за их
-косяков. Покажу серьезный прокол, который заслуживает отдельного поста.</p>
-
-<p>Перед вами видео, где я запускаю Индизайн. Обратите внимание, что приложение
-стартует быстро: буквально пару секунд занимает сплеш-скрин, а дальше
-распахивается окно. Это, кстати, не заслуга Адоба: просто в процессе записи я
-несколько раз открывал и закрывал его, и поэтому оно прогрето. Холодный запуск
-будет медленней.</p>
-
-<video controls="">
-  <source src="/assets/static/aws/indesign/1.mp4" type="video/mp4" />
-</video>
-
-<p>Но дело не в этом. После того, как окно распахнется на весь экран, программа
-вступает во вторую фазу: загружает внутренний экран с последними файлами и
-рекламой новых фич. Эта загрузка длится десять
-секунд. <strong>Целых. Десять. Секунд.</strong> Пока он не просрется, не видно последних
-файлов и кнопок создания нового документа.</p>
-
-<p>В итоге сидишь и тупишь в пустоту, пока что-то там не загрузится. Однако если
-нажать Ctrl+O, откроется диалог выбора файла. Выходит, программа прекрасно
-работает, даже если главный экран не загрузился! Если выбрать в диалоге файл с
-проектом, он откроется мгновенно. Можно не ждать эти 10 секунд, а открыть файл
-ручками и работать. Это подтверждает второе видео:</p>
-
-<video width="1280" height="720" controls="">
-  <source src="/assets/static/aws/indesign/2.mp4" type="video/mp4" />
-</video>
-
-<p>Такие вот интересные программы Адоба.</p>
-
-<p>Чем-то это напоминает современные веб-приложения: программа загрузилась, но это
-присказка, не сказка. Мы только загрузили скрипты, далее они выгребут свое
-дерьмо с серверов и только затем покажут приложение. На телевизорах такое
-постоянно: первый прогрес-бар показывает загрузку приложения на уровне ОС, а
-приложение запускает второй прогресс-бар для загрузки своего барахла.</p>
-
-<p>Печально, что эту ерунду нельзя объединить в один шаг, потому что как
-пользователю мне эти фазы до одного места: один хрен программа не
-работает. Вдвойне печальней, что это зараза переходит на десктоп.</p>
-
-<p>Подозреваю, что упомянутый главный экран — ничто иное, как Хром + Node.js +
-React. Это видно по косвенным признакам: он похож на Слак и прочие поделки,
-которые не могут быть отрисованы частично, а только целиком. Возможно, скрипты
-ломятся в сеть, но блокируются из-за санкций или бог знает чего. Ожидание в 10
-секунд похоже на таймаут, заданный при отправке HTTP-запроса. Спасибо, что хотя
-бы выставили его: по умолчанию он равен 30 секунд.</p>
-
-<p>Странно, что последние файлы отображаются внутри браузера, хотя никак не связаны
-с ним. Это банальная глупость, деградация разработки. Надо сказать, я не
-удивлен. В Адобе много что делают на Node.js, например дашборд, из которого
-ставятся приложения. Я как-то шарился по папкам и нашел ворох скриптов. Плюс
-часто выскакивает диалог с текстом “приложение node хочет доступ к такому-то
-сертификату.”</p>
-
-<p>В сотый раз повторю тезис: сапожник без сапог. Фирма, которая тридцать лет пишет
-настольные программы под Винду и Мак, не может нормально показать последние
-файлы. Для загрузки приложений делается поделка па Хроме и Js, глючная и
-тормозная. Деградация софта в угоду менеджменту: сделать тяп-ляп, но зато быстро
-и получить повышение.</p>
-
-<p>Хочется верить, что индустрия печати пересядет с иглы Адоба на что-то другое, но
-пока что просвета не видно.</p>
 
                 
             </div>
