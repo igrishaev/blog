@@ -104,6 +104,279 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/lein/">Don't use Leiningen to run shell-scripts</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2018-01-09T00:00:00+00:00">
+        Jan 9, 2018
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/lein/" rel="tag">lein</a>, <a href="/tag/make/" rel="tag">make</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Working with various Clojure projects, I noticed one thing that really worries
+me. I’m talking about developers who add more and more entries into
+<code class="language-plaintext highlighter-rouge">:prep-tasks</code> vector in <code class="language-plaintext highlighter-rouge">project.clj</code> file. Please stop it. Every time you want
+to put there a new task to compile CSS or build a Docker image, take a minute or
+two to think on that. Let’s discuss the problem.</p>
+
+<p><a href="https://leiningen.org/">Lein</a> is a great tool of course, really a piece of art. But its abilities
+are not unlimited. Remember, its main purpose is to manage a Clojure-driven
+project. I think, everybody agree with that statement.</p>
+
+<p>The Clojure project you are working on is only a part of a top-level project in
+business terms. Besides both server and UI sides, your application probably
+sends emails, pushes notifications, interacts with Blockchain network and does
+further more things.</p>
+
+<p>According to GitHub statistics, you may have even 99% percent of code written
+with Clojure. But still, there is definitely something that is beyond it. Thus,
+please do not use Lein for those tasks that do no have any relation to Clojure
+code.</p>
+
+<p>Recently, I faced a situation when running REPL caused building Ethereum smart
+contracts first. That step assumes you have installed software of proper
+versions and configured paths, text configs, etc. Compiling them was a really
+resource- and time-consuming duty.</p>
+
+<p>The next step was to compile CSS sources. Again, it required installing Ruby,
+less and wait for some time.</p>
+
+<p>Remember, I did’n want all of this to happen. All I wanted to do is to connect
+to REPL from Emacs and debug one tiny function. Needless to say, I just
+commented those tasks in project file.</p>
+
+<p>Again: your Clojure project should know nothing about compiling CSS, building
+email templates, fetching anything from the network, querying Ethereum, building
+Docker image or whatever else. Especially when we talking about running REPL. It
+should run without any troubles at any time.</p>
+
+<p>That’s why I’m strictly against using <code class="language-plaintext highlighter-rouge">lein-shell</code> plugin or something similar
+that lets you run shell commands from Lein.</p>
+
+<p>Of course, building a project requires passing through a list of particular
+steps that were partially mentioned above. What should we use for that?
+Shell-scripts? Any modern Javascript task runner? No, just <a href="https://www.gnu.org/software/make/">Make utility</a>
+that has been here for ages.</p>
+
+<p>“Put that gun down and let me explain.” (c)</p>
+
+<p>I know Make is an ancient tool that came from rough C/C++ times. Those days,
+developers knew quite few about a pipeline, CI or methodologies in
+general. Almost every single programming language nowadays offers a task runner
+that takes modern requirements into account. But still, for a set of tasks that
+might be run upon your project, there is nothing better then a Makefile at the
+top of file structure. And here is why.</p>
+
+<p>Make utility is a binary tool that does not force you to install a new version
+of Node.js, Python or Ruby. Probably, it’s already installed on your computer
+since most of Linux distributions have it out from the box. It works perfectly
+of various systems. I have never faced any troubles with it switching between
+Linux and Mac.</p>
+
+<p>Such modern shells as <a href="https://en.wikipedia.org/wiki/Z_shell">zsh</a> support auto-completing make targets when
+pressing <code class="language-plaintext highlighter-rouge">&lt;TAB&gt;</code> character after “make”. That really saves time especially when
+you use prefixes. Say, in my pet project, besides Clojure-related targets, I’ve
+got a bunch of commands to operate on Docker images. These are <code class="language-plaintext highlighter-rouge">docker-run</code>,
+<code class="language-plaintext highlighter-rouge">docker-build</code>, <code class="language-plaintext highlighter-rouge">docker-compose-up/down</code> and more. Each of them takes 60 to 100
+characters so it’s impossible to remember them. So in terminal, I type <code class="language-plaintext highlighter-rouge">make
+doc&lt;TAB&gt;</code> and see a short subset of Docker-related stuff.</p>
+
+<p>I consider any Makefile as not just a list of commands but rather a knowledge
+base of your project. The more the project develops, the more operations you
+need to perform over it. Where to store all the those commands? <strong>In your wiki?
+Nobody reads it.</strong> A better solution would be to keep them as close to the code
+as it possible.</p>
+
+<p>Make utility runs extremely fast whereas lein needs about five seconds to boot
+up. That’s pretty long time, really. Imagine each command line tool hangs for a
+couple of seconds before it runs. That would be a hell on your computer. A
+situation that makes me angry is when I mistype in a long lein command like
+<code class="language-plaintext highlighter-rouge">lein migratus craete user-updated</code>, wait for five seconds and see an error
+message saying there is no <code class="language-plaintext highlighter-rouge">craete</code> subcommand in migratus. With make utility,
+there is no an option for such things.</p>
+
+<p>One of my favorite features is to ask a user for prompt when typing names,
+passwords or any other sensitive data. Here is an example of how usually I
+create a new SQL migration:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>create-migration:
+    @read <span class="nt">-p</span> <span class="s2">"Enter migration name: "</span> migration <span class="se">\</span>
+    <span class="o">&amp;&amp;</span> lein migratus create <span class="nv">$$</span>migration
+</code></pre></div></div>
+
+<p>When I type <code class="language-plaintext highlighter-rouge">make crea&lt;TAB&gt;&lt;RET&gt;</code> (remember, auto-complete magic works here),
+the system asks for a new migration name. I enter a string that I need and a new
+migration named properly appears.</p>
+
+<p>Makefiles may include other ones so probably you can maintain separate files for
+both production/developer modes or for developers/ops teams. Since those files
+support comments, you are welcome to put doc hints there.</p>
+
+<p>The utility allows to chain targets. When I start working on a new task, at
+least I need to perform three steps: 1) migrate the database; 2) run tests to
+ensure everything works before I change something; 3) launch REPL. In my make
+file, I’ve got a separate target for each step. But I can call them in chain as
+well:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make mig&lt;TAB&gt; te&lt;TAB&gt; re&lt;TAB&gt;
+</code></pre></div></div>
+
+<p>that expands into:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make migrate <span class="nb">test </span>repl
+</code></pre></div></div>
+
+<p>and finally becomes:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>lein migratus migrate
+lein <span class="nb">test
+</span>lein repl
+</code></pre></div></div>
+
+<p>Inside a makefile, you can call for another makefile what may become a powerful
+feature of your build process. Here is how it works.</p>
+
+<p>Say, in our project, on the top level of it there is a “email” folder that
+brings Node.js project for building email templates. Our Clojure application use
+those compiled templates for further processing with Selmer to send final emails
+to our clients. It’s obvious, I need those templates only when I work with our
+email subsystem and never else. So it would be madness to force all our
+developers to install Node.js with tons of packages and compile the templates
+each time they launch REPL.</p>
+
+<p>Inside “email” folder, there is a separate Makefile that knows how to deal with
+that sub-project. It installs all the requirements and has some useful targets,
+say, to run compiler in debug mode or open a browser window for preview.</p>
+
+<p>A small fragment of that make file:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>all: <span class="nb">install </span>build dist
+
+<span class="nb">install</span>:
+	yarn <span class="nb">install
+
+</span>build:
+	node_modules/.bin/gulp build <span class="nt">--production</span>
+
+dist:
+    <span class="nb">cp</span> ...
+</code></pre></div></div>
+
+<p>The default target performs all the targets that are required to get final
+templates. Now, in the main make file that is on the root of the project, I put:</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>EMAILDIR :<span class="o">=</span> <span class="si">$(</span>CURDIR<span class="si">)</span>/email
+
+.PHONY: email
+email:
+    make <span class="nt">-C</span> <span class="si">$(</span>EMAILDIR<span class="si">)</span>
+
+uberjar-build: email
+    lein uberjar
+</code></pre></div></div>
+
+<p>So this configuration gives me freedom of choice. When I launch REPL, I don’t
+need all that stuff to deal with compiling emails. Probably, I may work in a
+company for years without touching them. But those guys who do, they run <code class="language-plaintext highlighter-rouge">make
+email</code> and get the full and ready email installation. Finally, no one be able to
+build an Uberjar without compiling fresh emails.</p>
+
+<p>Now take into account that those emails were just a small part of a
+project. Remember, for successful production build you might need fetching huge
+JSON declarations from 3rd-party services; compiling smart contracts; building
+Docker images; building CSS and much more. Now answer, whey <code class="language-plaintext highlighter-rouge">lein</code> utility that
+even doesn’t have any default capabilities for that, should do it instead of
+special tools designed for exactly those things?</p>
+
+<p>I think it’s obvious now that <code class="language-plaintext highlighter-rouge">lein</code> only should be used to manage your Clojure
+code. Never configure it to run non-Clojure-related stuff.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/ivi/">Как ivi.ru крадет деньги</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2018-01-07T00:00:00+00:00">
+        Jan 7, 2018
+    </time>
+
+    <a href="/tag/ivi/" rel="tag">ivi</a>, <a href="/tag/idiots/" rel="tag">idiots</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>Месяц назад решили с женой посмотреть один кинчик. Я уже не в том возрасте,
+чтобы шариться по торрент-помойкам, поэтому покупаю на Ютубе. Но именно этого
+фильма там не было. Гугл вывел меня на <a href="https://www.ivi.ru/">ivi.ru</a>, где фильм был, и вот что
+из этого вышло.</p>
+
+<p>Купил, посмотрели. Через месяц приходит письмо, что с карты списаны 399 рублей
+за продление ежемесячной подписки. Полез на сайт и выяснил, что:</p>
+
+<ul>
+  <li>
+    <p>эти черти сохранили мою карту, хотя нигде подобной галочки не было;</p>
+  </li>
+  <li>
+    <p>они же оформили мне платную подписку, хотя, опять же, нигде этих галочек не
+было. Вот так, купив фильм у ivi, попадаешь на бабки.</p>
+  </li>
+</ul>
+
+<p>А дальше еще интересней. Звоню в поддержку. Заранее продумал
+разговор. Сотрудник, не спросив ни моего имени, ни емейла, словом, никак не
+подтвердив мою личность, отвечает – назовите номер карты, сделаю возврат. Я
+назвал, он на кнопку клац – отвечает, готово, ждите денег. И действительно, на
+следующий день они пришли.</p>
+
+<p>Напрашиваются несколько выводов. Первый – ivi.ru действует незаконно, сохраняя
+карты и подключая платные услуги без ведома владельца. Что-то вроде мобильного
+опсоса, потерявшего берега.</p>
+
+<p>Второе – в команде ivi об этом прекрасно знают, и уже отработан стандартный
+сценарий возврата денег. Моментальная реакция говорит о том, что на этот случай
+заведена отдельная кнопка. Никаких личных данных и подтверждений личности не
+просят, чтобы не раздувать скандал. Вы когда-нибудь делали возврат в обычном
+магазине? Там и заявление, и паспорт потребуют. А тут анонимно и по номеру
+карты.</p>
+
+<p>Третье – действия ivi.ru это обычная кража. Конечно, они прислали письмо. Но
+что если я не читаю почту? Упор сделан на то, что я не замечу списания. Типичный
+русский наебизнес. Почему-то именно русская компания смошенничала с моей
+картой. Совпадение? Не думаю (с).</p>
+
+<p>Короче, ivi.ru, обманщики вы и воры. Позорище.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/oop-1/">Почему я против объектов. Часть первая, философская</a>
             </h2>
 
@@ -708,88 +981,6 @@ travel, we had lunch, dinner, everything. A+ experience!</p>
 или нет. Заблокирован ли тот сайт в его стране? Успела ли открыться превьюшка?</p>
 
 <p>Больше никаких таких ссылочек во время общения с заказчиком.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tlg-blog/">Канал в Телеграме</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-12-20T00:00:00+00:00">
-        Dec 20, 2017
-    </time>
-
-    <a href="/tag/telegram/" rel="tag">telegram</a>, <a href="/tag/blog/" rel="tag">blog</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>И раз уж пошла такая пьянка: завел канал в Телеграме. Все-таки, как бы я его ни
-хаял, Телеграм стал достойным способом поделиться информацией. Буду валить туда
-все, что пишу в блог, а заодно всякую мелочь, ради которой лень вставать.</p>
-
-<p>Вступайте: <a href="https://t.me/igrishaev_blog">https://t.me/igrishaev_blog</a></p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/qa/">Отвечу на вопросы</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-12-20T00:00:00+00:00">
-        Dec 20, 2017
-    </time>
-
-    <a href="/tag/qa/" rel="tag">qa</a>, <a href="/tag/questions/" rel="tag">questions</a>, <a href="/tag/answers/" rel="tag">answers</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Я отвечаю на письма читателей, и порой текст получаются столь развернутыми, что
-потянул бы на отдельный пост. Поэтому ввожу новую рубрику ответов в
-блоге. Укажите в письме, что не против публикации здесь, и ответ смогут прочесть
-все читатели. Конечно, я уберу личные данные (город, место работы, только имя).</p>
-
-<p>Какие вопросы мне задавать? Хотя бы на следующие темы:</p>
-
-<ul>
-  <li>программирование и разработка ПО,</li>
-  <li>функциональный подход,</li>
-  <li>Кложа, Емакс,</li>
-  <li>работа, в т.ч. удаленная,</li>
-  <li>книги, в т.ч. детские (у меня хорошая подборка книг для детей),</li>
-  <li>организация рабочего времени, “сделывание” задач,</li>
-  <li>переезд в другой город,</li>
-  <li>английский,</li>
-  <li>опен-сорс.</li>
-</ul>
-
-<p>На большую часть из этого я хоть раз да писал в блоге, пруфы есть. Или что-то
-другое по вашему желанию.</p>
-
-<p>Почта ivan@grishaev.me</p>
 
                 
             </div>

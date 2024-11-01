@@ -104,6 +104,183 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/de-js-3/">Деджаваскриптизиция (3)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-09-20T00:00:00+00:00">
+        Sep 20, 2022
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/javascript/" rel="tag">javascript</a>, <a href="/tag/blog/" rel="tag">blog</a>, <a href="/tag/disqus/" rel="tag">disqus</a>, <a href="/tag/comments/" rel="tag">comments</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Сбылась мечта идиота: теперь на сайте работают комментарии без строчки кода на Джаваскрипте. Смотайте экран вниз, там форма. Требуется только имя и тело комментария. Ввели, отправили, и через некоторое время он появится в блоге.</p>
+
+<p>Форма:</p>
+
+<p><img src="/assets/static/aws/de-js3/1.jpg" /></p>
+
+<p>Экран возврата:</p>
+
+<p><img src="/assets/static/aws/de-js3/2.jpg" /></p>
+
+<p>А что, мне нравится.</p>
+
+<p>Расскажу, как это работает. <a href="/de-js-2/">В прошлый раз</a> я перенес комментарии Disqus в репозиторий. Каждый комментарий — это файл формата YAML + markdown. В числе прочего он хранит ссылку на пост. Когда я собираю блог, в подвал каждой заметки подставляются ее комментарии.</p>
+
+<p>Для приема комментариев я следую тому же принципу: чтобы они появились на сайте, нужно создать файл в репозитории. Теоретически любой может оформить pull request, но это сложно. Должен быть сервис, который преобразует ввод пользователя в pull request для блога. Этот сервис я написал и назвал <a href="https://github.com/igrishaev/blog-backend">blog-backend</a>.</p>
+
+<p>Сервис напоминает веб-приложение: оно принимает HTTP-запрос с формой. После прелюдии с валидацией перехожу к главному: интеграции с Гитхабом. Это оказалось не так-то просто. У Гитхаба уже <a href="https://docs.github.com/en/rest">три рестовых API</a>, но ни одно не покрывает все возможности. Кроме REST есть <a href="https://docs.github.com/en/graphql">убер-апишка на GraphQL</a> — она-то мне и нужна.</p>
+
+<p>Интеграция с GraphQL была нелегкой: это самобытный язык и вещь в себе. Если бы в текущем проекте не было GraphQL, я бы полез на стенку. Во-вторых, сложность процесса: чтобы сделать PR силами API, нужно четыре вызова:</p>
+
+<ol>
+  <li>получить метаданные репозитория, в том числе последний коммит;</li>
+  <li>создать ветку от этого коммита;</li>
+  <li>сделать коммит в новую ветку;</li>
+  <li>сделать PR.</li>
+</ol>
+
+<p>Как по мне, апишка не консистентна: где-то на репозиторий ссылаешься по имени, а где-то по машинному ID, который приходит из метаданных. То же самое с ветками: где-то имя, где-то айдишник. Ответы GraphQL развесистые, с глубокой вложенностью. Например, последний коммит ветки погружен на пять уровней:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(-&gt; resp-get-repo :data :repository :ref :target :oid)
+</code></pre></div></div>
+
+<p>С такой апишкой невозможно программировать без образца данных.</p>
+
+<p>Когда подружился с Гитхабом, настала проблема хостинга: где и как размещать логику. Мне понравился опыт с облаком Яндекса, и я продолжил эксперименты. Сервис написан на Кложе, скомпилирован Граалем в бинарь и хостится в <a href="https://cloud.yandex.ru/docs/functions/concepts/">Яндекс.Функции</a> — аналоге AWS Lambda.</p>
+
+<p>В свою очередь, Яндекс.Функция — это облачный сервис, где размещают какой-то код и дергают его по запросу. Отличие от обычного хостинга в том, что у лямбды нет состояния: она запускается на короткое время и умирает. В зависимости от окружения лямбда может умереть не сразу, и если ее дернуть повторно, сработает уже запущенный экземпляр. На базе этого делают “прогрев” лямбд, у которых окружение стартует медленно, например Java. В моем случае граальный бинарник быстрый как не весть что, прогрева ему не надо.</p>
+
+<p>Лямбду можно вызывать разными способами, в том числе HTTP-запросом. У каждой лямбды свой урл, который может быть приватным и публичным. Его можно указать в разных сервисах, что отлично подходит для ботов.</p>
+
+<p>По сравнению с VM-хостингом у лямбды следующие плюсы:</p>
+
+<ul>
+  <li>не нужна виртуальная машина и ее настройка;</li>
+  <li>не нужен домен;</li>
+  <li>лямбды экстремально дешевы, потому оплачивается только время работы с округлением до 0.1 секунды;</li>
+  <li>лямбды поощряют писать код без компонентов и состояния, что как бальзам на душу после проектов по работе.</li>
+</ul>
+
+<p>Поначалу я был крайне скептичен к лямбдам, но теперь вижу в них особую прелесть. Единственный момент — пришлось написать код, чтобы подружить Кложу и Ring с окружением лямбды. Также поправил компиляцию Граалем, чтобы в бинарнике была верная кодировка. В будущем я планирую вынести код Яндекс.Облака в отдельную библиотеку, чтобы избавиться от копипасты.</p>
+
+<p>Форма поддерживает синтаксис Markdown. Пока что нет кнопок выделения текста болдом и италиком, сделаю потом. Форма отправляется чистым POST, никаких аяксов, хотя первую версию я сделал на fetch, JSON и CORS. Про CORS я все забыл, и пришлось читать <a href="/cors/">свою же статью</a> о том, как все настроить.</p>
+
+<p>Новые комментарии совмещают модерацию. После отправки создается PR в блог, мне приходит письмо, а пользователь переходит на прошлую страницу. Если все в порядке, я мерджу ветку и заливаю свежий билд блога. Таким образом, с момента публикации комментария может пройти от пяти минут до нескольких дней, но это ничего.</p>
+
+<p>Первые комментарии я получил от кого? Правильно, от спамеров. Этим утром предложили виагру, казино и просто левые ссылки. Вот ссылка <a href="https://github.com/igrishaev/blog/pull/120/files">на уже закрытый RP</a> и его содержимое:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>---
+id: 1663659055173
+is_spam: false
+is_deleted: false
+post: /bookshelf/
+date: 2022-09-20 07:30:55 +0000
+author_fullname: 'epiehuliqukib'
+---
+
+http://slkjfdf.net/ - Tatacatay &lt;a href="http://slkjfdf.net/"&gt;Aebaluk&lt;/a&gt;
+lwk.wlgg.grishaev.me.mrq.mn http://slkjfdf.net/
+</code></pre></div></div>
+
+<p>Очевидно, нужно вводить капчу для защиты от ботов. Я рассматриваю это как новый вызов: как сделать капчу без Javascript в статичном блоге? Уже есть мыслишки, расскажу в четвертой части эпопеи.</p>
+
+<p>Наконец, последний тезис — зачем вы это делаете, мистер Андерсон? Зачем эти отказы, костыли, превозможения? Ответ — потому что могу. Просто хочется экспериментов. Надоели тормозные сайты с JS, хочу маленький оазис в своем огороде.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/clj-repl-part-4/">REPL, Cider, Emacs (часть 4/4)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-09-14T00:00:00+00:00">
+        Sep 14, 2022
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/repl/" rel="tag">repl</a>, <a href="/tag/emacs/" rel="tag">emacs</a>, <a href="/tag/cider/" rel="tag">cider</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<h2>Все части</h2>
+
+<ul>
+  <li><a href="/clj-repl-part-1/">Первая часть</a></li>
+  <li><a href="/clj-repl-part-2/">Вторая часть</a></li>
+  <li><a href="/clj-repl-part-3/">Третья часть</a></li>
+  <li><a href="/clj-repl-part-4/">Четвертая часть</a></li>
+</ul>
+
+<h2>
+
+    Оглавление
+
+</h2>
+
+<ul id="toc-item-clojure-repl-toc">
+  <li><a href="#отладка-в-cider" id="toc-item-clojure-repl-toc-отладка-в-cider">Отладка в Cider</a>    <ul>
+      <li><a href="#ограничения" id="toc-item-clojure-repl-toc-ограничения">Ограничения</a></li>
+      <li><a href="#итог" id="toc-item-clojure-repl-toc-итог">Итог</a></li>
+    </ul>
+  </li>
+  <li><a href="#nrepl-в-docker" id="toc-item-clojure-repl-toc-nrepl-в-docker">nREPL в Docker</a></li>
+  <li><a href="#nrepl-в-боевом-режиме" id="toc-item-clojure-repl-toc-nrepl-в-боевом-режиме">nREPL в боевом режиме</a>    <ul>
+      <li><a href="#nrepl-в-системе" id="toc-item-clojure-repl-toc-nrepl-в-системе">nREPL в системе</a></li>
+      <li><a href="#безопасность" id="toc-item-clojure-repl-toc-безопасность">Безопасность</a></li>
+    </ul>
+  </li>
+  <li><a href="#repl-в-других-средах" id="toc-item-clojure-repl-toc-repl-в-других-средах">REPL в других средах</a>    <ul>
+      <li><a href="#поддержка-cider" id="toc-item-clojure-repl-toc-поддержка-cider">Поддержка Cider</a></li>
+      <li><a href="#прочие-сведения" id="toc-item-clojure-repl-toc-прочие-сведения">Прочие сведения</a></li>
+      <li><a href="#rebl" id="toc-item-clojure-repl-toc-rebl">REBL</a></li>
+    </ul>
+  </li>
+  <li><a href="#заключение" id="toc-item-clojure-repl-toc-заключение">Заключение</a></li>
+</ul>
+
+<h2 id="отладка-в-cider">Отладка в Cider</h2>
+
+<p>Мы исследовали отладку так долго, чтобы читатель убедился: в ней нет никакой магии. Отладчик — это код, который внедряется в исходный код и заставляет его работать с паузами. Во время паузы отладчик ждет команду пользователя и исполняет ее.</p>
+
+<p>Теперь когда вы знакомы с самодельным отладчиком, рассмотрим, что предлагает Cider. В нашем распоряжении два тега: <code class="language-plaintext highlighter-rouge">#break</code> и <code class="language-plaintext highlighter-rouge">#dbg</code>. Первый тег означает точку останова (брейкпоинт) в месте, где он расположен. Поставьте <code class="language-plaintext highlighter-rouge">#break</code> в середину произвольного кода. Перед тем как запустить код, выполните его командой <code class="language-plaintext highlighter-rouge">cider-eval-...</code>, иначе эффект не вступит в силу.</p>
+
+<p>Тег <code class="language-plaintext highlighter-rouge">#break</code> ссылается на функцию <code class="language-plaintext highlighter-rouge">breakpoint-reader</code> из модуля <code class="language-plaintext highlighter-rouge">cider.nrepl.middleware.debug</code>. Она принимает форму и добавляет в ее метаданные особое поле – признак отладки. Далее сработает оснащение (или инструментирование) — алгоритм, который ищет отмеченные формы и оборачивает их кодом, который запускает отладку.</p>
+
+<p>Когда оснащенный код запущен, в нужных местах он прерывается, и от клиента ожидают команду. Можно узнать локальные переменные, выполнить выражение или перейти к следующей точке. Так продолжается до тех пор, пока код не выполнен целиком.</p>
+
+<p>В Emacs нет графических средств отладки. Информация выводится либо рядом с кодом, либо в отдельных буферах. В режиме отладки файл нельзя редактировать; клавиши не вводят текст, а вызывают команды. Ошибка новичков в том, что, попав в отладку, они нажимают все подряд, и процесс протекает с ошибками. Ниже мы рассмотрим процедуру так, чтобы с вами этого не случилось.</p>
+
+
+                    <p><a href="/clj-repl-part-4/">Read more &rarr;</a></p>
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/de-js-2/">Деджаваскриптизиция (2)</a>
             </h2>
 
@@ -977,380 +1154,6 @@ be nil.</p>
 
 
                     <p><a href="/clj-repl-part-1/">Read more &rarr;</a></p>
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/teleward/">Teleward: a CAPTCHA bot for Telegram in Clojure + GraalVM</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-07-18T00:00:00+00:00">
-        Jul 18, 2022
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p><em>(This is a copy of the readme file from the repository.)</em></p>
-
-<p><a href="https://github.com/igrishaev/teleward">Teleward</a> is a Telegram captcha bot written in Clojure and compiled
-with GraalVM native image. Runs on bare Linux/MacOS with no requirements. Fast
-and robust.</p>
-
-<h3 id="why">Why</h3>
-
-<p>Telegram chats suffer from spammers who are pretty smart nowadays. They don’t
-use bots; instead, they register ordinary accounts and automate them with
-Selenium + web-version of Telegram. Personally, I found Shieldy and other bots
-useless when dealing with such kind of spammers. This project aims the goal to
-finish that mess.</p>
-
-<p>Another reason I opened Teleward for is to try my skills in developing Clojure
-applications with GraalVM. Binary applications are nice: they are fast, and they
-don’t need installing JDK. At the same time, they’re are still Clojure: REPL is
-here, and that’s amazing.</p>
-
-<h3 id="features">Features</h3>
-
-<ul>
-  <li>This is Clojure, so you have REPL! During development, you call Telegram API
-directly from REPL and see what’s going on.</li>
-  <li>The bot can be delivered either as a Jar file or a binary file (with Graal).</li>
-  <li>When Graal-compiled, needs no requirements (Java SDK, etc). The binary size is
-about 30 Mb.</li>
-  <li>At the moment, supports only long polling strategy to obtain messages. The
-webhook is to be done soon.</li>
-  <li>Keeps all the state in memory and thus doesn’t need any kind of a
-database. The only exception is the current offset value which is tracked in a
-file.</li>
-  <li>Supports English and Russian languages.</li>
-  <li>Two captcha styles: normal “1 + 2” and Lisp captcha “(+ 1 2)”.</li>
-  <li>The <code class="language-plaintext highlighter-rouge">+</code>, <code class="language-plaintext highlighter-rouge">-</code>, and <code class="language-plaintext highlighter-rouge">*</code> operators are corresponding Unicode characters that
-prevent captcha from naive evaluation.</li>
-</ul>
-
-<h3 id="algorithm">Algorithm</h3>
-
-<p>The bot listens for all the messages in a group. Once a new pack of messages
-arrives, the bot applies the following procedure to each message:</p>
-
-<ul>
-  <li>Mark new members as locked.</li>
-  <li>Send a captcha message to all members.</li>
-  <li>Unless an author of a message is locked, delete that message.</li>
-  <li>If a message is short and matches the captcha’s solution, unlock a user and
-delete the catpcha message.</li>
-  <li>If a locked user has posted three messages with no solution, ban them.</li>
-  <li>If a locked user hasn’t solved captcha in time, ban them as well.</li>
-</ul>
-
-<p><em>Please note:</em> the bot processes only messages no older than two minutes from
-now. In other words, the bot is interested in what is happening now (with a
-slight delay), but not in the far past. This is to prevent a sutuation what a
-bot had been inactive and then has started to consume messages. Without this
-condition, it will send captcha to chat members who have already joined and
-confuse them.</p>
-
-<h3 id="java-version">Java version</h3>
-
-<p>To make a Jar artefact, run:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make uberjar
-</code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">uberjar</code> target calls <code class="language-plaintext highlighter-rouge">lein uberjar</code> and also injects the <code class="language-plaintext highlighter-rouge">VERSION</code> file
-into it. The output file is <code class="language-plaintext highlighter-rouge">./target/teleward.jar</code>.</p>
-
-<h3 id="binary-version-linux">Binary version, Linux</h3>
-
-<p>Linux version is built inside a Docker image, namely the
-<code class="language-plaintext highlighter-rouge">ghcr.io/graalvm/graalvm-ce</code> one with <code class="language-plaintext highlighter-rouge">native-image</code> extension preinstalled. Run
-the following command:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make docker-build
-</code></pre></div></div>
-
-<p>The output binary file appears at <code class="language-plaintext highlighter-rouge">./target/teleward</code>.</p>
-
-<h3 id="binary-version-macos">Binary version, MacOS</h3>
-
-<ul>
-  <li>
-    <p><a href="https://www.graalvm.org/docs/getting-started/">Install GraalVM</a> locally.</p>
-  </li>
-  <li>
-    <p>Install the “native image” extension:</p>
-  </li>
-</ul>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>gu <span class="nb">install </span>native-image
-</code></pre></div></div>
-
-<ul>
-  <li>Then <code class="language-plaintext highlighter-rouge">make</code> the project:</li>
-</ul>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make
-</code></pre></div></div>
-
-<h3 id="setting-up-your-bot">Setting Up Your Bot</h3>
-
-<ul>
-  <li>
-    <p>To run the bot, first you need a token. Contact <code class="language-plaintext highlighter-rouge">@BotFather</code> in Telegram to
-create a new bot. Copy the token and don’t share it.</p>
-  </li>
-  <li>
-    <p>Add your new bot into a Telegram group. Promote it to admins. At least the bot
-must be able to 1) send messages, 2) delete messages, and 3) ban users.</p>
-  </li>
-  <li>
-    <p>Run the bot locally:</p>
-  </li>
-</ul>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>teleward <span class="nt">-t</span> &lt;telegram-token&gt; <span class="nt">-l</span> debug
-</code></pre></div></div>
-
-<p>If everything is fine, the bot will start consuming messages and print them in
-console.</p>
-
-<h3 id="configuration">Configuration</h3>
-
-<p>See the version with <code class="language-plaintext highlighter-rouge">-v</code>, and help with <code class="language-plaintext highlighter-rouge">-h</code>. The bot takes into account plenty
-of settings, yet not all of them are available for configuration for now. Below,
-we name the most important parameters you will need.</p>
-
-<ul>
-  <li>
-    <p><code class="language-plaintext highlighter-rouge">-t, --telegram.token</code>: the Telegram token you obtain from
-BotFather. Required, can be set via an env variable <code class="language-plaintext highlighter-rouge">TELEGRAM_TOKEN</code>.</p>
-  </li>
-  <li>
-    <p><code class="language-plaintext highlighter-rouge">-l, --logging.level</code>: the logging level. Can be <code class="language-plaintext highlighter-rouge">debug, info, error</code>. Default
-is <code class="language-plaintext highlighter-rouge">info</code>. In production, most likely you will set <code class="language-plaintext highlighter-rouge">error</code>.</p>
-  </li>
-  <li>
-    <p><code class="language-plaintext highlighter-rouge">--telegram.offset-file</code>: where to store offset number for the next
-<code class="language-plaintext highlighter-rouge">getUpdates</code> call. Default is <code class="language-plaintext highlighter-rouge">TELEGRAM_OFFSET</code> in the current working
-directory.</p>
-  </li>
-  <li>
-    <p><code class="language-plaintext highlighter-rouge">--lang</code>: the language for messages. Can be <code class="language-plaintext highlighter-rouge">en, ru</code>, default is <code class="language-plaintext highlighter-rouge">ru</code>.</p>
-  </li>
-  <li>
-    <p><code class="language-plaintext highlighter-rouge">--captcha.style</code>: a type of captcha. When <code class="language-plaintext highlighter-rouge">lisp</code>, the captcha looks like a
-lisp expression <code class="language-plaintext highlighter-rouge">(+ 4 3)</code>. Any other value type will produce <code class="language-plaintext highlighter-rouge">4 + 3</code>. The
-operator is taken randomly.</p>
-  </li>
-</ul>
-
-<p>Example:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./target/teleward <span class="nt">-t</span> &lt;...&gt; <span class="nt">-l</span> debug <span class="se">\</span>
-  <span class="nt">--lang</span><span class="o">=</span>en <span class="nt">--telegram</span>.offset-file<span class="o">=</span>mybot.offset <span class="se">\</span>
-  <span class="nt">--captcha</span>.style<span class="o">=</span>normal
-</code></pre></div></div>
-
-<p>For the rest of the config, see the <code class="language-plaintext highlighter-rouge">src/teleward/config.clj</code> file.</p>
-
-<h3 id="deploying-on-bare-ubuntu">Deploying on bare Ubuntu</h3>
-
-<ul>
-  <li>
-    <p>Buy the cheapest VPS machine and SSH to it.</p>
-  </li>
-  <li>
-    <p>Create a user:</p>
-  </li>
-</ul>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>useradd <span class="nt">-s</span> /bin/bash <span class="nt">-d</span> /home/ivan/ <span class="nt">-m</span> <span class="nt">-G</span> <span class="nb">sudo </span>ivan
-<span class="nb">sudo </span>passwd ivan
-<span class="nb">mkdir</span> /home/ivan/teleward
-</code></pre></div></div>
-
-<ul>
-  <li>Compile the file locally and copy it to the machine:</li>
-</ul>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>scp ./target/teleward ivan@hostname:/home/ivan/teleward/
-</code></pre></div></div>
-
-<ul>
-  <li>Create a new <code class="language-plaintext highlighter-rouge">systemctl</code> service:</li>
-</ul>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>mcedit /etc/systemd/system/teleward.service
-</code></pre></div></div>
-
-<ul>
-  <li>Paste the following config:</li>
-</ul>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[Unit]
-Description = Teleward bot
-After = network.target
-
-[Service]
-Type = simple
-Restart = always
-RestartSec = 1
-User = ivan
-WorkingDirectory = /home/ivan/teleward/
-ExecStart = /home/ivan/teleward/teleward -l debug
-Environment = TELEGRAM_TOKEN=xxxxxxxxxxxxxx
-
-[Install]
-WantedBy = multi-user.target
-</code></pre></div></div>
-
-<ul>
-  <li>Enable autoload:</li>
-</ul>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>systemctl <span class="nb">enable </span>teleward
-</code></pre></div></div>
-
-<ul>
-  <li>Manage the service with commands:</li>
-</ul>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>systemctl stop teleward
-<span class="nb">sudo </span>systemctl start teleward
-<span class="nb">sudo </span>systemctl status teleward
-</code></pre></div></div>
-
-<p>For Jar, the config file would be almost the same except the <code class="language-plaintext highlighter-rouge">ExecStart</code>
-section. There, you specify something like <code class="language-plaintext highlighter-rouge">java -jar teleward.jar ...</code>.</p>
-
-<h3 id="health-check">Health check</h3>
-
-<p>The bot accepts the <code class="language-plaintext highlighter-rouge">/health</code> command which it replies to “OK”.</p>
-
-<h3 id="further-work">Further work</h3>
-
-<ul>
-  <li>Implement webhook.</li>
-  <li>Add tests.</li>
-  <li>Report uptime for <code class="language-plaintext highlighter-rouge">/health</code>.</li>
-  <li>More config parameters via CLI args.</li>
-  <li>Widnows build.</li>
-</ul>
-
-<p>© 2022 Ivan Grishaev</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/failed-podcast/">Невышедший подкаст про Лисп. Работа над ошибками</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-07-09T00:00:00+00:00">
-        Jul 9, 2022
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/podcast/" rel="tag">podcast</a>, <a href="/tag/fail/" rel="tag">fail</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><em>История о том, как я участвовал в подкасте про Лисп и Кложу, который не вышел в
-свет. Это ни в коем случае не обвинения любой из сторон, а попытка понять, что
-пошло не так. Кроме того, я вынес кое-какие уроки, чтобы подобное не повторилось
-в будущем.</em></p>
-
-<p>Три месяца назад мне постучались одни Крутые Ребята с предложением выступить в
-подкасте. Тема — Лисп и Кложа. Назначили дату и время, записали подкаст. Еще до
-записи кое-что показалось мне странными, но я утешал себя тем, что ребята Крутые
-и знают, что делают. Поэтому оставил на их усмотрение.</p>
-
-<p>Итак, записали, обменялись любезностями, супер-супер, огонь-огонь. Проходит
-месяц, другой. Ребята выпускают эпизоды, но моего среди них нет. Я спокойно жду,
-потому что знаю: у опытных подкастеров эпизоды расписаны на месяц. Кроме того,
-интересный материал иногда оставляют “в консервах”, то есть на случай, когда
-ничего интересного нет.</p>
-
-<p>В какой-то момент не стерпел и вежливо спросил, как дела с выпуском. Оба
-собеседника получили сообщение и… тишина. Проходит семь часов, я аккуратно
-повторяю вопрос. Наконец отвечают: выпуска не будет. Слово за словом выясняется,
-что ведущий им недоволен, получилось очень сложно, слушатели не поймут.</p>
-
-<p>Что ж, не будет и бог с ним, бывает. Но удивляюсь, почему нельзя было сказать об
-этом раньше вместо того, чтобы прятаться? Ведь Ребята такие Крутые: открытые,
-позитивные, вот это все. Но как только пошло не так, началась тишина.</p>
-
-<p>Безо всяких претензий пишу им: понимаю, не в обиде. Можно выложу у себя в блоге?
-Для этого нужна дорожка ведущего: во время записи у меня осталась только моя
-дорожка. Сведу и смонтирую сам. Отвечают: нужно согласие Главного Человека,
-сейчас спросим его и ответим. Я аж поморщился от этой лжи, потому что у тех, с
-кем я разговаривал, было достаточно полномочий для принятия решения. Они всем
-управляют, и вдруг оказывается, нужно спросить. Стоит ли говорить, что через
-месяц мне никто не ответил.</p>
-
-<p>По итогам событий я сделал следующие выводы.</p>
-
-<p>(1) Перед выступлением нужно изучить аудиторию, понять ее уровень. Уже после
-согласия я понял, что это популярный подкаст по принципу “все обо
-всем”. Рассказывать такой аудитории про Кложу и Лисп трудно. Это специфичные
-технологии, и слушатель должен знать азы программирования. Если этого нет,
-рассказ про Лисп не принесет удовольствия ни одной из сторон, что и
-подтвердилось. Во время записи ведущий часто перебивал меня с просьбой объяснить
-тот или иной момент. Я, напротив, был недоволен, что мы топчемся на месте. К
-концу второго часа мы наконец выяснили, что код на Лиспе состоит из списков, и в
-нем есть REPL и макросы. Это десятая часть того, что я мог бы рассказать про
-Лисп подготовленной аудитории.</p>
-
-<p>(2) Стороны должны согласовать тезисы. Когда я <a href="/podlodka/">выступал в Подлодке</a>,
-ведущий потребовал с меня тезисы и прислал образец с прошлого выпуска. Это в
-высшей степени правильно, потому что делает выпуск согласованным: гость и
-ведущий на одной волне. В случае с Крутыми Ребятами тезисы не понадобились:
-ведущий сказал, что подготовится сам. Позже он “ради интереса” попросил выслать
-тезисы для Подлодки, что я и сделал. Однако ни один тезис мы не обсудили.</p>
-
-<p>(3) Если что-то идет не так, надо честно признаться и сказать правду, не
-дожидаясь разборок. Меня расстроило не то, что эпизод не вышел, а отношение по
-принципу “молчим, авось отъебется”. Не надо так, потому что со страниц блогов и
-проектов вы Крутые, и вдруг такое. Реально расстраиваешься.</p>
-
-<p>(4) В то же время, это урок мне. Вдруг я тоже произвожу хорошее впечатление в
-блоге, а на деле сливаюсь? Не обидел ли я кого нибудь таким же образом? Пишу
-одно, делаю другое? Есть над чем подумать.</p>
-
-<p>В завершение текста покажу одно видео. Выступает Илья Синельников, тема “Провал
-— это хорошо”. Одно из немногих видео, которое я <a href="/no-media/">однажды посмотрел</a> и
-тепло вспоминаю. Если коротко — важно не то, как вы ведете себя, когда все
-хорошо. Истинно важно — когда дела идут не по плану; тут и проявляется самое
-важное. Полчаса удовольствия:</p>
-
-<iframe width="100%" height="500" src="https://www.youtube.com/embed/PUG7wi4l9to" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
-</iframe>
-
-
                 
             </div>
 
