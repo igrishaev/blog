@@ -104,6 +104,369 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/pg-version-1.18/">PG2 release 0.1.18</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-11-01T00:00:00+00:00">
+        Nov 1, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/postgres/" rel="tag">postgres</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><a href="https://github.com/igrishaev/pg2">PG2 version 0.1.18</a> is available (it’s a client for Postgres). This
+release brings two major features:</p>
+
+<ul>
+  <li>built-in pgvector extension support;</li>
+  <li>better type mapping between Postgres and Clojure.</li>
+</ul>
+
+<h2 id="pgvector-support">PGVector Support</h2>
+
+<p>Pgvector is a <a href="https://github.com/pgvector/pgvector">well known extension</a> for PostgreSQL. It provides a
+fast and robust vector type which is quite useful for heavy
+computations. Pgvector also provides a sparse version of a vector to save space.</p>
+
+<p>This section covers how to use types provided by the extension with PG2.</p>
+
+<h3 id="vector">Vector</h3>
+
+<p>First, install <code class="language-plaintext highlighter-rouge">pgvector</code> as the official readme file prescribes. Now that you
+have it installed, try a simple table with the <code class="language-plaintext highlighter-rouge">vector</code> column:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create temp table test (id int, items vector)"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test values (1, '[1,2,3]')"</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test values (2, '[1,2,3,4,5]')"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from test order by id"</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; [{:id 1, :items "[1,2,3]"} {:id 2, :items "[1,2,3,4,5]"}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It works, but we got the result unparsed: the <code class="language-plaintext highlighter-rouge">:items</code> field in each row is a
+string. This is because, to take a custom type into account when encoding and
+decoding data, you need to specify something. Namely, pass the <code class="language-plaintext highlighter-rouge">:with-pgvector?</code>
+flag to the config map as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:database</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:with-pgvector?</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now the strings are parsed into a Clojure vector of <code class="language-plaintext highlighter-rouge">double</code> values:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from test order by id"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="no">:items</span><span class="w"> </span><span class="p">[</span><span class="mf">1.0</span><span class="w"> </span><span class="mf">2.0</span><span class="w"> </span><span class="mf">3.0</span><span class="p">]}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="no">:items</span><span class="w"> </span><span class="p">[</span><span class="mf">1.0</span><span class="w"> </span><span class="mf">2.0</span><span class="w"> </span><span class="mf">3.0</span><span class="w"> </span><span class="mf">4.0</span><span class="w"> </span><span class="mf">5.0</span><span class="p">]}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To insert a vector, pass it as a Clojure vector as well:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test values ($1, $2)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="mi">5</span><span class="p">]]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It can be also a lazy collection of numbers produced by a <code class="language-plaintext highlighter-rouge">map</code> call:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test values ($1, $2)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="nb">inc</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="mi">5</span><span class="p">])]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">vector</code> column above doesn’t have an explicit size. Thus, vectors of any
+size can be stored in that column. You can limit the size by providing it in
+parentheses:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create temp table test2 (id int, items vector(5))"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now if you pass a vector of a different size, you’ll get an error response from
+the database:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test2 values (1, '[1,2,3]')"</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; Server error response: {severity=ERROR, code=22000, file=vector.c, line=77,</span><span class="w">
+</span><span class="c1">;; function=CheckExpectedDim, message=expected 5 dimensions, not 3,</span><span class="w">
+</span><span class="c1">;; verbosity=ERROR}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">vector</code> type supports both text and binary modes of PostgreSQL wire
+protocol.</p>
+
+<h3 id="sparse-vector">Sparse Vector</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">pgvector</code> extension provides a special <code class="language-plaintext highlighter-rouge">sparsevec</code> type to store vectors
+where only certain elements are filled. All the rest elements are considered as
+zero. For example, you have a vector of 1000 items where the 3rd item is 42.001,
+and 10th item is 99.123. Storing it as a native vector of 1000 double numbers is
+inefficient. It can be written as follows which takes much less:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{3:42.001,10:99.123}/1000
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">sparsevec</code> Postgres type acts exactly like this: internally, it’s a sort of
+a map that stores the size (1000) and the <code class="language-plaintext highlighter-rouge">{index -&gt; value}</code> mapping. An
+important note is that <strong>indexes are counted from one, not zero</strong> (see the
+README.md file of the extension for details).</p>
+
+<p>PG2 provides a special wrapper for a sparse vector. A brief demo:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create temp table test3 (id int, v sparsevec)"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test3 values (1, '{2:42.00001,7:99.00009}/9')"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from test3"</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; [{:v &lt;SparseVector {2:42.00001,7:99.00009}/9&gt;, :id 1}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">v</code> field above is an instance of the <code class="language-plaintext highlighter-rouge">org.pg.type.SparseVector</code>
+class. Let’s look at it closer:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; put it into a separate variable</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">-sv</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from test3"</span><span class="p">)</span><span class="w">
+      </span><span class="nb">first</span><span class="w">
+      </span><span class="no">:v</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">type</span><span class="w"> </span><span class="n">-sv</span><span class="p">)</span><span class="w">
+
+</span><span class="n">org.pg.type.SparseVector</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">-sv</code> value has a number of interesting traits. To turn in into a native
+Clojure map, just <code class="language-plaintext highlighter-rouge">deref</code> it:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">@</span><span class="n">-sv</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:nnz</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="no">:index</span><span class="w"> </span><span class="p">{</span><span class="mi">1</span><span class="w"> </span><span class="mf">42.00001</span><span class="n">,</span><span class="w"> </span><span class="mi">6</span><span class="w"> </span><span class="mf">99.00009</span><span class="p">}</span><span class="n">,</span><span class="w"> </span><span class="no">:dim</span><span class="w"> </span><span class="mi">9</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It mimics the <code class="language-plaintext highlighter-rouge">nth</code> access as the standard Clojure vector does:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">nth</span><span class="w"> </span><span class="n">-sv</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="c1">;; 0.0</span><span class="w">
+</span><span class="p">(</span><span class="nb">nth</span><span class="w"> </span><span class="n">-sv</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="c1">;; 42.00001</span><span class="w">
+</span><span class="p">(</span><span class="nb">nth</span><span class="w"> </span><span class="n">-sv</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="c1">;; 0.0</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To turn in into a native vector, just pass it into the <code class="language-plaintext highlighter-rouge">vec</code> function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">vec</span><span class="w"> </span><span class="n">-sv</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[</span><span class="mf">0.0</span><span class="w"> </span><span class="mf">42.00001</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="mf">99.00009</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="mf">0.0</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>There are several ways you can insert a sparse vector into the database. First,
+pass an ordinary vector:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test3 values ($1, $2)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">6</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="mi">0</span><span class="p">]]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Internally, zero values get eliminated, and the vector is transformed into a
+<code class="language-plaintext highlighter-rouge">SparseVector</code> instance. Now read it back:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from test3 where id = 2"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:v</span><span class="w"> </span><span class="n">&lt;SparseVector</span><span class="w"> </span><span class="p">{</span><span class="mi">1</span><span class="no">:5.0,2:2.0,3:6.0,5:2.0,6:5.0</span><span class="p">}</span><span class="n">/8&gt;,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The second way is to pass a <code class="language-plaintext highlighter-rouge">SparseVector</code> instance produced by the
+<code class="language-plaintext highlighter-rouge">pg.type/-&gt;sparse-vector</code> function. It accepts the size of the vector and a
+mapping of <code class="language-plaintext highlighter-rouge">{index =&gt; value}</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.type</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">t</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test3 values ($1, $2)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="p">(</span><span class="nf">t/-&gt;sparse-vector</span><span class="w"> </span><span class="mi">9</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="w"> </span><span class="mf">523.23423</span><span class="w">
+                                              </span><span class="mi">7</span><span class="w"> </span><span class="mf">623.52346</span><span class="p">})]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Finally, you can pass a string representation of a sparse vector:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test3 values ($1, $2)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="s">"{1:5.0,2:2.0,3:6.0,5:2.0,6:5.0}/8"</span><span class="p">]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Like the <code class="language-plaintext highlighter-rouge">vector</code> type, <code class="language-plaintext highlighter-rouge">sparsevec</code> can be also limited to a certain size:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="p">...</span> <span class="p">(</span><span class="n">id</span> <span class="nb">int</span><span class="p">,</span> <span class="n">items</span> <span class="n">sparsevec</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">sparsevec</code> type supports both binary and text Postgres wire protocol.</p>
+
+<h3 id="custom-schemas">Custom Schemas</h3>
+
+<p>The text above assumes you have the <code class="language-plaintext highlighter-rouge">pgvector</code> extension installed globally
+meaning it is hosted in the <code class="language-plaintext highlighter-rouge">public</code> schema. Sometimes though, extensions are
+setup per schema. For example only a schema named <code class="language-plaintext highlighter-rouge">sales</code> has access to the
+<code class="language-plaintext highlighter-rouge">pgvector</code> extension but nobody else.</p>
+
+<p>If it’s your case and you installed <code class="language-plaintext highlighter-rouge">pgvector</code> into a certain schema, the
+standard <code class="language-plaintext highlighter-rouge">:with-pgvector?</code> flag won’t work. By default, PG2 scans the <code class="language-plaintext highlighter-rouge">pg_types</code>
+table for the <code class="language-plaintext highlighter-rouge">public.vector</code> and <code class="language-plaintext highlighter-rouge">public.sparsevec</code> types. Since the schema
+name is not <code class="language-plaintext highlighter-rouge">public</code> but <code class="language-plaintext highlighter-rouge">sales</code>, you need to specify it by passing a special
+option called <code class="language-plaintext highlighter-rouge">:type-map</code>. It’s a map where keys are fully qualified type names
+(either a keyword or a string), and values are predefined instances of the
+<code class="language-plaintext highlighter-rouge">IProcessor</code> interface:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:database</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:type-map</span><span class="w"> </span><span class="p">{</span><span class="s">"sales.vector"</span><span class="w"> </span><span class="n">t/vector</span><span class="w">
+              </span><span class="s">"sales.sparsevec"</span><span class="w"> </span><span class="n">t/sparsevec</span><span class="p">}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>You can rely on keywords as well:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:database</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:type-map</span><span class="w"> </span><span class="p">{</span><span class="no">:sales/vector</span><span class="w"> </span><span class="n">t/vector</span><span class="w">
+              </span><span class="no">:sales/sparsevec</span><span class="w"> </span><span class="n">t/sparsevec</span><span class="p">}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">t</code> alias references the <code class="language-plaintext highlighter-rouge">pg.type</code> namespace.</p>
+
+<p>Now if you install the extension into the <code class="language-plaintext highlighter-rouge">statistics</code> schema as well, add it
+into the map:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:database</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:type-map</span><span class="w"> </span><span class="p">{</span><span class="no">:sales/vector</span><span class="w"> </span><span class="n">t/vector</span><span class="w">
+              </span><span class="no">:sales/sparsevec</span><span class="w"> </span><span class="n">t/sparsevec</span><span class="w">
+              </span><span class="no">:statistics/vector</span><span class="w"> </span><span class="n">t/vector</span><span class="w">
+              </span><span class="no">:statistics/sparsevec</span><span class="w"> </span><span class="n">t/sparsevec</span><span class="p">}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Should you make a mistake in a fully qualified type name, it will be ignored,
+and you’ll get value from the database unparsed. The actual value depends on the
+binary encoding and decoding options of a connection. By default, it uses text
+protocol so you’ll get a string like “[1, 2, 3]”. For binary encoding and
+decoding, you’ll get a byte array that holds raw Postgres payload.</p>
+
+<h2 id="custom-type-processors">Custom Type Processors</h2>
+
+<p>PG2 version 0.1.18 has the entire type system refactored. It introduces a
+conception of type processors which allows to connect Postgres types with
+Java/Clojure ones with ease.</p>
+
+<p>When reading data from Postgres, the client knows only the OID of a type of a
+column. This OID is just an integer number points to a certain type. The default
+builtin types are hard-coded in Postgres, and thus their OIDs are known in
+advance.</p>
+
+<p>Say, it’s for sure that the <code class="language-plaintext highlighter-rouge">int4</code> type has OID 23, and <code class="language-plaintext highlighter-rouge">text</code> has
+OID 25. That’s true for any Postgres installation. Any Postgres client has a
+kind of a hash map or a Enum class with these OIDs.</p>
+
+<p>Things get worse when you define custom types. These might be either enums or
+complex types defined by extensions: <code class="language-plaintext highlighter-rouge">pgvector</code>, <code class="language-plaintext highlighter-rouge">postgis</code> and so on. You cannot
+guess OIDs of types any longer because they are generated in runtime. Their
+actual values depend on a specific machine. On prod, the <code class="language-plaintext highlighter-rouge">public.vector</code> type
+has OID 10541, on pre-prod it’s 9621, and in Docker you’ll get 1523.</p>
+
+<p>Moreover, a type name is unique only across a schema that’s holding it. You can
+easily have two different enum types called <code class="language-plaintext highlighter-rouge">status</code> defined in various
+schemas. Thus, relying on a type name is not a good option unless it’s fully
+qualified.</p>
+
+<p>To deal with all said above, a new conception of type mapping was introduced.</p>
+
+<p>First, if a certain OID is builtin (meaning it exists the list of predefined
+OIDs), it gets processed as before.</p>
+
+<p>When you connect to a database, you can pass a mapping like <code class="language-plaintext highlighter-rouge">{schema.typename =&gt;
+Processor}</code>. When pg2 has established a connection, it executes an internal
+query to discover type mapping. Namely, it reads the <code class="language-plaintext highlighter-rouge">pg_type</code> table to get OIDs
+that have provided schemas and type name. The query looks like this:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
+    <span class="n">pg_type</span><span class="p">.</span><span class="n">oid</span><span class="p">,</span> <span class="n">pg_namespace</span><span class="p">.</span><span class="n">nspname</span> <span class="o">||</span> <span class="s1">'.'</span> <span class="o">||</span> <span class="n">pg_type</span><span class="p">.</span><span class="n">typname</span> <span class="k">as</span> <span class="k">type</span>
+<span class="k">from</span>
+    <span class="n">pg_type</span><span class="p">,</span> <span class="n">pg_namespace</span>
+<span class="k">where</span>
+    <span class="n">pg_type</span><span class="p">.</span><span class="n">typnamespace</span> <span class="o">=</span> <span class="n">pg_namespace</span><span class="p">.</span><span class="n">oid</span>
+    <span class="k">and</span> <span class="n">pg_namespace</span><span class="p">.</span><span class="n">nspname</span> <span class="o">||</span> <span class="s1">'.'</span> <span class="o">||</span> <span class="n">pg_type</span><span class="p">.</span><span class="n">typname</span> <span class="k">in</span> <span class="p">(</span>
+        <span class="s1">'schema1.type1'</span><span class="p">,</span>
+        <span class="s1">'schema2.type2'</span><span class="p">,</span>
+        <span class="p">...</span>
+    <span class="p">);</span>
+</code></pre></div></div>
+
+<p>It returns pairs of OID and the full type name:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>121512 | schema1.type1
+ 21234 | schema2.type2
+</code></pre></div></div>
+
+<p>Now PG2 knows that the OID 121512 specifies <code class="language-plaintext highlighter-rouge">schema1.type1</code> but nothing else.</p>
+
+<p>Finally, from the map <code class="language-plaintext highlighter-rouge">{schema.typename =&gt; Processor}</code> you submitted before, PG2
+builds a map <code class="language-plaintext highlighter-rouge">{OID =&gt; Processor}</code>. If the OID is not a default one, it checks
+this map trying to find a processor object.</p>
+
+<p>A processor object is an instance of the <code class="language-plaintext highlighter-rouge">org.pg.processor.IProcessor</code>
+interface, or, if more precisely, an abstract <code class="language-plaintext highlighter-rouge">AProcessor</code> which is partially
+implemented. It has four methods:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">ByteBuffer</span> <span class="nf">encodeBin</span><span class="o">(</span><span class="nc">Object</span> <span class="n">value</span><span class="o">,</span>  <span class="nc">CodecParams</span> <span class="n">codecParams</span><span class="o">);</span>
+    <span class="nc">String</span> <span class="nf">encodeTxt</span><span class="o">(</span><span class="nc">Object</span> <span class="n">value</span><span class="o">,</span>  <span class="nc">CodecParams</span> <span class="n">codecParams</span><span class="o">);</span>
+    <span class="nc">Object</span> <span class="nf">decodeBin</span><span class="o">(</span><span class="nc">ByteBuffer</span> <span class="n">bb</span><span class="o">,</span> <span class="nc">CodecParams</span> <span class="n">codecParams</span><span class="o">);</span>
+    <span class="nc">Object</span> <span class="nf">decodeTxt</span><span class="o">(</span><span class="nc">String</span> <span class="n">text</span><span class="o">,</span>   <span class="nc">CodecParams</span> <span class="n">codecParams</span><span class="o">);</span>
+</code></pre></div></div>
+
+<p>Depending on whether you’re decoding (reading) the data or encoding them
+(e.g. passing parameters), and the current format (text or binary), a
+corresponding method is called. By extending all four methods, you can handle
+any type you want.</p>
+
+<p>At the moment, there are about 25 processors implementing standard types:
+<code class="language-plaintext highlighter-rouge">int2</code>, <code class="language-plaintext highlighter-rouge">int4</code>, <code class="language-plaintext highlighter-rouge">text</code>, <code class="language-plaintext highlighter-rouge">float4</code>, and so on. Find them in the
+<code class="language-plaintext highlighter-rouge">pg-core/src/java/org/pg/processor</code> directory. There is also a couple of
+processors for the <code class="language-plaintext highlighter-rouge">pgvector</code> extension in the <code class="language-plaintext highlighter-rouge">pgvector</code> subdirectory.</p>
+
+<p>The next step is to implement processors for the <code class="language-plaintext highlighter-rouge">postgis</code> extension.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/android-mem-2/">Память у Андроида (2)</a>
             </h2>
 
@@ -817,61 +1180,6 @@ Nvidia”. Однако важно понимать, что во-первых, �
 профессий, связанных с риском. Там не говорят “последний раз”, опасаясь, что он
 станет таковым буквально. Можно понять: у военных, моряков и летчиков целый
 букет прибабахов. Но зачем перенимать это в обычную жизнь – загадка.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/date-task/">Задача с датами</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-10-22T00:00:00+00:00">
-        Oct 22, 2024
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/date/" rel="tag">date</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Прочитал, что в одной фирме дают задание: не используя библиотеки и Гугл,
-написать функцию, которая для заданной даты вернет название дня. Скажем, для
-2021-03-25 — вторник, для 2015-09-11 — среду (беру с потолка). Я бы эту задачу
-не решил, и вот почему.</p>
-
-<p>Во-первых, я не помню все критерии високосного года. Каждый четвертый — это
-понятно, но есть еще два критерия, которые встречаются реже. Нужно смотреть их в
-википедии.</p>
-
-<p>Во-вторых, я не помню, сколько дней в каком месяце за исключением февраля. В
-детском саду и школе нас учили считать по костяшкам, но на мой взгляд, это
-бред. Костяшек восемь, месяцев двенадцать. Если брать одну руку, то костяшек
-четыре, а промежутков три, в сумме семь. Как ни крути, эта сова не натягивается.</p>
-
-<p>В-третьих, нужна точка отсчета. Даже если я переведу дату в число дней и возьму
-остаток от деления на семь, нужно знать, какой день был первым. Считается, что
-Иисус родился в понедельник? В любом случае это нужно сверять с википедией.</p>
-
-<p>Еще был переход с юлианского календаря на григорианский, отсюда “старый стиль”,
-“старый новый год” и прочее.</p>
-
-<p>Наконец, текущая система дат и времени — это костыль на костыле, которые
-достались нам от древних греков. Самое худшее, что можно вообразить — это
-работать с датами без библиотеки.</p>
-
-<p>“Что ж, свою кандидатуру я снимаю сам.” ©</p>
-
-<p>А вы бы решили?</p>
 
                 
             </div>

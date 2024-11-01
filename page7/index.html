@@ -104,6 +104,164 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/clojure-with-retry/">Clojure AntiPatterns: the with-retry macro </a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-07-18T00:00:00+00:00">
+        Jul 18, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/retry/" rel="tag">retry</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Most of clojurians write good things about Clojure only. I decided to start
+sharing techniques and patterns that I consider bad practices. We still have
+plenty of them in Clojure projects, unfortunately.</p>
+
+<p>My first candidate is widely used, casual macro called <code class="language-plaintext highlighter-rouge">with-retry</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defmacro</span><span class="w"> </span><span class="n">with-retry</span><span class="w"> </span><span class="p">[[</span><span class="n">attempts</span><span class="w"> </span><span class="n">timeout</span><span class="p">]</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">body</span><span class="p">]</span><span class="w">
+  </span><span class="o">`</span><span class="p">(</span><span class="nb">loop</span><span class="w"> </span><span class="p">[</span><span class="n">n</span><span class="o">#</span><span class="w"> </span><span class="o">~</span><span class="n">attempts</span><span class="p">]</span><span class="w">
+     </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[[</span><span class="n">e</span><span class="o">#</span><span class="w"> </span><span class="n">result</span><span class="o">#</span><span class="p">]</span><span class="w">
+           </span><span class="p">(</span><span class="nf">try</span><span class="w">
+             </span><span class="p">[</span><span class="n">nil</span><span class="w"> </span><span class="p">(</span><span class="nf">do</span><span class="w"> </span><span class="o">~@</span><span class="n">body</span><span class="p">)]</span><span class="w">
+             </span><span class="p">(</span><span class="nf">catch</span><span class="w"> </span><span class="n">Throwable</span><span class="w"> </span><span class="n">e</span><span class="o">#</span><span class="w">
+               </span><span class="p">[</span><span class="n">e</span><span class="o">#</span><span class="w"> </span><span class="n">nil</span><span class="p">]))]</span><span class="w">
+       </span><span class="p">(</span><span class="k">cond</span><span class="w">
+
+         </span><span class="p">(</span><span class="nb">nil?</span><span class="w"> </span><span class="n">e</span><span class="o">#</span><span class="p">)</span><span class="w">
+         </span><span class="n">result</span><span class="o">#</span><span class="w">
+
+         </span><span class="p">(</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">n</span><span class="o">#</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w">
+         </span><span class="p">(</span><span class="nf">do</span><span class="w">
+           </span><span class="p">(</span><span class="nf">Thread/sleep</span><span class="w"> </span><span class="o">~</span><span class="n">timeout</span><span class="p">)</span><span class="w">
+           </span><span class="p">(</span><span class="nf">recur</span><span class="w"> </span><span class="p">(</span><span class="nb">dec</span><span class="w"> </span><span class="n">n</span><span class="o">#</span><span class="p">)))</span><span class="w">
+
+         </span><span class="no">:else</span><span class="w">
+         </span><span class="p">(</span><span class="nf">throw</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">Exception</span><span class="w"> </span><span class="s">"all attempts exhausted"</span><span class="w"> </span><span class="n">e</span><span class="o">#</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This is a very basic implementation. It catches all possible exceptions, has a
+strict number of attempts, and the constant delay time. Typical usage:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-retry</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">2000</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">get-file-from-network</span><span class="w"> </span><span class="s">"/path/to/file.txt"</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Should network blink, most likely you’ll get a file anyway.</p>
+
+<p>Clojure people who don’t like macros write a function like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">with-retry</span><span class="w"> </span><span class="p">[[</span><span class="n">attempts</span><span class="w"> </span><span class="n">timeout</span><span class="p">]</span><span class="w"> </span><span class="n">func</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">loop</span><span class="w"> </span><span class="p">[</span><span class="n">n</span><span class="w"> </span><span class="n">attempts</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[[</span><span class="n">e</span><span class="w"> </span><span class="n">result</span><span class="p">]</span><span class="w">
+          </span><span class="p">(</span><span class="nf">try</span><span class="w">
+            </span><span class="p">[</span><span class="n">nil</span><span class="w"> </span><span class="p">(</span><span class="nf">func</span><span class="p">)]</span><span class="w">
+            </span><span class="p">(</span><span class="nf">catch</span><span class="w"> </span><span class="n">Throwable</span><span class="w"> </span><span class="n">e</span><span class="w">
+              </span><span class="p">[</span><span class="n">e</span><span class="w"> </span><span class="n">nil</span><span class="p">]))]</span><span class="w">
+      </span><span class="p">(</span><span class="k">cond</span><span class="w">
+
+        </span><span class="p">(</span><span class="nb">nil?</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w">
+        </span><span class="n">result</span><span class="w">
+
+        </span><span class="p">(</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">n</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w">
+        </span><span class="p">(</span><span class="nf">do</span><span class="w">
+          </span><span class="p">(</span><span class="nf">Thread/sleep</span><span class="w"> </span><span class="n">timeout</span><span class="p">)</span><span class="w">
+          </span><span class="p">(</span><span class="nf">recur</span><span class="w"> </span><span class="p">(</span><span class="nb">dec</span><span class="w"> </span><span class="n">n</span><span class="p">)))</span><span class="w">
+
+        </span><span class="no">:else</span><span class="w">
+        </span><span class="p">(</span><span class="nf">throw</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">Exception</span><span class="w"> </span><span class="s">"all attempts exhausted"</span><span class="w"> </span><span class="n">e</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It acts the same but accepts not arbitrary code but a function. A form can be
+easily turned into a function by putting a sharp sign in front of it. After all,
+it looks almost the same:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-retry</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">2000</span><span class="p">]</span><span class="w">
+  </span><span class="o">#</span><span class="p">(</span><span class="nf">get-file-from-network</span><span class="w"> </span><span class="s">"/path/to/file.txt"</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Although it is considered being a good practice, here is the outcome of using it
+in production.</p>
+
+<p>Practice proves that, even if you wrap something into that macro, you cannot
+recover from a failure anyway. Imagine you’re downloading a file from S3 and
+pass wrong credentials. You cannot recover no matter how many times you
+retry. Wrong creds remain wrong forever. Now there is a missing file: again, no
+matter how hard you retry, it’s all in vain and you only waste resources. Should
+you put a file into S3, and submit wrong headers, it’s the same. If your network
+is misconfigured or some resources are blocked, or you have no permissions, it’s
+the same again: <strong>no matter how long have you been trying, it’s useless</strong>.</p>
+
+<p>There might be dozens of reasons when your request fails, and there is no way to
+recover. Instead of invoking a resource again and again, you must investigate
+what went wrong.</p>
+
+<p>There might be some rare cases which are worth retrying though. One of them is
+an <code class="language-plaintext highlighter-rouge">IOException</code> caused by a network blink. But in fact, modern HTTP clients
+already handle it for you. If you <code class="language-plaintext highlighter-rouge">GET</code> a resource and receive an <code class="language-plaintext highlighter-rouge">IOException</code>,
+most likely your client has already done three attempts silently with growing
+timeouts. By wrapping the call <code class="language-plaintext highlighter-rouge">with-retry</code>, you perform 9 attempts or so under
+the hood.</p>
+
+<p>Another case might be 429 error code which stands for rate limitation on the
+server side. Personally I don’t think that a slight delay may help. Most likely
+you need to bump the limits, rotate API keys and so on but not <code class="language-plaintext highlighter-rouge">Thread.sleep</code> in
+the middle of code.</p>
+
+<p>I’ve seen terrible usage of <code class="language-plaintext highlighter-rouge">with-retry</code> macro across various projects. One
+developer specified 10 attempts with 10 seconds timeout to reach a remote API
+for sure. But he was calling the wrong API handler in fact.</p>
+
+<p>Another developer put two nested <code class="language-plaintext highlighter-rouge">with-macro</code> forms. They belonged to different
+functions and thus could not be visible at once. I’m reproducing a simplified
+version:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-retry</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="mi">1000</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">do-this</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">do-that</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">with-retry</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">2000</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">do-something-else...</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>According to math, 4 times 3 is 12. When the <code class="language-plaintext highlighter-rouge">(do-something-else)</code> function
+failed, the whole top-level block started again. It led to 12 executions in
+total with terrible side effects and logs which I could not investigate.</p>
+
+<p>One more case: a developer wrapped a chunk of logic that inserted something into
+the database. He messed up with foreign keys so the records could not be
+stored. Postgres replied with an error “foreign key constraint violation” yet
+the macro tried to store them three times before failing completely. Three
+broken SQL invocations… for what? Why?</p>
+
+<p>So. Whenever you use <code class="language-plaintext highlighter-rouge">with-retry</code>, most likely it’s a bad sign. Most often you
+cannot recover from a failure no matter if you add two numbers, upload a file,
+or write into a database. You should only retry in certain situations like
+<code class="language-plaintext highlighter-rouge">IOException</code> or rate limiting. But even those cases are questionable and might
+be mitigated with no retrying.</p>
+
+<p>Next time you’re going to cover a block of logic <code class="language-plaintext highlighter-rouge">with-retry</code>, think hard if you
+really need to retry. Will it really help in case of wrong creds, a missing
+file, incorrect signature or similar things? Perhaps not. Thus, don’t retry in
+vain. Just fail and write detailed logs. Then find the real problem, fix it and
+let it never happen again.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/warming/">Глобальное потепление</a>
             </h2>
 
@@ -1263,108 +1421,6 @@ Content-Type.</p>
 без выпадашек с прокрутками?</p>
 
 <p>Какая-то загадка.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/datomic/">Датомик</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-07-01T00:00:00+00:00">
-        Jul 1, 2024
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/datomic/" rel="tag">datomic</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>Лет семь назад я увлекся <a href="https://www.datomic.com/">Датомиком</a>. Кто не знает, это база данных,
-написанная на Сlojure и Java. Среди ее плюсов – неизменяемость (данные только
-накапливаются), независимость от времени (можно вернуться в прошлое) и
-выразительный язык запросов Datalog, взятый из Пролога.</p>
-
-<p>Я долго ходил вокруг да около, а потом повезло: семья уехала на неделю, и я
-провел это время, читая доки и экспериментируя. У меня тогда был пет-проект на
-Postgres, и я перевел его на Датомик. Позже я использовал его в других проектах,
-в том числе в Хайлоад-капах от Mail.ru. Я <a href="/en/pg-to-datomic/">написал статью</a> про миграцию
-с Постгреса на Датомик, и она даже попала на главную Хакер-Ньюз.</p>
-
-<p>У Датомика есть важное свойство: он красивый. Бросил взгляд, и сразу мысль – да,
-круто. Это изящная абстракция, воздвигнутая на элементарных вещах. Мало
-проектов, где эти свойства – изящность и простота – выражены столь же ярко.</p>
-
-<p>Я много играл с Датомиком и даже пытался реализовать его поверх реляционных
-баз. Кое-что мне удалось, но поделки я так и не довел до ума. Практика показала,
-что скучные Postgres/Maria удобней в работе.</p>
-
-<p>Прежде всего, неизменяемость из коробки не нужна. Там, где нужно хранить
-историю, Postgres/Maria справляются за счет триггеров или запросов вида <code class="language-plaintext highlighter-rouge">INSERT
-...  FROM UPDATE/INSERT/DELETE</code>. Когда говорят об исторических данных, у меня
-сразу вопрос – как вы ими пользуетесь? Они вообще вам нужны?</p>
-
-<p>Далее: страшные буквы GDPR. Если пользователь хочет удалить свои данные, с
-Датомиком будут проблемы. В Датомике атрибуты не меняются, а добавляются новые с
-поздним временем. Поэтому, читая один и тот же атрибут в разное время, получим
-разные значения. Но GDPR требует, чтобы в базе физически не было личных
-данных. Если вы записали в базу атрибут <code class="language-plaintext highlighter-rouge">(42, :user/name "XXXXXX")</code>, то старый
-атрибут <code class="language-plaintext highlighter-rouge">(42, :user/name "Ivan")</code> остался, и прочитать его – дело техники.</p>
-
-<p>В Датомике есть функция физической очистки атрибутов, но она дорогая и
-выполняется во время обслуживания, то есть требует остановки прода.</p>
-
-<p>Можно отключить историю атрибутов, но тогда вопрос – зачем вообще история,
-которой так гордится Датомик?</p>
-
-<p>Кто-то скажет: ладно, пусть имя пользователя будет без истории, а остальное с
-историей. Практика показывает, что GDPR требует чистки чуть ли не всех
-таблиц. Когда мы удаляли пользователей из приложения с короткими видео, то
-пришлось шерстить десятки таблиц: профили, лайки, коменты, друзья, подписчики,
-обращения, сообщения… это были недели ада. Если представить, что у каждой
-таблицы история, ситуация станет еще хуже.</p>
-
-<p>У Датомика никакой поиск, нет сортировки и пагинации. Как с этим жить – решать
-вам. Кого ни спрашивал – каждый пилит свои костыли, каждый случай – свое
-маленькое приключение.</p>
-
-<p>Есть еще кое-что: Датомик, при всей своей красоте, нарушает доменную область. Я
-как-то говорил о том, что главное свойство домена – его ортогональность другим
-доменам. Другими словами, у базы и кода на Сlojure разные зоны
-ответственности. Датомик стирает эту границу: он превращает базу в хранилище, к
-которой только он имеет доступ. Этому есть объяснение, поскольку физически
-данные хранятся как бинарные дампы с кусками индексов, и работать с ними умеет
-только Датомик.</p>
-
-<p>На практике это выливается в то, что если я хочу поправить записи в Датомике,
-нужно писать код на Кложе, который выгребает данные, исправляет и записывает в
-базу.</p>
-
-<p>Это резко контрастирует с Postgres/Maria, которые предлагают свои языки и
-инструменты для работы с данными. Это и есть домен, когда я могу исправить
-данные, не обращаясь к Кложе. Бывает, я сижу в psql днями и неделями,
-манипулируя данными на чистом SQL.</p>
-
-<p>Датомик нарушает это правило. Да, у него есть веб-консоль, но по сравнению с
-psql она крайне уныла, а до программ уровня PGAdmin или DBeaver ей как до луны.</p>
-
-<p>Датомик как мороженное: он красивый, но позже липнет и затекает туда, где ему не
-следует быть. Поэтому я прекратил с ним шашни и продолжаю работать с
-Постгресом. И кстати, Постгрес в последние годы просто летит в космос,
-нарадоваться не могу.</p>
-
-<p>Выбирая Датомик, имейте в виду вышесказанное.</p>
 
                 
             </div>
