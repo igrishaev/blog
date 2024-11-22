@@ -104,6 +104,929 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/zippo/">Zippo: additions to the standard clojure.zip package.</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-09-02T00:00:00+00:00">
+        Sep 2, 2022
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/zippers/" rel="tag">zippers</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>The <code class="language-plaintext highlighter-rouge">clojure.zip</code> package is a masterpiece yet misses some utility
+functions. For example, finding locations, bulk updates, lookups, breadth-first
+traversing and so on. <a href="https://github.com/igrishaev/zippo">Zippo</a>, the library I’m introducing in this post,
+brings some bits of missing functionality.</p>
+
+<h3 id="installation">Installation</h3>
+
+<p>Lein:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/zippo</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Deps.edn</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">com.github.igrishaev/zippo</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="usage--examples">Usage &amp; examples</h3>
+
+<p>First, import both Zippo and <code class="language-plaintext highlighter-rouge">clojure.zip</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">zippo.core-test</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">clojure.zip</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">zip</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">zippo.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">zippo</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Declare a zipper:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">z</span><span class="w">
+  </span><span class="p">(</span><span class="nf">zip/vector-zip</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="p">[[</span><span class="mi">4</span><span class="p">]]]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now check out the following Zippo functions.</p>
+
+<h4 id="a-finite-seq-of-locations">A finite seq of locations</h4>
+
+<p>The <code class="language-plaintext highlighter-rouge">loc-seq</code> funtion takes a location and returns a lazy seq of locations
+untill it reaches the end:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">locs</span><span class="w"> </span><span class="p">(</span><span class="nf">zippo/loc-seq</span><span class="w"> </span><span class="n">z</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">mapv</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="n">locs</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; get a vector of notes to reduce the output</span><span class="w">
+</span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="p">[[</span><span class="mi">4</span><span class="p">]]]</span><span class="w">
+ </span><span class="mi">1</span><span class="w">
+ </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+ </span><span class="mi">2</span><span class="w">
+ </span><span class="mi">3</span><span class="w">
+ </span><span class="p">[[</span><span class="mi">4</span><span class="p">]]</span><span class="w">
+ </span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="w">
+ </span><span class="mi">4</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This is quite useful to traverse a zipper without keeping in mind the ending
+condition (<code class="language-plaintext highlighter-rouge">zip/end?</code>).</p>
+
+<h4 id="finding-locations">Finding locations</h4>
+
+<p>The <code class="language-plaintext highlighter-rouge">loc-find</code> function looks for the first location that matches a predicate:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="p">(</span><span class="nf">zippo/loc-find</span><span class="w">
+           </span><span class="n">z</span><span class="w">
+           </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+             </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="mi">3</span><span class="p">))))]</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/node</span><span class="w"> </span><span class="n">loc</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, we found a location which node equals 3.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">loc-find-all</code> function finds all the locatins that match the predicate:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">locs</span><span class="w"> </span><span class="p">(</span><span class="nf">zippo/loc-find-all</span><span class="w">
+            </span><span class="n">z</span><span class="w">
+            </span><span class="p">(</span><span class="nf">zippo/-&gt;loc-pred</span><span class="w"> </span><span class="p">(</span><span class="nf">every-pred</span><span class="w"> </span><span class="n">int?</span><span class="w"> </span><span class="n">even?</span><span class="p">)))]</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w">
+         </span><span class="p">(</span><span class="nf">mapv</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="n">locs</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Since the predicate accepts a location, you can check its children, siblings and
+so on. For example, check if a location belongs to a special kind of parent.</p>
+
+<p>However, most of the time you’re interested in a value (node) rather than a
+location. The <code class="language-plaintext highlighter-rouge">-&gt;loc-pred</code> function converts a node predicate, which accepts a
+node, into a location predicate. In the example above, the line</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">zippo/-&gt;loc-pred</span><span class="w"> </span><span class="p">(</span><span class="nf">every-pred</span><span class="w"> </span><span class="n">int?</span><span class="w"> </span><span class="n">even?</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>makes a location predicate which node is an even integer.</p>
+
+<h4 id="updating-a-zipper">Updating a zipper</h4>
+
+<p>Zippo offers some functions to update a zipper.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">loc-update</code> one takes a location predicate, an update function and the rest
+arguments. Here is how you douple all the even numbers in a nested vector:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w">
+      </span><span class="p">(</span><span class="nf">zippo/loc-update</span><span class="w">
+       </span><span class="n">z</span><span class="w">
+       </span><span class="p">(</span><span class="nf">zippo/-&gt;loc-pred</span><span class="w"> </span><span class="p">(</span><span class="nf">every-pred</span><span class="w"> </span><span class="n">int?</span><span class="w"> </span><span class="n">even?</span><span class="p">))</span><span class="w">
+       </span><span class="n">zip/edit</span><span class="w"> </span><span class="nb">*</span><span class="w"> </span><span class="mi">2</span><span class="p">)]</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="p">[[</span><span class="mi">8</span><span class="p">]]]</span><span class="w">
+         </span><span class="p">(</span><span class="nf">zip/root</span><span class="w"> </span><span class="n">loc</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>For the updating function, one may use <code class="language-plaintext highlighter-rouge">zip/append-child</code> to append a child,
+<code class="language-plaintext highlighter-rouge">zip/remove</code> to drop the entire location and so on:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w">
+      </span><span class="p">(</span><span class="nf">zippo/loc-update</span><span class="w">
+       </span><span class="n">z</span><span class="w">
+       </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="p">]</span><span class="w">
+         </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">loc</span><span class="w"> </span><span class="n">zip/node</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">])))</span><span class="w">
+       </span><span class="n">zip/append-child</span><span class="w">
+       </span><span class="no">:A</span><span class="p">)]</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="no">:A</span><span class="p">]</span><span class="w"> </span><span class="p">[[</span><span class="mi">4</span><span class="p">]]]</span><span class="w">
+         </span><span class="p">(</span><span class="nf">zip/root</span><span class="w"> </span><span class="n">loc</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">node-update</code> function is similar but acts on nodes. Instead of <code class="language-plaintext highlighter-rouge">loc-pred</code>
+and <code class="language-plaintext highlighter-rouge">loc-fn</code>, it accepts <code class="language-plaintext highlighter-rouge">node-pred</code> and <code class="language-plaintext highlighter-rouge">node-fn</code> what operate on nodes.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w">
+    </span><span class="p">(</span><span class="nf">zippo/node-update</span><span class="w">
+     </span><span class="n">z</span><span class="w">
+     </span><span class="n">int?</span><span class="w">
+     </span><span class="nb">inc</span><span class="p">)]</span><span class="w">
+</span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="p">[[</span><span class="mi">5</span><span class="p">]]]</span><span class="w">
+       </span><span class="p">(</span><span class="nf">zip/root</span><span class="w"> </span><span class="n">loc</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="slicing-a-zipper-by-layers">Slicing a zipper by layers</h4>
+
+<p>Sometimes, you need to slice a zipper on layers. This is what is better seen on
+a chart:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>     +---ROOT---+    ;; layer 1
+     |          |
+   +-A-+      +-B-+  ;; layer 2
+   | | |      | | |
+   X Y Z      J H K  ;; layer 3
+</code></pre></div></div>
+
+<ul>
+  <li>Layer 1 is <code class="language-plaintext highlighter-rouge">[Root]</code>;</li>
+  <li>Layer 1 is <code class="language-plaintext highlighter-rouge">[A B]</code>;</li>
+  <li>Layer 3 is <code class="language-plaintext highlighter-rouge">[X Y Z J H K]</code></li>
+</ul>
+
+<p>The <code class="language-plaintext highlighter-rouge">loc-layers</code> function takes a location and builds a lazy seq of layers. The
+first layer is the given location, then its children, the children of children
+and so on.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">layers</span><span class="w">
+      </span><span class="p">(</span><span class="nf">zippo/loc-layers</span><span class="w"> </span><span class="n">z</span><span class="p">)]</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="o">'</span><span class="p">(([</span><span class="mi">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="p">[[</span><span class="mi">4</span><span class="p">]]])</span><span class="w">
+           </span><span class="p">(</span><span class="nf">1</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="p">[[</span><span class="mi">4</span><span class="p">]])</span><span class="w">
+           </span><span class="p">(</span><span class="nf">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="p">])</span><span class="w">
+           </span><span class="p">(</span><span class="nf">4</span><span class="p">))</span><span class="w">
+         </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[</span><span class="n">layer</span><span class="w"> </span><span class="n">layers</span><span class="p">]</span><span class="w">
+           </span><span class="p">(</span><span class="k">for</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w"> </span><span class="n">layer</span><span class="p">]</span><span class="w">
+             </span><span class="p">(</span><span class="nf">zip/node</span><span class="w"> </span><span class="n">loc</span><span class="p">))))))</span><span class="w">
+</span></code></pre></div></div>
+
+<h4 id="breadth-first-seq-of-locations">Breadth-first seq of locations</h4>
+
+<p>The <code class="language-plaintext highlighter-rouge">clojure.zip</code> package uses <a href="https://en.wikipedia.org/wiki/Depth-first_search">depth-first method</a> of traversing a
+tree. Let’s number the items:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>       +-----ROOT[1]----+
+       |                |
+ +----A[2]---+     +---B[6]--+
+ |     |     |     |    |    |
+ X[3] Y[4] Z[5]   J[7] H[8] K[9]
+</code></pre></div></div>
+
+<p>This sometimes may end up with an infinity loop when you generate children
+on the fly.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">loc-seq-breadth</code> functions offers the opposite way of traversing a zipper:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>       +-----ROOT[1]----+
+       |                |
+ +----A[2]---+     +---B[3]--+
+ |     |     |     |    |    |
+ X[4] Y[5] Z[6]   J[7] H[8] K[9]
+</code></pre></div></div>
+
+<p>This is useful to solve some special tasks related to zippers.</p>
+
+<h4 id="lookups">Lookups</h4>
+
+<p>When working with zippers, you often need such functionality as “go
+up/left/right until meet something”. For example, from a given location, go up
+until a parent has a special attribute. Zippo offers four functions for that,
+namely <code class="language-plaintext highlighter-rouge">lookup-up</code>, <code class="language-plaintext highlighter-rouge">lookup-left</code>, <code class="language-plaintext highlighter-rouge">lookup-right</code>, and <code class="language-plaintext highlighter-rouge">lookup-down.</code> All of
+them take a location and a predicate:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">loc</span><span class="w">
+      </span><span class="p">(</span><span class="nf">zip/vector-zip</span><span class="w"> </span><span class="p">[</span><span class="no">:a</span><span class="w"> </span><span class="p">[</span><span class="no">:b</span><span class="w"> </span><span class="p">[</span><span class="no">:c</span><span class="w"> </span><span class="p">[</span><span class="no">:d</span><span class="p">]]]</span><span class="w"> </span><span class="no">:e</span><span class="p">])</span><span class="w">
+
+      </span><span class="n">loc-d</span><span class="w">
+      </span><span class="p">(</span><span class="nf">zippo/loc-find</span><span class="w"> </span><span class="n">loc</span><span class="w">
+                      </span><span class="p">(</span><span class="nf">zippo/-&gt;loc-pred</span><span class="w">
+                       </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="nb">node</span><span class="p">]</span><span class="w">
+                         </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="nb">node</span><span class="w"> </span><span class="no">:d</span><span class="p">))))</span><span class="w">
+
+      </span><span class="n">loc-b</span><span class="w">
+      </span><span class="p">(</span><span class="nf">zippo/lookup-up</span><span class="w"> </span><span class="n">loc-d</span><span class="w">
+                       </span><span class="p">(</span><span class="nf">zippo/-&gt;loc-pred</span><span class="w">
+                        </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="nb">node</span><span class="p">]</span><span class="w">
+                          </span><span class="p">(</span><span class="nb">and</span><span class="w"> </span><span class="p">(</span><span class="nb">vector?</span><span class="w"> </span><span class="nb">node</span><span class="p">)</span><span class="w">
+                               </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="p">(</span><span class="nb">first</span><span class="w"> </span><span class="nb">node</span><span class="p">))))))]</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="no">:d</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/node</span><span class="w"> </span><span class="n">loc-d</span><span class="p">)))</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">[</span><span class="no">:b</span><span class="w"> </span><span class="p">[</span><span class="no">:c</span><span class="w"> </span><span class="p">[</span><span class="no">:d</span><span class="p">]]]</span><span class="w"> </span><span class="p">(</span><span class="nf">zip/node</span><span class="w"> </span><span class="n">loc-b</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In the example above, first we find the <code class="language-plaintext highlighter-rouge">:d</code> location. From there, we go up
+until we meet <code class="language-plaintext highlighter-rouge">[:b [:c [:d]]]</code>. If there is no such a location, the result will
+be nil.</p>
+
+<h3 id="also-see">Also See</h3>
+
+<p>The code from this library was used for <a href="/en/clojure-zippers/">Clojure Zippers manual</a>
+– the complete guide to zippers in Clojure from the very scratch.</p>
+
+<p>© 2022 Ivan Grishaev</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/deformation/">Деформация</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-08-27T00:00:00+00:00">
+        Aug 27, 2022
+    </time>
+
+    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/telegram/" rel="tag">telegram</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Последний месяц я вожусь с ботами для Телеграма. Занятная вещь, и как-нибудь расскажу об этом подробней. А пока что мелкое наблюдение.</p>
+
+<p>Чтобы отсечь спамеров, мой бот выводит задачу уровня <code class="language-plaintext highlighter-rouge">3 + 5</code> и кнопки с ответами. Кнопок шесть: одна правильная, остальные неправильные. Писать текст нельзя, только жать на кнопку. Если ответил верно, ограничения снимаются. После трех ошибок бан.</p>
+
+<p>Код для генерации кнопок я писал впопыхах. Коротко, он такой: взять пять случайных чисел, добавить к ним ответ, перемешать. Но не учел, что в случайных числах может выпасть ответ, из-за чего будет две правильные кнопки. Это случается редко, но все же. Вот один из случаев:</p>
+
+<p><img src="/assets/static/aws/2buttons/1.jpeg" /></p>
+
+<p>Так вот, наблюдение: когда айтишник видит два правильных ответа, у него рвется шаблон. Начинаются фразочки OMG какой ответ правильный!! и прочая истерика. Тут у меня происходит двоемыслие.</p>
+
+<p>С одной стороны, что значит “какой ответ правильный”? Если задача <code class="language-plaintext highlighter-rouge">3 + 5</code> и две кнопки 8, обе из них правильные. Не бывает двух разных цифр 8 — она одна. Поэтому вместо истерики надо жать ту кнопку, которая по душе — ближе, дальше, круглее, — главное, чтобы на ней была восьмерка.</p>
+
+<p>С другой стороны, айтишников легко понять. Мы привыкли, что за текстом на кнопке стоит айдишник, который уходит на сервер, и все рассчитывается по айдишнику. Вполне возможно, у первой кнопки “8” айди <code class="language-plaintext highlighter-rouge">btn_4</code>, а у второй — <code class="language-plaintext highlighter-rouge">btn_9</code>. И не докажешь, что не верблюд.</p>
+
+<p><img src="/assets/static/aws/2buttons/2.jpg" /></p>
+
+<p>Помню, меня страшно бесили тесты по английскому на компе. Нужно было перетащить слова в прочерки, при этом глагол is часто встречался дважды. И хотя я все расставлял правильно, получал ошибку. Оказалось, у каждого слова свой айдишник, а в базе данных задана их последовательность. Имеем два is с номерами 2 и 5. Не так расставил — ошибка.</p>
+
+<p>В итоге скрипт, написанный на коленке, разошелся по школам, сайтам, университетам. Где только я с ним не сталкивался! Даже недавно, во время ковидного дурдома, сын делал английский онлайн, и там была та же проблема.</p>
+
+<p>Происходит деформация: даже если на двух кнопках написано одно и то же, мы не верим. Мы ищем подвох, потому что слишком часто были обмануты. В результате две кнопки 8 кажутся такой же ошибкой, как 3 + 5 = 9.</p>
+
+<p>Сюда же следует отнести штучки JavaScript вроде <code class="language-plaintext highlighter-rouge">[1, 2, 3] == [1, 2, 3]</code>. Только что проверил в консоли — вернет ложь. На JavaScript работают миллионы сайтов и устройств, а конца этому не видно. Весь этот бред так и тянется от стандарта к стандарту.</p>
+
+<p>В результате разработчик настолько привык к граблям технологий, что всячески оправдывает их косяки и ищет злой умысел там, где его нет. Так быть не должно.</p>
+
+<p>Подобно тому, как нужно не курить, не бухать и заниматься спортом, нужно работать с правильными технологиями. Такими, где массив <code class="language-plaintext highlighter-rouge">[1, 2, 3]</code> все-таки равен другому такому же массиву; где нет пяти функций сравнения; где код вернет то, что ожидаешь, а не то, что прописано на сотой странице стандарта. И деформации в голове станет меньше.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/clj-repl-part-2/">REPL, Cider, Emacs (часть 2/4)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-08-20T00:00:00+00:00">
+        Aug 20, 2022
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/repl/" rel="tag">repl</a>, <a href="/tag/emacs/" rel="tag">emacs</a>, <a href="/tag/cider/" rel="tag">cider</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<h2>Все части</h2>
+
+<ul>
+  <li><a href="/clj-repl-part-1/">Первая часть</a></li>
+  <li><a href="/clj-repl-part-2/">Вторая часть</a></li>
+  <li><a href="/clj-repl-part-3/">Третья часть</a></li>
+  <li><a href="/clj-repl-part-4/">Четвертая часть</a></li>
+</ul>
+
+<h2>
+
+    Оглавление
+
+</h2>
+
+<ul id="toc-item-clojure-repl-toc">
+  <li><a href="#repl-в-редакторе" id="toc-item-clojure-repl-toc-repl-в-редакторе">REPL в редакторе</a>    <ul>
+      <li><a href="#недостатки" id="toc-item-clojure-repl-toc-недостатки">Недостатки</a></li>
+    </ul>
+  </li>
+  <li><a href="#знакомство-с-nrepl" id="toc-item-clojure-repl-toc-знакомство-с-nrepl">Знакомство с nREPL</a>    <ul>
+      <li><a href="#запуск-nrepl" id="toc-item-clojure-repl-toc-запуск-nrepl">Запуск nREPL</a></li>
+      <li><a href="#внутреннее-устройство" id="toc-item-clojure-repl-toc-внутреннее-устройство">Внутреннее устройство</a></li>
+      <li><a href="#транспорт" id="toc-item-clojure-repl-toc-транспорт">Транспорт</a></li>
+      <li><a href="#middleware" id="toc-item-clojure-repl-toc-middleware">Middleware</a></li>
+    </ul>
+  </li>
+  <li><a href="#подключение-из-clojure" id="toc-item-clojure-repl-toc-подключение-из-clojure">Подключение из Clojure</a>    <ul>
+      <li><a href="#коротко-о-bencode" id="toc-item-clojure-repl-toc-коротко-о-bencode">Коротко о Bencode</a></li>
+    </ul>
+  </li>
+  <li><a href="#клиенты-nrepl-для-редакторов" id="toc-item-clojure-repl-toc-клиенты-nrepl-для-редакторов">Клиенты nREPL для редакторов</a></li>
+  <li><a href="#emacs-и-cider" id="toc-item-clojure-repl-toc-emacs-и-cider">Emacs и Cider</a>    <ul>
+      <li><a href="#первые-шаги" id="toc-item-clojure-repl-toc-первые-шаги">Первые шаги</a></li>
+      <li><a href="#выполнение-кода" id="toc-item-clojure-repl-toc-выполнение-кода">Выполнение кода</a></li>
+      <li><a href="#dev-секции" id="toc-item-clojure-repl-toc-dev-секции">Dev-секции</a></li>
+      <li><a href="#сниппеты" id="toc-item-clojure-repl-toc-сниппеты">Сниппеты</a></li>
+    </ul>
+  </li>
+</ul>
+
+<h2 id="repl-в-редакторе">REPL в редакторе</h2>
+
+<p>До сих пор мы набирали код в терминале, что не совсем удобно. Терминал подходит для коротких команд, но плохо справляется с многострочным вводом. Будет правильно набрать код в редакторе, а затем скопировать в терминал. Код останется в файле, и не придется печатать его в следующий раз.</p>
+
+<p>Со временем вы заметите, что переключение между редактором и терминалом отнимает время. Было бы здорово связать редактор с REPL напрямую. Вы набираете код и с помощью комбинации клавиш выполняете в REPL. В отдельной области редактор показывает результат. С таким подходом нам доступна мощь обеих сред: REPL и редактора.</p>
+
+
+                    <p><a href="/clj-repl-part-2/">Read more &rarr;</a></p>
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/web-files/">Веб-файлы</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-08-16T00:00:00+00:00">
+        Aug 16, 2022
+    </time>
+
+    <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/dropbox/" rel="tag">dropbox</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Каждый раз, когда вижу файловый интерфейс в вебе, думаю: почему такой пиздец? Я не люблю материться и делаю это редко. Но когда вижу браузерные поделки, хочется закрыть глаза от отчаяния.</p>
+
+<p>Вот скриншоты с официального сайта Дропбокса. Первая картинка:</p>
+
+<p><img src="/assets/static/aws/web-files/1.jpg" /></p>
+
+<p>Что мы видим? Всюду адская разреженность. Изображение с отступами, сверху и справа два жирных бара. Иконки в барах мелкие и висят в воздухе. Дикая несогласованность элементов: сперва кнопка с надписью, кнопка с многоточием, заголовок, синяя кнопка со стрелкой вниз.</p>
+
+<p>Что делает заголовок среди кнопок? Там не поместится ничего длиннее пары слов. Почему кнопка Share синяя, в чем ее особый статус? Почему выпадашка слева отмечена многоточием, а у Share стрелка вниз?</p>
+
+<p>Зачем колокольчик в окне просмотра файла? Это события, связанные с этим файлом или любые события? Зачем сайдбар справа? Нельзя было уместить жалкие три кнопки наверху?</p>
+
+<p>Другая картинка:</p>
+
+<p><img src="/assets/static/aws/web-files/2.png" /></p>
+
+<p>То же самое: адская разреженность. На месте трех файлов было легко уместить пятнадцать без потери смысла и качества.</p>
+
+<p>Наверху значок лупы, но поля ввода нет. Полагаю, оно появится по клику на лупу. Зачем кликать, если можно сразу нарисовать поле?</p>
+
+<p>Зачем земной шар? Открыть какую-то ссылку? Если да, то какую, и зачем мне туда переходить? Почему бы не разместить гиперссылку с текстом, например, “на сайт”?</p>
+
+<p>Полоса с текстом “Syncing” срезает столько места, что хватило бы на пару файлов.</p>
+
+<p>Третья картинка, но там уже нечего комментировать: сочетание косяков в разных пропорциях.</p>
+
+<p><img src="/assets/static/aws/web-files/3.jpg" /></p>
+
+<p>А вот картинка, открытая в Preview на маке:</p>
+
+<p><img src="/assets/static/aws/web-files/4.jpg" /></p>
+
+<ul>
+  <li>заголовок отдельно от кнопок. Влезет даже предложение.</li>
+  <li>изображение занимает максимальную площадь</li>
+  <li>виджет поиска отрисован с полем ввода</li>
+  <li>все иконки одинаковы и пригнаны друг к другу</li>
+  <li>по желанию в тулбар можно загнать другие иконки и поменять их местами</li>
+  <li>можно сменить показ иконок: только картинка, только текст или вместе.</li>
+</ul>
+
+<p>Дело даже не в маке: если взять Total Commander или виндовый Explorer, там то же самое: информация показана компактно и удобно. Могут быть придирки к конкретной программе: скажем, Explorer в режиме значков такой себе, но со списком можно жить. Это уже дело вкуса. Важно, что всем файловым менеджерам свойственна компактность и гибкость в настройках.</p>
+
+<p><img src="/assets/static/aws/web-files/5.png" /></p>
+
+<p>А с вебом беда. Мамкины дизайнеры каждый день видят нормальный интерфейс, но рисуют в Фигме говно. Хотя ничего придумывать не надо: повтори Finder или Explorer, и люди скажут спасибо. Но нет: дизайнер дизайнерит.</p>
+
+<p>Беда не только у Дропбокса. Гугл, Слак и другие тяжеловесы не могут показать файлы в браузере. Каждый раз выходит ужас: растрата места, жирные бары, несогласованные кнопки — тут многоточие, там выпадашка. Иконки либо мелкие, либо гротескно жирные, словно в азбуке для малышей. Ни у одной иконки нет подписи, нужно наводить курсор или жать наудачу.</p>
+
+<p>Невозможно. Считаю, в целях воспитания нужно отобрать у дизайнеров родной файловый менеджер и выдать то, что они производят. Тогда дело быстро пойдет на лад.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/clj-repl-part-1/">REPL, Cider, Emacs (часть 1/4)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-08-09T00:00:00+00:00">
+        Aug 9, 2022
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/repl/" rel="tag">repl</a>, <a href="/tag/emacs/" rel="tag">emacs</a>, <a href="/tag/cider/" rel="tag">cider</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<h2>Все части</h2>
+
+<ul>
+  <li><a href="/clj-repl-part-1/">Первая часть</a></li>
+  <li><a href="/clj-repl-part-2/">Вторая часть</a></li>
+  <li><a href="/clj-repl-part-3/">Третья часть</a></li>
+  <li><a href="/clj-repl-part-4/">Четвертая часть</a></li>
+</ul>
+
+<h2>
+
+    Оглавление
+
+</h2>
+
+<ul id="toc-item-clojure-repl-toc">
+  <li><a href="#исторический-экскурс" id="toc-item-clojure-repl-toc-исторический-экскурс">Исторический экскурс</a></li>
+  <li><a href="#пробуем-repl" id="toc-item-clojure-repl-toc-пробуем-repl">Пробуем REPL</a></li>
+  <li><a href="#более-сложный-сценарий" id="toc-item-clojure-repl-toc-более-сложный-сценарий">Более сложный сценарий</a></li>
+  <li><a href="#свой-repl" id="toc-item-clojure-repl-toc-свой-repl">Свой REPL</a>    <ul>
+      <li><a href="#улучшения" id="toc-item-clojure-repl-toc-улучшения">Улучшения</a>        <ul>
+          <li><a href="#выход-из-цикла" id="toc-item-clojure-repl-toc-выход-из-цикла">Выход из цикла</a></li>
+          <li><a href="#перехват-исключений" id="toc-item-clojure-repl-toc-перехват-исключений">Перехват исключений</a></li>
+          <li><a href="#обработчик-исключения" id="toc-item-clojure-repl-toc-обработчик-исключения">Обработчик исключения</a></li>
+          <li><a href="#красивая-печать" id="toc-item-clojure-repl-toc-красивая-печать">Красивая печать</a></li>
+          <li><a href="#приглашение" id="toc-item-clojure-repl-toc-приглашение">Приглашение</a></li>
+          <li><a href="#переменная-результата" id="toc-item-clojure-repl-toc-переменная-результата">Переменная результата</a></li>
+          <li><a href="#многострочный-ввод" id="toc-item-clojure-repl-toc-многострочный-ввод">Многострочный ввод</a></li>
+        </ul>
+      </li>
+      <li><a href="#repl-в-repl" id="toc-item-clojure-repl-toc-repl-в-repl">REPL в REPL</a></li>
+      <li><a href="#доступ-к-локальным-переменным" id="toc-item-clojure-repl-toc-доступ-к-локальным-переменным">Доступ к локальным переменным</a></li>
+    </ul>
+  </li>
+  <li><a href="#полезные-функции-repl" id="toc-item-clojure-repl-toc-полезные-функции-repl">Полезные функции REPL</a></li>
+</ul>
+
+<p><em>Эта глава расскажет о REPL — фундаментальном свойстве Clojure. Так называют интерактивную работу с языком, когда программу наращивают постепенно. Мы рассмотрим, что такое REPL-driven development и почему, однажды познав, от него трудно отказаться.</em></p>
+
+<p>Аббревиатура REPL происходит от четырех слов: Read, Eval, Print и Loop. Дословно они означают прочитать, выполнить, напечатать и повторить. REPL — устойчивый термин, под которым понимают интерактивный режим программы.</p>
+
+<p>Многие современные языки предлагают интерактивный режим. Как правило, он запускается, если вызвать интерпретатор без параметров. Например, команды <code class="language-plaintext highlighter-rouge">python</code> или <code class="language-plaintext highlighter-rouge">node</code> запустят интерактивные сеансы Python и Node.js. В Ruby для этого служит утилита <code class="language-plaintext highlighter-rouge">irb</code> (где i означает interactive). REPL поддерживают не только интерпретаторы, но и языки, которые компилируются в байт-код (Java, Scala) или машинный код (Haskell, SBCL).</p>
+
+<p>Несмотря на это разнообразие, именно в Лисп-системах REPL имеет решающее значение. Если в Python или Node.js его рассматривают как приятное дополнение, то в Лиспе он необходим. Разработка на любом Лиспе зависит от того, насколько хорошо вы взаимодействуете с REPL. На REPL так или иначе опираются все инструменты и практики, документация, видеоуроки и так далее.</p>
+
+<p>В мире Лиспа ходит понятие REPL-driven development. Это стиль разработки, когда код пишут малыми порциями и запускают в REPL. С таким подходом сразу видно поведение программы. Легче проверить неочевидные случаи, например вызвать функцию с <code class="language-plaintext highlighter-rouge">nil</code> или обратиться к ресурсу, которого не существует.</p>
+
+<p>Другой полезный сценарий для REPL — извлечь данные из сети и исследовать их. Эта задача идеально ложиться на интерактивный режим. Как правило, HTTP-запрос предполагает несколько этапов: его подготовку, отправку, чтение тела и поиск нужных полей. Эти шаги проходят интерактивно методом проб и ошибок. Позже мы рассмотрим пример HTTP-запроса в сеансе REPL.</p>
+
+
+                    <p><a href="/clj-repl-part-1/">Read more &rarr;</a></p>
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/teleward/">Teleward: a CAPTCHA bot for Telegram in Clojure + GraalVM</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-07-18T00:00:00+00:00">
+        Jul 18, 2022
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><em>(This is a copy of the readme file from the repository.)</em></p>
+
+<p><a href="https://github.com/igrishaev/teleward">Teleward</a> is a Telegram captcha bot written in Clojure and compiled
+with GraalVM native image. Runs on bare Linux/MacOS with no requirements. Fast
+and robust.</p>
+
+<h3 id="why">Why</h3>
+
+<p>Telegram chats suffer from spammers who are pretty smart nowadays. They don’t
+use bots; instead, they register ordinary accounts and automate them with
+Selenium + web-version of Telegram. Personally, I found Shieldy and other bots
+useless when dealing with such kind of spammers. This project aims the goal to
+finish that mess.</p>
+
+<p>Another reason I opened Teleward for is to try my skills in developing Clojure
+applications with GraalVM. Binary applications are nice: they are fast, and they
+don’t need installing JDK. At the same time, they’re are still Clojure: REPL is
+here, and that’s amazing.</p>
+
+<h3 id="features">Features</h3>
+
+<ul>
+  <li>This is Clojure, so you have REPL! During development, you call Telegram API
+directly from REPL and see what’s going on.</li>
+  <li>The bot can be delivered either as a Jar file or a binary file (with Graal).</li>
+  <li>When Graal-compiled, needs no requirements (Java SDK, etc). The binary size is
+about 30 Mb.</li>
+  <li>At the moment, supports only long polling strategy to obtain messages. The
+webhook is to be done soon.</li>
+  <li>Keeps all the state in memory and thus doesn’t need any kind of a
+database. The only exception is the current offset value which is tracked in a
+file.</li>
+  <li>Supports English and Russian languages.</li>
+  <li>Two captcha styles: normal “1 + 2” and Lisp captcha “(+ 1 2)”.</li>
+  <li>The <code class="language-plaintext highlighter-rouge">+</code>, <code class="language-plaintext highlighter-rouge">-</code>, and <code class="language-plaintext highlighter-rouge">*</code> operators are corresponding Unicode characters that
+prevent captcha from naive evaluation.</li>
+</ul>
+
+<h3 id="algorithm">Algorithm</h3>
+
+<p>The bot listens for all the messages in a group. Once a new pack of messages
+arrives, the bot applies the following procedure to each message:</p>
+
+<ul>
+  <li>Mark new members as locked.</li>
+  <li>Send a captcha message to all members.</li>
+  <li>Unless an author of a message is locked, delete that message.</li>
+  <li>If a message is short and matches the captcha’s solution, unlock a user and
+delete the catpcha message.</li>
+  <li>If a locked user has posted three messages with no solution, ban them.</li>
+  <li>If a locked user hasn’t solved captcha in time, ban them as well.</li>
+</ul>
+
+<p><em>Please note:</em> the bot processes only messages no older than two minutes from
+now. In other words, the bot is interested in what is happening now (with a
+slight delay), but not in the far past. This is to prevent a sutuation what a
+bot had been inactive and then has started to consume messages. Without this
+condition, it will send captcha to chat members who have already joined and
+confuse them.</p>
+
+<h3 id="java-version">Java version</h3>
+
+<p>To make a Jar artefact, run:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make uberjar
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">uberjar</code> target calls <code class="language-plaintext highlighter-rouge">lein uberjar</code> and also injects the <code class="language-plaintext highlighter-rouge">VERSION</code> file
+into it. The output file is <code class="language-plaintext highlighter-rouge">./target/teleward.jar</code>.</p>
+
+<h3 id="binary-version-linux">Binary version, Linux</h3>
+
+<p>Linux version is built inside a Docker image, namely the
+<code class="language-plaintext highlighter-rouge">ghcr.io/graalvm/graalvm-ce</code> one with <code class="language-plaintext highlighter-rouge">native-image</code> extension preinstalled. Run
+the following command:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make docker-build
+</code></pre></div></div>
+
+<p>The output binary file appears at <code class="language-plaintext highlighter-rouge">./target/teleward</code>.</p>
+
+<h3 id="binary-version-macos">Binary version, MacOS</h3>
+
+<ul>
+  <li>
+    <p><a href="https://www.graalvm.org/docs/getting-started/">Install GraalVM</a> locally.</p>
+  </li>
+  <li>
+    <p>Install the “native image” extension:</p>
+  </li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>gu <span class="nb">install </span>native-image
+</code></pre></div></div>
+
+<ul>
+  <li>Then <code class="language-plaintext highlighter-rouge">make</code> the project:</li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make
+</code></pre></div></div>
+
+<h3 id="setting-up-your-bot">Setting Up Your Bot</h3>
+
+<ul>
+  <li>
+    <p>To run the bot, first you need a token. Contact <code class="language-plaintext highlighter-rouge">@BotFather</code> in Telegram to
+create a new bot. Copy the token and don’t share it.</p>
+  </li>
+  <li>
+    <p>Add your new bot into a Telegram group. Promote it to admins. At least the bot
+must be able to 1) send messages, 2) delete messages, and 3) ban users.</p>
+  </li>
+  <li>
+    <p>Run the bot locally:</p>
+  </li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>teleward <span class="nt">-t</span> &lt;telegram-token&gt; <span class="nt">-l</span> debug
+</code></pre></div></div>
+
+<p>If everything is fine, the bot will start consuming messages and print them in
+console.</p>
+
+<h3 id="configuration">Configuration</h3>
+
+<p>See the version with <code class="language-plaintext highlighter-rouge">-v</code>, and help with <code class="language-plaintext highlighter-rouge">-h</code>. The bot takes into account plenty
+of settings, yet not all of them are available for configuration for now. Below,
+we name the most important parameters you will need.</p>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">-t, --telegram.token</code>: the Telegram token you obtain from
+BotFather. Required, can be set via an env variable <code class="language-plaintext highlighter-rouge">TELEGRAM_TOKEN</code>.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">-l, --logging.level</code>: the logging level. Can be <code class="language-plaintext highlighter-rouge">debug, info, error</code>. Default
+is <code class="language-plaintext highlighter-rouge">info</code>. In production, most likely you will set <code class="language-plaintext highlighter-rouge">error</code>.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">--telegram.offset-file</code>: where to store offset number for the next
+<code class="language-plaintext highlighter-rouge">getUpdates</code> call. Default is <code class="language-plaintext highlighter-rouge">TELEGRAM_OFFSET</code> in the current working
+directory.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">--lang</code>: the language for messages. Can be <code class="language-plaintext highlighter-rouge">en, ru</code>, default is <code class="language-plaintext highlighter-rouge">ru</code>.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">--captcha.style</code>: a type of captcha. When <code class="language-plaintext highlighter-rouge">lisp</code>, the captcha looks like a
+lisp expression <code class="language-plaintext highlighter-rouge">(+ 4 3)</code>. Any other value type will produce <code class="language-plaintext highlighter-rouge">4 + 3</code>. The
+operator is taken randomly.</p>
+  </li>
+</ul>
+
+<p>Example:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./target/teleward <span class="nt">-t</span> &lt;...&gt; <span class="nt">-l</span> debug <span class="se">\</span>
+  <span class="nt">--lang</span><span class="o">=</span>en <span class="nt">--telegram</span>.offset-file<span class="o">=</span>mybot.offset <span class="se">\</span>
+  <span class="nt">--captcha</span>.style<span class="o">=</span>normal
+</code></pre></div></div>
+
+<p>For the rest of the config, see the <code class="language-plaintext highlighter-rouge">src/teleward/config.clj</code> file.</p>
+
+<h3 id="deploying-on-bare-ubuntu">Deploying on bare Ubuntu</h3>
+
+<ul>
+  <li>
+    <p>Buy the cheapest VPS machine and SSH to it.</p>
+  </li>
+  <li>
+    <p>Create a user:</p>
+  </li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>useradd <span class="nt">-s</span> /bin/bash <span class="nt">-d</span> /home/ivan/ <span class="nt">-m</span> <span class="nt">-G</span> <span class="nb">sudo </span>ivan
+<span class="nb">sudo </span>passwd ivan
+<span class="nb">mkdir</span> /home/ivan/teleward
+</code></pre></div></div>
+
+<ul>
+  <li>Compile the file locally and copy it to the machine:</li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>scp ./target/teleward ivan@hostname:/home/ivan/teleward/
+</code></pre></div></div>
+
+<ul>
+  <li>Create a new <code class="language-plaintext highlighter-rouge">systemctl</code> service:</li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>mcedit /etc/systemd/system/teleward.service
+</code></pre></div></div>
+
+<ul>
+  <li>Paste the following config:</li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[Unit]
+Description = Teleward bot
+After = network.target
+
+[Service]
+Type = simple
+Restart = always
+RestartSec = 1
+User = ivan
+WorkingDirectory = /home/ivan/teleward/
+ExecStart = /home/ivan/teleward/teleward -l debug
+Environment = TELEGRAM_TOKEN=xxxxxxxxxxxxxx
+
+[Install]
+WantedBy = multi-user.target
+</code></pre></div></div>
+
+<ul>
+  <li>Enable autoload:</li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>systemctl <span class="nb">enable </span>teleward
+</code></pre></div></div>
+
+<ul>
+  <li>Manage the service with commands:</li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>systemctl stop teleward
+<span class="nb">sudo </span>systemctl start teleward
+<span class="nb">sudo </span>systemctl status teleward
+</code></pre></div></div>
+
+<p>For Jar, the config file would be almost the same except the <code class="language-plaintext highlighter-rouge">ExecStart</code>
+section. There, you specify something like <code class="language-plaintext highlighter-rouge">java -jar teleward.jar ...</code>.</p>
+
+<h3 id="health-check">Health check</h3>
+
+<p>The bot accepts the <code class="language-plaintext highlighter-rouge">/health</code> command which it replies to “OK”.</p>
+
+<h3 id="further-work">Further work</h3>
+
+<ul>
+  <li>Implement webhook.</li>
+  <li>Add tests.</li>
+  <li>Report uptime for <code class="language-plaintext highlighter-rouge">/health</code>.</li>
+  <li>More config parameters via CLI args.</li>
+  <li>Widnows build.</li>
+</ul>
+
+<p>© 2022 Ivan Grishaev</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/failed-podcast/">Невышедший подкаст про Лисп. Работа над ошибками</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-07-09T00:00:00+00:00">
+        Jul 9, 2022
+    </time>
+
+    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/podcast/" rel="tag">podcast</a>, <a href="/tag/fail/" rel="tag">fail</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><em>История о том, как я участвовал в подкасте про Лисп и Кложу, который не вышел в
+свет. Это ни в коем случае не обвинения любой из сторон, а попытка понять, что
+пошло не так. Кроме того, я вынес кое-какие уроки, чтобы подобное не повторилось
+в будущем.</em></p>
+
+<p>Три месяца назад мне постучались одни Крутые Ребята с предложением выступить в
+подкасте. Тема — Лисп и Кложа. Назначили дату и время, записали подкаст. Еще до
+записи кое-что показалось мне странными, но я утешал себя тем, что ребята Крутые
+и знают, что делают. Поэтому оставил на их усмотрение.</p>
+
+<p>Итак, записали, обменялись любезностями, супер-супер, огонь-огонь. Проходит
+месяц, другой. Ребята выпускают эпизоды, но моего среди них нет. Я спокойно жду,
+потому что знаю: у опытных подкастеров эпизоды расписаны на месяц. Кроме того,
+интересный материал иногда оставляют “в консервах”, то есть на случай, когда
+ничего интересного нет.</p>
+
+<p>В какой-то момент не стерпел и вежливо спросил, как дела с выпуском. Оба
+собеседника получили сообщение и… тишина. Проходит семь часов, я аккуратно
+повторяю вопрос. Наконец отвечают: выпуска не будет. Слово за словом выясняется,
+что ведущий им недоволен, получилось очень сложно, слушатели не поймут.</p>
+
+<p>Что ж, не будет и бог с ним, бывает. Но удивляюсь, почему нельзя было сказать об
+этом раньше вместо того, чтобы прятаться? Ведь Ребята такие Крутые: открытые,
+позитивные, вот это все. Но как только пошло не так, началась тишина.</p>
+
+<p>Безо всяких претензий пишу им: понимаю, не в обиде. Можно выложу у себя в блоге?
+Для этого нужна дорожка ведущего: во время записи у меня осталась только моя
+дорожка. Сведу и смонтирую сам. Отвечают: нужно согласие Главного Человека,
+сейчас спросим его и ответим. Я аж поморщился от этой лжи, потому что у тех, с
+кем я разговаривал, было достаточно полномочий для принятия решения. Они всем
+управляют, и вдруг оказывается, нужно спросить. Стоит ли говорить, что через
+месяц мне никто не ответил.</p>
+
+<p>По итогам событий я сделал следующие выводы.</p>
+
+<p>(1) Перед выступлением нужно изучить аудиторию, понять ее уровень. Уже после
+согласия я понял, что это популярный подкаст по принципу “все обо
+всем”. Рассказывать такой аудитории про Кложу и Лисп трудно. Это специфичные
+технологии, и слушатель должен знать азы программирования. Если этого нет,
+рассказ про Лисп не принесет удовольствия ни одной из сторон, что и
+подтвердилось. Во время записи ведущий часто перебивал меня с просьбой объяснить
+тот или иной момент. Я, напротив, был недоволен, что мы топчемся на месте. К
+концу второго часа мы наконец выяснили, что код на Лиспе состоит из списков, и в
+нем есть REPL и макросы. Это десятая часть того, что я мог бы рассказать про
+Лисп подготовленной аудитории.</p>
+
+<p>(2) Стороны должны согласовать тезисы. Когда я <a href="/podlodka/">выступал в Подлодке</a>,
+ведущий потребовал с меня тезисы и прислал образец с прошлого выпуска. Это в
+высшей степени правильно, потому что делает выпуск согласованным: гость и
+ведущий на одной волне. В случае с Крутыми Ребятами тезисы не понадобились:
+ведущий сказал, что подготовится сам. Позже он “ради интереса” попросил выслать
+тезисы для Подлодки, что я и сделал. Однако ни один тезис мы не обсудили.</p>
+
+<p>(3) Если что-то идет не так, надо честно признаться и сказать правду, не
+дожидаясь разборок. Меня расстроило не то, что эпизод не вышел, а отношение по
+принципу “молчим, авось отъебется”. Не надо так, потому что со страниц блогов и
+проектов вы Крутые, и вдруг такое. Реально расстраиваешься.</p>
+
+<p>(4) В то же время, это урок мне. Вдруг я тоже произвожу хорошее впечатление в
+блоге, а на деле сливаюсь? Не обидел ли я кого нибудь таким же образом? Пишу
+одно, делаю другое? Есть над чем подумать.</p>
+
+<p>В завершение текста покажу одно видео. Выступает Илья Синельников, тема “Провал
+— это хорошо”. Одно из немногих видео, которое я <a href="/no-media/">однажды посмотрел</a> и
+тепло вспоминаю. Если коротко — важно не то, как вы ведете себя, когда все
+хорошо. Истинно важно — когда дела идут не по плану; тут и проявляется самое
+важное. Полчаса удовольствия:</p>
+
+<iframe width="100%" height="500" src="https://www.youtube.com/embed/PUG7wi4l9to" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/service-failed/">Сервис не смог</a>
             </h2>
 
@@ -333,474 +1256,13 @@ files/&lt;user-id&gt;/uploads/...
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/mail-rules/">Правила пользования почтой</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-06-13T00:00:00+00:00">
-        Jun 13, 2022
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/email/" rel="tag">email</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Начинающие программисты спрашивают, какую технологию учить: Питон, Джаву и прочее. Отвечая на эти вопросы, часто забываешь об электронной почте. Закрываю упущение: учитесь электронной почте! Это не так просто: вокруг почты сложился особый этикет, о котором не расскажут в онлайн-курсах. Вы должны знать его перед тем, как начнете искать работу.</p>
-
-<p>Прежде всего: в деловой переписке почта важнее мессаджеров. Если есть несколько способов связаться с человеком, сначала пишите на почту. В мессаджер можно писать только по взаимному согласию или если нет других контактов.</p>
-
-<p>Раздражает, когда в личку врывается незнакомый человек и вываливает стену текста. Или, наоборот, пишет сто сообщений словосочетаниями. Если у вас долгий разговор, представьтесь в мессаджере и попросите почту, чтобы написать туда развернутый текст.</p>
-
-<p>В отправителе не должно быть ников вроде “nagibator666” или LenuSiK. Плохо, когда имя сгенерировано по шаблону “фамилия.годрождения”, например <code class="language-plaintext highlighter-rouge">semenova.81@mail.ru</code>. В отправителе должны быть имя и фамилия, желательно на том языке, на котором говорит получатель, скажем, Ivan Grishaev. Имя не должно быть двояким: вместо Alex пишите Alexey или Alexander.</p>
-
-<p>Самое важное правило: <strong>при ответе не цитируйте все письмо</strong>. Прямо сейчас, не читая этот текст до конца, откройте почтовый клиент и поставьте нужную настройку. На маке это последний чекбокс на закладке Composing. Называется он странно, но работает как надо: при ответе будет процитирован только выделенный текст, а если не выделено ничего, то ответ будет по умолчанию пустым.</p>
-
-<p><img src="/assets/static/aws/mail/1.png" /></p>
-
-<p>Не помню, как сделать то же самое в Gmail, но там у меня выработалась привычка: после нажатия кнопки Reply я автоматом выполнял Ctrl-A Delete, чтобы стереть все из поля ввода.</p>
-
-<p>Цитирование письма уходит корнями в прошлое. Раньше почтовые сервера не умели строить цепочки писем. Каждое письмо считалось отдельным. Чтобы был ясен контекст, старое письмо добавлялось цитатой к новому. Это в высшей степени избыточно и неэффективно. Позже письма научились сопоставлять по теме и префиксам <code class="language-plaintext highlighter-rouge">Re</code>, что тоже уродливо. И лишь затем придумали машинные заголовки с идентификаторами, где указано, на что отвечает это письмо.</p>
-
-<p>Беду с цитированием знает каждый, кто работал в больших фирмах. В обсуждении по почте борода старых писем растет как снежный ком, и каждый клиент работает с ними по своим правилам: отступами, тильдами или вертикальными чертами. Рано или поздно в тред отвечает красноглазик с консольным клиентом на Perl, где борода цитат выделена какими-нибудь <code class="language-plaintext highlighter-rouge">&gt;&gt;&gt;</code>. В результате все видят пять экранов мусора с текстом недельной давности. Не недо так.</p>
-
-<p><img src="/assets/static/aws/mail/2.png" /></p>
-
-<p>Заполняйте письмо снизу вверх. Как это понимать? Обычно мы указываем получателя, тему, пишем текст и прикладываем файл. Из всех этих полей обязательно только первое — получатель. Как только он заполнен, легко отправить письмо неверным нажатием или комбинацией клавиш. За подобное письмо стыдно, оно вносит непонимание, приходится в спешке отправлять другое. Этого легко избежать методом “снизу вверх”.</p>
-
-<p>Если вы отправляете файл, сначала приложите файл. Затем напишите текст. Введите тему. И только потом — отправителя. С таким подходом невозможно отправить письмо, пока оно не заполнено.</p>
-
-<p>Что делать, если вы забыли приложить файл? Обычно его отправляют вдогонку со словами “забыл файлик, вот он”. Не делайте так, потому что на стороне получателя файл будет оторван от основного письма. Как его потом найти? Письмо с текстом человек найдет по ключевым словам, но как быть с файлом? Правильно сделать так: отправить повторное письмо с файлом и написать, что прошлое письмо без файла ушло по ошибке и его надо удалить. В этом случае все останутся довольны.</p>
-
-<p>Ближайшая аналогия: вы отправили исходный код, и затем пишете: ой, не хватает одного файлика. Положите его в папку <code class="language-plaintext highlighter-rouge">foobar/lulz</code>, и все заработает. Это непрофессионально. Вы либо сдаете работу, либо нет. Письмо без файла, когда он должен там быть — испорченное письмо. Вместо попыток его исправить отправьте новое, на этот раз правильное.</p>
-
-<p><em>Еще о файлах.</em> Если вы отправляете документы для просмотра, используйте PDF. Не ждите, что у собеседника установлен Word, Excel или Powerpoint — эти программы платные и открываются в сто раз медленней, чем PDF. Исключение возможно, когда вы оба работаете в этих программах.</p>
-
-<p>Архивируйте файлы только в случаях, когда важна структура папок. Например, исходный код проекта. Распаковав архив, собеседник получит систему папок, готовую для сборки. Сжимать текстовые документы не нужно — это повышает энтропию и требует кликов. Не жмите изображения и другие бинарные файлы — экономия будет не более пяти процентов.</p>
-
-<p>Если архиватор, то только zip. Своими rar, tar.gz и прочими платформо-зависимыми штучками вы огорчите получателя.</p>
-
-<p>Файлы больше 10 Мб выносите в облачные хранилища. Желательно такие, что отдают файл по прямой ссылке, например S3. Если ссылка ведет на веб-страницу, где нужно доказать, что ты не робот, это грусть и печаль. По той же причине не пользуйтесь хостингом изображений — там показывают рекламу, открывают дичь в новых вкладках, словом, сплошное издевательство.</p>
-
-<p><em>О композиции.</em> Письмо начинается с обращения, затем с новой строки следует текст. Он состоит из предложений, каждое заканчивается точкой или знаками вопроса или восклицания. Три-пять предложений составляют абзац, которые отделяют пустой строкой. Абзацы обязательны, чтобы дать человеку передохнуть. Письмо заканчивается подписью без точки.</p>
-
-<p>Подпись должна быть короткой, в идеале только имя. В крайнем случае — должность и минимальные контакты: телефон и ник в мессаджерах. Писать туда домашний телефон, номер ICQ и прочую дрянь не нужно. В подписи не должно быть логотипов и ссылок.</p>
-
-<p>Если это вручную написанное письмо, а не рекламная рассылка, его тип должен быть plain text (без форматирования). Никаких болдов, италиков и прочих офисных штучек, ведь текст — уже мощный инструмент. Поток сознания нужно разбить на абзацы или пункты, важные вещи прописать отдельно. В крайнем случае поставить восклицательный знак или выделить звездочками.</p>
-
-<p><em>На одно письмо приходится одна мысль.</em> Нет ничего хуже письма, где просят собрать информацию по пяти пунктам. Очевидно, составить ответ на это письмо стоит всего дня, а то и недели. Если вы отправитель, пошлите пять писем, и желательно с паузами. Если вы получатель, ответьте на первый пункт с просьбой написать вам отдельные письма по остальным вопросам. Конечно, не в грубой манере “перепиши, пес”, а с пояснением, что так вам будет легче ответить.</p>
-
-<p>Как видите, правил вышло прилично. Никто не ждет исполнения их всех, но применять их однозначно стоит. Остановитесь на чем-нибудь простом, например не цитировать все письмо в ответе, а затем каждый месяц вводите новую практику. Через несколько лет вы сами будете учить новичков почтовому этикету.</p>
-
-<p>Важно понимать: оформление письма может сказать о вас многое. Изучая языки программирования и технологии, нужно помнить, что в конечном счете все сводится к общению. Чтобы запрограммировать задачу, ее сперва обсуждают и фиксируют результаты, и только потом садятся за код. Письмо — это первый ход при приеме на работу, и пусть он выглядит достойно.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/no-bw-color/">Черно-белый режим</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-06-04T00:00:00+00:00">
-        Jun 4, 2022
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/monitor/" rel="tag">monitor</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>Иногда встречаю в интернете статьи о том, как уменьшить вред от гаджетов для глаз. Пишут обычные вещи: уменьшить яркость, включить ночной режим (меньше синего и больше желтого) и в том числе — черно-белый режим, когда цвета меняются на градации серого. Типа, меньше нагрузка на сетчатку и все такое.</p>
-
-<p>Опровергаю: включать черно-белый режим не нужно. Несколько лет назад я <a href="/2015/10/24/1/">проводил эксперимент</a> — включил на ноуте и телефоне такой режим. В MacOS это делается галкой в меню Settings / Accessibility / Display / Color Filters, на айфоне — схожим образом.</p>
-
-<p><img src="/assets/static/aws/bw/ui.png" /></p>
-
-<p>Интерфейс выглядел так:</p>
-
-<p><img src="/assets/static/Screen-Shot-2015-10-24-at-12.07.09.png" /></p>
-
-<p>Почему этого делать не нужно? Ответ — при выключенном цвете нагрузка на глаза, как ни странно, больше. Объяснение этому простое: на сетчатке находятся разные рецепторы, в том числе палочки и колбочки. У них разные функции: первые отвечают за свет, вторые за цвет. Это ортогональные вещи: например, кошки отлично видят в темноте, но хуже нас различают цвета.</p>
-
-<p>Убрав цвет, вы по сути выключаете колбочки, а это две трети сетчатки. Теперь палочки отвечают за поиск иконки или строки кода на мониторе. Я работал в таком режиме и быстро заметил: в черно-белом режиме трудно найти нужный элемент, глаза напрягаются. Выходит обратная вещь — вместо помощи только вредишь глазам.</p>
-
-<p>Восприимчивость к цвету крайне важна. У нас, людей, этот навык крайне развит по сравнению с животными. Кто сорвал красный плод, тот выжил, а кому достался зеленый — увы. Мозг получает колоссальную информацию из цвета, и добровольно лишать себя этого по крайней мере странно.</p>
-
-<p>Возвращаясь к первоначальному вопросу — как защитить глаза от гаджетов в вечернее и ночное время? Очень просто — не пользоваться гаджетами. Ночной там режим или нет, желтый фон, пониженное мерцания — все это ерунда. Экран — это тысяча мелких фонариков, которые светят вам в глаза. Регулируйте гаджет как угодно, сути это не меняет: вы смотрите на источник света, пусть и рассеянный. При любых настройках он будет вреден в вечернее время.</p>
-
-<p>Наоборот, книга и вообще бумага не светятся. Она только отражает свет лампы, но это свет другого рода. Будучи отраженным от бумаги, он не вредит вам.</p>
-
-<p>Это не значит, что я не туплю в экран вечером. Увы, порой случается. Однако понимаю грань допустимого и не обманываю себя режимами. Лучший режим гаджета перед сном — ВЫКЛ.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/vertical-mode/">Вертикальный режим</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-04-05T00:00:00+00:00">
-        Apr 5, 2022
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/monitor/" rel="tag">monitor</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Вчера попробовал вертикальный режим монитора. Это когда экран повернут на 90 градусов. Необычные ощущения: окна вытягиваются по высоте, а не ширине. Появляется зажатость по сторонам, начинаешь двигать шеей. Выглядит так:</p>
-
-<p><img src="/assets/static/aws/vert/1.jpeg" /></p>
-
-<p>Меня хватило где-то на час. Природу не обманешь: уж если наши глаза расположены по горизонтали, а не один над другим, то и монитор должен простираться в этом направлении. Словом, никакого секрета нет, только неудобство.</p>
-
-<p>Мелкие плюсы разбиваются о суровую реальность. Ради интереса пошарьте экран кому-либо в вертикальном режиме — вас станут ненавидеть. Потому что собеседник увидит следующее:</p>
-
-<p><img src="/assets/static/aws/vert/2.png" /></p>
-
-<p>Как здесь что-либо прочитать, я не знаю. То же самое в обратную сторону: если вывести нормальный шаринг на вертикальный экран, получим:</p>
-
-<p><img src="/assets/static/aws/vert/3.png" /></p>
-
-<p>Возразят: шарь не весь экран, а только окно. Так даже лучше, потому что собеседник не увидит вкладки браузера, переписку с женой и прочее. Я тоже шарю только Емакс. Но иногда работа идет сразу в редакторе, терминале и браузере, и тут никуда не денешься. Пошарил, и начинается долгая песня с увеличением шрифтов, зумов и прочего.</p>
-
-<p>Словом, хороший эксперимент, но нет.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/no-media/">Не смотрю и не слушаю</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-03-30T00:00:00+00:00">
-        Mar 30, 2022
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/programming/" rel="tag">programming</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>Не помню, говорил или нет: я не слушаю подкасты, не смотрю познавательные видео, сериалы, интервью Дудя, выступления Шульман и всех остальных. В Телеграме состою только в профильных чатах (программирование, кложа, джава). В RSS-читалке почти ничего не осталось — отписываюсь. Уж если начал  признаваться, то вот еще — почти ничего не смотрел из Рича Хикки.</p>
-
-<p>Это не потому, что я такой продуктивный и эффективный. Когда работа надоедает, я как и все туплю в интернет — читаю популярные ресурсы, Википедию, смотрю Ютуб, словом — трачу время, которое мог бы использовать на что-то созидательное.</p>
-
-<p>Для себя я понял, что подкасты, познавательные видео и прочий контент, который считают полезным, для меня вовсе не полезен. После просмотра видео или подкаста я не могу ничего вспомнить. Ощущение, что вода уходит сквозь пальцы: сидел час за компом, а как встал, так словно и не было этого часа.</p>
-
-<p>Недавно я смотрел <a href="https://www.youtube.com/watch?v=FerhU77G7xo">выступление</a> Максима Ильяхова. Он выступил прекрасно: манера речи, мимика, интонации, все это так живо и смешно. Но что он говорил — я не смог вспомнить уже через 15 минут. Это не Максим плохо выступил, это я такой. Поэтому отдаю отчет — тот просмотр был развлечением, попыткой увильнуть от дела.</p>
-
-<p>С годами мне все более очевиден факт — запоминаешь только то, что мысленно пересказываешь и пробуешь на практике. Третьего не дано: никакие видео, короткие или длинные, никакие подкасты не продвинут вас так далеко, как пересказ и практика. Конечно, и от подкастов есть польза, но если выбирать средство с малой пользой и большой, то есть же разница, верно?</p>
-
-<p>В моем понятии видео прочно связано с развлечением. Когда я вижу браузер и Ютуб, ни о каком обучении не может быть и речи. Так я воспитан: раньше вся информация была в виде текста (книги, учебники). Возможно, у молодежи дела обстоят по-другому, но как отец я знаю: ребенок, севший за комп “посмотреть лекцию по географии”, быстро переключается на мемы про Майнкрафт.</p>
-
-<p>Испытываю схожий скепсис к популярным нынче курсам программирования и онлайн-платформам. Они нужны, но важно понимать: это вершина айсберга. Когда меня спрашивают, как изучить Кложу, я отвечаю одинаково — любой ценой устроиться в проект на ней. В этом случае курсы служат входным билетом, доказательством, что по крайней мере ты не идиот. Что будет дальше — никто не знает.</p>
-
-<p>Эти убеждения долго зрели в моей голове, пока я не прочел <a href="/bookshelf/">“Думай как математик”</a> Барбары Уокли. Книга затянута, можно было бы выкинуть треть, но ради некоторых мест стоит потерпеть. Барбара и ее коллеги высказывают мысль — чтобы что-то запомнить, нужно прочесть материал и многократно его пересказывать. Если что-то забыли, то ни в коем случае не читать, а потратить минимум пять минут на вспоминание. Это важнейший процесс мозга, который нельзя прерывать. Даже если вы не вспомнили материал, уже сам процесс выстраивает нужные связи, и при следующем чтении материал запомнится лучше. И конечно, любые знания нужно закреплять практикой.</p>
-
-<p>Теперь скажите мне, как вы смотрите подкасты? Вы их потом вспоминаете, пересказываете, да? Прослушав подкаст о Кложе, бросаетесь писать на ней? Ведь нет же. Ничего не закрепляется. Все это развлечение. Я не ставлю это в вину, пусть каждый развлекается как хочет, но не обманывайте себя, будто чему-то учитесь. Это то же самое, что миф о 25 кадре или обучении во сне с плеером.</p>
-
-<p>Вспоминаю, как в молодости увлекался 3D-моделированием. Интернет был никакой, поэтому заказывал по почте видеоуроки. Со временем понял, что смотрю их как футбол: другой человек работает, а ты бездумно смотришь с бутербродом в руке. Когда пытался повторить один из уроков — слепить простенького динозавра — обалдел от того, что ничего не могу. Что, помогли многочасовые просмотры уроков?</p>
-
-<p>Лучшим источником знаний, на мой взгляд, остается текст. Полезней него ничего не придумали. К тексту удобно возвращаться, его удобно читать, пересказывать. С текстом удобно работать — редактировать, составлять выжимки и конспект, ужимать, насыщать примерами. Работа с текстом — крутейший навык, с которым каждый попрет по карьерной лестнице как локомотив.</p>
-
-<p>Чтобы поделиться знаниями о Кложе, я специально выбрал книжный формат. Можно было настругать коротких видео, записать курсы или что-то похожее, но это все не то. Книга материальна и принадлежит только вам. Ее не потеряешь из-за истекшей кредитки или санкций. Когда читаешь книгу, работает другой отдел мозга, не связанный с туплением в комп. Лучше книги ничего быть не может.</p>
-
-<p>Отказ от подкастов, митапов и познавательных видео несет свои преимущества. Подобно курильщику, который бросил и почувствовал табачный дым, понимаешь, сколько дерьма ты потреблял раньше. Становишься разборчивей: раньше смотрел и читал все подряд, а теперь — только иногда и если не возникло отторжения.</p>
-
-<p>Наконец, меньше всего я хочу быть тем, кто пересказывает интернет. С отдельными людьми я почти не разговариваю, потому что знаю — все их мысли заимствованы из Ютуба и Телеграма. В этом легко убедиться: уже на второй реплике тебе кидают ссылку с “пруфом” — безусловно правдивой информацией, которую человек только что пересказал.</p>
-
-<p>Не делайте так. Доверять можно только опыту, но не авторитетам из интервью, подкастов и образовательных курсов. Все это развлечение, что отнюдь не плохо, но — развлечение, выдаваемое за образование есть обман.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/worklust/">Страсть к делу</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-03-27T00:00:00+00:00">
-        Mar 27, 2022
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/programming/" rel="tag">programming</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Эта мысль тоже не понравится никому.</p>
-
-<p>Часто встречаю комментарии в духе: сейчас такой стресс, целый день читаю новости, не могу работать. Как можно работать в такое время!</p>
-
-<p>Тот, кто это пишет, недостаточно любит свое дело. Да, обстрелы. Да, новостная лавина. Но уверяю, когда страстно что-то любишь, никакие новости не оторвут более чем на час.</p>
-
-<p>Я, хоть и не вышел пока на новое место, провожу дни как обычно. Час утром на книгу, легкий отдых, затем программирование. Это то, что я люблю, и ничто не оторвет меня от любимого дела.</p>
-
-<p>Пожалуйста, не путайте: одно дело, когда в городе взрывы, и речь идет о выживании. Тут я целиком на стороне терпящих бедствие. Но когда русский программист сидит в кресле Икеи за макбуком, в правой руке у него свежий кофе, а в левой яблоко и шоколадка, и, видете ли, он не может работать из-за потока новостей — это полный фейспалм.</p>
-
-<p>Уже сто раз описаны способы, как избавиться от новостной аддикции. Расширения для браузера, удаление телеграмов-ватсаппов с десктопа. Принцип “только с мобильника”, когда мобильник кладут на подоконник, и надо оторвать зад, чтобы до него дойти.</p>
-
-<p>Словом, не  объясняйте слабую работоспособность “таким временем”. “Такое время” будет всегда: не ковид, так война, не война, так еще что.</p>
-
-<p>Если страсть побеждают внешние факторы, значит мало страсти. Если мало страсти, ее нужно найти.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/hey-burned/">Граждане выгорающие</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-03-26T00:00:00+00:00">
-        Mar 26, 2022
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/burnout/" rel="tag">burnout</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Скажите, куда делись все эти выгорающие? У которых все плохо, токсичные коллеги и прочее. Помню, год назад открываешь Хабр, и там каждую неделю очередной выгоревший. С обсуждением на десять экранов.</p>
-
-<p>Как я выгорел и пережил это. Как я выгорел и пошел в автослесари. Как не выгореть тимлиду. Курсы для выгоревших. Исповедь выгоревшего менеджера.</p>
-
-<p>Сколько вас, нечисти, развелось.</p>
-
-<p>Так вот — повестка ушла, выгорание больше не модно. Сейчас что ни день, то новые потрясения, и очередного выгоревшего не поймут. Люди умирают, переезжают, теряют работу, а ты выгораешь. Серьезно?</p>
-
-<p>Стоит миру перевернуться, как уходит всякое выгорание. Из чего следует печальный факт. Массовое выгорание прошлых лет — пошлое ковыряние в себе на фоне скуки. Подобно организму, который в стерильных условиях борется с собой, человек в комфортных условиях ищет страдания.</p>
-
-<p>Все это было фарсом, позерством, пафосом.</p>
-
-<p>Повестка ушла, а задача ничуть не изменилась: все так же профессионально делать свое дело.</p>
-
-<p>За работу.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/files/">Возня с файлами</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2022-03-20T00:00:00+00:00">
-        Mar 20, 2022
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/files/" rel="tag">files</a>, <a href="/tag/s3/" rel="tag">s3</a>, <a href="/tag/yandex/" rel="tag">yandex</a>, <a href="/tag/amazon/" rel="tag">amazon</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>В одной из прошлых заметок <a href="/cron-mail/">я рассказал</a>, как настроить cron с отправкой почты на свой ящик. В завершении обещал уточнить, для каких конкретно целей я использую крон, но не сделал этого. Исправляюсь.</p>
-
-<p>Если коротко, с помощью крона я бекаплю файловый архив. До недавнего времени пользовался S3, но из-за последних событий вынужден переезжать. Ниже — мои изыскания на тему хранения файлов.</p>
-
-<p>Полагаю, у каждого из нас есть архив личных файлов. Как правило, это фотографии с первой мыльницы, код с прошлых проектов или просто файлы, которые приятно иной раз посмотреть. Например, сделанный своими руками ролик про университет, первые работы в рекламе или в типографии.</p>
-
-<p>Кроме фоток, крайне важны сканы документов. Паспорт, загран, снилс, ИНН и так далее. Все то же самое для жены и троих детей, плюс свидетельства о рождении. Полноценный скан документа (именно скан, а не фотка) неистово полезен. Распечатать его на принтере занимает минуту, а поход в ближайший копицентр — двадцать минут. Когда после рождения третьей дочки бегал по инстанциям, идею со сканами я просто боготворил: в каждую дверь нужно сдать пачку копий, а таких дверей десятки.</p>
-
-<p>Из-за уникальности файлов возникает вопрос, где их хранить. Техника недолговечна: нельзя доверять даже жестким дискам, не то что флешкам. Если архив лежит в нескольких местах, должна быть синхронизация, иначе убьешся синхронизировать вручную.</p>
-
-<p>До недавнего времени вопрос не стоял остро: бери любое облачное хранилище и вперед: дропбокс, яндекс-драйв, гугло-драйв, айклауд. Но даже до “спецоперации” и отвала русских пользователей ни один из этих сервисов мне не подошел. Все они намертво завязаны на конкретный бренд и любят выкручивать мозг. О деградации того же дропбокса я писал неоднократно (<a href="/dropbox-ui/">раз</a>, <a href="/design-dropbox/">два</a>), и аналоги ничуть не лучше.</p>
-
-<p>Основная претензия с синхронизаторам файлов — интерфейс, точнее желание его не видеть. Хочется, чтобы ни при каких условиях не вылазил попап или окошко на электроне. Чтобы в углу не маячили уведомления, которые забыл выключить. Чтобы не оценивать сервис по десятибалльной шкале. Словом — настроил и забыл.</p>
-
-<p>Я попробовал AWS S3, и неожиданно понравилось: все происходит молча, разве что в раз в месяц получаю счет. Настроить просто: ставим <a href="https://aws.amazon.com/cli/">питонячий AWS CLI</a>. Далее прописываем креды и настройки в файлах:</p>
-
-<div class="language-ini highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># ~/.aws/config
-</span>
-<span class="nn">[default]</span>
-<span class="py">region</span> <span class="p">=</span> <span class="s">us-east-1</span>
-<span class="py">output</span> <span class="p">=</span> <span class="s">json</span>
-
-<span class="c"># ~/.aws/credentials
-</span>
-<span class="nn">[default]</span>
-<span class="py">aws_access_key_id</span> <span class="p">=</span> <span class="s">...</span>
-<span class="py">aws_secret_access_key</span> <span class="p">=</span> <span class="s">...</span>
-</code></pre></div></div>
-
-<p>Если теперь выполнить команду <code class="language-plaintext highlighter-rouge">s3 sync</code>:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws s3 <span class="nb">sync </span>my-bucket s3://my-bucket <span class="nt">--delete</span>
-</code></pre></div></div>
-
-<p>, то произойдет синхронизация файлов из первого источника (папки) во второй (бакет). Флаг <code class="language-plaintext highlighter-rouge">--delete</code> означает, что файлы, которых нет в источнике, будут удалены в удаленном хранилище. Другими словами, если удалили локальный файл, то при синхронизации он будет удален и в S3. Без флага происходит простое слияние файлов.</p>
-
-<p>Вот как оформить все это дело в кронтаб:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">BUCKET</span><span class="o">=</span>my-bucket
-
-0 <span class="k">*</span>/3 <span class="k">*</span> <span class="k">*</span> <span class="k">*</span> <span class="nb">cd</span> /Users/ivan/s3 <span class="o">&amp;&amp;</span> aws s3 <span class="nb">sync</span> <span class="k">${</span><span class="nv">BUCKET</span><span class="k">}</span> s3://<span class="k">${</span><span class="nv">BUCKET</span><span class="k">}</span> <span class="nt">--exclude</span> <span class="s1">'*.DS_Store'</span> <span class="nt">--delete</span> <span class="o">&amp;&amp;</span> <span class="nb">echo </span>OK
-</code></pre></div></div>
-
-<p>Для удобства я назвал локальную папку так же, что и бакет, чтобы ссылаться на переменную.</p>
-
-<p>Вопрос в том, насколько часто запускать синхронизацию. Раньше я делал это каждые три часа (<code class="language-plaintext highlighter-rouge">0 */3 ...</code>), но со временем понял, что это слишком часто. На практике хватает двух раз в день: в обед и вечером (<code class="language-plaintext highlighter-rouge">0 12,22 ...</code>).</p>
-
-<p>О результатах синхронизации я узнаю по письму следующего содержания:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Subject: Cron &lt;ivan@ivan&gt; cd /Users/ivan/s3 &amp;&amp; aws s3 sync ...
-
-Completed 60.5 KiB/~60.5 KiB (34.3 KiB/s) with ~1 file(s) remaining (calculating...)
-upload: my-bucket/docs/text/links.md to s3://my-bucket/docs/text/links.md
-Completed 60.5 KiB/~60.5 KiB (34.3 KiB/s) with ~0 file(s) remaining (calculating...)
-
-OK
-</code></pre></div></div>
-
-<p>Про деньги: хранение 130 гигабайт с синхронизацией каждые 3 часа стоит 4.6 доллара в месяц. Это дешевле дропбокса и и аналогов с интерфейсом. Важное преимущество в том, что платишь в точности за те ресурсы, что потребляешь. Никаких обрыдлых подписок.</p>
-
-<p>С началом “не-войны” Амазон начал вести себя странно. Файлы по-прежнему доступны, но теперь я не могу войти в консоль управления. Амазон требует ввести код, отправленный на телефон, но сообщения не приходят. Не работают и другие способы его получить, например голосовым звонком робота. Запросил восстановление двухфакторной авторизации, но что-то Амазон не спешит.</p>
-
-<p>Написали бы прямо: не работаем с проклятыми фашистами и агрессорами, и я бы все понял. Не дожидаясь отвала файлов, решил мигрировать, тем более что все равно нельзя оплатить российской картой.</p>
-
-<p>Приятная вещь: S3 уже давно не монополист в области хранения файлов, и многие фирмы выкатили свои решения. Которые, кстати, работают по протоколу S3. Файловые хранилища предлагают DigitalOcean, Exoscale, Яндекс.Облако. Будучи в Exoscale, я, хоть и немного, но работал над хранилищем.</p>
-
-<p>Миграция сводится к тому, чтобы перенацелить клиент AWS на другой сервис. По понятным причинам выбрал Яндекс — западные партнеры сейчас не подходят. Регистрируемся на <code class="language-plaintext highlighter-rouge">cloud.yandex.ru</code>, переходим в Object Storage. Создаем бакет. Советую холодный тип хранения, потому что читать файлы вы будете редко, а синхронизация работает по методу HEAD — через метаданные.</p>
-
-<p>Когда бакет создан, понадобится пара открытый-закрытый ключ. Как слепой щенок, долго я мыкался по интерфейсу, пока не нашел “сервисные аккаунты”. Создайте новую пару и сохраните ключи. Добавьте в настройки клиента AWS секции:</p>
-
-<div class="language-ini highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># ~/.aws/config
-</span>
-<span class="nn">[ya]</span>
-<span class="py">region</span> <span class="p">=</span> <span class="s">ru-central1</span>
-<span class="py">output</span> <span class="p">=</span> <span class="s">json</span>
-
-<span class="c"># ~/.aws/credentials
-</span>
-<span class="nn">[ya]</span>
-<span class="py">aws_access_key_id</span> <span class="p">=</span> <span class="s">...</span>
-<span class="py">aws_secret_access_key</span> <span class="p">=</span> <span class="s">...</span>
-</code></pre></div></div>
-
-<p>Теперь выполните:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws <span class="nt">--profile</span> ya <span class="nt">--endpoint-url</span><span class="o">=</span>https://storage.yandexcloud.net s3 <span class="nb">sync</span> ...
-</code></pre></div></div>
-
-<p>, и файлы польются в Яндекс. К сожалению, в настройких нельзя задать свой <code class="language-plaintext highlighter-rouge">endpoint-url</code>, поэтому приходится таскать его за собой в командной строке. Народные умельцы сделали <a href="https://github.com/wbingli/awscli-plugin-endpoint">плагин</a>, который это фиксит, но я не проверял.</p>
-
-<p>Как закончится синхронизация, удалите старые файлы из Амазона:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws s3 <span class="nb">rm </span>s3://my-bucket <span class="nt">--recursive</span>
-</code></pre></div></div>
-
-<p>Поздравляю, вы переехали. Осталось только исправить <code class="language-plaintext highlighter-rouge">crontab</code>, чтобы синхронизация стала регулярной.</p>
-
-<p>У питонячьего AWS-клиента есть недочет: при синхронизации он оставляет на сервере пустые папки. Предположим, вы удалили папку “photos”, и AWS CLI честно выполнит DELETE для каждого файла:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DELETE photos/IMG_001.jpeg
-DELETE photos/IMG_002.jpeg
-DELETE photos/IMG_003.jpeg
-...
-</code></pre></div></div>
-
-<p>Что касается пути “photos/”, то он благополучно останется на сервере. Ясное дело, что со временем накопится масса таких пустышек, и скачав файлы с S3, вы обнаружите папки, удаленные давным давно. На эту тему <em>пять лет назад</em> создан <a href="https://github.com/aws/aws-cli/issues/2685">issue</a>, в котором отметился и ваш покорный слуга. Каждый месяц я получаю письма с комментариями +1 и пальчиком кверху, но исправлять его никто не спешит.</p>
-
-<p>Впрочем, удалить пустые папки можно командой</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>find <span class="nb">.</span> <span class="nt">-type</span> d <span class="nt">-empty</span> <span class="nt">-delete</span>
-</code></pre></div></div>
-
-<p>, что не такая уж и проблема.</p>
-
-<p>Согласно <a href="https://cloud.yandex.ru/prices">калькулятору Яндекса</a>, хранение 150 гигов обойдется в 215 рублей в месяц, что, прямо скажем, по-божески. По текущему курсу это два доллара, дешевле даже представить нельзя.</p>
-
-<p>Во время изысканий я в том числе пробовал программу <a href="https://syncthing.net/">SyncThing</a>. Кто не знает, это программа для анонимной синхронизации файлов. Никаких регистраций: поставил у себя и на удаленной машине, обменялся QR-кодами, и процесс пошел. Работает как часы. Висит в трее, настройки через браузер на локальном хосте.</p>
-
-<p>На мой взгляд, SyncThing подходит в тех случаях, когда файлы постоянно меняются, и изменений ждут на обоих концах. Например, обмен документами между группой лиц или торрент-трекер, ожидающий файлы в нужной папке. Перекинуть файл с макбука на игровой комп — тот еще челендж, если настраивать сеть по правилам. А со SyncThing работает прекрасно. Словом, замена старому доброму Дропбоксу.</p>
-
-<p>А вот делать бекапы через SyncThing как-то не зашло. Для этого нужно поднимать VPS и ставить там SyncThing. Виртуалки с большим диском нынче от 700 рублей в месяц. Не катастрофа, но выбор между 200 и 700 рублями в месяц очевиден. Да и заморачиваться не охота.</p>
-
-<p>В общем, вот как я синхронизирую файлы. Слово читателям: расскажите, как делаете это вы.</p>
-
-<p><strong>UPD:</strong> <a href="/files2/">продолжение</a>.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page28" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 29 из 85</span>
+        <span class="page_number ">Страница 29 из 86</span>
         
         <a href="/page30" class="next">&rarr;</a>
         

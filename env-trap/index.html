@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>О переменных среды</title>
+  <meta name="description" content="Про переменные среды нужно знать две вещи. Первая — если не было значения поумолчанию, функция должна бросить исключение, где написано, какой именнопеременно...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/env-trap/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">О переменных среды</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-11-22T00:00:00+00:00">
+        Nov 22, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/environment/" rel="tag">environment</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Про переменные среды нужно знать две вещи. Первая — если не было значения по
+умолчанию, функция должна бросить исключение, где написано, какой именно
+переменной не нашлось. Вторая — нельзя читать переменные посреди
+программы. Нужно сделать это один раз на старте. Эти два правила улучшают код на
+порядок.</p>
+
+<p>Теперь подробнее. Как правило, если переменная среды не установлена, то попытка
+ее прочесть вернет пустую строку или <code class="language-plaintext highlighter-rouge">null</code>. Это неправильно. Должно выскочить
+исключение с примерно таким текстом:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>System.getenv("DB_PASSWORD") =&gt;
+RuntimeException "env variable DB_PASSWORD is not set"
+</code></pre></div></div>
+
+<p>Если вместо исключения будет <code class="language-plaintext highlighter-rouge">null</code>, то он провалится в дальнейшие вычисления,
+например, в формирование урла или бакета. Постоянно вижу такое в коде:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>host = "api." + getenv("ENV_PREFIX") + ".acme.com"
+</code></pre></div></div>
+
+<p>Если <code class="language-plaintext highlighter-rouge">ENV_PREFIX</code> не задан, то получится <code class="language-plaintext highlighter-rouge">api.null.acme.com</code>. Из-за этого
+HTTP-клиент пойдет на левый хост и кинет непонятное исключение. То же самое с
+бакетом в S3: Амазон скажет, мол, нет такого бакета, а вы будете рвать волосы.</p>
+
+<p>Простой фикс — написать свою функцию, которая бросит исключение. Потом заменить
+все коробочные getenv на ваш. Пример:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(dеfn env!
+  ([varname]
+   (or (System/getenv varname)
+       (throw (new RuntimeError ...))))
+  ([varname dеfault]
+   (or (System/getenv varname)
+       dеfault)))
+</code></pre></div></div>
+
+<p>Исключение не кидается, если передан дефолт.</p>
+
+<p>Второе. Чтение переменной среды — это грязная операция. Формально никакого IO не
+происходит, потому что переменные уже в памяти программы. Но это сторонняя
+зависимость, которую ваш код не контролирует. По факту чтение переменной не
+отличается от чтения файла. Нет файла — программа сломается; нет переменной —
+тоже.</p>
+
+<p>Поэтому, если уж вы связались с переменными среды, читайте их на старте в
+какую-то мапку. Передавайте эту мапку в функции, чтобы они были чистыми. Это
+легко тестировать: подал на вход то, это, пятое-десятое. А когда код завязан на
+getenv, с ним невозможно работать.</p>
+
+<p>Приходилось работать в проекте, который писали одни чудики. Они прочитали The
+Twelve-Factor App и особенно прониклись пунктом насчет переменных
+среды. Результат можно описать одним словом: пи…ц. Представьте проект на 600
+файлов, где на каждый чих читается переменная среды, да к тому же приводится к
+нужному типу. На старте ничего не проверяется: запустил код без переменной —
+узнал об этом в продакшене. Какой-то чел добавил глобальный кэш переменных и
+целый ворох связанных с ним проблем.</p>
+
+<p>Чудики вынесли настройки в переменные среды, чтобы быть свободными от
+конфигурации. Так им сказали в The Twelve-Factor App. А потом написали ENV-файлы
+на три экрана. Было несколько ENV-файлов, которые загружались в особом порядке,
+переопределяя значения друг друга. Например, сначала базовый энв, потом энв
+текущего окружения (тест, прод, стейджинг), потому энв текущей машины. Удачной
+отладки.</p>
+
+<p>Из этого вывод: много чего можно прочитать в интернете, но если нет своей
+головы, оно не поможет. Нужно делать так, чтобы было удобно, а не как написано в
+The Twelve-Factor App или на Хакер-Ньюз.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/best-lang/">&larr; Лучший язык</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/url-space/">Пробел в урлах &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/env-trap/">
+    <input required name="captcha" type="hidden" value="6 &#215; 8">
+
+    <div class="block">
+        <span class="comment-form-label"><small>6 &#215; 8 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
