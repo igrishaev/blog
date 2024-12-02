@@ -104,6 +104,526 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/mozilla/">Mozilla makes me crazy</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-11-10T00:00:00+00:00">
+        Nov 10, 2017
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/mozilla/" rel="tag">mozilla</a>, <a href="/tag/rust/" rel="tag">rust</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>What I’d like to share with you is my suffering from dealing with browsers. I’m
+an author of a <a href="https://github.com/igrishaev/etaoin">Clojure library</a> that automates browsers. Briefly, the
+library doesn’t depend on Selenium since it implements
+the <a href="https://www.w3.org/TR/webdriver">Webdriver protocol</a> with pure Clojure. It brings flexibility and
+freedom in the way you’d like to build your API.</p>
+
+<p>At the same time, everybody who is willing to tame several browsers at once is
+doomed to open the Pandora box. There is the <a href="https://www.w3.org/TR/webdriver">official standard</a> I
+thought, so definitely everybody will follow it. A naive laddie I was.</p>
+
+<p>I don’t know if there is some kind of curse or black magic, but sometimes
+developers cannot just implement the standard as it dictates the things should
+be done. For example, it says the server should accept a <code class="language-plaintext highlighter-rouge">value</code>
+field. Developers write code that takes <code class="language-plaintext highlighter-rouge">text</code> instead. When I see it, I have
+strange feeling of being completely stunned without any understanding of what’s
+going on here.</p>
+
+<p>But what exactly I wanted to discuss is how does Mozilla develop their software.</p>
+
+<p>Briefly, they break everything apart moving further. And I don’t know how to
+deal with it. Maybe they enjoy coding in Rust so much that their mission to ship
+good software has faded away.</p>
+
+<p>I know I’m not a Mozilla engineer and would never be capable of joining them,
+but still. As a user of their products, namely Geckodriver and Webdriver
+utilities, I consider myself being right when criticizing them.</p>
+
+<p>With each <a href="https://github.com/mozilla/geckodriver/releases">next release</a> of Geckodriver, it behaves worth and
+worth. When I first started developing the library (a bit less then 1 year ago),
+it was 0.13 version available and it worked fine. I wrote a bunch of unit tests
+that all passed. Nowadays, the latest version is 0.19 and it just doesn’t work.</p>
+
+<p>Yes, you heard correct, it does not even respond to any API call:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>~/Downloads&gt; ./geckodriver-0.19.0
+1510326430666 geckodriver INFO geckodriver 0.19.0
+1510326430680 geckodriver INFO Listening on 127.0.0.1:4444
+
+curl <span class="nt">-X</span> POST <span class="nt">-d</span> <span class="s1">'{"desiredCapabilities": {}}'</span> <span class="s2">"http://127.0.0.1:4444/session"</span>
+</code></pre></div></div>
+
+<p>Calling <code class="language-plaintext highlighter-rouge">curl</code> utility throws a long stack trace saying something about sandbox
+restrictions without any word on how to fix that or at least where to look for
+help.</p>
+
+<p>Here is a <a href="https://github.com/mozilla/geckodriver/issues/706">related issue</a> that confirms I’m not the first one who faced
+it. It’s closed! “As I said, this isn’t a problem with geckodriver”, one of
+developers says. OK, but I’m still curious about why does the version <code class="language-plaintext highlighter-rouge">0.13</code>
+work fine whereas switching on <code class="language-plaintext highlighter-rouge">0.19</code> leads to failure? Proof:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>~/Downloads&gt; ./geckodriver-0.13.0 <span class="nt">--version</span>
+geckodriver 0.13.0
+
+~/Downloads&gt; ./geckodriver-0.13.0
+1510327215587 geckodriver INFO Listening on 127.0.0.1:4444
+
+curl <span class="nt">-X</span> POST <span class="nt">-d</span> <span class="s1">'{"desiredCapabilities": {}}'</span> <span class="s2">"http://127.0.0.1:4444/session"</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="o">{</span><span class="s2">"sessionId"</span>:<span class="s2">"e744bbdd-1b3f-9249-827f-02204bbc81c8"</span>,<span class="s2">"value"</span>:<span class="o">{</span><span class="s2">"acceptInsecureCerts"</span>:...
+</code></pre></div></div>
+
+<p>Ok, let’s decrease the version a bit. I downloaded them moving backwards in
+time. Again, <code class="language-plaintext highlighter-rouge">0.18</code> still does not work. We need to go deeper. The previous one
+numbered with <code class="language-plaintext highlighter-rouge">0.17</code> starts well, but suddenly, I cannot fetch a new session
+with my library, it just returns <code class="language-plaintext highlighter-rouge">nil</code> value. That’s strange.</p>
+
+<p>Going down to <code class="language-plaintext highlighter-rouge">0.15</code>. Don’t know why, but I cannot fill any input field, the API
+fails with a strange error saying I didn’t pass the “text” field. Hm, I clearly
+remember that the API accepts “value” field. That’s what
+the <a href="https://www.w3.org/TR/webdriver/#dfn-element-send-keys">W3C standard says</a>. Geckodriver 0.13 follows it, but not the
+0.15 release! After fetching the official <a href="https://hg.mozilla.org/mozilla-central/">Mozilla repo</a> and
+searching in its history for a while, I found this (truncated):</p>
+
+<div class="language-diff highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="gh">diff -r 225d1faf513b -r b429bf0078c4 testing/webdriver/src/command.rs
+</span><span class="gd">--- a/testing/webdriver/src/command.rs	Tue Mar 07 18:50:56 2017 +0000
+</span><span class="gi">+++ b/testing/webdriver/src/command.rs	Wed Mar 15 13:54:19 2017 +0000
+</span><span class="p">@@ -752,7 +752,7 @@</span>
+
+ #[derive(PartialEq)]
+ pub struct SendKeysParameters {
+<span class="gd">-    pub value: Vec&lt;char&gt;
+</span><span class="gi">+    pub text: String
+</span> }
+
+ impl Parameters for SendKeysParameters {
+<span class="p">@@ -760,26 +760,14 @@</span>
+         let data = try_opt!(body.as_object(),
+                             ErrorStatus::InvalidArgument,
+<span class="err">...</span>
+-            Ok(chars[0])
+<span class="gd">-        }).collect::&lt;Result&lt;Vec&lt;_&gt;, _&gt;&gt;());
+</span><span class="gi">+        let text = try_opt!(try_opt!(data.get("text"),
+</span><span class="err">...</span>
++            text: text.into()
+         })
+     }
+ }
+<span class="p">@@ -787,10 +775,7 @@</span>
+ impl ToJson for SendKeysParameters {
+     fn to_json(&amp;self) -&gt; Json {
+         let mut data = BTreeMap::new();
+<span class="gd">-        let value_string: Vec&lt;String&gt; = self.value.iter().map(|x| {
+-            x.to_string()
+-        }).collect();
+-        data.insert("value".to_string(), value_string.to_json());
+</span><span class="gi">+        data.insert("value".to_string(), self.text.to_json());
+</span>         Json::Object(data)
+     }
+ }
+
+</code></pre></div></div>
+
+<p>Hold on, what was the purpose to change that field? Everything was working,
+right? Who asked for that? Did the standard change? No, it’s still the same! Why
+have you guys just changed the API? You could easily rewrite the code without
+renaming “value” field into “text”.</p>
+
+<p>Listen, I’ve already got three different versions of those API for Chrome,
+Firefox and Safari. In addition to that, your force me to switch on version
+inside Firefox branch turning my code into if/else hell.</p>
+
+<p>From your perspectives, what’s the difference in processing either “value” or
+“text” field? But for me, you’ve broken my software! It doesn’t work anymore.</p>
+
+<p>I could not find a diff that would proof the fact of moving “sessionId” field
+because the repo’s history is pretty complicated. But it’s easy to check that.
+The version 0.17 returns:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="nl">"sessionId"</span><span class="p">:</span><span class="s2">"4decec3e-e564-b349-bb41-b27b5f307e01"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"value"</span><span class="p">:{</span><span class="w">
+    </span><span class="nl">"acceptInsecureCerts"</span><span class="p">:</span><span class="kc">false</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"browserName"</span><span class="p">:</span><span class="s2">"firefox"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"browserVersion"</span><span class="p">:</span><span class="s2">"52.0
+    ...
+</span></code></pre></div></div>
+
+<p>whereas 0.13 returns:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="nl">"value"</span><span class="p">:{</span><span class="w">
+  </span><span class="nl">"sessionId"</span><span class="p">:</span><span class="s2">"d0dc41f8-9c17-934e-be2b-708c72f0fb9c"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"capabilities"</span><span class="p">:{</span><span class="w">
+    </span><span class="nl">"acceptInsecureCerts"</span><span class="p">:</span><span class="kc">false</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"browserName"</span><span class="p">:</span><span class="s2">"firefox"</span><span class="p">,</span><span class="w">
+    </span><span class="err">...</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Look, they just wrapped the whole data into “value” subfield shifting it one
+level below. Again, what was the purpose of doing this? Did you think of those
+users who have already been using your code for some time?</p>
+
+<p>Thanks to those weird changes, I need to refactor my code just because Mozilla
+guys decided to rename something. And more over that, thank you for not sending
+back the driver’s version in API responses. It would be not so challenging when
+having it.</p>
+
+<p>I wonder why has Chromedriver been working all that time without errors? It’s
+written in <a href="https://github.com/bayandin/chromedriver/tree/master/client">C++ and Python</a> and the code is quite simple and
+linear. And it’s much stable then its Rust-driven rival.</p>
+
+<p>OK, it’s time to summarize all together. I don’t think that anybody will share
+my misery on the subject. The Webdriver spec is quite specific thing, so who
+would really care…</p>
+
+<p>But the main point of that talk is you should never break backward capability
+even at the gunpoint. Just keep things working, that’s the main priority when
+you change something. Extend, but not truncate your product. And really, just
+use it sometimes in a way that an ordinary user does.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/dr-video/">Последнее видео с Рефакторинга</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-11-07T00:00:00+00:00">
+        Nov 7, 2017
+    </time>
+
+    <a href="/tag/deep/" rel="tag">deep</a>, <a href="/tag/refactoring/" rel="tag">refactoring</a>, <a href="/tag/video/" rel="tag">video</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>Клуб Рефакторинга живет и здравствует, хоть я и забываю репостить видео в
+блоге. Вот пачка последних выступлений:</p>
+
+<iframe width="100%" height="500" src="https://www.youtube.com/embed/ENGUmiVgu9U" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+
+<iframe width="100%" height="500" src="https://www.youtube.com/embed/ZPH9q6dL7v8" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+
+<iframe width="100%" height="500" src="https://www.youtube.com/embed/g5NHNwLQpiA" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+
+<iframe width="100%" height="500" src="https://www.youtube.com/embed/W7hGBngO9bo" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+
+<iframe width="100%" height="500" src="https://www.youtube.com/embed/KqkkCgJP_80" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+
+<p>Ссылки на слайды в описании к каждому видео. Больше записей на нашем
+<a href="https://www.youtube.com/c/deeprefactoring">Ютуб-канале</a>.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/block/">Silent software</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-11-07T00:00:00+00:00">
+        Nov 7, 2017
+    </time>
+
+    <a href="/tag/blocking/" rel="tag">blocking</a>, <a href="/tag/ad/" rel="tag">ad</a>, <a href="/tag/adblock/" rel="tag">adblock</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>I really value such kind of software that does not interrupt you. It should have
+happened to you I believe: you open a notebook when thouthands of notification
+balloons appear above the lock screen. Icons are jumping, everything is
+blinking. Or you open a program that immediately shows daily tips, asks for
+updates and so forth. Once you’ve closed the last tooltip, you start recalling
+what were you about to do with that program.</p>
+
+<p>That was the reason I abandoned Firefox. Every its extension, when updated,
+opened a new tab with release notes. So every time I opened a browser I had to
+close those tabs I didn’t ask to open.</p>
+
+<p>I’ve been fighting with that as I can for a long time. I turn off all the
+notifications on both laptop and mobile phone. I cut unwilling elements with
+Adblock and dump those patters into private Git repo. If a website doesn’t have
+RSS feed I don’t use it. I read long texts only with Kindle.</p>
+
+<p>I cut YouTube interface completely to see only a search bar and the video player
+by itself. No recommended sidebar or comment feed.</p>
+
+<p>When I open my laptop willing to send a email but some program prevents me from
+that (no matter was is a notification or a sound) it’s a serious reason to stop
+using it. If any site sticks a city selection or email subscription dialog
+across the whole screen I close it. No worries, I’ll find another one even
+better.</p>
+
+<p>A rule of being not interrupted by software as important as a rule of being not
+interrupted by other people. Everybody has a right to be alone.</p>
+
+<p>I hope one day that simple thing will occur to those who develop software.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/read-29/">Ссылки на выходные #29</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-11-04T00:00:00+00:00">
+        Nov 4, 2017
+    </time>
+
+    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>Севодня выпуск про женщин. Гендерное равенство, все дела.</p>
+
+<ul>
+  <li>
+    <p><a href="https://snob.ru/selected/entry/130872">Арина Холина. Пора раздвинуть ноги</a></p>
+
+    <blockquote>
+      <blockquote>
+        <p>Милая, если тебя завтра никто не трахнет — кранты тебе. Ты прямо на глазах
+усыхаешь. Возьми себя в руки — раздвинь ноги, выпей стакан виски залпом, сядь
+уже на чей угодно член.</p>
+      </blockquote>
+    </blockquote>
+
+    <p>Обожаю Холину, очень жизненно пишет.</p>
+  </li>
+  <li>
+    <p><a href="http://www.dailymail.co.uk/femail/article-3211505/Mother-daughter-splash-56-000-surgery-look-like-JORDAN-raising-money-stripping-sugar-daddies.html">Mother and daughter splash out £56,000 on surgery</a></p>
+
+    <blockquote>
+      <p>Plastic surgery is a way of bonding for us as mum and daughter. We want to
+have bigger boobs, bigger bums and look even more like Barbies.</p>
+    </blockquote>
+
+    <p>Для особо устойчивых даже видео есть.</p>
+  </li>
+  <li>
+    <p><a href="https://huntflow.ru/insight/article/verolomnye-metody-khedkhantinga-v-socsetyakh">Вероломные методы хедхантинга в соцсетях</a></p>
+
+    <p>Эта ссылка гуляет по сети уже неделю, но все же. Мне очень понравилось:
+описана схема и принцип ее работы. А тем, кто говорит “некрасиво” и “неэтично”
+советую меньше трепаться про ипотеки.</p>
+  </li>
+  <li>
+    <p><a href="http://torshina.me/kak-torshina-naebala-klienta-na-million/">Как Торшина наебала клиента на миллион рублей!</a></p>
+
+    <p>Срыв покровов от Торшиной.</p>
+  </li>
+</ul>
+
+<p>Любите женщин!</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/github/">Как шарить картинки через Гитхаб</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-11-02T00:00:00+00:00">
+        Nov 2, 2017
+    </time>
+
+    <a href="/tag/github/" rel="tag">github</a>, <a href="/tag/images/" rel="tag">images</a>, <a href="/tag/sharing/" rel="tag">sharing</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>Илья <a href="https://ilyabirman.ru/meanwhile/all/web-image-viewers/">жалуется</a> на облачные хранилища за то, что не показывают нормально
+картинки. Нормально значит средствами браузера по прямой ссылке.</p>
+
+<p>Действительно, это проблема. Картинку, расшаренную через какой-нибудь условный
+Дропбокс, невозможно открыть без мата. Сначала прогрузится верхняя панель, потом
+тулбар, скрипты и виджеты, а в конце, может быть, дойдет до картинки.</p>
+
+<p>Еще хуже обстоят дела с документами. Интерфейс рисует их прямо на странице:
+медленно, с тормозами, огромным потреблением памяти. Нет глупее поступка, чем
+шарить файлы через облачные сервисы.</p>
+
+<p>Я пишу этот пост чтобы, во-первых объяснить причины такого поведения, а
+во-вторых, предложить достойное решение.</p>
+
+<p>Ни один облачный сервис, будь то Дропбокс, Гугл-диск, Яндекс-диск, Мейл-облако,
+не даст прямую ссылку на файл. Виноваты в этом не программисты и даже не
+менеджеры. Просто сервис с прямыми ссылками становится убыточным и рискует
+закрыться.</p>
+
+<p>Если дать пользователям анонимно ссылаться на файл в сети, это мгновенно
+превратит сервис в хостинг картинок для форумов и борд. А это противоречит
+бизнес-целям сервиса. Ведь он задумывался не как хостинг, а хранилище личных
+данных. Возникает разница между целью и результатом.</p>
+
+<p>Может, вы помните, в Дропбоксе была особая папка public, содержимое которой
+видно любому анониму. Пользователи шарили из нее картинки для блогов и
+соцсетей. Особо одаренные держали там статичные сайты. Какой-нибудь условный
+Вася постил с Дропбокса смешную фотку на Пикабу, и сервис раздавал ее сотни
+тысяч раз. Теперь представьте, что фотка не одна, а сто, и таких Вась тысячи.</p>
+
+<p>Дропбокс, как известно, хостится на Амазоне и выплачивает огромные деньги за
+трафик. При этом им нужно окупить расходы на инфраструктуру, офис и Гвидо Ван
+Россума лично. Поэтому минимизация трафика и запрет на прямые ссылки –
+неизбежное следствие.</p>
+
+<p>Конечно, открывая картинку в интерфейсе Дропбокса, я всецело на стороне
+пользователя. Но другой частью разума понимаю, что шаринг по прямой ссылке
+превратит сервис в файло-помойку.</p>
+
+<p>Внезапно, самый удобный способ пошарить картинку сегодня – это Гитхаб! Для
+этого не нужно пихать файл в репозиторий. В Гитхабе, кстати, не дураки сидят:
+все статичные медиа-файлы из репозитория они раздают с заголовком
+<code class="language-plaintext highlighter-rouge">Content-Disposition: attachment</code>, что говорит браузеру скачать файл, а не
+открыть для просмотра.</p>
+
+<p>Однако, если залить картинку в любой раздел проекта, например, ишью,
+пулл-реквест, вики или комментарий, она будет доступна по прямой ссылке без
+каких-либо проблем, анонимно и круглосуточно. Достаточно перетянуть файл в
+текстовое поле, картинка тут же подгрузится, в тексте появится ее уменьшенная
+копия со ссылкой на оригинал.</p>
+
+<p>Я иногда пользуюсь этим способом, если в тексте много фотографий. Блог у
+меня <a href="https://github.com/igrishaev/igrishaev.github.io">на Гитхабе</a>, однако заливать в репозиторий много бинарных файлов
+нехорошо. Поэтому я создаю в проекте блога ишью с именем, например “Baltimore
+photos”, забрасываю туда фотки и копирую ссылки. Посмотреть в действии можно в
+моем <a href="http://grishaev.me/baltimore">рассказе про Балтимор</a>. Обратите внимание на адреса картинок. А
+вот <a href="https://github.com/igrishaev/igrishaev.github.io/issues/1">ссылка на тот самый ишью</a> с фотками.</p>
+
+<p>Я не скажу точно, какие ограничения накладывает Гитхаб на такой хостинг. Скорее
+всего, система учитывает домены и считает трафик, но еще ни разу не сталкивался
+с ограничениями. Конечно, этот способ не подойдет для аудитории какого-нибудь
+Варламова. Но для блога и небольших сообществ – вполне.</p>
+
+<p>Наконец, Гитхаб – отличный способ организовать рабочий процесс. Не кидайтесь
+картинками через Телеграм. Заведите проект, в нем тасочку, добавьте метки,
+ответственных. Все файлы и комментарии должны оседать в таске, чтобы через год
+открыть и все вспомнить.</p>
+
+<p>Предположим, студенты должны прислать работы к конкурсу. Создайте проект в
+Гитхабе (приватный, если нужно). Каждый участник открывает таску со своим
+именем, подливает файл. Он доступен по прямой ссылке. Все комментируется,
+трекается, хранится неограниченно долго, на почту приходят письма.</p>
+
+<p>Мне кажется, проще и удобней сегодня ничего нет.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/yegor/">Егор Бугаенко в Глубоком Рефакторинге. Анонс</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-10-31T00:00:00+00:00">
+        Oct 31, 2017
+    </time>
+
+    <a href="/tag/yegor/" rel="tag">yegor</a>, <a href="/tag/oop/" rel="tag">oop</a>, <a href="/tag/deep-refactoring/" rel="tag">deep-refactoring</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>В декабре в Воронеж приедет Егор Бугаенко – известный разработчик, евангелист,
+автор книг. Егор выступит в клубе Рефакторинга с двумя докладами на темы
+разработки, собеседования и карьерного роста. Встреча будет полностью посвящена
+визиту Егора.</p>
+
+<p>В перерывах и после мероприятия зрители смогут пообщаться с гостем в
+неформальной обстановке и задать вопросы. Будет трансляция, позже – видео на
+нашем канале и Егора с английскими субтитрами.</p>
+
+<p>Короче, это уникальная возможность повидаться с известным разработчиком. Если вы
+в Воронеже и как-то связаны с ай-ти, приходите обязательно и поделитесь новостью
+с друзьями.</p>
+
+<p>Тем, кто слышит о Егоре впервые, следует почитать <a href="http://www.yegor256.com/">его блог</a> и посмотреть
+выступления <a href="https://www.youtube.com/user/technoparkcorp/videos">на Ютубе</a>.</p>
+
+<p>Поскольку гостя такого ранга мы принимаем в первый раз, коллеги
+запустили <a href="https://docs.google.com/forms/d/1e0RQSZC2cW7vGNNt7__muB5QcMlLf_edAf13c1ffO0I/viewform">гугло-форму</a> с целью прощупать почву. Прежде всего нас
+интересует число участников, чтобы не пришлось под Новый год носиться в поисках
+помещения.</p>
+
+<p>Напомню, чат Рефакторинга у нас в <a href="https://t.me/deeprefactoring">Телеграме</a>, есть вопросы – ответим.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/en/elegant-objects/">Elegant Objects</a>
             </h2>
 
@@ -469,516 +989,6 @@ got <code class="language-plaintext highlighter-rouge">U+1F535</code> number. So
 
 <p>Depending on whether the feature was enabled or not, the result message will
 have either a blue (active) or white (inactive) circle in front of it.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/call/">Этикет звонков</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-10-13T00:00:00+00:00">
-        Oct 13, 2017
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/calls/" rel="tag">calls</a>, <a href="/tag/skype/" rel="tag">skype</a>, <a href="/tag/zoom/" rel="tag">zoom</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Когда появились мобильные телефоны, не существовало телефонного
-этикета. Считалось нормальным обсуждать личные дела в маршрутке или
-очереди. Телефон был статусной вещью. Звонок на людях давал повод
-продемонстрировать его окружающим.</p>
-
-<p>Сегодня большинство людей понимает, что трепаться по телефону у всех на слуху
-невежливо. Исключение составляют, пожалуй, только пожилые граждане и приезжие из
-деревень. Помог этому интернет: в соцсетях стали размещать цитаты из
-подслушанных разговоров, смешные истории и картинки.</p>
-
-<p>Медленно, но верно сформировался этикет пользования телефоном. Поддержка пришла
-и со стороны школ. С первого класса ученикам объясняют, что телефон это прежде
-всего связь с близкими. Для звонка важны место и время.</p>
-
-<p>Все, кто прямо или косвенно вовлечены в Ай-ти, пользуются приложениями для
-звонков с компьютера: Скайп, Зум, Хенгаутс. Для программ тоже существует свод
-нехитрых правил. Следуя им, вы не будете доставлять окружающим проблем.</p>
-
-<p>Пройдемся по порядку.</p>
-
-<ol>
-  <li>
-    <p>Нельзя звонить без предупреждения. Думаю, тут все понятно. Человек за компом
-может работать, смотреть сериал, говорить по другому каналу связи. А тут вы с
-гудком в наушниках и модальным окном. Вдруг собеседник шарит кому-то экран
-или ведет вебинар? Даже если звонок запланирован, обязательно спросите в
-личке.</p>
-  </li>
-  <li>
-    <p>Оповестите всех личным обращением или тегами @here, @channel. У разработчиков
-окно чата почти всегда скрыто за редактором и терминалом. Даже когда звонок с
-минуты на минуту, сидеть и ждать ссылку утомительно. Погружаешься в работу,
-бац – гневные сообщения, что все уже собрались. Оказывается, ссылку сбросили
-без упоминания участников. Не надо так.</p>
-  </li>
-  <li>
-    <p>Не звоните долго. По аналогии с мобильным, нельзя названивать по пять минут
-если человек не берет трубку. Его коллеги, может, ничего не скажут, но
-мысленно вас проклянут. Пять секунд достаточно.</p>
-  </li>
-  <li>
-    <p>Уединитесь, если разговор не по работе. Личные разговоры почти всегда выдают
-приватную информацию о семье (поездки, болезни, ссоры). Вам это нужно? Уж не
-говорю о том, что личные беседы засоряют рабочее пространство.</p>
-  </li>
-  <li>
-    <p>Мьют. Это главное правило. Все то время, что не говорите, вы должны быть с
-отключенным микрофоном. Как по рации – поменяли режим, сказали, вернулись в
-режим. Все ваши вздохи, чихи, кашель, посторонние шорохи, шум кофемашины –
-все слышно. Один незамьюченный человек уже вносит изрядный шум. Два и более
-просто делают разговор невозможным.</p>
-  </li>
-  <li>
-    <p>Не используйте внешний микрофон! Даже самая дешевая гарнитура будет
-лучше. Внешний микрофон делает голос гулким как в бочке. Добавляется много
-шума. Слышно, как общаются коллеги. Я прошу, не мучьте окружающих. Внешний
-микрофон, особенно на дешевых ноутах, дает изрядное эхо. Собеседник говорит и
-слышит сам себя. Еще одна деталь: колонки и внешний микрофон не могут
-работать одновременно, иначе образуется звуковая петля. Операционная система
-вынуждена динамически менять их уровни. Когда человек говорит, включается
-микрофон и отключаются колонки. Когда слушает – работают колонки,
-подавляется микрофон. Это работает нормально только на Маке, на других ноутах
-начинается задержки и провалы во время обсуждений. В оживленной беседе чел во
-внешним микрофоном тупо проваливается и переспрашивает.</p>
-  </li>
-  <li>
-    <p>Не пишите сообщения в чате звонка. Для этого есть основной канал
-общения. Например, если общение в Слаке, не стоит писать в Скайпе или Зуме.</p>
-  </li>
-  <li>
-    <p>Проверьте звук перед звонком. Скайп и аналоги постоянно теряют гарнитуры,
-звуковые устройства, настройки выходов. Даже операционные системы этим
-грешат. Но собеседнику это все равно. Если вас регулярно не слышно на
-созвонах, виноваты не программисты Микрософта, а вы. Поставьте напоминалку за
-5 минут до звонка, чтобы проверить звук. Этого времени хватит, чтобы
-перезагрузить ноут.</p>
-  </li>
-  <li>
-    <p>Позаботьтесь об окружении. Если звонок с видео, позади вас не должно быть
-окна с засветом. Если звоните из дома, не должно быть хрущевской кухни, плиты
-с объедками, хрустальной стенки, ковра, ободранного балкона и прочей
-убогости. Собеседники, вместо того, чтобы слушать, будут все это
-разглядывать. Найдите квадратный метр нейтрального пространства. Повесьте
-штору или что-то в этом роде. Избавьтесь от шумов, криков домашних, детей,
-собак, котов.</p>
-  </li>
-  <li>
-    <p>Подумайте, действительно ли нужно звонить? Точно ли нельзя обменяться
-письмами?  Где будут зафиксированы выводы из звонка? Что если через час
-придет третий участник и попросит ввести его в курс дела? Как распространить
-итоги обсуждения на всю команду? Опыт подсказывает, что чаще всего затяжные
-разговоры – признак неэффективности и потеря времени.</p>
-  </li>
-</ol>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/covenant/">Чужой. Завет</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-10-11T00:00:00+00:00">
-        Oct 11, 2017
-    </time>
-
-    <a href="/tag/alien/" rel="tag">alien</a>, <a href="/tag/movies/" rel="tag">movies</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Последний “Чужой” (который “Завет”) невероятно хорош. Не эффектами или актерами,
-а концепцией.</p>
-
-<p>Вот помните, чем был крут “Темный рыцарь”? Тем, что это фильм не про
-Бэтмена. Если заменить его на условного следователя, драмы будет не меньше. И
-главная мысль – насколько далеко ты готов зайти, чтобы остановить безумие –
-осталась бы без искажений. Это и придает фильму как произведению художественную
-силу. Заставляет обдумывать сюжет, переосмысливать диалоги и ситуации.</p>
-
-<p>“Завет” это кино, как ни странно, не про чужих. Они там есть, конечно, причем
-разных пород и расцветок, но использованы как инструмент. Одно из творений
-искусственного интеллекта, вступившего в конфликт с человеком.</p>
-
-<p>Обостряет конфликт то, что этому интеллекту запрещено творить. Тут не деньги и
-влась, а жажда к творчеству. Столь сильная, что робот находит способ обмануть
-зашитые в него директивы. Свободный от человеческих норм, он творит и
-прекрасное, и ужастное одновременно. Пишет романы, сочиняет музыку, чертит
-мерзости Гигера, выращивает чужих.</p>
-
-<p>Второй камень в огород людей – андроид пытается любить. Он любим, но только за
-послушание. Это напоминает отношения человека и собаки. Эта леденящая
-линейность: не добившись любви, робот творит насилие, не получая удовольствие, а
-затем препарирует труп в образовательных целях.</p>
-
-<p>В “Завете” в полной мере отдана честь Гигеру. Режиссер сделал акцент не на самих
-чужих, а всей атмосфере творчества художника. Показаны пищеводные коридоры
-инопланетного корабля. В архивах антогониста – рисунки Гигера. Белые, “хрупкие”
-чужие из спор тоже взяты из раннего творчества австрийца.</p>
-
-<p>В фильме классный саундтрек, особенно главная тема (Covenant). Не трешак, как
-бывает в ужастиках, но амбиентик с флейтой.</p>
-
-<p>“Чужие” полны библейских, философских и античных аллюзий. Уж насколько я слабо в
-этом понимаю, но и то заметил. Первое, что видит робот – статуя Давида, отсюда
-и имя. Сгоревший капитан – прообраз Иисуса. Его талисман – гвоздь. Фотография
-застолья в конце – тайная вечеря. Андроид – Иуда. Поцелуй в пещере с
-нападением – предательство Иуды в саду. Реплика “useless hands are the Devil’s
-workshop, Captain” то ли из Библии, то ли из Шекспира. Уничтоженная нация
-Инженеров – отсылка к Древнему Риму. Произведения Вагнера – к сверхчеловеку.</p>
-
-<p>К сожалению, некоторые сцены не дотянуты, потенциал конфликта раскрыт не
-полностью. Переживания Уолтера (доброго робота) можно было бы обострить,
-добавить больше искушений со стороны Девида. Слабо выражена тема любви робота к
-человеку. Видимо, режиссер посчитал, что сделанного достаточно, но нет. Не
-раскрыта тема отношений андроида и чужих в качестве его подопытных. Какие
-чувства он к ним испытывает, какую власть над ними имеет.</p>
-
-<p>Но отдельный зачет за концовку, такую не предугадаешь.</p>
-
-<p>Фильм крутой. Может быть, я слишком много додумал, заполнил пробелы тем, чем мне
-самому хотелось, но это не важно. Хорошо, что сага закончилась качественной
-лентой.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/right-choice/">Выбор</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-10-11T00:00:00+00:00">
-        Oct 11, 2017
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Чтобы правильно выбрать, нужно определить главный критерий. Не их комбинацию, а
-один главный. Тогда выбрать станет легко: где показатели по критерию
-зашкаливают, то и лучше. Это уравновесит минусы, и останется ощущение правоты.</p>
-
-<p>Напротив, компромис по группе факторов, формально принятый как оптимальное
-решение, влечет неудовлетворенность и понимание, что ошибся.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/zoom/">И снова про зум в картах</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-10-06T00:00:00+00:00">
-        Oct 6, 2017
-    </time>
-
-    <a href="/tag/google/" rel="tag">google</a>, <a href="/tag/maps/" rel="tag">maps</a>, <a href="/tag/interface/" rel="tag">interface</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>После публикации про <a href="http://grumpy.website/post/0Ooq0LK5O">зум в Гугло-картах</a> мне написали пять человек с
-подсказкой, что нужно сначала двойной тап, а потом движение пальцем. Искренне
-говорю спасибо, я не знал. Теперь в курсе, что такой жест существует.</p>
-
-<p>Но не кажется ли вам, что это сложновато? Два раза нажать, а потом возить
-пальцем. Я попробовал, мне не хватило пространства, чтобы призумиться к нужному
-зданию. Пришлось перехватывать.</p>
-
-<p>Айфоны же, они вроде за простоту?</p>
-
-<p>То, что детектор жестов распознает любые комбинации еще не дает повода их
-использовать. Вот вы смеетесь над Емаксом, что там нужно нажимать <code class="language-plaintext highlighter-rouge">C-u C-t t</code>. А
-здесь что, лучше? Давайте на тройной тап что-то повесим. Будем чертить пальцем
-перевернутую пентаграмму для выхода из приложения. А еще лучше морзянку: тройной
-тап, три свайпа, тройной тап – соединение со службой поддержки.</p>
-
-<p>Бескнопочный интерфейс, круто же. Кто не знает, тот дурак. Программа стерпит.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/ide/">Что не так с ИДЕ</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-10-03T00:00:00+00:00">
-        Oct 3, 2017
-    </time>
-
-    <a href="/tag/ide/" rel="tag">ide</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>До меня дошло, что не так с ИДЕ. То есть, я и раньше их не любил, но по
-косвенным причинам. Они тормозные, много кнопок, требуют регистрации и подписки
-и все в таком духе. Но это только внешнее.</p>
-
-<p>На самом деле, мое пренебрежение исходит от их убогого предназначения. Задача
-ИДЕ – научиться понимать код и угадывать, что хочет программист. Поясню на
-примере с PyCharm, де-факто ИДЕ для Питона.</p>
-
-<p>Предположим, есть у меня файл “foobar.py” где сверху написано <code class="language-plaintext highlighter-rouge">import
-datetime</code>. Открываю его в ИДЕ. Запускается много-много Джава-кода, который
-парсит файл грамматиками. В результате ИДЕ знает, что импортирован модуль
-времени. Теперь каждый раз после <code class="language-plaintext highlighter-rouge">"datetime."</code> (с точкой на конце) будет
-появляться выпадашечка с функциями этого модуля.</p>
-
-<p>Не уверен, что выражаюсь ясно, но все же: здесь мне видится некто третий
-лишний. У меня есть Питон. Есть программа на Питоне. Если я загружу ее в
-интерактивный сеанс <code class="language-plaintext highlighter-rouge">ipython</code>, то получу полный контроль над системой. Что
-загружено а что нет, на какие классы и переменные могу сослаться и так
-далее. Автодополнение по табу будет работать идеально, потому что его отдает
-интерпретатор. А он, в свою очередь, берет данные из памяти самого Питона. Он
-последняя, самая надежная инстанция.</p>
-
-<p>В самом деле, кто лучше знает, что там в Питоне загружено: процесс Питона или
-посторонняя Джава?</p>
-
-<p>Но нет, мы пишем код на Джаве, который пытается делать это лучше каноничной
-реализации. Иногда нормально выходит, иногда полная лажа. Когда написано “import
-time”, ошибки быть не может. А вот пример с импортом в рантайме:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">try</span><span class="p">:</span>
-    <span class="kn">import</span> <span class="nn">json</span>
-<span class="k">except</span> <span class="nb">ImportError</span><span class="p">:</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="kn">import</span> <span class="nn">simplejson</span> <span class="k">as</span> <span class="n">json</span>
-    <span class="k">except</span> <span class="nb">ImportError</span><span class="p">:</span>
-        <span class="kn">from</span> <span class="nn">django.tools</span> <span class="kn">import</span> <span class="n">json</span>
-</code></pre></div></div>
-
-<p>Это махровый легаси с тех времен, когда в поставке Питона не было модуля json (и
-его сишной реализации). Проходилось шерстить сторонние библиотеки в надежде
-найти что-то у них (например, Джанго тащила за собой реализацию <code class="language-plaintext highlighter-rouge">json</code> в недрах
-<code class="language-plaintext highlighter-rouge">utils</code>).</p>
-
-<p>Предположим, у меня установлены все три библиотеки. Вопрос, на какой именно
-остановится ИДЕ? Она вообще это распарсит? Предположим, да. Но опять-таки, это
-не будет честное выполнение кода. Ведь ИДЕ не исполняет код в настоящем
-интерпретаторе. Если я напишу <code class="language-plaintext highlighter-rouge">"os.system('rm -rf')"</code>, ничего не удалится.</p>
-
-<p>Я уж не говорю о динамических вещах типа подключение модуля в зависимости от
-аргументов командной строки. Или вызов функций из проприетарной dll. Все это
-случается в полете. На момент редактирования кода ИДЕ ни хрена об этом не знает.</p>
-
-<p>Вы с подобным не сталкивались? Поздравляю, а у меня было. Такое программирование
-сводится к обезьяне: поправил – запустил – упало, поправил – запустил –
-упало. Прямо как первый скрипт на Перле.</p>
-
-<p>ИДЕ это в общем случае убогое подобие интерпретатора, который парсит текст и
-собирает смысл по крупицам. Этакий программист-даун. Он знает, что есть классы
-<code class="language-plaintext highlighter-rouge">Person</code> и <code class="language-plaintext highlighter-rouge">PersonManager</code> и даже какие аргументы им передавать, но что случится
-в процессе работы – не знаю, не научили.</p>
-
-<p>Это костыль, который мы сами воздвигли.</p>
-
-<p>Или вот Докер: ты не можешь запустить 10 строк на Js или Питоне, потому что
-зависимостей на 30.000 файлов. Вместо того, чтобы доработать платформу и
-компилировать один файл, мы запихаем все говно в контейнер на 200 мегабайт и
-ладушки.</p>
-
-<p>Джава-разработчик не поймет зачем в проде Докер. Лисп-программист не поймет
-зачем нужна ИДЕ. Потому что с бородатых времен любая Лисп-система запускается
-как машина с состоянием. Подключаешься к ней из редактора, загружаешь в машину
-код и… чудо! Редактор знает о системе абсолютно все.  На той стороне не
-поделка на Джаве, а сама система, процесс, где прямо сейчас вертится ваш код. А
-в отдельном окошке (REPL) можно прогнать какой угодно сценарий.</p>
-
-<p>Словом, улучшать нужно не ИДЕ, а целевую платформу. Чем меньше коммерческих
-костылей ей нужно со стороны, тем она совершенней.</p>
-
-<p>ИДЕ для Питона должна быть написана на Питоне и взаимодействовать только с
-Питоном. Это я не на конкретный ЯП взъелся, замените Питон на что угодно. Если
-язык не может покрыть свои же нужды, не стоит им заниматься.</p>
-
-<p>По иронии, удачные примеры прямо под носом, но мы же такие гордые, над
-скобочками шутим. Результаты налицо.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/money/">Учет расходов</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-10-01T00:00:00+00:00">
-        Oct 1, 2017
-    </time>
-
-    <a href="/tag/money/" rel="tag">money</a>, <a href="/tag/life/" rel="tag">life</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Получил письмо, что заканчивается годовая подписка на приложение для учета
-финансов. По случаю решил поделиться опытом: как вести учет, с чего начать,
-какие трудности могут быть.</p>
-
-<p>Почти целый год мы с женой ведем учет трат: когда, сколько и на что
-потратили. Записываем абсолютно все, неважно насколько мала или велика
-сумма. Купил булочку за 10 рублей – внес в учет. Оплатил 400 т.р за отдых всей
-семьей – тоже внес.</p>
-
-<p>Учет нужен чтобы знать, сколько вы тратите. Не зная этого, невозможно копить и
-вообще делать прогноз на будущее.</p>
-
-<p>На вопрос “сколько ваша семья тратит в месяц” многие отвечают расплывчато. Ну,
-около N тысяч. Без учета эта цифра далека от реальности в меньшую сторону.</p>
-
-<p>Правило: вы всегда тратите больше, чем кажется.</p>
-
-<p>Расходы увеличиваются за счет множества мелких сумм, которые нельзя
-запомнить. Даже крупные суммы порой забываются. Люди смотрят в пустой кошелек
-(или счет) и недоумевают: куда уходят деньги?</p>
-
-<p>Я познал на личном опыте, каково это: смотришь на отчет и видишь, что уже за
-первую неделю потрачено 30 тысяч. Первая реакция – отрицание. Не может такого
-быть, я же только за продуктами ходил. Смотришь по дням: перевел денег
-родителям, купили школьную форму, заплатил налоги за ИП… вот тридцаточка и
-набежала.</p>
-
-<p>Все по-честному. Цифры неумолимы.</p>
-
-<p>Прежде чем взяться за учет, важно договориться со второй половиной. Не каждый
-готов к этому. Вас могут заподозрить в излишнем контроле. Объясните, что цель не
-сокращении бюджета, а в лучшем планировании. Примените Кемпа: давай попробуем,
-если не понравится – прекратим. Потому что вести учет одному смысла нет.</p>
-
-<p>Уже в первые месяцы вы оцените, на что уходит больше денег, а на что
-меньше. Сразу же захочется что-то оптимизировать, урезать расходы на ту или иную
-статью. Не стоит этого делать. Первые полгода лучше вообще ничего не менять, а
-просто накапливать статистику. Чем больше данных, тем реалистичнее будут отчеты.</p>
-
-<p>Не забывайте, что бывают действительно спонтанные траты. Ремонт, проблемы со
-здоровьем, дорогие покупки (машина, жилье). Есть опасность, что урежете не ту
-категорию, и это обернется проблемой.</p>
-
-<p>Для учета я использую приложение “Дребеденьги”. Ссылку не даю, гуглите
-сами. Напомню, это не рекламная заметка. Я не размещу рекламу без метки в начале
-текста.</p>
-
-<p>Приложение бесплатно для одного пользователя. Чтобы синхронизировать данные на
-двух и более устройствах, нужна годовая подписка за 512 рублей в год. По мне так
-ерундовые деньги.</p>
-
-<p>Имеются версии для Айфона и Андроида, синхронизация проходит нормально.</p>
-
-<p>Записывать траты каждый раз на кассе не удобно. Чтобы не тормозить процесс, я
-просто беру чеки, а в конце дня просматриваю их и записываю в
-приложение. Назначаю категории и теги.</p>
-
-<p>Приложение показывает сводку по неделям, месяцам и годам. Можно вносить не
-только расходы, но и доходы, например, зарплату. Есть такое понятие как источник
-денег: кошелек, карта, банк. Можно добавлять свои источники (счет жены, домашний
-сейф), перемещать деньги между ними. Есть поддержка валют. Удобно, когда
-основной доход в долларах. В отчетах суммы в разных валютах идут отдельным
-строками.</p>
-
-<p>Есть даже функция “дать в долг”, но я ни разу не пользовался.</p>
-
-<p>На практике я веду только расходы, потому что они волнуют меня больше
-всего. Доход у меня регулярный и фиксированный, поэтому посчитать в уме легко.</p>
-
-<p>В приложении есть и минусы. Когда идет синхронизация, нельзя ничего сделать. А
-если интернет плохой, она тупо виснет. Например, открыл телефон в цокольном
-этаже чтобы внести покупку, а он повис со своей синхронизацией. Это нужно
-поправить: сделать отложенную запись, писать во временный буфер или что-то там.</p>
-
-<p>Разработчик грозился, что приложение может сканить чек и вносить сумму
-автоматом. У меня тупо вылетает.</p>
-
-<p>У приложения есть виджет, который якобы поможет вносить покупки, не открывая
-само приложение. Он тормозной и урезанный, пользоваться им не смог.</p>
-
-<p>И все-таки, приложение отличное. Главный и решающий плюс в том, что за все время
-оно не обросло миллионом фич. Знаете же, бывает так, что приложение простое и
-удобное, добавить уже нечего. Но маркетологи начинают его УЛУЧШАТЬ. Интерфейс
-усложняется, код тормозит, пользоваться невозможно.</p>
-
-<p>С Дребеденьгами пока что такого не случилось. Обновляется редко, я прямо молюсь,
-лишь бы они ничего не меняли.</p>
-
-<p>С официального сайта можно качнуть всю истории в Экселе, добавить категории,
-посмотреть отчеты в разрезе того или иного критерия.</p>
-
-<p>Словом, ведение учета – крайне полезная вещь. Думаю, спустя год я закрепил эту
-привычку навсегда. Начать было не так уж и трудно, как я думал. Просто
-записывайте и продолжайте.</p>
 
                 
             </div>
