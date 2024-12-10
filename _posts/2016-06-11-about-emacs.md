@@ -464,7 +464,7 @@ ELisp. В ней много всего, в том числе установка 
   который экспортируется в HTML + reveal.js. Например, вот слайды для доклада о
   юнит-тестах:
   [исходник](https://raw.githubusercontent.com/igrishaev/talks/gh-pages/pytest.org),
-  [результат](http://grishaev.me/talks/pytest.html).
+  [результат](https://raw.githubusercontent.com/igrishaev/talks/refs/heads/gh-pages/pytest.html).
 
 - Рисую ascii-таблицы в org-mode. Параметры таблицы задаются командой. Таблица
   ведет себя как лист в Экселе -- можно перемещаться по ячейкам, добавлять и
