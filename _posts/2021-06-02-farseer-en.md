@@ -2,7 +2,7 @@
 layout: post
 title:  "Introducing Farseer: the JSON RPC server, the client and utilities"
 permalink: /en/farseer/
-tags: clojure programming RPC
+tags: clojure programming rpc
 lang: en
 ---
 
