@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Выпрямить данные</title>
+  <meta name="description" content="В кложурном чатике скинули очередную задачу: дана такая-то мапа, нужно перегнатьее в другую мапу. Примерный исходник:">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/straight-data/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Выпрямить данные</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-12-22T00:00:00+00:00">
+        Dec 22, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/data/" rel="tag">data</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>В кложурном чатике скинули очередную задачу: дана такая-то мапа, нужно перегнать
+ее в другую мапу. Примерный исходник:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(var DATA
+  {:kek {:foo {:type :LOL}
+         :bar {:type :KEK}}
+   :owo {:pip {:type :AGA}}})
+</code></pre></div></div>
+
+<p>Ожидание:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{:LOL {:foo :kek}
+ :KEK {:bar :kek}
+ :AGA {:pip :owo}}
+</code></pre></div></div>
+
+<p>Это очень упрощенный пример. Грубо говоря, нужно вывернуть вложенную мапу
+наизнанку: поместить наверх то, что сейчас внизу.</p>
+
+<p>Большинство кложуристов подходят к этой задаче как есть. Они берут мапу и
+прогоняют ее через комбо <code class="language-plaintext highlighter-rouge">map</code>, <code class="language-plaintext highlighter-rouge">mapcat</code> и анонимных функций. Кто-то накручивает
+<code class="language-plaintext highlighter-rouge">reduce</code> внутри <code class="language-plaintext highlighter-rouge">reduce</code>. В целом работает, но как это читать и отлаживать — я
+не знаю.</p>
+
+<p>Я тоже скинул решение, точнее его часть, и оно зашло: понаставили пальчиков и
+огней. Раз так, стоит рассказать подробней, тем более что я замечаю, что никто
+так не делает.</p>
+
+<p>Итак, если посмотреть на исходную мапу, станет ясно, что когда-то она была
+плоской таблицей:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>kek foo LOL
+kek bar KEK
+owo pip AGA
+</code></pre></div></div>
+
+<p>Из-за того, что в левой части были повторы, кто-то решил избавиться от них
+группировкой. Но данные никуда не пропали: мы по-прежнему знаем, у кого какой
+атрибут. Посмотрев на самый вложенный элемент, легко проследить его
+путь. Например, обнаружить, что AGA начинается с owo.</p>
+
+<p>Так вот, чтобы переколбасить эту мапу во что-то другое, нужно сперва выправить
+данные — привести их к таблице. Поможет макрос for. Он принимает несколько
+коллекций и строит декартово произведение их элементов. Примечательно, что
+каждая следующая коллекция может быть получена из предыдущих элементов. Код ниже
+строит ленивую таблицу:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(for [[k1 submap1]
+      DATA
+
+      [k2 submap2]
+      submap1
+
+      [_ item]
+      submap2]
+
+  [k1 k2 item])
+
+([:kek :foo :LOL]
+ [:kek :bar :KEK]
+ [:owo :pip :AGA])
+</code></pre></div></div>
+
+<p>Теперь когда мапа развернута, можно сгруппировать ее по-другому. Как именно —
+это уже тривиальное дело, потому что, имея плоские данные, это делается на
+раз-два. Кроме того, нужно спросить себя — действительно ли нужна новая
+группировка? Может быть, лучше оставить как есть? Возможно, на той стороне тоже
+хотели бы плоские данные.</p>
+
+<p>Я как-то рассказывал о нелепой ситуации со вложенностью. На одной стороне
+человек потеет, чтобы построить из списка вложенную мапу вида:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{:node shit
+ :children
+ [{:node crap
+   :children
+   [{:node fuck
+     :children
+     [...]}]}]}
+</code></pre></div></div>
+
+<p>А на второй стороне другой человек потеет, чтобы обойти ее как список. Оба пишут
+быдлокод и матерятся, а ради чего — не ясно. Такую структуру даже не каждый
+кложурист обойдет, потому что не все знают про tree-seq и зипперы.</p>
+
+<p>Возвращаясь к теме переколбаса данных: хорошо бы запомнить аналогию. Плоские
+данные — это как лист бумаги, из которого можно сложить самолет, кораблик или
+лягушку-квакушку. Но переход от одной фигуры к другой происходит через развертку
+— то есть откату к нулевому состоянию. Только потом можно переходить к новому.</p>
+
+<p>Наверняка найдется японец, который может сложить самолет в лягушку, минуя
+лист. Точно так же можно написать быдлокод, который переколбасит одну мапу в
+другую. Но это сложно, не очевидно, хрупко. Лучше избегать.</p>
+
+<p>Видеть простейшую форму и возвращаться к ней, когда что-то идет не так — важный
+навык.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/file-paths-concat/">&larr; Файловые пути</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/two-hotkey-systems/">Две системы клавиш &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/straight-data/">
+    <input required name="captcha" type="hidden" value="3 &#215; 3">
+
+    <div class="block">
+        <span class="comment-form-label"><small>3 &#215; 3 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
