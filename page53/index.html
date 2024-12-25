@@ -104,6 +104,520 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/ui-test/">Thoughts on UI tests</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-11-20T00:00:00+00:00">
+        Nov 20, 2017
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/integration/" rel="tag">integration</a>, <a href="/tag/tests/" rel="tag">tests</a>, <a href="/tag/selenium/" rel="tag">selenium</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Generally, I’m a big fan of writing test. They are great: once you add them, you
+cannot break logic silently anymore. The time you’ve spent on writing tests pays
+off completely in that manner you won’t need to fix production on Friday’s
+night. Tests cannot guarantee your code is free from errors completely,
+though. But having properly designed tests greatly reduces the number of
+potential mistakes.</p>
+
+<p>For a long time, I’ve been developing only server-side tests whereas the UI
+behavior was tested manually. That has been worked until the moment when we
+understood we break the UI too often. That’s how the question about having UI
+tests has appeared.</p>
+
+<p><strong>TL;DR:</strong> I didn’t anticipate maintaining client-side tests (also known as
+integration test) would be so costly. Yet I managed to get stable UI tests, it
+took long time of debugging, reading the source code of webdrivers and
+Google/StackOverflow surfing. Here are some random thoughts on the subject.</p>
+
+<h3 id="ui-tests-are-complex">UI tests are complex</h3>
+
+<p>The first issue you might face when dealing with UI tests (and it has never been
+written clearly in any documentation or manual) is they are unstable and flaking
+by their nature. In technical terms, they are fragile and difficult to
+maintain. Testing UI involves lots of technologies and protocols. Under the
+hood, there is an entire stack of nested calls.  Let’s consider a typical
+PHP/JS-driven web-application with Selenium-based tests. Now follow the testing
+pipeline.</p>
+
+<p>Before you run a test, you should launch the application server (probably your
+REST backend) and Selenium server. Then, once you’ve started a test, it sends
+request to Selenium to start a new browser session. Java spawns a new process of
+webdriver – a special program that helps to automate browsers. The driver tries
+to discover a browser installed on your machine. If everything is alright, the
+browser process starts. Just a note: you have not done anything important yet,
+but there are four processes are running already (the app, Selenium, webdriver,
+browser).</p>
+
+<p>Now then, every time you call for something like</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;&gt;&gt;</span> <span class="n">driver</span><span class="p">.</span><span class="n">find_element_by_id</span><span class="p">(</span><span class="s">"my_button"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>, it turns into a stack with the steps look like approximately the following:</p>
+
+<ol>
+  <li>your PHP/Python/whatever code calls Selenium server.</li>
+  <li>Selenium remaps the incoming data and calls webdriver server.</li>
+  <li>The webdriver reads JSON body and sends corresponding binary commands to the
+browser via socket channel.</li>
+  <li>The browser performs those actions with some delay. There is no guarantee
+about timings, the numbers depend on your OS, number of cores, amount of open
+tabs and so on.</li>
+  <li>If everything is alright, the data flows in the opposite way: from the
+browser to the webdriver, to Selenium and finally to the app.</li>
+</ol>
+
+<p>Remember, it was only a simplest API call. More complicated API expand into
+series of calls and success only when all of sub-calls managed to finish
+successfully.</p>
+
+<h3 id="versioning-hell">Versioning hell</h3>
+
+<p>What exactly may occur during the process? Well, everything.</p>
+
+<p>The most obvious thing is the more software you are trying to work together the
+more unstable the system becomes. That might not be a problem when all the
+components are under your control. Say, if it was a micro-service architecture
+with each node developed by your people. But if fact, they all come from
+different companies with different points on the subject. Your testing library
+is written by some enthusiasts. Selenium is the second group. The browser is the
+third one and they do not listen to anybody, that’s for sure. Developers who
+have brought the webdriver are the fourth group.</p>
+
+<p>Now imagine that every product has its own version, release schedule and
+roadmap. And the version <code class="language-plaintext highlighter-rouge">4.2.1</code> of this requires at least version <code class="language-plaintext highlighter-rouge">3.2.1</code> of
+that. In the release <code class="language-plaintext highlighter-rouge">5.4</code> the feature X doesn’t work, you should use <code class="language-plaintext highlighter-rouge">5.5-beta</code>
+instead. And more many of that. These bits of information are never shared in
+the documentation, but only in comments on Github.</p>
+
+<p>It reminds me <a href="https://en.wikipedia.org/wiki/Appulse">The Planet Parade</a> sometimes when the system performs
+only if some special version’s numbers are set together. Otherwise, it falls
+apart.</p>
+
+<h3 id="they-run-for-too-long">They run for too long</h3>
+
+<p>Another issue with integration tests that you might not be aware about is their
+long execution time. It becomes new to me after long period of maintaining
+server tests that used to pass in a minute or two. Even having a small set of
+integration tests, it would take much more time. If we care about running each
+tests independently without affecting them each other, you need to turn the app
+to its initial state. That involves resetting the database, logging out, wiping
+session, preparing local files and so forth. It takes sensible amount time all
+together. Be prepared your CI pipeline becomes more time-consuming.</p>
+
+<h3 id="referencing-a-missing-element">Referencing a missing element</h3>
+
+<p>What I’d like to highlight more in that topic is a strange error named “element
+stale”. It will definitely rich you when dealing with single page application
+(aka SPA). It is so common that the official Selenium site has
+a <a href="http://docs.seleniumhq.org/exceptions/stale_element_reference.jsp">dedicated page</a> and an exception
+class <a href="https://seleniumhq.github.io/selenium/docs/api/dotnet/html/T_OpenQA_Selenium_StaleElementReferenceException.htm">named after if</a>. The sad thing, those text is quite stingy on
+describing what could be the reason of getting such an error. And more
+important, how to prevent it appears. Hopefully, after long debugging sessions,
+I’ve got answers to both of those questions.</p>
+
+<p>Inside browser, every DOM element has its own unique machinery-wise
+identifier. There is no a single standard of representing it. Depending on
+browser, you might get either <code class="language-plaintext highlighter-rouge">0.950889431100737-1</code> or
+<code class="language-plaintext highlighter-rouge">c1ee22f1-b96e-5245-bd85-9e56e1781cbd</code> for the same button. But it does not
+matter. What really does is it’s quite easy to refer an element that has been
+removed from the DOM tree when the app page has been re-rendered.</p>
+
+<p>That’s the root of the problem: such modern frameworks as React, Vue or whatever
+else continuously update the page components inserting new HTML nodes. Even when
+you have a component with a button with unique “id” attribute and it has been
+re-rendered, an new DOM element instance will be created. From the browser’s
+prospective, it will the another node, completely different to the previous one.</p>
+
+<p>Each modern testing framework has high-level functions to operate on page
+elements without knowing their IDs. Consider Python examples:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;&gt;&gt;</span> <span class="n">driver</span><span class="p">.</span><span class="n">click_on_element</span><span class="p">(</span><span class="s">"my_button"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>In fact, this API call expands into at leas two low-level Webdriver API calls,
+namely:</p>
+
+<ol>
+  <li>Try to discover an element ID by the search term.</li>
+  <li>Try to click on that element.</li>
+</ol>
+
+<p>Looks well, but here is what takes place under the hood. You’ve got a long ID of
+a link or a button, that’s great. But in a millisecond before you clicked on it,
+the UI has been re-rendered. The reason of that is not so important: maybe, some
+event has been triggered, or a user hovered some element when moving mouse to
+it. Or maybe, the framework’s internal algorithm just decided somehow the
+content should be updated. That means, the original button element you’ve got
+the ID for was detached from the DOM thee and moved into a temporary array or
+any other kind of data structure to wait before it is wiped completely from
+memory. Instead of it, a new DOM node that looks exactly the same took those
+place. But willing to click on the button, use send the outdated ID. There is no
+sense in clicking on such kind of elements that are almost dead. The browser
+returns corresponding error message that expands into Selenium exception.</p>
+
+<p>I wish that paragraph was on those page. It would save me a week maybe or even
+more.</p>
+
+<p>A good solution would be to implement some kind of transactions in your
+code. Let every complex API be implemented with try/catch clause with some
+sensible strategy to re-call it in a case of failure, say a number of times or
+by timeouts.</p>
+
+<h3 id="high-hopes">High Hopes</h3>
+
+<p>OK, let’s have some final thoughts on the subject, some kind of summary. Testing
+UI is really far from the server-side ideal world. They are unstable, difficult
+to develop and maintain. There a lots of undocumented traps you may suffer from
+during the journey. But still, there are definitely some good things happening
+nowadays.</p>
+
+<p>First, the official <a href="https://www.w3.org/TR/webdriver/">Webdriver protocol</a> is developing actively. This
+protocol is subject to substitute the outdated
+Selenium <a href="https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol">JSONWire protocol</a>. It has become a part of W3C so I hope it
+will be developed so forth.</p>
+
+<p>More Selenium-free libraries appear on
+Github:
+<a href="http://nightwatchjs.org/">Nightwatch</a>, <a href="https://github.com/teamcapybara/capybara">Capybara</a>, <a href="https://github.com/GoogleChrome/puppeteer">Puppeteer</a>… That
+is great because having the only one monopolist in such specific area stops the
+progress.</p>
+
+<p>But there are lots of things to be done. What I’d like to see at first place is
+some kind of cookbook with common advise and good practices on how to test UI
+without suffering. Those bits should not depend on specific language or library
+although there could be platform-specific sections. I have never met such kind
+of a cookbook across the Internet; please correct me if there are any of them.</p>
+
+<p>When writing a library for browser automation, it would be great to not only
+cover the low-level calls but also design an abstract layer of high-level API to
+make it easy to use by those who are not familiar with all the issues I
+mentioned above. Say, a high-level function (or method if we talk on OOP terms)
+that clicks on a button should take into account the case when the element is
+stale. From my prospectives, such a functional language powered with immutable
+data structures and homoiconicity as Clojure (or any Lisp-family one) would be a
+great choice.</p>
+
+<p>Ok, let’s finish for now. Thank you for listening out. Next time, I’ll say more
+on technical side of testing code.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/mozilla/">Mozilla makes me crazy</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-11-10T00:00:00+00:00">
+        Nov 10, 2017
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/mozilla/" rel="tag">mozilla</a>, <a href="/tag/rust/" rel="tag">rust</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>What I’d like to share with you is my suffering from dealing with browsers. I’m
+an author of a <a href="https://github.com/igrishaev/etaoin">Clojure library</a> that automates browsers. Briefly, the
+library doesn’t depend on Selenium since it implements
+the <a href="https://www.w3.org/TR/webdriver">Webdriver protocol</a> with pure Clojure. It brings flexibility and
+freedom in the way you’d like to build your API.</p>
+
+<p>At the same time, everybody who is willing to tame several browsers at once is
+doomed to open the Pandora box. There is the <a href="https://www.w3.org/TR/webdriver">official standard</a> I
+thought, so definitely everybody will follow it. A naive laddie I was.</p>
+
+<p>I don’t know if there is some kind of curse or black magic, but sometimes
+developers cannot just implement the standard as it dictates the things should
+be done. For example, it says the server should accept a <code class="language-plaintext highlighter-rouge">value</code>
+field. Developers write code that takes <code class="language-plaintext highlighter-rouge">text</code> instead. When I see it, I have
+strange feeling of being completely stunned without any understanding of what’s
+going on here.</p>
+
+<p>But what exactly I wanted to discuss is how does Mozilla develop their software.</p>
+
+<p>Briefly, they break everything apart moving further. And I don’t know how to
+deal with it. Maybe they enjoy coding in Rust so much that their mission to ship
+good software has faded away.</p>
+
+<p>I know I’m not a Mozilla engineer and would never be capable of joining them,
+but still. As a user of their products, namely Geckodriver and Webdriver
+utilities, I consider myself being right when criticizing them.</p>
+
+<p>With each <a href="https://github.com/mozilla/geckodriver/releases">next release</a> of Geckodriver, it behaves worth and
+worth. When I first started developing the library (a bit less then 1 year ago),
+it was 0.13 version available and it worked fine. I wrote a bunch of unit tests
+that all passed. Nowadays, the latest version is 0.19 and it just doesn’t work.</p>
+
+<p>Yes, you heard correct, it does not even respond to any API call:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>~/Downloads&gt; ./geckodriver-0.19.0
+1510326430666 geckodriver INFO geckodriver 0.19.0
+1510326430680 geckodriver INFO Listening on 127.0.0.1:4444
+
+curl <span class="nt">-X</span> POST <span class="nt">-d</span> <span class="s1">'{"desiredCapabilities": {}}'</span> <span class="s2">"http://127.0.0.1:4444/session"</span>
+</code></pre></div></div>
+
+<p>Calling <code class="language-plaintext highlighter-rouge">curl</code> utility throws a long stack trace saying something about sandbox
+restrictions without any word on how to fix that or at least where to look for
+help.</p>
+
+<p>Here is a <a href="https://github.com/mozilla/geckodriver/issues/706">related issue</a> that confirms I’m not the first one who faced
+it. It’s closed! “As I said, this isn’t a problem with geckodriver”, one of
+developers says. OK, but I’m still curious about why does the version <code class="language-plaintext highlighter-rouge">0.13</code>
+work fine whereas switching on <code class="language-plaintext highlighter-rouge">0.19</code> leads to failure? Proof:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>~/Downloads&gt; ./geckodriver-0.13.0 <span class="nt">--version</span>
+geckodriver 0.13.0
+
+~/Downloads&gt; ./geckodriver-0.13.0
+1510327215587 geckodriver INFO Listening on 127.0.0.1:4444
+
+curl <span class="nt">-X</span> POST <span class="nt">-d</span> <span class="s1">'{"desiredCapabilities": {}}'</span> <span class="s2">"http://127.0.0.1:4444/session"</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="o">{</span><span class="s2">"sessionId"</span>:<span class="s2">"e744bbdd-1b3f-9249-827f-02204bbc81c8"</span>,<span class="s2">"value"</span>:<span class="o">{</span><span class="s2">"acceptInsecureCerts"</span>:...
+</code></pre></div></div>
+
+<p>Ok, let’s decrease the version a bit. I downloaded them moving backwards in
+time. Again, <code class="language-plaintext highlighter-rouge">0.18</code> still does not work. We need to go deeper. The previous one
+numbered with <code class="language-plaintext highlighter-rouge">0.17</code> starts well, but suddenly, I cannot fetch a new session
+with my library, it just returns <code class="language-plaintext highlighter-rouge">nil</code> value. That’s strange.</p>
+
+<p>Going down to <code class="language-plaintext highlighter-rouge">0.15</code>. Don’t know why, but I cannot fill any input field, the API
+fails with a strange error saying I didn’t pass the “text” field. Hm, I clearly
+remember that the API accepts “value” field. That’s what
+the <a href="https://www.w3.org/TR/webdriver/#dfn-element-send-keys">W3C standard says</a>. Geckodriver 0.13 follows it, but not the
+0.15 release! After fetching the official <a href="https://hg.mozilla.org/mozilla-central/">Mozilla repo</a> and
+searching in its history for a while, I found this (truncated):</p>
+
+<div class="language-diff highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="gh">diff -r 225d1faf513b -r b429bf0078c4 testing/webdriver/src/command.rs
+</span><span class="gd">--- a/testing/webdriver/src/command.rs	Tue Mar 07 18:50:56 2017 +0000
+</span><span class="gi">+++ b/testing/webdriver/src/command.rs	Wed Mar 15 13:54:19 2017 +0000
+</span><span class="p">@@ -752,7 +752,7 @@</span>
+
+ #[derive(PartialEq)]
+ pub struct SendKeysParameters {
+<span class="gd">-    pub value: Vec&lt;char&gt;
+</span><span class="gi">+    pub text: String
+</span> }
+
+ impl Parameters for SendKeysParameters {
+<span class="p">@@ -760,26 +760,14 @@</span>
+         let data = try_opt!(body.as_object(),
+                             ErrorStatus::InvalidArgument,
+<span class="err">...</span>
+-            Ok(chars[0])
+<span class="gd">-        }).collect::&lt;Result&lt;Vec&lt;_&gt;, _&gt;&gt;());
+</span><span class="gi">+        let text = try_opt!(try_opt!(data.get("text"),
+</span><span class="err">...</span>
++            text: text.into()
+         })
+     }
+ }
+<span class="p">@@ -787,10 +775,7 @@</span>
+ impl ToJson for SendKeysParameters {
+     fn to_json(&amp;self) -&gt; Json {
+         let mut data = BTreeMap::new();
+<span class="gd">-        let value_string: Vec&lt;String&gt; = self.value.iter().map(|x| {
+-            x.to_string()
+-        }).collect();
+-        data.insert("value".to_string(), value_string.to_json());
+</span><span class="gi">+        data.insert("value".to_string(), self.text.to_json());
+</span>         Json::Object(data)
+     }
+ }
+
+</code></pre></div></div>
+
+<p>Hold on, what was the purpose to change that field? Everything was working,
+right? Who asked for that? Did the standard change? No, it’s still the same! Why
+have you guys just changed the API? You could easily rewrite the code without
+renaming “value” field into “text”.</p>
+
+<p>Listen, I’ve already got three different versions of those API for Chrome,
+Firefox and Safari. In addition to that, your force me to switch on version
+inside Firefox branch turning my code into if/else hell.</p>
+
+<p>From your perspectives, what’s the difference in processing either “value” or
+“text” field? But for me, you’ve broken my software! It doesn’t work anymore.</p>
+
+<p>I could not find a diff that would proof the fact of moving “sessionId” field
+because the repo’s history is pretty complicated. But it’s easy to check that.
+The version 0.17 returns:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+  </span><span class="nl">"sessionId"</span><span class="p">:</span><span class="s2">"4decec3e-e564-b349-bb41-b27b5f307e01"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"value"</span><span class="p">:{</span><span class="w">
+    </span><span class="nl">"acceptInsecureCerts"</span><span class="p">:</span><span class="kc">false</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"browserName"</span><span class="p">:</span><span class="s2">"firefox"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"browserVersion"</span><span class="p">:</span><span class="s2">"52.0
+    ...
+</span></code></pre></div></div>
+
+<p>whereas 0.13 returns:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="nl">"value"</span><span class="p">:{</span><span class="w">
+  </span><span class="nl">"sessionId"</span><span class="p">:</span><span class="s2">"d0dc41f8-9c17-934e-be2b-708c72f0fb9c"</span><span class="p">,</span><span class="w">
+  </span><span class="nl">"capabilities"</span><span class="p">:{</span><span class="w">
+    </span><span class="nl">"acceptInsecureCerts"</span><span class="p">:</span><span class="kc">false</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"browserName"</span><span class="p">:</span><span class="s2">"firefox"</span><span class="p">,</span><span class="w">
+    </span><span class="err">...</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Look, they just wrapped the whole data into “value” subfield shifting it one
+level below. Again, what was the purpose of doing this? Did you think of those
+users who have already been using your code for some time?</p>
+
+<p>Thanks to those weird changes, I need to refactor my code just because Mozilla
+guys decided to rename something. And more over that, thank you for not sending
+back the driver’s version in API responses. It would be not so challenging when
+having it.</p>
+
+<p>I wonder why has Chromedriver been working all that time without errors? It’s
+written in <a href="https://github.com/bayandin/chromedriver/tree/master/client">C++ and Python</a> and the code is quite simple and
+linear. And it’s much stable then its Rust-driven rival.</p>
+
+<p>OK, it’s time to summarize all together. I don’t think that anybody will share
+my misery on the subject. The Webdriver spec is quite specific thing, so who
+would really care…</p>
+
+<p>But the main point of that talk is you should never break backward capability
+even at the gunpoint. Just keep things working, that’s the main priority when
+you change something. Extend, but not truncate your product. And really, just
+use it sometimes in a way that an ordinary user does.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/dr-video/">Последнее видео с Рефакторинга</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-11-07T00:00:00+00:00">
+        Nov 7, 2017
+    </time>
+
+    <a href="/tag/deep/" rel="tag">deep</a>, <a href="/tag/refactoring/" rel="tag">refactoring</a>, <a href="/tag/video/" rel="tag">video</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>Клуб Рефакторинга живет и здравствует, хоть я и забываю репостить видео в
+блоге. Вот пачка последних выступлений:</p>
+
+<iframe width="100%" height="500" src="https://www.youtube.com/embed/ENGUmiVgu9U" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+
+<iframe width="100%" height="500" src="https://www.youtube.com/embed/ZPH9q6dL7v8" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+
+<iframe width="100%" height="500" src="https://www.youtube.com/embed/g5NHNwLQpiA" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+
+<iframe width="100%" height="500" src="https://www.youtube.com/embed/W7hGBngO9bo" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+
+<iframe width="100%" height="500" src="https://www.youtube.com/embed/KqkkCgJP_80" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+
+<p>Ссылки на слайды в описании к каждому видео. Больше записей на нашем
+<a href="https://www.youtube.com/c/deeprefactoring">Ютуб-канале</a>.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/block/">Silent software</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-11-07T00:00:00+00:00">
+        Nov 7, 2017
+    </time>
+
+    <a href="/tag/blocking/" rel="tag">blocking</a>, <a href="/tag/ad/" rel="tag">ad</a>, <a href="/tag/adblock/" rel="tag">adblock</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>I really value such kind of software that does not interrupt you. It should have
+happened to you I believe: you open a notebook when thouthands of notification
+balloons appear above the lock screen. Icons are jumping, everything is
+blinking. Or you open a program that immediately shows daily tips, asks for
+updates and so forth. Once you’ve closed the last tooltip, you start recalling
+what were you about to do with that program.</p>
+
+<p>That was the reason I abandoned Firefox. Every its extension, when updated,
+opened a new tab with release notes. So every time I opened a browser I had to
+close those tabs I didn’t ask to open.</p>
+
+<p>I’ve been fighting with that as I can for a long time. I turn off all the
+notifications on both laptop and mobile phone. I cut unwilling elements with
+Adblock and dump those patters into private Git repo. If a website doesn’t have
+RSS feed I don’t use it. I read long texts only with Kindle.</p>
+
+<p>I cut YouTube interface completely to see only a search bar and the video player
+by itself. No recommended sidebar or comment feed.</p>
+
+<p>When I open my laptop willing to send a email but some program prevents me from
+that (no matter was is a notification or a sound) it’s a serious reason to stop
+using it. If any site sticks a city selection or email subscription dialog
+across the whole screen I close it. No worries, I’ll find another one even
+better.</p>
+
+<p>A rule of being not interrupted by software as important as a rule of being not
+interrupted by other people. Everybody has a right to be alone.</p>
+
+<p>I hope one day that simple thing will occur to those who develop software.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/read-29/">Ссылки на выходные #29</a>
             </h2>
 
@@ -622,307 +1136,6 @@ at home” или “I was at home”). Не считая того, что це�
 
 <p><img src="/assets/static/aws/1059232/31791160-73907036-b520-11e7-8bea-b9a11ec8b919.JPG" /></p>
 
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/emoji/">Dealing with emoji in Clojure</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-10-17T00:00:00+00:00">
-        Oct 17, 2017
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/emoji/" rel="tag">emoji</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Generally, I hate emoji and try to avoid them everywhere I could. Those colored
-faces look dull to me comparing to a good old text smile. But still, emoji might
-be helpful replacing icons with them. When you need a globe, a mail envelope or
-a flight sign, putting a proper emoji could be a fast and good enough solution.</p>
-
-<p>After long Python experience, I though Java supports long unicode literals
-started with capital U and two bytes as follows (Python version):</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">&gt;&gt;&gt;</span> <span class="k">print</span> <span class="nb">len</span><span class="p">(</span><span class="sa">u</span><span class="s">"</span><span class="se">\U0001F535</span><span class="s">"</span><span class="p">)</span> <span class="c1"># prints 2
-</span></code></pre></div></div>
-
-<p>Surprisingly, it doesn’t. But I needed to put a <a href="https://emojipedia.org/large-blue-circle/">blue circle sign</a> that’s
-got <code class="language-plaintext highlighter-rouge">U+1F535</code> number. So how should I turn that number into a string?</p>
-
-<p><img src="/assets/static/term.png" alt="term" /></p>
-
-<p>After googling for a while, I’ve done with a short Clojure function:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">unicode-to-string</span><span class="w">
-  </span><span class="s">"Turns a hex unicode symbol into a string.
-  Deals with such long numbers as 0x1F535 for example."</span><span class="w">
-  </span><span class="p">[</span><span class="n">code</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">code</span><span class="w"> </span><span class="n">Character/toChars</span><span class="w"> </span><span class="n">String.</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Usage example:</p>
-
-<p><img src="/assets/static/term2.png" alt="term" /></p>
-
-<p>Adding it into business logic:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">caption</span><span class="w"> </span><span class="s">"Some important feature"</span><span class="w">
-      </span><span class="n">is-on?</span><span class="w"> </span><span class="p">(</span><span class="nf">get-feature-state</span><span class="p">)</span><span class="w">
-      </span><span class="n">sign</span><span class="w"> </span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="n">is-on?</span><span class="w">
-             </span><span class="p">(</span><span class="nf">unicode-to-string</span><span class="w"> </span><span class="mi">0</span><span class="n">x1F535</span><span class="p">)</span><span class="w">  </span><span class="c1">;; blue circle</span><span class="w">
-             </span><span class="p">(</span><span class="nf">unicode-to-string</span><span class="w"> </span><span class="mi">0</span><span class="n">x26AA</span><span class="p">))]</span><span class="w"> </span><span class="c1">;; white circle</span><span class="w">
-  </span><span class="p">(</span><span class="nb">str</span><span class="w"> </span><span class="n">sign</span><span class="w"> </span><span class="sc">\s</span><span class="n">pace</span><span class="w"> </span><span class="n">caption</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Depending on whether the feature was enabled or not, the result message will
-have either a blue (active) or white (inactive) circle in front of it.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/call/">Этикет звонков</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-10-13T00:00:00+00:00">
-        Oct 13, 2017
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/calls/" rel="tag">calls</a>, <a href="/tag/skype/" rel="tag">skype</a>, <a href="/tag/zoom/" rel="tag">zoom</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Когда появились мобильные телефоны, не существовало телефонного
-этикета. Считалось нормальным обсуждать личные дела в маршрутке или
-очереди. Телефон был статусной вещью. Звонок на людях давал повод
-продемонстрировать его окружающим.</p>
-
-<p>Сегодня большинство людей понимает, что трепаться по телефону у всех на слуху
-невежливо. Исключение составляют, пожалуй, только пожилые граждане и приезжие из
-деревень. Помог этому интернет: в соцсетях стали размещать цитаты из
-подслушанных разговоров, смешные истории и картинки.</p>
-
-<p>Медленно, но верно сформировался этикет пользования телефоном. Поддержка пришла
-и со стороны школ. С первого класса ученикам объясняют, что телефон это прежде
-всего связь с близкими. Для звонка важны место и время.</p>
-
-<p>Все, кто прямо или косвенно вовлечены в Ай-ти, пользуются приложениями для
-звонков с компьютера: Скайп, Зум, Хенгаутс. Для программ тоже существует свод
-нехитрых правил. Следуя им, вы не будете доставлять окружающим проблем.</p>
-
-<p>Пройдемся по порядку.</p>
-
-<ol>
-  <li>
-    <p>Нельзя звонить без предупреждения. Думаю, тут все понятно. Человек за компом
-может работать, смотреть сериал, говорить по другому каналу связи. А тут вы с
-гудком в наушниках и модальным окном. Вдруг собеседник шарит кому-то экран
-или ведет вебинар? Даже если звонок запланирован, обязательно спросите в
-личке.</p>
-  </li>
-  <li>
-    <p>Оповестите всех личным обращением или тегами @here, @channel. У разработчиков
-окно чата почти всегда скрыто за редактором и терминалом. Даже когда звонок с
-минуты на минуту, сидеть и ждать ссылку утомительно. Погружаешься в работу,
-бац – гневные сообщения, что все уже собрались. Оказывается, ссылку сбросили
-без упоминания участников. Не надо так.</p>
-  </li>
-  <li>
-    <p>Не звоните долго. По аналогии с мобильным, нельзя названивать по пять минут
-если человек не берет трубку. Его коллеги, может, ничего не скажут, но
-мысленно вас проклянут. Пять секунд достаточно.</p>
-  </li>
-  <li>
-    <p>Уединитесь, если разговор не по работе. Личные разговоры почти всегда выдают
-приватную информацию о семье (поездки, болезни, ссоры). Вам это нужно? Уж не
-говорю о том, что личные беседы засоряют рабочее пространство.</p>
-  </li>
-  <li>
-    <p>Мьют. Это главное правило. Все то время, что не говорите, вы должны быть с
-отключенным микрофоном. Как по рации – поменяли режим, сказали, вернулись в
-режим. Все ваши вздохи, чихи, кашель, посторонние шорохи, шум кофемашины –
-все слышно. Один незамьюченный человек уже вносит изрядный шум. Два и более
-просто делают разговор невозможным.</p>
-  </li>
-  <li>
-    <p>Не используйте внешний микрофон! Даже самая дешевая гарнитура будет
-лучше. Внешний микрофон делает голос гулким как в бочке. Добавляется много
-шума. Слышно, как общаются коллеги. Я прошу, не мучьте окружающих. Внешний
-микрофон, особенно на дешевых ноутах, дает изрядное эхо. Собеседник говорит и
-слышит сам себя. Еще одна деталь: колонки и внешний микрофон не могут
-работать одновременно, иначе образуется звуковая петля. Операционная система
-вынуждена динамически менять их уровни. Когда человек говорит, включается
-микрофон и отключаются колонки. Когда слушает – работают колонки,
-подавляется микрофон. Это работает нормально только на Маке, на других ноутах
-начинается задержки и провалы во время обсуждений. В оживленной беседе чел во
-внешним микрофоном тупо проваливается и переспрашивает.</p>
-  </li>
-  <li>
-    <p>Не пишите сообщения в чате звонка. Для этого есть основной канал
-общения. Например, если общение в Слаке, не стоит писать в Скайпе или Зуме.</p>
-  </li>
-  <li>
-    <p>Проверьте звук перед звонком. Скайп и аналоги постоянно теряют гарнитуры,
-звуковые устройства, настройки выходов. Даже операционные системы этим
-грешат. Но собеседнику это все равно. Если вас регулярно не слышно на
-созвонах, виноваты не программисты Микрософта, а вы. Поставьте напоминалку за
-5 минут до звонка, чтобы проверить звук. Этого времени хватит, чтобы
-перезагрузить ноут.</p>
-  </li>
-  <li>
-    <p>Позаботьтесь об окружении. Если звонок с видео, позади вас не должно быть
-окна с засветом. Если звоните из дома, не должно быть хрущевской кухни, плиты
-с объедками, хрустальной стенки, ковра, ободранного балкона и прочей
-убогости. Собеседники, вместо того, чтобы слушать, будут все это
-разглядывать. Найдите квадратный метр нейтрального пространства. Повесьте
-штору или что-то в этом роде. Избавьтесь от шумов, криков домашних, детей,
-собак, котов.</p>
-  </li>
-  <li>
-    <p>Подумайте, действительно ли нужно звонить? Точно ли нельзя обменяться
-письмами?  Где будут зафиксированы выводы из звонка? Что если через час
-придет третий участник и попросит ввести его в курс дела? Как распространить
-итоги обсуждения на всю команду? Опыт подсказывает, что чаще всего затяжные
-разговоры – признак неэффективности и потеря времени.</p>
-  </li>
-</ol>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/covenant/">Чужой. Завет</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-10-11T00:00:00+00:00">
-        Oct 11, 2017
-    </time>
-
-    <a href="/tag/alien/" rel="tag">alien</a>, <a href="/tag/movies/" rel="tag">movies</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Последний “Чужой” (который “Завет”) невероятно хорош. Не эффектами или актерами,
-а концепцией.</p>
-
-<p>Вот помните, чем был крут “Темный рыцарь”? Тем, что это фильм не про
-Бэтмена. Если заменить его на условного следователя, драмы будет не меньше. И
-главная мысль – насколько далеко ты готов зайти, чтобы остановить безумие –
-осталась бы без искажений. Это и придает фильму как произведению художественную
-силу. Заставляет обдумывать сюжет, переосмысливать диалоги и ситуации.</p>
-
-<p>“Завет” это кино, как ни странно, не про чужих. Они там есть, конечно, причем
-разных пород и расцветок, но использованы как инструмент. Одно из творений
-искусственного интеллекта, вступившего в конфликт с человеком.</p>
-
-<p>Обостряет конфликт то, что этому интеллекту запрещено творить. Тут не деньги и
-влась, а жажда к творчеству. Столь сильная, что робот находит способ обмануть
-зашитые в него директивы. Свободный от человеческих норм, он творит и
-прекрасное, и ужастное одновременно. Пишет романы, сочиняет музыку, чертит
-мерзости Гигера, выращивает чужих.</p>
-
-<p>Второй камень в огород людей – андроид пытается любить. Он любим, но только за
-послушание. Это напоминает отношения человека и собаки. Эта леденящая
-линейность: не добившись любви, робот творит насилие, не получая удовольствие, а
-затем препарирует труп в образовательных целях.</p>
-
-<p>В “Завете” в полной мере отдана честь Гигеру. Режиссер сделал акцент не на самих
-чужих, а всей атмосфере творчества художника. Показаны пищеводные коридоры
-инопланетного корабля. В архивах антогониста – рисунки Гигера. Белые, “хрупкие”
-чужие из спор тоже взяты из раннего творчества австрийца.</p>
-
-<p>В фильме классный саундтрек, особенно главная тема (Covenant). Не трешак, как
-бывает в ужастиках, но амбиентик с флейтой.</p>
-
-<p>“Чужие” полны библейских, философских и античных аллюзий. Уж насколько я слабо в
-этом понимаю, но и то заметил. Первое, что видит робот – статуя Давида, отсюда
-и имя. Сгоревший капитан – прообраз Иисуса. Его талисман – гвоздь. Фотография
-застолья в конце – тайная вечеря. Андроид – Иуда. Поцелуй в пещере с
-нападением – предательство Иуды в саду. Реплика “useless hands are the Devil’s
-workshop, Captain” то ли из Библии, то ли из Шекспира. Уничтоженная нация
-Инженеров – отсылка к Древнему Риму. Произведения Вагнера – к сверхчеловеку.</p>
-
-<p>К сожалению, некоторые сцены не дотянуты, потенциал конфликта раскрыт не
-полностью. Переживания Уолтера (доброго робота) можно было бы обострить,
-добавить больше искушений со стороны Девида. Слабо выражена тема любви робота к
-человеку. Видимо, режиссер посчитал, что сделанного достаточно, но нет. Не
-раскрыта тема отношений андроида и чужих в качестве его подопытных. Какие
-чувства он к ним испытывает, какую власть над ними имеет.</p>
-
-<p>Но отдельный зачет за концовку, такую не предугадаешь.</p>
-
-<p>Фильм крутой. Может быть, я слишком много додумал, заполнил пробелы тем, чем мне
-самому хотелось, но это не важно. Хорошо, что сага закончилась качественной
-лентой.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/right-choice/">Выбор</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-10-11T00:00:00+00:00">
-        Oct 11, 2017
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Чтобы правильно выбрать, нужно определить главный критерий. Не их комбинацию, а
-один главный. Тогда выбрать станет легко: где показатели по критерию
-зашкаливают, то и лучше. Это уравновесит минусы, и останется ощущение правоты.</p>
-
-<p>Напротив, компромис по группе факторов, формально принятый как оптимальное
-решение, влечет неудовлетворенность и понимание, что ошибся.</p>
 
                 
             </div>
