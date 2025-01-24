@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Постгрес и отчеты</title>
+  <meta name="description" content="В очередной раз выручил Постгрес.">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/postgres-csv/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Постгрес и отчеты</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-01-24T00:00:00+00:00">
+        Jan 24, 2025
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/csv/" rel="tag">csv</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>В очередной раз выручил Постгрес.</p>
+
+<p>По работе я много занимаюсь отчетностью: генерю CSV и эксельки со всякими
+цифрами. Дело это не хитрое, но много нюансов: нужно собрать данные из десяти
+источников, очистить, переколбасить, построить прямые и обратные индексы. В
+идеале распараллелить. Потом пробежаться по коллекциям и записать итоговый
+документ.</p>
+
+<p>Поскольку дело происходит в лямбде, я очень стеснен в ресурсах и
+времени. Процессор медленный, памяти и диска немного, а на выполнение дается не
+более 15 минут. Это только кажется много, а на самом деле первые 7 минут уходят
+только на то, чтобы скачать архивы.</p>
+
+<p>Из последнего: в папке S3 лежит огромный CSV на 10 миллионов записей. Нужно
+выбрать из него одно подмножество, затем второе, а потом склеить их по id =
+parent_id.</p>
+
+<p>Написал на Кложе черновик — работает, занимает 11 минут. Можно плюнуть и
+оставить, но 11 минут — это уже близко к 15 минутам, а значит, можно получить
+таймаут. Переписал с параллельной обработкой — стало 5 минут, волноваться не о
+чем.</p>
+
+<p>А потом смотрю и думаю: ты же, дурачок, написал ровно то, что делает база
+данных. Только раз в десять медленней и костыльней. Убери быдлокод, загони CSV в
+базу и выполни запрос — получишь то же самое.</p>
+
+<p>Так и сделал: получаю из Амазона стрим с CSV-содержимым. Не скачивая его на
+диск, направляю прямиком в Постгрес во временную таблицу (апишка COPY FROM
+STDIN). Тот загружает 10 миллионов записей за 40 секунд. Потом посылаю SQL с
+двумя подзапросами и джоином — результат готов за 15 секунд. Его даже не нужно
+писать в CSV самому. Вызываешь COPY TO STDOUT — и Постгрес сам записывает CSV на
+диск. Точнее, в стрим, который я направляю в файл.</p>
+
+<p>Минус два экрана быдлокода, быстрее почти на порядок — все довольны, все
+смеются. Сразу после этой доработки мне написал один человек — мол, репорт
+хороший, только надо еще одну табличку заджойнить. Да не вопрос.</p>
+
+<p>Отсюда мораль — если что-то можно поручить базе, поручайте базе. Постгрес уже 20
+лет делает джоины и проекции таблиц. Вероятность того, что вы сделаете быстрее,
+стремится к нулю.</p>
+
+<p>Ради интереса глянул на SQLite — зачем брать серверный Постгрес, если можно
+локально справиться? Оказалось, SQLite не умеет импортировать CSV. Такая команда
+есть в интерактивном шелле, а в протоколе обмена — нет. А в Постгресе есть
+потоковый COPY, поэтому выбора не остается.</p>
+
+<p>Есть у нас сервис, который пилят другие люди. Там логика крутится вокруг CSV и
+пакетного импорта в другие сервисы. Посмотрел и ужаснулся: километры кложурного
+быдлокода можно заменить импортом в базу и парой-тройкой запросов. Дай бог
+доберусь, переделаю.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/lol-1c/">&larr; Код на русском</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/the-fuck/">The Fuck &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+
+<center>Комментариев пока нет</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/postgres-csv/">
+    <input required name="captcha" type="hidden" value="5 &#215; 5">
+
+    <div class="block">
+        <span class="comment-form-label"><small>5 &#215; 5 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
