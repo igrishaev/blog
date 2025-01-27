@@ -75,6 +75,7 @@ new-post:
 	echo 'title: ""' >> ${new_file}
 	echo "permalink: /${slug}/" >> ${new_file}
 	echo 'tags: programming' >> ${new_file}
+	echo 'telegram_id: ' >> ${new_file}
 	echo '---' >> ${new_file}
 	echo '' >> ${new_file}
 	echo "{% include static.html path=\"${slug}/1.png\" %}" >> ${new_file}
