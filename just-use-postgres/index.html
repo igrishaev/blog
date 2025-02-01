@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Просто берите Postgres</title>
+  <meta name="description" content="Несколько месяцев назад завирусилась статья Just UsePostgres. Она была на всехплощадках, а том числе в переводе на русский. Я чуть было не репостнул ее, нопе...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/just-use-postgres/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Просто берите Postgres</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-02-01T00:00:00+00:00">
+        Feb 1, 2025
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Несколько месяцев назад завирусилась статья <a href="https://mccue.dev/pages/8-16-24-just-use-postgres">Just Use
+Postgres</a>. Она была на всех
+площадках, а том числе в переводе на русский. Я чуть было не репостнул ее, но
+передумал. На проверку статья оказалось поверхностной: скажем, автор на полном
+серьезе сравнивает Postgres с SQLite. Мне показалось, в статье нет глубины, и
+тезис из заголовка ничем не подтверждается. И хотя вывод верный — Just Use
+Postgres — автор пришел к нему странным способом.</p>
+
+<p>В своей заметке я расскажу, как пришел к аналогичному выводу сам — только
+доводов будет больше.</p>
+
+<p>Последний год я занимаюсь Посгресом все активнее. Я мигрировал большую систему с
+OpenSearch на Postgres. Это 30 сервисов с большими JSON-документами — от
+нескольких тысяч до миллионов в каждом сервисе. Нужен поиск по вложенным полям,
+поиск по вхождению, простое ранжирование, а также всякая отчетность. И пока я
+все это мигрировал, узнал о Постгресе столько, что хватит на несколько
+докладов. В том числе — почему именно Постгрес так хорош.</p>
+
+<p>Я давно понял одну вещь, а миграция только ее укрепила. Хранение данных
+определяет разработку. Это фундамент, относительно которого планируешь куда
+копать и что возводить. Кто-то считает, что абстракцией можно уравновесить любое
+хранилище: сделать так, что get-by-id либо идет в базу, либо качает файл из
+S3. Это справедливо в простых случаях. На практике каждое хранилище вносит свои
+особенности, с которыми нужно мириться. Если у вас условные OpenSearch или
+Cassandra, их особенности будут фонить сквозь код. Избежать этого нельзя. На мой
+взгляд, Постгрес фонит меньше всех: с ним у вас будет меньше проблем в
+абстракцях.</p>
+
+<p>Но довольно расплывчатых слов, перейдем к конкретике. Начну с того, что Постгрес
+легко ставится и работает на любой машине, будь то локальный комп с Виндой,
+Маком, Линуксом или сервер. Он есть во всех пакетах. Постгрес написан на Си, и
+на выходе бинарный файл, которому не нужна Джава. Помню, как ставил Датомик на
+Убунте — это было тяжело. Вроде бы Джава, “compile once, run everywhere (c)” —
+но вылетают ошибки о том, что классы не найдены. Оказалось, нужна другая Джава,
+которую нужно ставить отдельно. С Постгресом такого не было никогда.</p>
+
+<p>Для Мака есть проект <a href="http://postgres.app/">Postgres.app</a>. Это приложение с
+графическим интерфейсом, чтобы запустить Postgres. Можно скачать любую версию по
+отдельности; есть убер-приложение со всеми версиями и установленным PostGis. Так
+что любой человек может завести Postgres + PostGis в два клика.</p>
+
+<p>Особой похвалы заслуживает <a href="https://hub.docker.com/_/postgres">докерный образ
+Postgres</a>. Он очень гибко настраивается:
+почти любую опцию можно задать переменной среды, легко прокинуть свою
+конфигурацию. У образа убойная фича: папка, куда можно накидать файлы .sql, .sh
+и .gz. При запуске образ запустит эти файлы в алфавитном порядке. Если у вас
+миграции или посев тестовых данных, смонтируйте файлы в образ, и при запуске
+получится готовая база.</p>
+
+<p>По наивности я думал, что так работают образы других баз данных. Оказалось
+нет. Запустил образ Кассандры, а она ничего не знает о первичной
+настройке. Нужны разделы и таблицы? Создай сам. Нужны топики в Кафке? Создай
+сам. Нужна точка обмена в RabbitMQ? Создай сам! После запуска образа нужно
+дождаться, пока поднимутся все потроха (обычно это поллинг порта), а потом
+создать таблицы и топики. Почему-то в Постгресе подумали над этим, а остальным
+безразлично. Считаю, что образ postgres нужно брать за образец.</p>
+
+<p>У документо-ориентированных баз и key-value хранилищ есть преимущество: они
+хорошо реплицируются в силу дизайна. Часто говорят: вы со своим Постгресом
+упретесь в потолок, когда нужно хранить данные в разных датацентрах, но при этом
+иметь легкий доступ из одного центра к другому. Условная Кассандра чувствует
+себя лучше в подобных условиях. Но забывают, что реплицировать нужно не все
+данные, а только их часть. Например, только базовые сведения о пользователях и
+сущностях, чтобы быстро выяснить, в каком дата-центре они лежат и выполнить
+запрос там.</p>
+
+<p>Так у нас было устроено в одном облачном хостинге. В каждом дата-центре данные
+хранились в MySQL, а пользователи и права доступа дублировались в кластер
+Кассанды, который в силу репликации был доступен отовсюду.</p>
+
+<p>Postgres тоже не стоит на месте, и в нем все больше средств репликации и
+кластеризации. Есть проекты вроде Debezium, которые читают журнал WAL и стримят
+изменения в другие базы, очереди и так далее.</p>
+
+<p>Postgres силен в проекции данных. Бывает, на одни и те же данные нужно смотреть
+под разным углом: делать группировки, поворачивать таблицы. Часто нужны левые
+соединения: это когда слева находится полный набор данных, а справа — неполный,
+и данные слева не должны пропадать. В редких случаях нужно декартово
+произведение двух таблиц (каждый по каждому), что тоже делается легко. Есть
+много функций, которые разбивают данные на строки (переводят массивы в строки
+элементов) и наоборот — агрегируют записи в коллекции.</p>
+
+<p>Postgres силен рекурсивными запросами. Это когда запрос разбивается на две
+части: первичный посев и рекурсивная логика, которая принимает предыдущий
+результат и порождает новый. Пока он не пустой, строки складываются в итоговую
+таблицу. За счет рекурсии прекрасно обходятся таблицы со ссылками на себя,
+например структура папок, иерархия сущностей.</p>
+
+<p>В финансах очень важны оконные функции: посчитать нарастающий доход, остаток на
+счете, стоимость проекта по неделям и многое другое. Оконные функции слегка
+пугают, но достаточно прочитать одну книжку, чтобы овладеть ими (см ниже). Без
+оконных функций происходит следующее: человек выгребает из базы массив данных и
+проделывает вручную то, что умеет база — только на порядок медленней и с кучей
+багов. О похожем случае <a href="/postgres-csv/">я как-то уже писал</a>.</p>
+
+<p>Огромную пользу можно получить из связки materialized view и pg_cron. Напомню,
+materialized view — это вьюхи, которые сбрасываются в физическую таблицу. На нее
+можно навесить индексы, чтобы ускорить поиск. Польза таких вьюх огромна — это
+различные проекции и отчеты. Чтобы каждый раз не гонять огромный запрос, его
+“запекают” во вьюху и материализуют, после чего выбирают строки обычным SELECT.</p>
+
+<p>В текущем проекте мы храним огромные JSON-документы. У них сложная структура, но
+отчетность должна быть плоской. Сначала я писал запросы со множеством операторов
+<code class="language-plaintext highlighter-rouge">#&gt;&gt;</code>, которые извлекают данные из JSON по пути в виде массива. Но со временем
+стал делать плоские представления этих документов вьюхами — и дело пошло
+лучше. Аналитикам и менеджерам тоже легче: им постоянно нужные данные, и они
+пишут запросы сами, чтобы не дергать программистов.</p>
+
+<p>Расширение <a href="https://github.com/citusdata/pg_cron">pg_cron</a> выводит Постгрес на
+новый уровень: с его помощью можно выполнить любой скрипт по
+расписанию. Расширение использует стандартный синтаксис crontab. У меня
+множество крон-задач на материализацию вьюх и прогрев индексов — их
+принудительный загон в оперативную память. С <code class="language-plaintext highlighter-rouge">pg_cron</code> база становится полностью
+автономной: не нужен сторонний крон, который пинает скрипты. Я недоволен только
+одним: <code class="language-plaintext highlighter-rouge">pg_cron</code> — стороннее расширение, и его нет в поставке. Однако облачные
+провайдеры вроде Амазона предустанавливают его.</p>
+
+<p>На сегодня Постгрес — лучшая база для работы с JSON-документами. Я не в восторге
+от JSON и насколько возможно, храню данные в таблицах. Но порой выбора нет:
+бизнес завязан на какие-то стандарты. Пример — медицинский <a href="https://www.hl7.org/fhir/overview.html">формат
+FHIR</a>. Это огромные документы тройной и
+более вложенности. Раскладывать их по таблицам и собирать джоинами тяжело,
+поэтому их хранят в поле jsonb. У меня похожая ситуация : 30 сервисов, каждый
+отвечает за свою бизнес-сущность. Это большие JSON-ы, и сервисы гоняют их
+туда-сюда; на них завязан фронтенд. Я пытался представить их в плоском виде, но
+это очень трудно.</p>
+
+<p>Постгрес предлагает богатные возможности для JSON: доступ ко вложенным полям по
+массиву ключей, обновление вложенных полей, слияние словарей, гибкую замену,
+индексацию документа целиком или подмножества… Есть даже встроенный язык <a href="https://www.postgresql.org/docs/current/functions-json.html#FUNCTIONS-SQLJSON-PATH">JSON
+PATH</a>
+для поиска! Да, внутри SQL может быть строка с мини-языком JSON PATH. Я
+использую его в сочетании индексами btree по отдельным полям.</p>
+
+<p>В последнем Постгресе 17 появилась функция
+<a href="https://www.postgresql.org/docs/current/functions-json.html#FUNCTIONS-SQLJSON-TABLE">JSON_TABLE</a>. По
+указанной спеке она переводит JSON в таблицу с выводом типов. Если у вас вектор
+мап, то легко получить таблицу. JSON_TABLE поддерживает вложенность, в
+результате чего можно развернуть мапу мап в плоскую таблицу. Далее вы
+материализуете ее, ставите на крон и готово — можно выбрать плоские данные
+селектом.</p>
+
+<p>Для Постгреса создано великое число обучающих материалов: книг, курсов,
+самоучителей. Многие из них изначально созданы на русском, то есть не являются
+переводами. Российский вендор Postgres Pro не только пишет отличные книги, но и
+<a href="https://postgrespro.ru/education/books">выкладывает на сайте</a>
+бесплатно. Бесплатно! Я читал некоторые из них, и это не халтура, а
+действительно проработанные материалы. Книга Егора Рогова “Postgres изнутри”
+описывает устройство базы в мельчайших деталях. Наверное, нет книги лучше, чтобы
+понять, как работают современные базы данных.</p>
+
+<p>В Постгресе отличный анализатор запросов: он покажет, какие стратегии выбрал
+движок для обхода таблиц и джоинов; какие индексы были использованы и какую их
+часть пришлось читать с диска. Да, понадобится время, чтобы понять его вывод. Но
+иные базы данных не предлагают вообще ничего! Просто дают рекомендации, а дальше
+пробуй сам. Есть расширения, которые фиксируют медленные запросы и их план
+выполнения. Расширение pg_stat_statements ведет статистику по всем запросам:
+число вызовов, частота, минимальное, максимальное, среднее время выполнения,
+ожидание, объем передачи данных и прочее. Все это помогает отлаживать случаи,
+когда базе нехорошо.</p>
+
+<p>В Постгресе достойный полнотекстовый поиск. Для начала подойдет <a href="https://www.postgresql.org/docs/current/pgtrgm.html">триграммный
+нечеткий поиск</a> по
+коэффициенту совпадения. Позже можно добавить ts_vector — вектор лексем и
+стемминга. Из коробки есть стемминг для десятка языков, в том числе
+русского. Когда заходят разговоры об OpenSearch и других поисковых движках,
+оказывается, что на Постгресе можно сделать не хуже и главное — без добавления в
+систему нового узла.</p>
+
+<p>У Постгреса обширный тулинг: консольные и графические клиенты — браузерные и
+настольные. PGAdmin, DBeaver, DataGrip… стандартная утилита psql покрывает
+множество случаев. Она показывает сведения обо всех сущностях, выводит данные
+разными способами, умеет импорт-экспорт. Можно редактировать запросы и сущности
+во внешнем редакторе, например Emacs или Vim.</p>
+
+<p>Постгрес поддерживает <a href="https://www.postgresql.org/docs/current/sql-copy.html">апишку
+COPY</a>, с помощью которой
+данные гоняют в обе стороны. Если я хочу слить таблицу в CSV, пишу что-то вроде:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">COPY</span> <span class="n">my_table</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">email</span><span class="p">)</span> <span class="k">to</span> <span class="k">STDOUT</span>
+  <span class="k">with</span> <span class="p">(</span><span class="n">HEADER</span><span class="p">,</span> <span class="n">format</span> <span class="n">CSV</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>и Постгрес выплевывает CSV-шный файл. Можно записать файл на диск или читать
+построчно из сети. Это работает и в обратную сторону: если я хочу вставить CSV в
+таблицу, то пишу:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">COPY</span> <span class="n">my_table</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">email</span><span class="p">)</span> <span class="k">from</span> <span class="k">STDIN</span>
+  <span class="k">with</span> <span class="p">(</span><span class="n">HEADER</span><span class="p">,</span> <span class="n">format</span> <span class="n">CSV</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>и стримлю в соединение строки CSV. Кроме CSV, Постгрес поддерживает бинарный
+формат. Спецификация довольна проста, и на практике он работает на 30% быстрее.</p>
+
+<p>Словом, гонять большие данные в Постгресе очень просто. Я как-то <a href="/pagination/">писал о
+том</a>, что источник данных хорош настолько, насколько удобно
+забрать из него данные. В том же OpenSearch забор данных превращается в муку:
+нужна ручная пагинация по страницам. А Постгрес выплюнет миллион строк и не
+моргнет глазом — только успевай их принимать.</p>
+
+<p>Не менее важна генерация данных. Скажем, у вас на проде миллион записей, и нужно
+воспроизвести сложный запрос. Если в локальной базе только тысяча записей, он
+поведет себя по-другому; нужен именно миллион. Как вы их вставите?</p>
+
+<p>Обычно на этом месте расчехляют Питон и всякие FakeMockGenerator-ы — библиотеки
+для генерации случайных данных по спеке. Этот код долго писать, и вставка тоже
+будет долгой, потому что мы передаем данные от клиента серверу. Еще нужен
+рантайм, то есть среда, где запускается код: какая-то машина, нода, плейбук.</p>
+
+<p>А ведь достаточно написать примерно такой скрипт и выполнить его в PGAdmin:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">documents</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">document</span><span class="p">)</span>
+<span class="k">select</span>
+    <span class="n">gen_random_uuid</span><span class="p">()</span> <span class="k">as</span> <span class="n">id</span><span class="p">,</span>
+    <span class="n">jsonb_build_object</span><span class="p">(</span>
+        <span class="s1">'__generated__'</span><span class="p">,</span> <span class="k">true</span><span class="p">,</span>
+        <span class="s1">'meta'</span><span class="p">,</span> <span class="n">jsonb_build_object</span><span class="p">(</span>
+            <span class="s1">'eyes'</span><span class="p">,</span> <span class="n">format</span><span class="p">(</span><span class="s1">'color-%s'</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+        <span class="p">),</span>
+        <span class="s1">'attrs'</span><span class="p">,</span> <span class="n">jsonb_build_object</span><span class="p">(</span>
+            <span class="s1">'email'</span><span class="p">,</span> <span class="n">format</span><span class="p">(</span><span class="s1">'user-%s@test.com'</span><span class="p">,</span> <span class="n">x</span><span class="p">),</span>
+            <span class="s1">'name'</span><span class="p">,</span> <span class="n">format</span><span class="p">(</span><span class="s1">'Test Name %s'</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+        <span class="p">),</span>
+        <span class="s1">'roles'</span><span class="p">,</span> <span class="n">jsonb_build_array</span><span class="p">(</span>
+            <span class="s1">'user'</span><span class="p">,</span>
+            <span class="s1">'admin'</span>
+        <span class="p">)</span>
+    <span class="p">)</span> <span class="k">as</span> <span class="n">document</span>
+<span class="k">from</span>
+    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">500</span><span class="p">)</span> <span class="k">as</span> <span class="n">x</span>
+<span class="n">returning</span>
+    <span class="n">id</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Он вставит в базу столько JSON-документов, сколько указано в функции
+generate_series. Хочешь миллион? Да пожалуйста. Важно, что данные генерятся
+<strong>сразу на сервере</strong> — мы не гоняем их по сети. Все происходит внутри Постгреса,
+и это значительно быстрее. Миллион огромных JSON-ов вставляются за несколько
+минут. Этот скрипт легко поправить, чтобы поля высчитывались по-другому. Каждый
+может скопировать его и выполнить на свой базе, не прибегая к Питону.</p>
+
+<p>Иные жалуются, что SQL устарел. Мол, это архаичный язык, он плохо
+шаблонизируется, и логично выразить его данными, например JSON-ом. Что тут
+сказать… Да, SQL со скрипом ложится на всякие ORM. Но сегодня полно библиотек,
+которые строят SQL из объектов и коллекций. А во-вторых, мне нравится
+самобытность SQL, то, что он остается вещью в себе. Когда пишешь большие
+запросы, начинаешь видеть его красоту. Со временем понимаешь, что заменить его
+нечем — слишком много ситуаций и выражений.</p>
+
+<p>Я рассматриваю SQL как REPL к данным. Наверное, вы знаете, что программисты на
+Лиспе днями сидят в репле. О преимуществе REPL-driven develpoment сказано много,
+и нет смысла повторять. По аналогии, SQL — это репл для данных со всеми
+преимуществами REPL-driven develpoment. Легко понять, какие данные прилетят в
+код, выполнив запрос в базе. Вместо быдлокода, который вынимает тысячи записей,
+исправляет их и записывает в базу, можно выполнить один UPDATE. Поймал себя на
+том, что целыми днями сижу в PGAdmin, а к коду приступаю в последнюю очередь.</p>
+
+<p>Повторю тезис, который как-то высказывал. Данные — это отдельный домен. Ключевое
+свойство домена — его ортогональность другим доменам. Я хочу, чтобы данные не
+были привязаны ко всяким Питонам и Джавам. Я хочу управлять ими независимо от
+языка или потребителей. Мне не нравятся встраиваемые хранилища или базы, которые
+“сливаются” с приложением. Если данные можно извлечь только вызовом метода, я
+пас.</p>
+
+<p>Рассказывать о том, как динамично развивается Постгрес, нет смысла. Это видно
+всем. Есть классический Постгрес, есть вендорский Postgres Pro, где доступны
+различные фичи до того, как они окажутся в классике — правда, за
+деньги. Развиваются расширения, появляются новые вендоры, проводят митапы и
+конференции, выходят книги, видосы… на любой запрос найдется контент.</p>
+
+<p>Важно, что сообщество Постгреса прошло проверку на адекватность. Как только один
+<em>чудак</em> заявил, что нужно выгнать русских разработчиков и откатить их код, ему
+быстро объяснили, что к чему. Больше эту тему не поднимали, по крайней мере в
+публичном пространстве.</p>
+
+<p>И вот теперь, в конце шестого листа, я говорю: <em>вот поэтому</em> берите Постгрес.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/solid-context/">&larr; SOLID и контекст</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/760">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/just-use-postgres/">
+    <input required name="captcha" type="hidden" value="5 &#215; 7">
+
+    <div class="block">
+        <span class="comment-form-label"><small>5 &#215; 7 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
