@@ -104,6 +104,169 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/pg-docs/08/">PG docs, part 8. HoneySQL</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-10-31T00:00:00+00:00">
+        Oct 31, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/honeysql/" rel="tag">honeysql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><em>(This is a new documentation chapter from the <a href="https://github.com/igrishaev/pg">PG project</a>.)</em></p>
+
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+  <li><a href="/en/pg-docs/04/">Arrays</a></li>
+  <li><a href="/en/pg-docs/05/">Notifications</a></li>
+  <li><a href="/en/pg-docs/06/">SSL</a></li>
+  <li><a href="/en/pg-docs/07/">COPY</a></li>
+  <li><a href="/en/pg-docs/08/">HoneySQL</a></li>
+</ul>
+
+<p>In this chapter:</p>
+
+<!-- toc -->
+
+<ul>
+  <li><a href="#about">About</a></li>
+  <li><a href="#installation">Installation</a></li>
+  <li><a href="#usage">Usage</a></li>
+</ul>
+
+<!-- tocstop -->
+
+<p><a href="https://github.com/seancorfield/honeysql">HoneySQL</a> is a well-known library for building SQL expressions from
+Clojure maps. It’s convenient for making complex queries, for example, when you
+have optional JOIN operators. Or you’re unaware of the final WHERE conditions as
+the filtering parameters come from the request. HoneySQL frees you from building
+raw SQL queries by concatenating strings, which is unsafe and leads to SQL
+injections.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">pg-honey</code> is a small wrapper on top of HoneySQL. It provides special
+versions of <code class="language-plaintext highlighter-rouge">query</code> and <code class="language-plaintext highlighter-rouge">execute</code> functions that accept not a SQL string but
+Clojure maps. The maps get transformed into SQL under the hood and get executed.</p>
+
+<h2 id="installation">Installation</h2>
+
+<p>Install the <code class="language-plaintext highlighter-rouge">pg-honey</code> package as follows.</p>
+
+<p>Lein:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-honey</span><span class="w"> </span><span class="s">"0.1.10"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Deps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">com.github.igrishaev/pg-honey</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.10"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="usage">Usage</h2>
+
+<p>Import the library:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.honey</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pgh</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">query</code> function accepts a connection object, a Clojure map representing a
+query and a map of options.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/query</span><span class="w">
+  </span><span class="n">conn</span><span class="w">
+  </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w"> </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+   </span><span class="no">:as</span><span class="w"> </span><span class="n">as/first</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The third parameter combines HoneySQL parameters and the standard <code class="language-plaintext highlighter-rouge">query</code>
+options. In the example above, we passed a custom reducer into the <code class="language-plaintext highlighter-rouge">:as</code>
+parameter, and we also specified the <code class="language-plaintext highlighter-rouge">:pretty</code> HoneySQL option to true. With the
+pretty flag enabled, HoneySQL produces a formatted SQL expression, which is
+easier to read in logs.</p>
+
+<p>Please note: since the <code class="language-plaintext highlighter-rouge">query</code> function doesn’t allow you to pass any
+parameters, the following example will lead to an error response:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/query</span><span class="w">
+  </span><span class="n">conn</span><span class="w">
+  </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w"> </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">42</span><span class="p">]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+   </span><span class="no">:as</span><span class="w"> </span><span class="n">as/first</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This is a limitation of the PostgreSQL wire protocol: the <code class="language-plaintext highlighter-rouge">Query</code> message bears
+only a pure SQL expression with no parameters. For parameters, use the <code class="language-plaintext highlighter-rouge">execute</code>
+function described below.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">execute</code> function acts the same but accepts a Clojure map that might have
+values that become parameters when rendering the map. Here is an example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/execute</span><span class="w">
+  </span><span class="n">conn</span><span class="w">
+  </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w"> </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">42</span><span class="p">]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+   </span><span class="no">:as</span><span class="w"> </span><span class="n">as/first</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Or:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/execute</span><span class="w">
+  </span><span class="n">conn</span><span class="w">
+  </span><span class="p">{</span><span class="no">:insert-into</span><span class="w"> </span><span class="no">:demo</span><span class="w">
+   </span><span class="no">:values</span><span class="w"> </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"test1"</span><span class="p">}</span><span class="w">
+            </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}</span><span class="w">
+            </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"test3"</span><span class="p">}]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Under the hood, the <code class="language-plaintext highlighter-rouge">{:inset-into ...}</code> map gets rendered into a SQL vector:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="s">"insert into ... values ($1, $2), ($3, $4), ($5, $6)"</span><span class="w">
+ </span><span class="mi">1</span><span class="w"> </span><span class="s">"test1"</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="s">"test2"</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="s">"test3"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It gets split on the SQL expression and the parameters, which are passed into
+the underlying <code class="language-plaintext highlighter-rouge">pg.client/execute</code> function.</p>
+
+<p>You can use named parameters that HoneySQL does support. Place a specific
+keyword into the <code class="language-plaintext highlighter-rouge">[:param ...]</code> vector, and pass a map of params into the
+options as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+             </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:title</span><span class="p">]</span><span class="w">
+              </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:demo</span><span class="p">]</span><span class="w">
+              </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:and</span><span class="w">
+                      </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+                      </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="p">[</span><span class="no">:param</span><span class="w"> </span><span class="no">:title</span><span class="p">]]]}</span><span class="w">
+             </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+              </span><span class="no">:params</span><span class="w"> </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To familiarise yourself with HoneySQL features, please refer to the <a href="https://github.com/seancorfield/honeysql">official
+documentation</a>.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/en/virtuoso/">Virtuoso: a Clojure wrapper for virtual threads</a>
             </h2>
 
@@ -1398,51 +1561,6 @@ ssl_ca_file = '/Users/ivan/work/pg/certs/root.crt'
 <p>Повторюсь, к ПАО ТНС Энерго Воронеж претензий особо нет. Большая фирма,
 бюрократия, и ничего кроме “примите извинения” они не могут.
 Для нас главное — не допустить такого в своей работе.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/masked-input/">Ввод по маске</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/frontend/" rel="tag">frontend</a>, <a href="/tag/jquery/" rel="tag">jquery</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Каждый мамкин фронтендер знает: если в форме есть поле телефона, ставим плагин
-jQuery под названием Masked Input и не паримся. С ним нельзя ввести буквы,
-скобки, дефисы и прочий мусор.</p>
-
-<p><img src="/assets/static/aws/masked-input/1.jpeg" /></p>
-
-<p>Но мамкин фронтендер не знает: если вставить в поле “89623289677” (скажем, из
-Экселя или менеджера паролей), то всратый плагин поместит восьмерку после +7 и
-отбросит последнюю цифру. Результат будет как на второй картинке.</p>
-
-<p><img src="/assets/static/aws/masked-input/2.jpeg" /></p>
-
-<p>То есть всего-то испортили данные, но никого это не волнует. Подумаешь, не
-придет смс, не дозвонится курьер, не выдадут посылку. Фронтендеру не до этих
-мелочей.</p>
-
-<p>Недаром говорят: благие намерения ведут в ад. Хотели сделать удобно на фронте, в
-итоге добавили баг.</p>
 
                 
             </div>
