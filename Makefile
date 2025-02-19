@@ -6,9 +6,6 @@ all: clear pull build deploy
 pull:
 	git pull
 
-git-prepare:
-	git clone -b gh-pages --single-branch git@github.com:igrishaev/interview.git gh-pages
-
 docker-build:
 	docker build --no-cache -t blog .
 
@@ -38,9 +35,10 @@ static:
 clear:
 	rm -rf _site
 
-gh-pages-init:
-	git clone --branch gh-pages git@github.com:igrishaev/blog.git gh-pages
+BLOG_REPO = https://github.com/igrishaev/blog.git # git@github.com:igrishaev/blog.git
 
+gh-pages-init:
+	git clone --branch gh-pages ${BLOG_REPO} gh-pages
 
 aws-upload:
 	aws s3 sync aws s3://igrishaev.public --acl public-read --exclude '*.DS_Store'
