@@ -332,7 +332,7 @@ I hope the comments highlight the meaning of the code as well. I just declared a
 database URL, a global connection, a function to connect to the DB and two
 helper functions.
 
-The first function rust reads a `EDN` file and returns a data structure. Since
+The first function just reads a `EDN` file and returns a data structure. Since
 our files a stored in resources folder, there is a `io/resource` wrapper here in
 the threading chain.
 
