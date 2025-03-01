@@ -35,7 +35,8 @@ static:
 clear:
 	rm -rf _site
 
-BLOG_REPO = https://github.com/igrishaev/blog.git # git@github.com:igrishaev/blog.git
+# BLOG_REPO = https://github.com/igrishaev/blog.git
+BLOG_REPO = git@github.com:igrishaev/blog.git
 
 gh-pages-init:
 	git clone --branch gh-pages ${BLOG_REPO} gh-pages
