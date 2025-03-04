@@ -104,6 +104,190 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/clj-deed/">Deed: a fast encoding and decoding library for Clojure</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-10-07T00:00:00+00:00">
+        Oct 7, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/encoding/" rel="tag">encoding</a>, <a href="/tag/decoding/" rel="tag">decoding</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-clj-deed">
+  <li><a href="#about" id="toc-item-clj-deed-about">About</a></li>
+  <li><a href="#motivation" id="toc-item-clj-deed-motivation">Motivation</a></li>
+  <li><a href="#installation--requirements" id="toc-item-clj-deed-installation--requirements">Installation &amp; Requirements</a></li>
+  <li><a href="#quick-demo" id="toc-item-clj-deed-quick-demo">Quick Demo</a></li>
+  <li><a href="#api" id="toc-item-clj-deed-api">API</a>    <ul>
+      <li><a href="#simple-encode-and-decode" id="toc-item-clj-deed-simple-encode-and-decode">Simple Encode and Decode</a></li>
+      <li><a href="#encoding-to-memory" id="toc-item-clj-deed-encoding-to-memory">Encoding to Memory</a></li>
+      <li><a href="#sequential-encoding-and-decoding" id="toc-item-clj-deed-sequential-encoding-and-decoding">Sequential Encoding and Decoding</a></li>
+      <li><a href="#low-level-api" id="toc-item-clj-deed-low-level-api">Low-Level API</a></li>
+      <li><a href="#api-options" id="toc-item-clj-deed-api-options">API Options</a></li>
+    </ul>
+  </li>
+  <li><a href="#gzipped-streams" id="toc-item-clj-deed-gzipped-streams">GZipped Streams</a></li>
+  <li><a href="#appending-to-a-file" id="toc-item-clj-deed-appending-to-a-file">Appending to a File</a></li>
+  <li><a href="#handle-unsupported-types" id="toc-item-clj-deed-handle-unsupported-types">Handle Unsupported Types</a></li>
+  <li><a href="#supported-types" id="toc-item-clj-deed-supported-types">Supported Types</a></li>
+  <li><a href="#extending-custom-types" id="toc-item-clj-deed-extending-custom-types">Extending Custom Types</a>    <ul>
+      <li><a href="#encode" id="toc-item-clj-deed-encode">Encode</a></li>
+      <li><a href="#decode" id="toc-item-clj-deed-decode">Decode</a></li>
+      <li><a href="#macros" id="toc-item-clj-deed-macros">Macros</a></li>
+    </ul>
+  </li>
+  <li><a href="#handling-defrecords" id="toc-item-clj-deed-handling-defrecords">Handling Defrecords</a></li>
+  <li><a href="#contrib" id="toc-item-clj-deed-contrib">Contrib</a>    <ul>
+      <li><a href="#base64" id="toc-item-clj-deed-base64">Base64</a></li>
+      <li><a href="#vectorz" id="toc-item-clj-deed-vectorz">VectorZ</a></li>
+    </ul>
+  </li>
+  <li><a href="#binary-format" id="toc-item-clj-deed-binary-format">Binary Format</a></li>
+  <li><a href="#benchmarks" id="toc-item-clj-deed-benchmarks">Benchmarks</a></li>
+</ul>
+
+<h2 id="about">About</h2>
+
+<p><a href="https://github.com/igrishaev/deed">Deed is a library</a> to dump any value into a byte array and read it
+back. It supports plenty of types out from the box: Java primitives, most of the
+Clojure types, Java collections, date and time, and so on. It supports even such
+tricky types as atoms, refs, and input streams. The full list of supported types
+is shown in the <a href="#supported-types">“Supported Types”</a> section below.</p>
+
+<p>Deed can be extended with custom types with ease. There is a contrib package
+that extends encoding and decoding logic for vectors from the the well-known
+<a href="https://github.com/mikera/vectorz">mikera/vectorz</a> library.</p>
+
+<p>Deed is written in pure Java and thus is pretty fast (see the
+<a href="#benchmarks">“Benchmarks”</a> section). It’s about 30-50% faster than Nippy.</p>
+
+<p>It doesn’t rely on the built-in Java <code class="language-plaintext highlighter-rouge">Serializable</code> interface for security
+reasons. Every type is processed manually.</p>
+
+<p>Deep provides convenient API for reading the frozen data lazily one by one.</p>
+
+<h2 id="motivation">Motivation</h2>
+
+<p>Obviously you would ask why doing this if we already have Nippy? This is what I
+had in mind while working on Deed:</p>
+
+<ol>
+  <li>
+    <p>The library must be <strong>absolutely free</strong> from dependencies. This is true for
+the <code class="language-plaintext highlighter-rouge">deed-core</code> package: it’s written in pure Java with no dependencies at
+all. By adding it into a project, you won’t blow up you uberjar, nor you will
+have troubles with building a native image with GraalVM.</p>
+  </li>
+  <li>
+    <p>Any part of Deed that requires 3rd-party stuff must be a sub-library. So you
+have precise control of what you use and what you don’t</p>
+  </li>
+  <li>
+    <p>Unlike Nippy, Deed never falls back to native Java serialization. There is no
+such an option. Thus, your application cannot be attacked by someone how has
+forged a binary dump.</p>
+  </li>
+  <li>
+    <p>Deed is simple: it blindly works with input- and output byte streams having
+no idea what’s behind them. It doesn’t take compression nor encryption into
+account – yet there are utilities for streams.</p>
+  </li>
+  <li>
+    <p>The library provides API which personally I consider more convenient than
+Nippi’s. Namely, Deed can lazily iterate on a series of encoded data instead
+of reading the whole dump at once.</p>
+  </li>
+  <li>
+    <p>Finally, why not using popular and cross-platform formats like JSON, Message
+Pack, or YAML? Well, because of poor types support. JSON has only primitive
+types and collections, and nothing else. Extending it with custom types is
+always a pain. At the same time, I want my decoded data be as close to the
+origin data as possible, say, <code class="language-plaintext highlighter-rouge">LocalDateTime</code> be an instance of
+<code class="language-plaintext highlighter-rouge">LocalDateTime</code> but not a string or <code class="language-plaintext highlighter-rouge">java.util.Date</code>. Sometimes, preserving
+metadata is crucial. To haldle all of these cases, there now a way other than
+making your own library.</p>
+  </li>
+</ol>
+
+
+                    <p><a href="/clj-deed/">Read more &rarr;</a></p>
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/world-of-goo-2/">World of Goo 2</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-10-06T00:00:00+00:00">
+        Oct 6, 2024
+    </time>
+
+    <a href="/tag/games/" rel="tag">games</a>, <a href="/tag/goo/" rel="tag">goo</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>Вышла <a href="https://worldofgoo2.com/">вторая часть World of Goo</a>. Я долго не знал об этом, потому что
+повестка забита другим, да и на работе зашиваюсь. Однако это самая приятная
+новость за последние полгода или около.</p>
+
+<p>Изюминка в том, что с момента первой части прошло шестнадцать лет. И дело не в
+том, какая графика или саундтрек в новой части. Просто испытываешь радость за
+тех двух парней, которые выкатили продолжение. Такое же чувство испытываешь,
+когда любимая группа записала альбом после долгих лет турне.</p>
+
+<p>Шестнадцать лет исполнилось моему старшему ребенку. Помню, как начал играть в
+Гушек, когда ему было пять месяцев. Гушек прошли вдоль и поперек двое моих
+детей, третьей еще предстоит.</p>
+
+<p>Если вы не играли в первую часть, горячо советую это сделать. Игра — не просто
+залипательная казуалка. В ней много попыток что-то донести между строк. Почти
+каждый уровень — это метафора на что-то из жизни. Попадаются намеки на
+отношения, красоту и любовь. Есть серия уровней в компьютере, где моделируется
+перехват трафика, балансировка нагрузки и другие айтишные штучки. Есть длинный
+диалог на тему браузерных кук. Ближе к концу — эпичный поворот с удаленными
+электронными письмами.</p>
+
+<p>Приятно не только расставлять шарики, но и ловить подсказки, намеки, искать
+отсылки. Гушки — настоящее произведение искусства. Спасибо двум парням, которые
+заставили часами залипать в этот мир. Прошло шестнадцать лет — и я снова загляну
+туда, пусть ненадолго, но с тем же интересом.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/ui-void/">UI и пустота</a>
             </h2>
 
@@ -518,142 +702,13 @@ Type-C. Поскольку рабочий мак на своем зарядни�
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/youtube-vs-ghostery/">Youtube и Ghostery</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-09-14T00:00:00+00:00">
-        Sep 14, 2024
-    </time>
-
-    <a href="/tag/youtube/" rel="tag">youtube</a>, <a href="/tag/ghostery/" rel="tag">ghostery</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><img src="/assets/static/aws/youtube-vs-ghostery/1.jpeg" /></p>
-
-<p>Ютуб такой: что, дружище, подключился из Германии? Думаешь, самый умный? Сдавай
-адблок и вступай в клуб.</p>
-
-<p>А сбоку такой Ghostery: что, дружище, Ютуб обижает? Тыкни чекбокс, зайди в
-приват и мы заткнем ему глотку.</p>
-
-<p>Тыкнул, зашел — Ютуб и вправду заткнулся.</p>
-
-<p>Забавно смотреть на эту битву: один сервис воюет с другим в моем
-браузере. Оплата веселья — герцы моего процессора.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tapes/">Кассеты</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-09-14T00:00:00+00:00">
-        Sep 14, 2024
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/chita/" rel="tag">chita</a>, <a href="/tag/tapes/" rel="tag">tapes</a>, <a href="/tag/old/" rel="tag">old</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Как-то раз мы с сыном шли по чужому двору. На помойке выставили вещи из старой
-квартиры: допотопную плитку, ковры, холодильник а-ля “Зил”, советский магнитофон
-и кассеты. Выглядело так, словно какой-то старый человек <del>наконец-то</del> умер и
-родственники, едва закончив похороны, вытряхнули весь хлам, чтобы занять
-квартиру.</p>
-
-<p>Сын заинтересовался ящиком с кассетами, и мы взяли его домой. Рассматривая их, я
-убедился, что покойный был мужчиной: ДДТ, Король и Шут, Сектор Газа. Встречается
-лирика: Земфира, Братья Гримм, группы позднего СССР. У человека был довольно
-широкий вкус: слушал и рок, и попсу, и нашу, и западную. Нашелся даже Слипкнот и
-какие-то дэд-метал-клоуны.</p>
-
-<p>Как это часто бывает, ковыряние в старых вещах вызвало флешбеки. В детстве у нас
-с сестрой тоже были полки кассет и дисков — разумеется, обычных, DVD тогда не
-было. Слушание музыки было сопряжено с физическим действием: нужно достать
-кассету, поставить, смотать, перевернуть и прочее. Сейчас этого нет, вся музыка
-в интернете, и порой я по этому скучаю. Хочется сделать что-то аналоговое,
-оффлайновое, например, вставить кассету в магнитофон — без облачных учеток,
-подписок, вай-фая и синхронизаций.</p>
-
-<p>К слову, современные дети не понимают мем, где рядом с кассетным плеером лежит
-карандаш. Серьезно.</p>
-
-<p>На наше с сестрой меломанство повлиял один человек, муж маминой подруги, дядя
-Витя. У них была хорошая семья, в доме было много книг. Мы ходили к ним в гости
-как в библиотеку. У них всегда были новые романы Стивена Кинга и мультики Диснея
-на видике. Они ездили в Маньчжурию (город на границе с Китаем — дело происходило
-в Чите) и привозили всякие штуки, которые по тем временам казались небесной
-манной. В том числе они привезли две приставки Денди и одну подарили нам. Мои
-родители были в ту пору бюджетниками, им давали зарплату продуктовыми
-карточками, и ни о каких приставках не могло быть и речи.</p>
-
-<p>У дяди Вити была крутая коллекция западного рока и рок-н-ролла. Куин, Дип Перпл,
-Дорз, Пинк Флойд, Металлика и многое другое. Дядя Витя не признавал российских
-исполнителей: это был советский западно-ориентированный меломан. Может быть, это
-повлияло на мое отношение к русской музыке. Мы с сестрой даже не обсуждали,
-какую музыку слушать — очевидно, иностранную. Это было ясно как то, что по
-воскресеньям идет Дисней. И сегодня при слове “русский рок” мне хочется смеяться
-и плакать одновременно.</p>
-
-<p>Одну стену гостинной целиком занимал в шкаф, в котором обычно хранили
-хрусталь. Вместо него у дяди Вити стояли диски, аудио- и видеокассеты. В центре
-стояла аудиосистема, а перед стенкой — кресло-качалка с наушниками. Сидя в ней с
-кружкой пива и слушая Дип Перпл в наушниках, дядя Витя казался царьком своего
-маленького мира: все это мое и по моим правилам. Никто не смел вторгаться в его
-мирок.</p>
-
-<p>Сколько дисков, кассет и книг мы брали у этой семьи — я не могу
-вспомнить. Некоторые книги они подарили нам, некоторые мы “забыли”
-отдать. Уезжая из Читы, я взял пару из них на память, и они до сих пор на моей
-полке.</p>
-
-<p>Позже эта замечательная семья развелась. Затем подруга мамы умерла от рака, а
-дядя Витя тихо доживает свой век. Иногда я думаю, что будет с его замечательной
-коллекцией, аудиосистемой, креслом-качалкой? Разумеется, я знаю: когда он умрет,
-все это вынесут на помойку. Диски и кассеты растащат дети, а технику отнесут
-перекупам. Кресло утащат в подвал бомжи. Не станет маленького мирка, никто не
-сможет извлечь из него то удовольствие, что извлекал дядя Витя.</p>
-
-<p>И ящик кассет на помойке, и шкаф с дисками дяди Вити — все это напоминает, что
-любую коллекцию ждет конец. Не важно, что мы собираем — фантики, диски, старую
-технику Эпл — однажды это окажется на помойке. Конечно, не нужно тяготиться этой
-мыслью всю жизнь. Но держать ее на краешке мозга все-таки стоит.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page7" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 8 из 89</span>
+        <span class="page_number ">Страница 8 из 90</span>
         
         <a href="/page9" class="next">&rarr;</a>
         
