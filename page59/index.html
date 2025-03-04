@@ -104,6 +104,504 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/clj-args/">On Clojure arguments</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-06-23T00:00:00+00:00">
+        Jun 23, 2017
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/arguments/" rel="tag">arguments</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Sometimes, a function that we are working on needs to take lots of
+parameters. Not just one or two but a decade or even more. I used to face with
+such a problem many times. I’m not sure solutions made by me were always good
+enough.</p>
+
+<p>You might be brave enough to say you will never face such an error. It’s
+probably a weird architecture. A function should accept at least five
+arguments. You will refactor such a code for sure.</p>
+
+<p>But look at this:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">verbose_name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">primary_key</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                 <span class="n">max_length</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">unique</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">blank</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">null</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                 <span class="n">db_index</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">rel</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="n">NOT_PROVIDED</span><span class="p">,</span> <span class="n">editable</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                 <span class="n">serialize</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">unique_for_date</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">unique_for_month</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">unique_for_year</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">choices</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">help_text</span><span class="o">=</span><span class="s">''</span><span class="p">,</span> <span class="n">db_column</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">db_tablespace</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">auto_created</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">validators</span><span class="o">=</span><span class="p">(),</span>
+                 <span class="n">error_messages</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+</code></pre></div></div>
+
+<p>It is <a href="https://github.com/django/django/blob/master/django/db/models/fields/__init__.py#L134">from Django</a>, the world-wide spreaded framework to build robust
+web applications. Except <code class="language-plaintext highlighter-rouge">self</code>, the constructor takes 22 optional
+arguments. Saying more, it is just a basic abstract class. Its descendants
+require their own arguments in addition to default ones.</p>
+
+<p>Common languages such as Python, Ruby or Java give only one standard way to deal
+with lots of parameters. In fact, using them you cannot be mistaken since you
+have no other choice. The question here is how to make you code less ugly than
+it is now.</p>
+
+<p>People who are new in Clojure, especially if they came from classical
+Python/Puby/PHP, face troubles when passing lots of arguments into a
+function. Since it’s Clojure, there are several ways to do that. This article
+highlights some on them, their benefits and disadvantages.</p>
+
+<h3 id="multi-arity">Multi-arity</h3>
+
+<p>Any function in Clojure may have more than one body with its own
+signature. That’s normal for any functional language, but sounds surprisingly to
+former Python/Ruby adepts. An interpreter dispatches that bodies by a form of
+arguments. The first found body is called. When no body is found, an exception
+is raised.</p>
+
+<p>For example, the same function could be called with either two or three
+arguments if we declare it in such way:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w">
+ </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="s">"two arguments"</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nb">+</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">))</span><span class="w">
+ </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">z</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="s">"three arguments!"</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nb">+</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">z</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">foo</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w">
+</span><span class="mi">3</span><span class="w"> </span><span class="c1">;; prints `two arguments`</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">foo</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">)</span><span class="w">
+</span><span class="mi">6</span><span class="w"> </span><span class="c1">;; prints `three arguments!`</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Calling a function with zero, one or ten arguments will raise an
+exception. Depending on your application’s logic, it could be both good or bad
+behaviour.</p>
+
+<p>To fallback to default body that deals with any set of arguments, add one more
+implementation:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w">
+ </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="w">
+   </span><span class="n">...</span><span class="w">
+  </span><span class="p">)</span><span class="w">
+ </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">z</span><span class="p">]</span><span class="w">
+  </span><span class="n">...</span><span class="w">
+  </span><span class="p">)</span><span class="w">
+ </span><span class="p">([</span><span class="o">&amp;</span><span class="w"> </span><span class="n">args</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">reduce</span><span class="w"> </span><span class="nb">+</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="n">args</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now, you may add any arguments set together:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">foo</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">)</span><span class="w">
+</span><span class="mi">10</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">foo</span><span class="p">)</span><span class="w">
+</span><span class="mi">0</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The order of bodies is important. If you put <code class="language-plaintext highlighter-rouge">[&amp; args]</code> clause on the top, it
+will cover all the possible function calls. So you will never reach <code class="language-plaintext highlighter-rouge">[x y]</code> or
+<code class="language-plaintext highlighter-rouge">[x y z]</code> implementations.</p>
+
+<p>One interesting feature is you may redirect function call inside a body just
+calling the same function with another argument set. For example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="nb">test</span><span class="w">
+  </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="w">
+   </span><span class="p">(</span><span class="nb">test</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">nil</span><span class="p">))</span><span class="w"> </span><span class="c1">;; redirects to the second body</span><span class="w">
+  </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">z</span><span class="p">]</span><span class="w">
+   </span><span class="p">(</span><span class="nf">do-some-stuff</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">z</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Clojure dispatches a proper body quite fast. It is a key feature of Clojure’s
+runtime. There are lots of core functions that declare two, three or even five
+bodies regarding to performance issues. It’s much faster then having a single
+body with multiple <code class="language-plaintext highlighter-rouge">if</code>s, <code class="language-plaintext highlighter-rouge">case</code> or <code class="language-plaintext highlighter-rouge">cond</code>clauses.</p>
+
+<p>A quick copy-paste from <a href="https://github.com/clojure/clojure/blob/master/src/clj/clojure/core.clj#L2556">Clojure sources</a>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">juxt</span><span class="w">
+  </span><span class="s">"..."</span><span class="w">
+  </span><span class="p">([</span><span class="n">f</span><span class="p">]</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">([</span><span class="n">f</span><span class="w"> </span><span class="n">g</span><span class="p">]</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">([</span><span class="n">f</span><span class="w"> </span><span class="n">g</span><span class="w"> </span><span class="n">h</span><span class="p">]</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">([</span><span class="n">f</span><span class="w"> </span><span class="n">g</span><span class="w"> </span><span class="n">h</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">fs</span><span class="p">]</span><span class="w"> </span><span class="n">...</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Multi-arity is great when you already have a function that takes a couple of
+scalar parameters and then you need to add some extra one ASAP. Usually, the
+most needed function is called in thousand places so adding an extra parameter
+everywhere would be a mess.</p>
+
+<p>In Java or Python world, it is named “refactoring”. You need a robust commercial
+IDE to scan the project and change each call of a function. In Clojure, you just
+do:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; old</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="nb">test</span><span class="w">
+  </span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">do-old-stuff</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; new</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="nb">test</span><span class="w">
+  </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="w">
+   </span><span class="p">(</span><span class="nf">do-old-stuff</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">))</span><span class="w">
+  </span><span class="p">([</span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="n">z</span><span class="p">]</span><span class="w">
+   </span><span class="p">(</span><span class="nf">do-new-stuff</span><span class="w"> </span><span class="n">z</span><span class="p">)</span><span class="w">
+   </span><span class="p">(</span><span class="nf">do-old-stuff</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now you can keep the old calls without changing your code. And pass the new
+argument only where you need.</p>
+
+<h3 id="maps">Maps</h3>
+
+<p>Your function may need lots of additional arguments. For example, boolean flags,
+extra options for HTTP connection, timeouts, headers, error messages.</p>
+
+<p>A good way to solve the problem is to join them into a single map. Thus, your
+function accepts only a couple of required parameters and the rest are put into
+an optional map. Say, you pass a hostname and a method name and a map with
+<code class="language-plaintext highlighter-rouge">:timeout</code>, <code class="language-plaintext highlighter-rouge">:headers</code> keys on so on.</p>
+
+<p>Inside a function, you either take optional arguments one by one:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">[</span><span class="n">opt</span><span class="p">]]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">timeout</span><span class="w"> </span><span class="p">(</span><span class="no">:timeout</span><span class="w"> </span><span class="n">opt</span><span class="p">)</span><span class="w">
+        </span><span class="n">headers</span><span class="w"> </span><span class="p">(</span><span class="no">:headers</span><span class="w"> </span><span class="n">opt</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">http-request</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="n">timeout</span><span class="w"> </span><span class="n">headers</span><span class="p">)</span><span class="w">
+    </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>or decompose a map on separated variables at once:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">[</span><span class="n">opt</span><span class="p">]]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">timeout</span><span class="w">
+                </span><span class="n">headers</span><span class="p">]}</span><span class="w"> </span><span class="n">opt</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">http-request</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="n">timeout</span><span class="w"> </span><span class="n">headers</span><span class="p">)</span><span class="w">
+    </span><span class="n">...</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Decomposition works as well on the signature level. I do not like this method
+though since it brings some noise in the code:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">[{</span><span class="n">timeout</span><span class="w"> </span><span class="no">:timeout</span><span class="w">
+                             </span><span class="n">headers</span><span class="w"> </span><span class="no">:headers</span><span class="p">}]]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">http-request</span><span class="w"> </span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="n">timeout</span><span class="w"> </span><span class="n">headers</span><span class="p">)</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>A good point there is you may keep a default map somewhere and merge it with the
+passed ones to fallback to default values:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">foo-defaults</span><span class="w">
+  </span><span class="p">{</span><span class="no">:timeout</span><span class="w"> </span><span class="mi">5</span><span class="w">
+   </span><span class="no">:headers</span><span class="w"> </span><span class="p">{</span><span class="no">:user-agent</span><span class="w"> </span><span class="s">"Internet Explorer 6.0"</span><span class="p">}})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="n">hostname</span><span class="w"> </span><span class="n">port</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">[</span><span class="n">opt</span><span class="p">]]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">timeout</span><span class="w">
+                </span><span class="n">headers</span><span class="p">]}</span><span class="w"> </span><span class="p">(</span><span class="nb">merge</span><span class="w"> </span><span class="n">foo-defaults</span><span class="w"> </span><span class="n">opt</span><span class="p">)]</span><span class="w">
+    </span><span class="c1">;; now timeout is always 5 when not passed</span><span class="w">
+    </span><span class="n">...</span><span class="w">
+    </span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This way of passing a map is widely-spreaded across Clojure libraries. It even
+considered as the standard one because of its simplicity and transparency. If
+you have just started with Clojure and need a function with multiple arguments,
+use a map.</p>
+
+<h3 id="rest-arguments-as-a-map">Rest arguments as a map</h3>
+
+<p>There is another way to deal with multiple arguments. Do you remember the <code class="language-plaintext highlighter-rouge">rest</code>
+arguments prepended with <code class="language-plaintext highlighter-rouge">&amp;</code> in a function signature? Something like that:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="n">args</span><span class="p">]</span><span class="w">
+  </span><span class="c1">;; args is a list)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">foo</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">)</span><span class="w"> </span><span class="c1">;; args is (1 2 3 4)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Starting with Clojure 1.5 (or 1.6, I don’t remember exactly) you may turn the
+rest arguments into a map. The syntax is:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="p">{</span><span class="no">:as</span><span class="w"> </span><span class="n">args</span><span class="p">}]</span><span class="w">
+  </span><span class="c1">;; now, args is a map!</span><span class="w">
+  </span><span class="n">args</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">foo</span><span class="w"> </span><span class="no">:foo</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:bar</span><span class="w"> </span><span class="mi">42</span><span class="p">)</span><span class="w">
+</span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="mi">42</span><span class="n">,</span><span class="w"> </span><span class="no">:foo</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Pass extra arguments remembering some simple rules:</p>
+
+<ol>
+  <li>there must be even number of rest arguments, otherwise you will get an error;</li>
+  <li>each odd argument (usually a keyword) is a key;</li>
+  <li>each even argument is a value;</li>
+  <li>you cannot duplicate key items.</li>
+</ol>
+
+<p>Turning rest arguments into a map is also used oftenly in Clojure. You may
+choose that method over a map as well when developing with Clojure.</p>
+
+<h3 id="pure-map-vs-rest-args">Pure map vs rest args</h3>
+
+<p>Each of two method described above has its own benefits and disadvantages. Let’s
+highlight some of them:</p>
+
+<ol>
+  <li>
+    <p>Using a map is good when you don’t know exactly what arguments you will pass
+into a function. It’s a common situation when the final set of options is
+unknown for the last moment. It might depend on user input, environment
+variables or any conditions. Usually, you compose a map step by step, validate
+it with somehow and pass into a function. With sequences, it’s more difficult
+to compose a set of arguments.</p>
+  </li>
+  <li>
+    <p>Passing a map into a function with the <code class="language-plaintext highlighter-rouge">&amp; rest</code> signature requires some
+additional steps. You should flatten you map into a vector or sequence and
+then apply it to a function:</p>
+
+    <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">opt</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="mi">42</span><span class="w"> </span><span class="no">:bar</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]})</span><span class="w"> </span><span class="c1">;; your options map</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="w"> </span><span class="p">{</span><span class="no">:as</span><span class="w"> </span><span class="n">args</span><span class="p">}]</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w"> </span><span class="c1">;; but the function accepts rest arguments</span><span class="w">
+
+</span><span class="c1">;; turns opt to a seq of (key1 val1 key2 val2)</span><span class="w">
+</span><span class="c1">;; then apply it to the function</span><span class="w">
+</span><span class="p">(</span><span class="nb">apply</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">(</span><span class="nb">mapcat</span><span class="w"> </span><span class="nb">identity</span><span class="w"> </span><span class="n">opt</span><span class="p">))</span><span class="w">
+</span></code></pre></div>    </div>
+
+    <p>Note how long is the code. Probably, you’d better to modify the function to
+accept just map.</p>
+  </li>
+  <li>
+    <p>With the rest arguments, <code class="language-plaintext highlighter-rouge">partial</code> works like a charm. Say, we have a
+function that returns a set of rows from the database. The first argument is
+a table name, and the rest are a sequence with each odd argument as a column
+name and even argument as a value:</p>
+
+    <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">db-query</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="no">:staff</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; performs a query like:</span><span class="w">
+</span><span class="c1">;; select *</span><span class="w">
+</span><span class="c1">;;   from "users"</span><span class="w">
+</span><span class="c1">;; where</span><span class="w">
+</span><span class="c1">;;   active</span><span class="w">
+</span><span class="c1">;;   and staff</span><span class="w">
+</span><span class="c1">;;   and name = "Ivan"</span><span class="w">
+</span></code></pre></div>    </div>
+
+    <p>Some of our users could be blocked. We may forget passing <code class="language-plaintext highlighter-rouge">:active false</code>
+clause every time you query for users. To prevent returning blocked ones to
+the frontend, it’s better to have a special function for that:</p>
+
+    <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">active-users</span><span class="w"> </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="n">db-query</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="p">))</span><span class="w">
+</span></code></pre></div>    </div>
+
+    <p>In addition to this constraint, we might be interested in only staff
+users. Let’s extend our function with another partial application:</p>
+
+    <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">staff-active-users</span><span class="w"> </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="n">active-users</span><span class="w"> </span><span class="no">:staff</span><span class="w"> </span><span class="n">true</span><span class="p">))</span><span class="w">
+</span></code></pre></div>    </div>
+
+    <p>Finally, we may select all the non-blocked staff users whose name is Ivan:</p>
+
+    <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">staff-active-users</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; [{:id 1 :name "Ivan" :surname "Petrov"}</span><span class="w">
+</span><span class="c1">;;  {:id 1 :name "Ivan" :surname "Sidorov"}]</span><span class="w">
+</span></code></pre></div>    </div>
+  </li>
+  <li>
+    <p>Instead, with maps you cannot declare a partial function. You need to invent
+your own <code class="language-plaintext highlighter-rouge">partial-map</code> implementation:</p>
+
+    <div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">
+</span><span class="c1">;; let `foo` is a function that accepts a map</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">[</span><span class="n">opt</span><span class="p">]</span><span class="w">
+  </span><span class="n">opt</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; our own `partial`</span><span class="w">
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">partial-map</span><span class="w"> </span><span class="p">[</span><span class="n">f</span><span class="w"> </span><span class="n">defaults</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">opt</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">f</span><span class="w"> </span><span class="p">(</span><span class="nb">merge</span><span class="w"> </span><span class="n">defaults</span><span class="w"> </span><span class="n">opt</span><span class="p">))))</span><span class="w">
+
+</span><span class="c1">;; example:</span><span class="w">
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">foo-timeout</span><span class="w"> </span><span class="p">(</span><span class="nf">partial-map</span><span class="w"> </span><span class="n">foo</span><span class="w"> </span><span class="p">{</span><span class="no">:timeout</span><span class="w"> </span><span class="mi">5</span><span class="p">}))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">foo-timeout</span><span class="w"> </span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="mi">42</span><span class="p">})</span><span class="w">
+</span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="mi">42</span><span class="w"> </span><span class="no">:timeout</span><span class="w"> </span><span class="mi">5</span><span class="p">}</span><span class="w">
+</span></code></pre></div>    </div>
+  </li>
+</ol>
+
+<h3 id="conclusion">Conclusion</h3>
+
+<p>The examples above show there are more then one way to deal with multiple
+arguments in Clojure. These are multi-arity, maps and rest arguments. All of
+them cover you common requirements as well.</p>
+
+<p>Remember, you are not limited with the only three those ones. With macroses, you
+can implement you own arguments system: Common Lisp-wise or any other. The only
+limit there is your imagination.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/not-love/">Нелюбовь</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-06-15T00:00:00+00:00">
+        Jun 15, 2017
+    </time>
+
+    <a href="/tag/movies/" rel="tag">movies</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><img src="http://ic.pics.livejournal.com/dolboeb/53631/1354853/1354853_original.jpg" alt="cover" /></p>
+
+<p>Посмотрел Звягинцева.</p>
+
+<p>Переполняют чувства, но писать рецензии как <a href="http://dolboeb.livejournal.com/3154585.html">Носик</a> я не умею, поэтому
+буду краток.</p>
+
+<p>Великое кино. Шедевр от вступительных титров до последнего кадра.</p>
+
+<p>Поражает невероятная точность, натуральность сцен, поведения, реплик. Кажется,
+ни одна деталь реальности не ушла от режиссера, в том числе интимные
+подробности. Но они не перетягивают на себя лишнее внимание. Напротив, еще
+сильнее утверждают правдивость происходящего.</p>
+
+<p>Очень реалистичны персонажи, фразы, поведение. Приемы, к которым они прибегают,
+чтобы обманывать себя и окружающих. Ощущение, что смотришь в микроскоп, только
+вместо капли воды – московская семья, средневзвешенный элемент российского
+общества.</p>
+
+<p>Бывает, мы говорим: это было как в кино. То есть волшебно, непонятно, не так как
+мы привыкли. А у Звягинцева – как в жизни. И это пугает, потому что понимаешь,
+что все происходящее может завтра случиться с тобой.</p>
+
+<p>Так же столкнешься с бездействием ментов, произволом на всех уровнях, офисным
+рабством, пасьянсом “косынка” в ожидании обеда. Православным начальстом, греющим
+руки на строительстве храма.</p>
+
+<p>И конечно, недостатком внимания к тем, кто рядом и заслуживает этого.</p>
+
+<p>Каждую сцену можно просматривать бесконечно: включается латентный
+вуайерист. Словно подглядываешь за чьей-то жизнью, и все фейлы, измены видны, как
+день.</p>
+
+<p>Сцена с Киселевым и Украиной следует за сценой с моргом. Обе они дают декартово
+произведение ужаса и тоски. В тот момент в кинотеатре я почуствовал, будто в
+сердце что-то воткнули.</p>
+
+<p>После просмотра я точно понял, чего хочу в широком смысле. Быть счастливым. В
+нелюбви и в несчастье нет дна.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/read-24/">What to read #24</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-06-11T00:00:00+00:00">
+        Jun 11, 2017
+    </time>
+
+    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <ul>
+  <li>
+    <p><a href="http://tonsky.me/blog/readable-clojure/">Readable Clojure</a></p>
+
+    <p>Interesting notes on how to improve your Clojure code.</p>
+  </li>
+  <li>
+    <p><a href="http://deathbypassivevoice.com/all/resource/">Writing on Resource</a></p>
+
+    <blockquote>
+      <p>I never write when I get a good idea. I only try to write when I find
+suitable resource to illustrate that idea.</p>
+    </blockquote>
+  </li>
+  <li>
+    <p><a href="http://gigasquidsoftware.com/blog/2017/05/27/self-publishing-for-the-creative-coder/">Self Publishing for the Creative Coder</a></p>
+
+    <blockquote>
+      <p>So, you have an idea for a fiction book. First, let me tell you that it’s a
+good idea and it’s a great thing that you are a coder.</p>
+    </blockquote>
+  </li>
+  <li>
+    <p><a href="http://varlamov.ru/2416234.html">Жизнь в гробу</a></p>
+
+    <p>Фотографии гонконгских квартир-клеток.</p>
+  </li>
+  <li>
+    <p><a href="http://sergeykorol.ru/blog/discriminatory-discrimination/">Бесправная дискриминация</a></p>
+
+    <p>Сергей Король о гендере и пр.</p>
+
+    <blockquote>
+      <p>Ну и вообще готовьтесь. Кажется, общество скоро будет прилично штормить
+из-за этой фигни.</p>
+    </blockquote>
+  </li>
+  <li>
+    <p><a href="https://www.youtube.com/watch?v=_l0LVFRuHMk">Noize MC - Чайлдфри (feat. монеточка)</a></p>
+
+    <p>Прекрасный клип.</p>
+  </li>
+</ul>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/en/bugs/">Does any program really have an unlimited number of bugs?</a>
             </h2>
 
@@ -1288,205 +1786,6 @@ written by Ivan Sagalaev, a famous Russian Python developer who moved to USA:</p
 только начинают учить английский и не чувствуют себя уверенными сразу включаться
 в мировое сообщество. Но вектор должен быть всегда туда.</p>
 </blockquote>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/read-21/">What to read #21</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-05-02T00:00:00+00:00">
-        May 2, 2017
-    </time>
-
-    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/en/" rel="tag">en</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>With a little delay, here are the links:</p>
-
-<ul>
-  <li>
-    <p><a href="http://blog.cognitect.com/blog/2016/11/14/works-on-my-machine-how-we-work-distributed">How We Work: Distributed</a></p>
-
-    <p>Good post in Cognitect blog. There are also a <a href="http://blog.cognitect.com/cognicast/104">podcast</a> by the same
-author with a <a href="http://blog.cognitect.com/cognicast-transcripts/104">transcript</a>.</p>
-  </li>
-  <li>
-    <p><a href="http://realworldclojure.com/one-weird-trick/">One Weird Trick To Become a Clojure Expert</a></p>
-
-    <p>It’s so simple, you see?</p>
-  </li>
-  <li>
-    <p><a href="https://codeblog.jonskeet.uk/2017/04/23/all-about-java-util-date/">All About java.util.Date</a></p>
-
-    <p>Some interesting facts behind the Java hood.</p>
-  </li>
-  <li>
-    <p><a href="http://proft.me/2017/04/10/pro-java-collections-framework-pochti-vse-i-srazu/">Про Java Collections Framework: почти все и сразу</a></p>
-
-    <p>Nice article on Russian about Java collections.</p>
-  </li>
-</ul>
-
-<p>Non-IT links:</p>
-
-<ul>
-  <li>
-    <p><a href="http://sexprosvet.me/conversationaboutsex">How to talk to children on sex</a></p>
-
-    <p>Good advise from famous Russian psychologist.</p>
-  </li>
-</ul>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/mail-1/">Мне пишут #1</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-05-02T00:00:00+00:00">
-        May 2, 2017
-    </time>
-
-    <a href="/tag/email/" rel="tag">email</a>, <a href="/tag/help/" rel="tag">help</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Автор письма разрешил ответить публично. Почта, имена и некоторые детали
-удалены, орфография сохранена:</p>
-
-<blockquote>
-  <p>Решил так как время у меня есть свободное, я ж как-ни-как фрилансер( хоть и
-родные считают безработным) начать учить не фласк, а алгоритмы. Начал курс от
-комьютер скайнс центра на степике…тяжело..ломаюсь..</p>
-
-  <p>Думаю начать с простого, кормен вводный курс плюс онлайн курс на закрепление…</p>
-
-  <p>В общем я написал первую часть в надежде вашего комментария…</p>
-
-  <p>А вопрос таков, стоит ли решать олимпиадные задачки? ибо один девелопер мне
-однажды сказал, что толку нет от них…</p>
-
-  <p>Они дают плюсы для дальнейшей карьеры?</p>
-
-  <p>С уважением, N.</p>
-
-  <p>P.S. Знакомые ребята, которые устроились джунами в Киеве говорят, что с
-алгоритмами не сталкивались( да они и не знают ничего даже про стеки, очереди и
-тд) только слышали в раговорах в курилке между серьезными разработчиками…</p>
-</blockquote>
-
-<p>Решать олимпиадные задачи, на мой взгляд, смысла нет. Они слабо связаны с
-промышленными нуждами. Почти все задачи с олимпиад, что приходилось мне видеть,
-относятся к теории графов: как правильно составить и затем обойти. Графы не так
-часто используются в повседневной разработке.</p>
-
-<p>Если вы только начали айти-карьеру, не грузите мозг сверх меры. Вам платят за
-то, чтобы вы решили проблему заказчика максимально быстро и дешево. Другими
-словами, если заказчику нужно поправить авторизацию на сайте, ему все равно,
-сколько курсов вы прошли.</p>
-
-<p>Выражаясь еще проще, на уровне джуниоров-фрилансеров глубокие знания не
-котируются. Может даже быть обратный эффект – опасение. Заказчик думает:
-попросишь такого спеца текст распарсить, а он Tensor-flow прикрутит, ценник
-выкатит конский. Не буду связываться.</p>
-
-<p>Я бы посоветовал уходить с фриланса и устраиваться в фирму с профессиональным
-коллективом. Среди коллег опыт пойдет очень быстро. Дома на балкончике вам
-неоткуда будет брать опыт.</p>
-
-<p>Начните с базовых инструментов: освойте окружение разработчика, азы Линукса,
-какой-нибудь язык и минимальный набор библиотек к нему. Если чувствуете, что
-изучили повседневные инструменты (Питон, Гит, редактор, SQL, Js, CSS, HTML,
-HTTP/Ajax), то займитесь английским и параллельно читайте SICP и функциональноые
-программирование.</p>
-
-<p>На этом уровне от знания алгоритмов толк уже будет, потому что вам дадут задачи,
-где алгоритмы нужны. Короче, подтяните инструменты, окружите себя опытными
-коллегами, займитесь английским, а уже потом алгоритмами.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/read-20/">What to read #20</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-04-22T00:00:00+00:00">
-        Apr 22, 2017
-    </time>
-
-    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/en/" rel="tag">en</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>There are 20 issues already!</p>
-
-<ul>
-  <li>
-    <p><a href="https://dev.meduza.io/%D0%B0%D0%BB%D0%B0%D0%BD-%D1%82%D0%B5%D0%BB%D0%B5%D0%B3%D1%80%D0%B0%D0%BC-%D0%B1%D0%BE%D1%82-%D0%BC%D0%B5%D0%B4%D1%83%D0%B7%D1%8B-%D0%B8%D0%BB%D0%B8-%D0%B5%D1%89%D0%B5-%D0%BD%D0%B5%D0%BC%D0%BD%D0%BE%D0%B3%D0%BE-%D0%BE%D0%B1-elixir-dfbed7a55c18">Алан — телеграм-бот Медузы, или еще немного об Elixir</a></p>
-
-    <p>A nice article in Meduza Dev blog. Check their other posts, the blog is pretty interesting.</p>
-  </li>
-  <li>
-    <p><a href="http://waitbutwhy.com/2017/04/neuralink.html">Neuralink and the Brain’s Magical Future</a></p>
-
-    <p>A long series of related posts on Wait but Why. I don’t know where to find
-time to read them. When I’m retired maybe?</p>
-  </li>
-  <li>
-    <p><a href="http://artgorbunov.ru/bb/soviet/20170317/">Как грамотно написать заказчику про опоздание?</a></p>
-
-    <p>You’ll definitely need that advise since you always do it wrong :-)</p>
-  </li>
-</ul>
-
-<p>There haven’t been some spicy links for a couple of months. My bad:</p>
-
-<ul>
-  <li>
-    <p><a href="http://beautifulcmnf.tumblr.com/">The Beauty of Clothed Male and Nude Female</a></p>
-
-    <p>A set of photos with couples where a women is usually naked.</p>
-  </li>
-</ul>
 
                 
             </div>
