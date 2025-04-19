@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>ROW CHECK и безопасность</title>
+  <meta name="description" content="Работал я в одном стартапе на Кложе. Код прошел через десятки разработчиков ипредставлял лоскутное одеяло: разные подходы и библиотеки. Каждый разработчикгор...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/pg-row-check/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">ROW CHECK и безопасность</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-04-19T00:00:00+00:00">
+        Apr 19, 2025
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/postgres/" rel="tag">postgres</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Работал я в одном стартапе на Кложе. Код прошел через десятки разработчиков и
+представлял лоскутное одеяло: разные подходы и библиотеки. Каждый разработчик
+городил что-то сбоку, а не исправлял текущее положение дел. Была своя ORM с
+километрами кода и склейкой SQL-строк. Много там всего было, и в том числе база
+данных.</p>
+
+<p>Эта база прямо сейчас стоит в памяти. Она тоже прошла через серию разработчиков,
+каждый из которых знал, как делать правильно. Одни ребята забивали на
+нормализацию; другие решили, что добавлять колонки утомительно и сделали поле
+info с типом jsonb, в которое валили все подряд. Были материализованные вьюхи,
+обновлять которые было затратно, и которые без конца обновлялись из-за косяков в
+очереди сообщений. Ни одна запись физически не удалялась, а помечалась флагом
+<code class="language-plaintext highlighter-rouge">is_deleted = true</code>. Много багов было связано с тем, что данные выбирались без
+этой проверки.</p>
+
+<p>Но это не все. Основатель фирмы считал себя специалистом по безопасности и
+придумал вот что. В Постгресе есть штука под названием <code class="language-plaintext highlighter-rouge">ROW CHECK</code>: проверка
+доступа на уровне записи. Если некая функция <code class="language-plaintext highlighter-rouge">my_check(row)</code> возвращает <code class="language-plaintext highlighter-rouge">null</code>
+или <code class="language-plaintext highlighter-rouge">false</code>, то клиент словно не видит этой записи. Это медленно, но работало.</p>
+
+<p>Почему директор так сделал? Он хранил в одной таблице данные разных клиентов и
+опасался, что из-за ошибки в коде один клиент увидит данные другого. Поэтому
+каждая таблица хранила избыточные айдишки, и в рамках каждого запроса
+выставлялась переменная <code class="language-plaintext highlighter-rouge">current_owner</code>. Функция <code class="language-plaintext highlighter-rouge">ROW CHECK</code> проверяла, что ее
+значение совпадает с айдишками записи.</p>
+
+<p>Воздвигнув этот бастион, директор спокойно сидел под рутовой учеткой, для
+которой проверки были отключены. На моей памяти было два крупных инцидента,
+когда он путал окна и выполнял на проде то, что хотел выполнить на
+тесте. Терялись данные, пропадали целые таблицы.</p>
+
+<p>К счастью, наши часовые зоны сильно отличались, поэтому на починку базы бросали
+другого человека. По понедельникам он рассказывал, как просиживал выходные за
+восстановлением бекапов, импортов CSV и отладкой. Были и другие, не столь
+фатальные случаи, связанные с активностью директора на проде.</p>
+
+<p>Забавно, но наибольший урон базе нанес именно директор, а не хакеры или кривой
+код. Хакерам, видимо, стартап был не интересен, хотя в самописной ORM были дыры
+для инъекций. Код, хоть и был не супер, не страдал тем, что читал чужие
+данные. Свои удаленные – да, но не чужие.</p>
+
+<p>Можно сказать одно: все запреты проверяются на прочность теми, кто их создает. У
+меня доступ на прод был только для чтения. В другом стартапе права на запись
+были, но под той учеткой я не ходил. В конце концов, был страх, что за подобный
+инцидент уводят. А у директора страха не было, вот и результат.</p>
+
+<p>В более широком ключе: запрет хорошо работает только тогда, пока его соблюдают
+те, кто принимал. Не важно, о чем идет речь: о детях, собаках или машинах. Если
+говорящая голова топит за очередной запрет, но не готова применить его к своим
+детям, собакам или машинам, сказанное не имеет смысла.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/ff-forks/">&larr; Форки Фаерфокса</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/same-icons/">Иконки в едином стиле &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/787">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/pg-row-check/">
+    <input required name="captcha" type="hidden" value="9 &#215; 7">
+
+    <div class="block">
+        <span class="comment-form-label"><small>9 &#215; 7 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

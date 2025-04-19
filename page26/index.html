@@ -104,6 +104,1422 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/pg-docs/08/">PG docs, part 8. HoneySQL</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-10-31T00:00:00+00:00">
+        Oct 31, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/honeysql/" rel="tag">honeysql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><em>(This is a new documentation chapter from the <a href="https://github.com/igrishaev/pg">PG project</a>.)</em></p>
+
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+  <li><a href="/en/pg-docs/04/">Arrays</a></li>
+  <li><a href="/en/pg-docs/05/">Notifications</a></li>
+  <li><a href="/en/pg-docs/06/">SSL</a></li>
+  <li><a href="/en/pg-docs/07/">COPY</a></li>
+  <li><a href="/en/pg-docs/08/">HoneySQL</a></li>
+</ul>
+
+<p>In this chapter:</p>
+
+<!-- toc -->
+
+<ul>
+  <li><a href="#about">About</a></li>
+  <li><a href="#installation">Installation</a></li>
+  <li><a href="#usage">Usage</a></li>
+</ul>
+
+<!-- tocstop -->
+
+<p><a href="https://github.com/seancorfield/honeysql">HoneySQL</a> is a well-known library for building SQL expressions from
+Clojure maps. It’s convenient for making complex queries, for example, when you
+have optional JOIN operators. Or you’re unaware of the final WHERE conditions as
+the filtering parameters come from the request. HoneySQL frees you from building
+raw SQL queries by concatenating strings, which is unsafe and leads to SQL
+injections.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">pg-honey</code> is a small wrapper on top of HoneySQL. It provides special
+versions of <code class="language-plaintext highlighter-rouge">query</code> and <code class="language-plaintext highlighter-rouge">execute</code> functions that accept not a SQL string but
+Clojure maps. The maps get transformed into SQL under the hood and get executed.</p>
+
+<h2 id="installation">Installation</h2>
+
+<p>Install the <code class="language-plaintext highlighter-rouge">pg-honey</code> package as follows.</p>
+
+<p>Lein:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-honey</span><span class="w"> </span><span class="s">"0.1.10"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Deps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">com.github.igrishaev/pg-honey</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.10"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="usage">Usage</h2>
+
+<p>Import the library:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.honey</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pgh</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">query</code> function accepts a connection object, a Clojure map representing a
+query and a map of options.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/query</span><span class="w">
+  </span><span class="n">conn</span><span class="w">
+  </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w"> </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+   </span><span class="no">:as</span><span class="w"> </span><span class="n">as/first</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The third parameter combines HoneySQL parameters and the standard <code class="language-plaintext highlighter-rouge">query</code>
+options. In the example above, we passed a custom reducer into the <code class="language-plaintext highlighter-rouge">:as</code>
+parameter, and we also specified the <code class="language-plaintext highlighter-rouge">:pretty</code> HoneySQL option to true. With the
+pretty flag enabled, HoneySQL produces a formatted SQL expression, which is
+easier to read in logs.</p>
+
+<p>Please note: since the <code class="language-plaintext highlighter-rouge">query</code> function doesn’t allow you to pass any
+parameters, the following example will lead to an error response:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/query</span><span class="w">
+  </span><span class="n">conn</span><span class="w">
+  </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w"> </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">42</span><span class="p">]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+   </span><span class="no">:as</span><span class="w"> </span><span class="n">as/first</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This is a limitation of the PostgreSQL wire protocol: the <code class="language-plaintext highlighter-rouge">Query</code> message bears
+only a pure SQL expression with no parameters. For parameters, use the <code class="language-plaintext highlighter-rouge">execute</code>
+function described below.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">execute</code> function acts the same but accepts a Clojure map that might have
+values that become parameters when rendering the map. Here is an example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/execute</span><span class="w">
+  </span><span class="n">conn</span><span class="w">
+  </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w"> </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:users</span><span class="p">]</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">42</span><span class="p">]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+   </span><span class="no">:as</span><span class="w"> </span><span class="n">as/first</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Or:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/execute</span><span class="w">
+  </span><span class="n">conn</span><span class="w">
+  </span><span class="p">{</span><span class="no">:insert-into</span><span class="w"> </span><span class="no">:demo</span><span class="w">
+   </span><span class="no">:values</span><span class="w"> </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"test1"</span><span class="p">}</span><span class="w">
+            </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}</span><span class="w">
+            </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"test3"</span><span class="p">}]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Under the hood, the <code class="language-plaintext highlighter-rouge">{:inset-into ...}</code> map gets rendered into a SQL vector:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="s">"insert into ... values ($1, $2), ($3, $4), ($5, $6)"</span><span class="w">
+ </span><span class="mi">1</span><span class="w"> </span><span class="s">"test1"</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="s">"test2"</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="s">"test3"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It gets split on the SQL expression and the parameters, which are passed into
+the underlying <code class="language-plaintext highlighter-rouge">pg.client/execute</code> function.</p>
+
+<p>You can use named parameters that HoneySQL does support. Place a specific
+keyword into the <code class="language-plaintext highlighter-rouge">[:param ...]</code> vector, and pass a map of params into the
+options as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+             </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:title</span><span class="p">]</span><span class="w">
+              </span><span class="no">:from</span><span class="w"> </span><span class="p">[</span><span class="no">:demo</span><span class="p">]</span><span class="w">
+              </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:and</span><span class="w">
+                      </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+                      </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="p">[</span><span class="no">:param</span><span class="w"> </span><span class="no">:title</span><span class="p">]]]}</span><span class="w">
+             </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+              </span><span class="no">:params</span><span class="w"> </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To familiarise yourself with HoneySQL features, please refer to the <a href="https://github.com/seancorfield/honeysql">official
+documentation</a>.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/virtuoso/">Virtuoso: a Clojure wrapper for virtual threads</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-10-16T00:00:00+00:00">
+        Oct 16, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/virtual/" rel="tag">virtual</a>, <a href="/tag/threads/" rel="tag">threads</a>, <a href="/tag/java21/" rel="tag">java21</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><a href="https://github.com/igrishaev/virtuoso">Virtuoso</a> is small wrapper on top of <a href="https://docs.oracle.com/en/java/javase/21/core/virtual-threads.html">virtual threads</a>
+introduced in Java 21.</p>
+
+<h2 id="about">About</h2>
+
+<p>The recent release of Java 21 introduced virtual threads to the scene. It’s a
+nice feature that allows you to run imperative code, such as it was written in
+an asynchronous way. This library is a naive attempt to gain something from the
+virtual threads.</p>
+
+<h2 id="installation">Installation</h2>
+
+<p>Lein</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/virtuoso</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Deps/CLI</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">com.github.igrishaev/virtuoso</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="usage">Usage</h2>
+
+<p>First, import the library:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">virtuoso.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">v</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="with-executor">with-executor</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">with-executor</code> wraps a block of code binding a new instance of
+<code class="language-plaintext highlighter-rouge">VirtualThreadPerTaskExecutor</code> to the passed symbol:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">v/with-executor</span><span class="w"> </span><span class="p">[</span><span class="n">exe</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">do-this</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">do-that</span><span class="w"> </span><span class="n">...</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, the executor is bound to the <code class="language-plaintext highlighter-rouge">exe</code> symbol. Exiting from the macro will
+trigger closing the executor, which, in turn, leads to blocking until all the
+tasks sent to it are complete. The <code class="language-plaintext highlighter-rouge">with-executor</code> macro, although it might be
+used on your code, is instead a building material for other macros.</p>
+
+<h3 id="future-via">future-via</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">future-via</code> macro spawns a new virtual future through a previously open
+executor. You can generate as many futures as you want due to the nature of
+virtual threads: there might be millions of them.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">v/with-executor</span><span class="w"> </span><span class="p">[</span><span class="n">exe</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">f1</span><span class="w"> </span><span class="p">(</span><span class="nf">v/future-via</span><span class="w"> </span><span class="n">exe</span><span class="w">
+             </span><span class="p">(</span><span class="nf">do-this</span><span class="w"> </span><span class="n">...</span><span class="p">))</span><span class="w">
+        </span><span class="n">f2</span><span class="w"> </span><span class="p">(</span><span class="nf">v/future-via</span><span class="w"> </span><span class="n">exe</span><span class="w">
+             </span><span class="p">(</span><span class="nf">do-that</span><span class="w"> </span><span class="n">...</span><span class="p">))]</span><span class="w">
+    </span><span class="p">[</span><span class="o">@</span><span class="n">f1</span><span class="w"> </span><span class="o">@</span><span class="n">f2</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Virtual futures give performance gain only when the code they wrap makes
+IO. Instead, if you run CPU-based computations in virtual threads, the
+performance suffers due to continuations and moving the stack trace from the
+stack to the heap and back.</p>
+
+<h3 id="futures">futures(!)</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">futures</code> macro takes a series of forms. It spawns a new virtual thread
+executor and wraps each form into a future bound to that executor. The result is
+a vector of <code class="language-plaintext highlighter-rouge">Future</code> objects. To obtain values, pass the result through
+<code class="language-plaintext highlighter-rouge">(map/mapv deref ...)</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">futs</span><span class="w">
+      </span><span class="p">(</span><span class="nf">v/futures</span><span class="w">
+       </span><span class="p">(</span><span class="nf">io-heavy-task-1</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+       </span><span class="p">(</span><span class="nf">io-heavy-task-2</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+       </span><span class="p">(</span><span class="nf">io-heavy-task-3</span><span class="w"> </span><span class="n">...</span><span class="p">))]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">mapv</span><span class="w"> </span><span class="nb">deref</span><span class="w"> </span><span class="n">futs</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Right before you exit the macro, it closes the executor, which leads to blicking
+until all the tasks are complete.</p>
+
+<p>Pay attention that <code class="language-plaintext highlighter-rouge">deref</code>-ing a failed future leads to throwing an
+exception. That’s why the macro doesn’t dereference the futures for you, as it
+doesn’t know how to handle errors. But if you don’t care about exception
+handling, there is a <code class="language-plaintext highlighter-rouge">futures!</code> macro that does it for you:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">v/futures!</span><span class="w">
+  </span><span class="p">(</span><span class="nf">io-heavy-task-1</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">io-heavy-task-2</span><span class="w"> </span><span class="n">...</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">io-heavy-task-3</span><span class="w"> </span><span class="n">...</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The result will be vector of dereferenced values.</p>
+
+<h3 id="thread">thread</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">thread</code> macro spawns and starts a new virtual thread using the
+<code class="language-plaintext highlighter-rouge">(Thread/ofVirtual)</code> call. Threads in Java do not return values; they can only
+be <code class="language-plaintext highlighter-rouge">join</code>-ed or interrupted. Use this macro when interested in a <code class="language-plaintext highlighter-rouge">Thread</code> object
+but not the result.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">thread1</span><span class="w">
+      </span><span class="p">(</span><span class="nf">v/thread</span><span class="w">
+        </span><span class="p">(</span><span class="nf">some-long-task</span><span class="w"> </span><span class="n">...</span><span class="p">))</span><span class="w">
+
+      </span><span class="n">thread2</span><span class="w">
+      </span><span class="p">(</span><span class="nf">v/thread</span><span class="w">
+        </span><span class="p">(</span><span class="nf">some-long-task</span><span class="w"> </span><span class="n">...</span><span class="p">))]</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">.join</span><span class="w"> </span><span class="n">thread1</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">.join</span><span class="w"> </span><span class="n">thread2</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="pmap">pmap(!)</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">pmap</code> function acts like the standard <code class="language-plaintext highlighter-rouge">clojure.core/pmap</code>: it takes a
+function and a collection (or more collections). It opens a new virtual executor
+and submits each calculation step to the executor. The result is a vector of
+futures. The function closes the executor afterwards, blocking until all the
+tasks are complete.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">futs</span><span class="w">
+      </span><span class="p">(</span><span class="nf">v/pmap</span><span class="w"> </span><span class="n">get-user-from-api</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">])]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">mapv</span><span class="w"> </span><span class="nb">deref</span><span class="w"> </span><span class="n">futs</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Or:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">futs</span><span class="w">
+      </span><span class="p">(</span><span class="nf">v/pmap</span><span class="w"> </span><span class="n">get-some-entity</span><span class="w">                </span><span class="c1">;; assuming it accepts id and status</span><span class="w">
+              </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">                        </span><span class="c1">;; ids</span><span class="w">
+              </span><span class="p">[</span><span class="s">"active"</span><span class="w"> </span><span class="s">"pending"</span><span class="w"> </span><span class="s">"deleted"</span><span class="p">]</span><span class="w"> </span><span class="c1">;; statuses</span><span class="w">
+              </span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">mapv</span><span class="w"> </span><span class="nb">deref</span><span class="w"> </span><span class="n">futs</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">pmap!</code> version of this function dereferences all the results for you with
+no exception handling:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">v/pmap!</span><span class="w"> </span><span class="n">get-user-from-api</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">])</span><span class="w">
+</span><span class="c1">;; [{:id 1...}, {:id 2...}, {:id 3...}]</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="each">each(!)</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">each</code> macro is a wrapper on top of <code class="language-plaintext highlighter-rouge">pmap</code>. It binds each item from a
+collection to a given symbol and submits a code block into a virtual
+executor. The result is a vector of futures; exiting the macro closes the
+executor.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">futs</span><span class="w">
+      </span><span class="p">(</span><span class="nf">v/each</span><span class="w"> </span><span class="p">[</span><span class="n">id</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]]</span><span class="w">
+        </span><span class="p">(</span><span class="nf">log/info...</span><span class="p">)</span><span class="w">
+        </span><span class="p">(</span><span class="nf">try</span><span class="w">
+          </span><span class="p">(</span><span class="nf">get-entity-by-id</span><span class="w"> </span><span class="n">id</span><span class="p">)</span><span class="w">
+          </span><span class="p">(</span><span class="nf">catch</span><span class="w"> </span><span class="n">Throwable</span><span class="w"> </span><span class="n">e</span><span class="w">
+            </span><span class="p">(</span><span class="nf">log/error</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="n">...</span><span class="p">))))]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">[{</span><span class="n">...</span><span class="p">}</span><span class="n">,</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}</span><span class="n">,</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}]</span><span class="w"> </span><span class="p">(</span><span class="nf">mapv</span><span class="w"> </span><span class="nb">deref</span><span class="w"> </span><span class="n">futs</span><span class="p">))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">each!</code> macro acts the same but dereferences all the futures with no error handling.</p>
+
+<h2 id="measurements">Measurements</h2>
+
+<p>There is a development <code class="language-plaintext highlighter-rouge">dev/src/bench.clj</code> file with some trivial
+measurements. Imagine you want to download 100 of URLs. You can do it
+sequentially with <code class="language-plaintext highlighter-rouge">mapv</code>, semi-parallel with <code class="language-plaintext highlighter-rouge">pmap</code>, and fully parallel with
+<code class="language-plaintext highlighter-rouge">pmap</code> from this library. Here are the timings made on my machine:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">time</span><span class="w">
+ </span><span class="p">(</span><span class="nb">count</span><span class="w">
+  </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="n">download</span><span class="w"> </span><span class="n">URLS</span><span class="p">)))</span><span class="w">
+</span><span class="s">"Elapsed time: 45846.601717 msecs"</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">time</span><span class="w">
+ </span><span class="p">(</span><span class="nb">count</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pmap</span><span class="w"> </span><span class="n">download</span><span class="w"> </span><span class="n">URLS</span><span class="p">)))</span><span class="w">
+</span><span class="s">"Elapsed time: 3343.254302 msecs"</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">time</span><span class="w">
+ </span><span class="p">(</span><span class="nb">count</span><span class="w">
+  </span><span class="p">(</span><span class="nf">v/pmap!</span><span class="w"> </span><span class="n">download</span><span class="w"> </span><span class="n">URLS</span><span class="p">)))</span><span class="w">
+</span><span class="s">"Elapsed time: 1452.514165 msecs"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>45, 3.3, and 1.4 seconds favour the virtual threads approach.</p>
+
+<h2 id="links-and-resources">Links and Resources</h2>
+
+<p>The following links helped me a lot to dive into virtual threads, and I highly
+recommend reading and watching them:</p>
+
+<ul>
+  <li><a href="https://docs.oracle.com/en/java/javase/21/core/virtual-threads.html">Virtual Threads, Oracle Help Center</a></li>
+  <li><a href="https://www.youtube.com/watch?v=5E0LU85EnTI">Java 21 new feature: Virtual Threads #RoadTo21</a></li>
+</ul>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/pg-docs/07/">PG docs, part 7. COPY IN/FROM</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-10-10T00:00:00+00:00">
+        Oct 10, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/copy/" rel="tag">copy</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><em>(This is a new documentation chapter from the <a href="https://github.com/igrishaev/pg">PG project</a>.)</em></p>
+
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+  <li><a href="/en/pg-docs/04/">Arrays</a></li>
+  <li><a href="/en/pg-docs/05/">Notifications</a></li>
+  <li><a href="/en/pg-docs/06/">SSL</a></li>
+  <li><a href="/en/pg-docs/07/">COPY</a></li>
+  <li><a href="/en/pg-docs/08/">HoneySQL</a></li>
+</ul>
+
+<p>In this chapter:</p>
+
+<!-- toc -->
+
+<ul>
+  <li><a href="#theory">Theory</a></li>
+  <li><a href="#csv-vs-binary">CSV vs Binary</a></li>
+  <li><a href="#usage">Usage</a>
+    <ul>
+      <li><a href="#copy-out">COPY out</a></li>
+      <li><a href="#copy-in-from-stream">COPY IN from stream</a></li>
+      <li><a href="#copy-in-rows">COPY IN rows</a></li>
+      <li><a href="#copy-in-maps">COPY IN maps</a></li>
+    </ul>
+  </li>
+</ul>
+
+<!-- tocstop -->
+
+<h2 id="theory">Theory</h2>
+
+<p>The recent update of pg-client library introduces various ways to COPY the data
+into or from the database. It’s much more flexible than the official JDBC
+Postgres driver’s standard <a href="https://jdbc.postgresql.org/documentation/publicapi/org/postgresql/copy/CopyManager.html">CopyManager</a> class.</p>
+
+<p>To remind you, COPY is a massive way of writing or reading data. Copying IN is
+much faster than inserting the rows by chunks. Postgres starts to read the data
+immediately without waiting for the last bit of data to arrive. You can copy
+into the same table in parallel threads. The same applies to copying out: if you
+want to dump a table into a file, use COPY FROM with an OutputStream
+OutputStream rather than selecting everything in memory.</p>
+
+<p>The main disadvantage of JDBC CopyManager is, that it doesn’t do anything about
+data encoding and encoding. It accepts either an InputStream or an OutputStream
+assuming you encode the data on your own. It means, right before you copy the
+data to the database, you’ve got to manually encode them into CSV.</p>
+
+<p>This is not as easy as you might think. When encoding values into CSV, it
+coerces everything to a string using <code class="language-plaintext highlighter-rouge">str</code>. That’s OK for most of the primitive
+types as numbers, booleans or strings: their Clojure representation matches the
+way they’re represented in Postgres. But it doesn’t work for complex types like
+arrays. If you write a vector of <code class="language-plaintext highlighter-rouge">[1 2 3]</code> in CSV you’ll get <code class="language-plaintext highlighter-rouge">"[1 2 3]"</code> which
+is an improper Postgres value. It must have been <code class="language-plaintext highlighter-rouge">{1, 2, 3}</code> instead.</p>
+
+<p>Another flaw of JDBC CopyManager is, that it doesn’t split the data by rows when
+sending them into the database. It simply reads 2Kb of bytes from an InputStream
+and writes them to a socket. At the same time, the PostgreSQL documentation
+<a href="https://postgrespro.ru/docs/postgrespro/14/protocol-flow?lang=en#PROTOCOL-COPY">recommends</a> splitting the data chunks by rows:</p>
+
+<blockquote>
+  <p>The message boundaries are not required to have anything to do with row
+boundaries, although that is often a reasonable choice</p>
+</blockquote>
+
+<p>Moreover, PostgreSQL supports not only CSV but also text and binary formats. The
+text format is somewhat CSV with different separators so it’s not so
+important. But the binary format <em>is</em> indeed! Binary-encoded data are faster to
+parse and process and thus are preferable when dealing with vast chunks of data.</p>
+
+<h2 id="csv-vs-binary">CSV vs Binary</h2>
+
+<p>Here are a couple of measurements I made on my local machine. I made two files
+containing 10 million rows: in CSV and in binary format. Then I used the
+official CopyManager to copy these files in the database. All the server
+settings were default; the machine was an Apple M1 Max 32Gb with 10 Cores.</p>
+
+<p><strong>Single thread COPY</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Rows</th>
+      <th>Format</th>
+      <th>Time, sec</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10M</td>
+      <td>binary</td>
+      <td>17.4</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>CSV</td>
+      <td>51.2</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Parallel COPY</strong></p>
+
+<p>Binary:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Rows</th>
+      <th>Threads</th>
+      <th>Chunk</th>
+      <th>Format</th>
+      <th>Time, sec</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10M</td>
+      <td>8</td>
+      <td>10k</td>
+      <td>binary</td>
+      <td>11.3</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>4</td>
+      <td>10k</td>
+      <td>binary</td>
+      <td>13.7</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>1</td>
+      <td>10k</td>
+      <td>binary</td>
+      <td>28.6</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>CSV:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Rows</th>
+      <th>Threads</th>
+      <th>Chunk</th>
+      <th>Format</th>
+      <th>Time, sec</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10M</td>
+      <td>8</td>
+      <td>10k</td>
+      <td>CSV</td>
+      <td>10.6</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>4</td>
+      <td>10k</td>
+      <td>CSV</td>
+      <td>19.9</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>1</td>
+      <td>10k</td>
+      <td>CSV</td>
+      <td>71.7</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>It’s plain to see that binary encoding is three times faster than CSV. 17 vs 51 seconds is a significant difference one cannot ignore.</p>
+
+<p>The good news is, the PG library does support binary encoding. It also allows you to perform COPY operations without encoding them manually. The library doesn’t make any InputStreams in the background: it encodes the rows one by one and sends them directly into the database. It also supports binary format of encoding which is a matter of passing a parameter. Also, it does split the data chunks by rows, not by the size of the buffer.</p>
+
+<h2 id="usage">Usage</h2>
+
+<p>Establish a connection to the database first:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.client</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pg</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/connect</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}))</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="copy-out">COPY out</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">copy-out</code> function dumps a table or a query into a file. It accepts a
+connection object, a SQL expression describing the table, the columns, the
+format and other details, and an instance of an OutputStream. The rows from the
+table or a query get sent to that stream. The function returns a number of rows
+processed.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">sql</span><span class="w">
+      </span><span class="s">"COPY (select s.x as x, s.x * s.x as square from generate_series(1, 9) as s(x))
+      TO STDOUT WITH (FORMAT CSV)"</span><span class="w">
+
+      </span><span class="n">out</span><span class="w">
+      </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">ByteArrayOutputStream</span><span class="p">)]</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">pg/copy-out</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">sql</span><span class="w"> </span><span class="n">out</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The expression above returns 9 (the number of rows). The actual rows are now in
+the <code class="language-plaintext highlighter-rouge">out</code> variable that stores bytes.</p>
+
+<p>Of course, for massive data it’s better to use not <code class="language-plaintext highlighter-rouge">ByteArrayOutputStream</code> but
+<code class="language-plaintext highlighter-rouge">FileOutputStream</code>. You can produce it as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"/some/file.csv"</span><span class="w">
+                    </span><span class="n">io/file</span><span class="w">
+                    </span><span class="n">io/output-stream</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/copy-out</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">sql</span><span class="w"> </span><span class="n">out</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The PG library doesn’t close the stream assuming you may write multiple data
+into a single stream. It’s up to you when to close it.</p>
+
+<p>To dump the data into a binary file, add the <code class="language-plaintext highlighter-rouge">WITH (FORMAT BINARY)</code> clause to
+the SQL expression. Binary files are more difficult to parse yet they’re faster
+in processing.</p>
+
+<h3 id="copy-in-from-stream">COPY IN from stream</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">copy-in</code> function copies the data from in InputStream into the
+database. The payload of the stream is either produced by the previous
+<code class="language-plaintext highlighter-rouge">copy-out</code> function or manually by dumping the data into CSV/binary format. The
+function returns the number or rows processed by the server.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">in-stream</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"/some/file.csv"</span><span class="w"> </span><span class="n">io/file</span><span class="w"> </span><span class="n">io/input-stream</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/copy-in</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"copy foo (id, name, active) from STDIN WITH (FORMAT CSV)"</span><span class="w">
+            </span><span class="n">in-stream</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; returns 6</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Again, it doesn’t close the input stream. Use the <code class="language-plaintext highlighter-rouge">with-open</code> macro to close it
+explicitly.</p>
+
+<p>The next two functions are more interesting as they bring functionality missing
+in the JDBC.</p>
+
+<h3 id="copy-in-rows">COPY IN rows</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">copy-in-rows</code> function takes a sequence of rows and sends them into the
+database one by one. It doesn’t do any intermediate steps like dumping them into
+an InputStream first. Everything is done on the fly.</p>
+
+<p>The function takes a connection, a SQL expression, and a sequence of rows. A row
+is a sequence of values. The result is a number of rows copied into the
+database.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-rows</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"copy foo (id, name, active, note) from STDIN WITH (FORMAT CSV)"</span><span class="w">
+                 </span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="n">nil</span><span class="p">]</span><span class="w">
+                  </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="s">"Juan"</span><span class="w"> </span><span class="n">false</span><span class="w"> </span><span class="s">"kek"</span><span class="p">]])</span><span class="w">
+</span><span class="c1">;; 2</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The fourth optional parameter is a map of options. At the moment, the following
+options are supported:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>name</th>
+      <th>default</th>
+      <th>example (or enum)</th>
+      <th>description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:sep</code></td>
+      <td>,</td>
+      <td> </td>
+      <td>a character to separate columns in CSV/text formats</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:end</code></td>
+      <td><code class="language-plaintext highlighter-rouge">\r\n</code></td>
+      <td> </td>
+      <td>a line-ending sequence of characters in CSV/text</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:null</code></td>
+      <td>empty string</td>
+      <td> </td>
+      <td>a string to represent NULL in CSV/text</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:oids</code></td>
+      <td><code class="language-plaintext highlighter-rouge">nil</code></td>
+      <td><code class="language-plaintext highlighter-rouge">[oid/int2 nil oid/date]</code>, <code class="language-plaintext highlighter-rouge">{0 oid/int2, 2 oid/date}</code></td>
+      <td>type hints for proper value encoding. Either a vector or OIDs, or a map of {index =&gt; OID}</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:format</code></td>
+      <td><code class="language-plaintext highlighter-rouge">:csv</code></td>
+      <td><code class="language-plaintext highlighter-rouge">:csv</code>, <code class="language-plaintext highlighter-rouge">:bin</code>, <code class="language-plaintext highlighter-rouge">:txt</code></td>
+      <td>a keyword to specify the format of a payload.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Copy rows in CSV with custom column separators and NULL representation:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-rows</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"COPY foo (id, name, active, note) FROM STDIN WITH (FORMAT CSV, NULL 'NULL', DELIMITER '|')"</span><span class="w">
+                 </span><span class="n">rows</span><span class="w">
+                 </span><span class="p">{</span><span class="no">:null</span><span class="w"> </span><span class="s">"NULL"</span><span class="w">
+                  </span><span class="no">:sep</span><span class="w"> </span><span class="sc">\|</span><span class="p">})</span><span class="w">
+</span><span class="c1">;; 1000</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Copy rows as a binary payload with custom type hints:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-rows</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"COPY foo (id, name, active, note) from STDIN WITH (FORMAT BINARY)"</span><span class="w">
+                 </span><span class="n">rows</span><span class="w">
+                 </span><span class="p">{</span><span class="no">:format</span><span class="w"> </span><span class="no">:bin</span><span class="w">
+                  </span><span class="no">:oids</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="w"> </span><span class="n">oid/int2</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="n">oid/bool</span><span class="p">}})</span><span class="w">
+</span><span class="c1">;; 1000</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="copy-in-maps">COPY IN maps</h3>
+
+<p>Often, we deal not with plain rows but maps. The <code class="language-plaintext highlighter-rouge">copy-in-maps</code> function acts
+but <code class="language-plaintext highlighter-rouge">copy-in-rows</code> but accepts a sequence of maps. Internally, all the maps get
+transformed into rows. To transform it properly, the function needs to know the
+order of the keys.</p>
+
+<p>The funtion accepts a connection, a SQL expression, a sequence of maps and a
+sequence of keys. Internally, it produces a selector from the keys like this:
+<code class="language-plaintext highlighter-rouge">(apply juxt keys)</code> which gets applied to each map.</p>
+
+<p>One more thing about copying maps is, that the <code class="language-plaintext highlighter-rouge">:oids</code> parameter is a map like
+{key =&gt; OID}.</p>
+
+<p>An example of copying the maps in CSV. Pay attention that the second map has
+extra keys which are ignored.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-maps</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"copy foo (id, name, active, note) from STDIN WITH (FORMAT CSV)"</span><span class="w">
+                 </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="no">:note</span><span class="w"> </span><span class="s">"aaa"</span><span class="p">}</span><span class="w">
+                  </span><span class="p">{</span><span class="no">:aaa</span><span class="w"> </span><span class="n">false</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="no">:note</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Juan"</span><span class="w"> </span><span class="no">:extra</span><span class="w"> </span><span class="s">"Kek"</span><span class="w"> </span><span class="no">:lol</span><span class="w"> </span><span class="mi">123</span><span class="p">}]</span><span class="w">
+                 </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="no">:note</span><span class="p">]</span><span class="w">
+                 </span><span class="p">{</span><span class="no">:oids</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="n">oid/int2</span><span class="p">}</span><span class="w">
+                  </span><span class="no">:format</span><span class="w"> </span><span class="no">:csv</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Another example where we copy maps using binary format. The <code class="language-plaintext highlighter-rouge">:oids</code> map has a
+single type hint so the <code class="language-plaintext highlighter-rouge">:id</code> fields get transformed to int2 but not bigint
+which is default for Long values.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-maps</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"copy foo (id, name, active, note) from STDIN WITH (FORMAT BINARY)"</span><span class="w">
+                 </span><span class="n">maps</span><span class="w">
+                 </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="no">:note</span><span class="p">]</span><span class="w">
+                 </span><span class="p">{</span><span class="no">:oids</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="n">oid/int2</span><span class="p">}</span><span class="w">
+                  </span><span class="no">:format</span><span class="w"> </span><span class="no">:bin</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/chart-lang/">Языки диаграмм</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-10-08T00:00:00+00:00">
+        Oct 8, 2023
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/charts/" rel="tag">charts</a>, <a href="/tag/diagramms/" rel="tag">diagramms</a>, <a href="/tag/uml/" rel="tag">UML</a>, <a href="/tag/ui/" rel="tag">ui</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Есть языки, которые описывают схемы и диаграммы. Например, пишешь что-то такое:</p>
+
+<p><img src="/assets/static/aws/chart-lang/1.jpeg" /></p>
+
+<p>Потом натраливаешь на файл программу и получается картинка:</p>
+
+<p><img src="/assets/static/aws/chart-lang/2.jpeg" /></p>
+
+<p>Казалось бы, все автоматически, красиво, удобно. Но нет.</p>
+
+<p>Когда я верстал первую книгу в Латехе, то использользовал для графиков пакет
+<a href="https://www.overleaf.com/learn/latex/TikZ_package">TikZ</a>. Там то же самое: схематично описываешь сущности, а пакет их
+рендерит. Исходник:</p>
+
+<p><img src="/assets/static/aws/chart-lang/3.jpeg" /></p>
+
+<p>и результат:</p>
+
+<p><img src="/assets/static/aws/chart-lang/4.jpeg" /></p>
+
+<p>Во второй книге я отказался от TikZ по следующим причинам.</p>
+
+<p>Во-первых, синтаксис диаграмм забывается очень быстро. Если работаешь с ними
+каждый день, то проблемы не возникает. Однако чаще всего ты рисуешь диаграмму
+раз в полгода и не трогаешь ее. Когда открываешь файл опять, нужно вспоминать
+все заново. Откуда и куда вести стрелку, нужна ли точка с запятой, ставить <code class="language-plaintext highlighter-rouge">=&gt;</code>
+или <code class="language-plaintext highlighter-rouge">-&gt;&gt;</code> для уголка и все в том же духе. Каждый раз как в первый раз.</p>
+
+<p>Далее, дьявол кроется в деталях. Помните правило 20/80? Большую часть диаграммы
+вы покроете за 20 процентов времени, и возникнет иллюзия — какой я молодец, что
+использую язык! Быстро управился. А потом провозитесь три часа в попытке
+сдвинуть первый прямоугольник влево, а второй — вправо. И рамка будет кривая. И
+позиционирование будет неудобное. Захочется сдвинуть вручную, но нелья — у нас
+же не Фотошоп или Иллюстратор, а код.</p>
+
+<p>Наконец, все эти языки не имеют понятия о восприятии. Когда я рисую диаграмму,
+то думаю о пользователе: насколько ему удобно. Поэтому отталкиваюсь от самых
+важных элементов; насколько хорошо они контрастируют со второстепенным;
+насколько легко проследить процесс; нет ли объектов, которые этому мешают.</p>
+
+<p>Стоит ли говорить, что ничего подобного в языках разметки нет. Они рисуют
+прямоугольники и стрелки, полагая, что пользователь разберется сам. Но это бред
+— пользователю нужен процесс, кем-то осмысленный и показанный наглядно. А не
+нагромождение прямоугольников.</p>
+
+<p>Когда я сел за вторую книгу, то пытался сделать схемы в TikZ как раньше. Но
+обнаружил, что синтаксис забыт начисто, а вспоминать не хочется. В итоге
+нарисовал в <a href="https://monodraw.helftone.com/">Monodraw</a> — программе ASCII-диаграмм — и экспортировал в
+SVG. Это проще и быстрее. Если нужно подвинуть фигуру на клетку влево, я сделаю
+это в один клик. Не нужно вспоминать, какое свойство отвечает за сдвиг и в каких
+единицах оно измеряется.</p>
+
+<p><img src="/assets/static/aws/chart-lang/5.jpeg" /></p>
+
+<p>Против Monodraw можно сказать только то, что она под Мак. Для командной работы,
+возможно, не подойдет. С другой стороны, пусть в команде будет один человек,
+который отвечает за диаграммы. Если их редактируют все подряд, это беда.</p>
+
+<p>Экстраполируя, можно сказать, что языки построения схем — блажь. Их любит
+“серьезный” бизнез, где вещи внедряют лишь затем, что так принято. Хорошим
+примером служит UML — циклопическая абстракция о том, что и как описывать. В нее
+вбухали невероятно много денег и времени; всерьез считали, что если отобразить
+классы диаграммой, логика программы станет очевидной. И что — кто-то пользуется
+UML сегодня? Доводилось ли кому-то посмотреть на UML и сказать: точно, я все
+понял?</p>
+
+<p>Наконец, если программы для диаграмм сводят с ума, остается надежное средство —
+рисовать руками. Берете маркеры и рисуете на доске то, что нужно. Затем снимок
+→ коррекция → красивая картинка.</p>
+
+<p>Как-то раз я делал презентацию об <a href="/htmx/">HTMX</a> для команды, и сама мысль о
+какой-то программе вызывала дрожь. В итоге нарисовал на доске и отфотал. Пара
+слайдов из презентации:</p>
+
+<p><img src="/assets/static/aws/chart-lang/6.jpeg" /></p>
+
+<p><img src="/assets/static/aws/chart-lang/7.jpeg" /></p>
+
+<p>Местами кривовато, но я и не особо старался.</p>
+
+<p>А можно заморочится и нарисовать на бумаге. Например, Bob Nystrom в своих
+знаменитых книгах <a href="https://craftinginterpreters.com/">Crafting Interpreters</a> и
+<a href="https://gameprogrammingpatterns.com/">Game Programming Patterns</a> рисовал схемы
+гелевой ручкой на бумаге, а потом сканировал. Просто сказка:</p>
+
+<p><img src="/assets/static/aws/chart-lang/8.jpeg" /></p>
+
+<p>Какой итог можно подвести? Мне кажется, такой:</p>
+
+<ul>
+  <li>
+    <p>языки диаграмм — прохладная затея, потому что машина не понимает, что
+первично, а что вторично, что удобно пользователю, а что нет;</p>
+  </li>
+  <li>
+    <p>языки диаграмм — идеальный пример правила 80/20. Быстро получаешь почти
+готовый результат, но на доводку уходит много времени;</p>
+  </li>
+  <li>
+    <p>откройте исходник диаграммы через полгода — будет трудно вспомнить, что и как
+поправить;</p>
+  </li>
+  <li>
+    <p>не бойтесь ручного труда — рисунки на доске или бумаге по-прежнему смотрятся
+отлично.</p>
+  </li>
+</ul>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/pg-docs/06/">PG docs, part 6. SSL</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-09-30T00:00:00+00:00">
+        Sep 30, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/notifications/" rel="tag">notifications</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><em>(This is a new documentation chapter from the <a href="https://github.com/igrishaev/pg">PG project</a>.)</em></p>
+
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+  <li><a href="/en/pg-docs/04/">Arrays</a></li>
+  <li><a href="/en/pg-docs/05/">Notifications</a></li>
+  <li><a href="/en/pg-docs/06/">SSL</a></li>
+  <li><a href="/en/pg-docs/07/">COPY</a></li>
+  <li><a href="/en/pg-docs/08/">HoneySQL</a></li>
+</ul>
+
+<p>In this chapter:</p>
+
+<ul>
+  <li><a href="#setup">Setup</a></li>
+  <li><a href="#edn-config">EDN Config</a></li>
+  <li><a href="#testing">Testing</a></li>
+</ul>
+
+<p>The recent update of PG introduces SSL support. Install the newest version of PG
+as follows:</p>
+
+<p>Lein:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-client</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">]</span><span class="w">
+</span><span class="p">[</span><span class="n">com.github.igrishaev/pg-ssl</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">]</span><span class="w"> </span><span class="c1">;; optional, for a custom SSL context</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Deps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">com.github.igrishaev/pg-client</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">}</span><span class="w">
+ </span><span class="n">com.github.igrishaev/pg-ssl</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="setup">Setup</h2>
+
+<p>The are two ways to set up an SSL connection to the database. The first, and
+simple, is to set the <code class="language-plaintext highlighter-rouge">:ssl?</code> boolean flag to true and just connect:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"some.cloud.host.com"</span><span class="w">
+ </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
+ </span><span class="no">:ssl?</span><span class="w"> </span><span class="n">true</span><span class="w">
+ </span><span class="n">...</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In this case, the entire SSL pipeline is held by Java. It tries to find the
+corresponding keys and certificates using the standard KeyStore and TrustStore
+which you configure on your own.</p>
+
+<p>The second and more flexible way is to provide a custom SSL context to the
+connection map. It must be an instance of the <code class="language-plaintext highlighter-rouge">javax.net.ssl.SSLContext</code>
+class. Building such an instance from scratch is quite miserable though. To make
+your life easier, there is a thin wrapper on top of the great <a href="https://github.com/aphyr/less-awful-ssl">Less Awful
+SSL</a> library that takes a map of certificates and keys and
+returns an instance of <code class="language-plaintext highlighter-rouge">SSLContext</code>. Since it requires a third-party library,
+it’s shipped as a standalone package pg-ssl. Add it to the project:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-client</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">]</span><span class="w"> </span><span class="c1">;; lein</span><span class="w">
+</span><span class="c1">;; or</span><span class="w">
+</span><span class="p">{</span><span class="n">com.github.igrishaev/pg-ssl</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">}}</span><span class="w"> </span><span class="c1">;; deps</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now pass the <code class="language-plaintext highlighter-rouge">:ssl-context</code> parameter in addition to <code class="language-plaintext highlighter-rouge">:ssl?</code>. It’s a map with
+the string keys <code class="language-plaintext highlighter-rouge">:key-file</code>, <code class="language-plaintext highlighter-rouge">:cert-file</code>, and <code class="language-plaintext highlighter-rouge">:ca-cert-file</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">foo.bar</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+    </span><span class="p">[</span><span class="n">pg.ssl</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">ssl</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"some.cloud.host.com"</span><span class="w">
+ </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
+ </span><span class="no">:ssl?</span><span class="w"> </span><span class="n">true</span><span class="w">
+ </span><span class="no">:ssl-context</span><span class="w">
+ </span><span class="p">(</span><span class="nf">ssl/context</span><span class="w"> </span><span class="p">{</span><span class="no">:key-file</span><span class="w"> </span><span class="s">"/path/to/client.key"</span><span class="w">
+               </span><span class="no">:cert-file</span><span class="w"> </span><span class="s">"/path/to/client.crt"</span><span class="w">
+               </span><span class="no">:ca-cert-file</span><span class="w"> </span><span class="s">"/path/to/root.crt"</span><span class="p">})}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">:ca-cert-file</code> parameter might be missing if just <code class="language-plaintext highlighter-rouge">:key-file</code> and
+<code class="language-plaintext highlighter-rouge">:cert-file</code> are enough.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ssl/context</span><span class="w"> </span><span class="p">{</span><span class="no">:key-file</span><span class="w"> </span><span class="s">"/path/to/client.key"</span><span class="w">
+              </span><span class="no">:cert-file</span><span class="w"> </span><span class="s">"/path/to/client.crt"</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="edn-config">EDN Config</h2>
+
+<p>Often, we store the configuration in an EDN file. To declare SSL context there,
+prepend it with a reader tag called <code class="language-plaintext highlighter-rouge">#pg/ssl-context</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:ssl?</span><span class="w"> </span><span class="n">true</span><span class="w">
+ </span><span class="no">:ssl-context</span><span class="w"> </span><span class="o">#</span><span class="n">pg/ssl-context</span><span class="w"> </span><span class="p">{</span><span class="no">:key-file</span><span class="w"> </span><span class="n">...</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When reading EDN, pass that tag to the <code class="language-plaintext highlighter-rouge">:readers</code> map as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="ss">'pg/ssl-context</span><span class="w"> </span><span class="n">pg.ssl/ssl-context-reader</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The tag wraps the map with a function that builds the <code class="language-plaintext highlighter-rouge">SSLContext</code> from it.</p>
+
+<p>Some cloud platforms give you only the root certificate. In that case, generate
+both the client key and the the client certificate on your own using the root
+certificate. Something like:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">umask </span><span class="nv">u</span><span class="o">=</span>rw,go<span class="o">=</span> <span class="o">&amp;&amp;</span> openssl req <span class="nt">-days</span> 365 <span class="nt">-new</span> <span class="nt">-nodes</span> <span class="nt">-subj</span> <span class="s1">'/C=US/ST=Test/L=Test/O=Personal/OU=Personal/emailAddress=test@test.com/CN=test'</span> <span class="nt">-keyout</span> client.key <span class="nt">-out</span> client.csr
+<span class="nb">umask </span><span class="nv">u</span><span class="o">=</span>rw,go<span class="o">=</span> <span class="o">&amp;&amp;</span> openssl x509 <span class="nt">-days</span> 365 <span class="nt">-req</span>  <span class="nt">-CAcreateserial</span> <span class="nt">-in</span> client.csr <span class="nt">-CA</span> root.crt <span class="nt">-CAkey</span> server.key <span class="nt">-out</span> client.crt
+</code></pre></div></div>
+
+<p>When generating the certificates, pay attention to the <code class="language-plaintext highlighter-rouge">CN</code> field which is
+“test” in our case. In terms of PostgreSQL, it should match the database
+user. Different users will have different certificates.</p>
+
+<h2 id="testing">Testing</h2>
+
+<p>The SSL functionality is difficult to test in Docker so I’ve got to run a native
+instance. Here is a brief setup.</p>
+
+<ul>
+  <li>In <code class="language-plaintext highlighter-rouge">postgresql.conf</code>, enable the <code class="language-plaintext highlighter-rouge">ssl</code> parameter and specify paths to the
+files:</li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssl=on
+ssl_cert_file='/Users/ivan/work/pg/certs/server.crt'
+ssl_key_file='/Users/ivan/work/pg/certs/server.key'
+ssl_ca_file = '/Users/ivan/work/pg/certs/root.crt'
+</code></pre></div></div>
+
+<ul>
+  <li>In <code class="language-plaintext highlighter-rouge">pg_hba.conf</code>, enable the “cert” validation type for SSL connections:</li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>hostssl all all all cert
+</code></pre></div></div>
+
+<p>Finally, create a user with a name that matches the <code class="language-plaintext highlighter-rouge">CN</code> field:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">user</span> <span class="o">&lt;</span><span class="n">CN</span><span class="o">-</span><span class="n">field</span><span class="o">&gt;</span> <span class="k">with</span> <span class="n">password</span> <span class="s1">'******'</span><span class="p">;</span>
+</code></pre></div></div>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/sql/">SQL</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-09-27T00:00:00+00:00">
+        Sep 27, 2023
+    </time>
+
+    <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgresql/" rel="tag">postgresql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Язык SQL — прекрасная вещь, пожалуй, одна из лучших, что мы имеем в айти.
+Научиться ему значит повысить свою квалификацию на голову. Бекендеров я бы
+вообще оценивал по одному критерию — насколько хорошо они работают с базой.</p>
+
+<p>SQL выручал меня не только по работе. У нас в ЖК стоят шлагбаумы, и однажды я
+запросил логи, чтобы посмотреть, кто и когда и открывает. Мне скинули несколько
+страшных CSV. Разбирать их Экселе было адом, и я загнал в Постгрес и построил
+отчеты по всем мыслимым критериям.</p>
+
+<p>Импорт:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">COPY</span> <span class="n">logs</span><span class="p">(</span><span class="nb">time</span><span class="p">,</span> <span class="n">account</span><span class="p">,</span> <span class="k">type</span><span class="p">,</span> <span class="n">ident</span><span class="p">,</span> <span class="n">status</span><span class="p">,</span> <span class="n">barrier</span><span class="p">)</span>
+<span class="k">FROM</span> <span class="s1">'/Users/ivan/work/barriers/65_Ш6.csv'</span>
+<span class="k">DELIMITER</span> <span class="s1">';'</span> <span class="n">CSV</span> <span class="n">HEADER</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Статусы:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select distinct status from logs
+
+| status
+|---------------------------------------
+| Добавлен
+| Отказ (пульт)
+| Отказ (нет в базе или ошибка кнопка)
+| Открыто (карта в базе)
+| Допуск (пульт)
+...
+</code></pre></div></div>
+
+<p>Типы доступа:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select distinct type from logs
+
+| type
+|--------------
+| Событие
+| Карта, метка
+| Звонок
+| Удаление
+...
+</code></pre></div></div>
+
+<p>Общее число открываний в разрезе помещений:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">account</span><span class="p">,</span> <span class="k">count</span><span class="p">(</span><span class="n">ident</span><span class="p">)</span> <span class="k">as</span> <span class="k">count</span> <span class="k">from</span> <span class="n">logs</span>
+<span class="k">where</span> <span class="n">account</span> <span class="o">&lt;&gt;</span> <span class="s1">'Нет в базе'</span>
+<span class="k">and</span> <span class="nb">time</span> <span class="o">&gt;</span> <span class="s1">'2022-05-01 00:00:00'</span>
+<span class="k">and</span> <span class="n">status</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'Допуск (телефон)'</span><span class="p">,</span> <span class="s1">'Допуск (пульт)'</span><span class="p">)</span>
+<span class="k">and</span> <span class="k">type</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'PP'</span><span class="p">,</span> <span class="s1">'Звонок'</span><span class="p">)</span>
+<span class="k">group</span> <span class="k">by</span> <span class="n">account</span>
+<span class="k">order</span> <span class="k">by</span> <span class="k">count</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">50</span>
+</code></pre></div></div>
+
+<p>Данные по конкретной квартире по дням:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">date_trunc</span><span class="p">(</span><span class="s1">'day'</span><span class="p">,</span> <span class="nb">time</span><span class="p">)</span> <span class="k">as</span> <span class="k">day</span><span class="p">,</span> <span class="k">count</span><span class="p">(</span><span class="n">ident</span><span class="p">)</span> <span class="k">from</span> <span class="n">logs</span>
+<span class="k">where</span> <span class="n">account</span> <span class="o">=</span> <span class="s1">'ООО "Рога и копыта"'</span>
+<span class="k">and</span> <span class="nb">time</span> <span class="o">&gt;</span> <span class="s1">'2022-05-01 00:00:00'</span>
+<span class="k">and</span> <span class="n">status</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'Допуск (телефон)'</span><span class="p">,</span> <span class="s1">'Допуск (пульт)'</span><span class="p">)</span>
+<span class="k">and</span> <span class="k">type</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'PP'</span><span class="p">,</span> <span class="s1">'Звонок'</span><span class="p">)</span>
+<span class="k">group</span> <span class="k">by</span> <span class="k">day</span>
+<span class="k">order</span> <span class="k">by</span> <span class="k">day</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">50</span>
+</code></pre></div></div>
+
+<p>Число телефонов и пультов на помещение:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">account</span><span class="p">,</span> <span class="k">count</span><span class="p">(</span><span class="k">distinct</span> <span class="n">ident</span><span class="p">)</span> <span class="k">as</span> <span class="n">amount</span> <span class="k">from</span> <span class="n">logs</span>
+<span class="k">where</span> <span class="n">account</span> <span class="o">&lt;&gt;</span> <span class="s1">'Нет в базе'</span>
+<span class="k">and</span> <span class="nb">time</span> <span class="o">&gt;</span> <span class="s1">'2022-05-01 00:00:00'</span>
+<span class="k">and</span> <span class="n">status</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'Допуск (телефон)'</span><span class="p">,</span> <span class="s1">'Допуск (пульт)'</span><span class="p">)</span>
+<span class="k">group</span> <span class="k">by</span> <span class="n">account</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">amount</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span>
+</code></pre></div></div>
+
+<p>Среднее число открываний в день:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">account</span><span class="p">,</span> <span class="k">count</span><span class="p">(</span><span class="n">ident</span><span class="p">)</span> <span class="o">/</span> <span class="k">count</span><span class="p">(</span><span class="k">distinct</span> <span class="n">date_trunc</span><span class="p">(</span><span class="s1">'day'</span><span class="p">,</span> <span class="nb">time</span><span class="p">))</span> <span class="k">as</span> <span class="n">per_day</span>
+<span class="k">from</span> <span class="n">logs</span>
+<span class="k">where</span> <span class="n">account</span> <span class="o">&lt;&gt;</span> <span class="s1">'Нет в базе'</span>
+<span class="k">and</span> <span class="nb">time</span> <span class="o">&gt;</span> <span class="s1">'2022-05-01 00:00:00'</span>
+<span class="k">and</span> <span class="n">status</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'Допуск (телефон)'</span><span class="p">,</span> <span class="s1">'Допуск (пульт)'</span><span class="p">)</span>
+<span class="k">and</span> <span class="k">type</span> <span class="k">in</span> <span class="p">(</span><span class="s1">'PP'</span><span class="p">,</span> <span class="s1">'Звонок'</span><span class="p">)</span>
+<span class="k">group</span> <span class="k">by</span> <span class="n">account</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">per_day</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span>
+</code></pre></div></div>
+
+<p>И еще штук десять подобных запросов. В итоге нашли несколько аномалий, с
+нарушителями был разговор.</p>
+
+<p>Из недавнего: понадобилось считать рабочие часы по неделям. Что в Экселе, что
+Гугле это оказался адский ад, потому что тип <code class="language-plaintext highlighter-rouge">time</code> не переполняется. То есть если
+сложить 7 + 7 + 7 + 7 + 7 часов (пять рабочих дней), получим 11 часов, потому что 24
+уйдут в перекрут. Просидел час, думая, как это решить, и так и не решил.</p>
+
+<p>Но выручил Постгрес! Его тип <code class="language-plaintext highlighter-rouge">time</code> тоже не поддерживает переполнение, но есть
+тип <code class="language-plaintext highlighter-rouge">interval</code>, который прекрасно складывается сам с собой. Поэтому создаем
+таблицу с двумя колонками: дата и интервал:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="k">work</span> <span class="p">(</span><span class="nb">date</span> <span class="nb">date</span><span class="p">,</span> <span class="n">hours</span> <span class="n">interval</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Импорт:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">\</span><span class="k">copy</span> <span class="k">work</span> <span class="k">from</span> <span class="o">/</span><span class="n">Users</span><span class="o">/</span><span class="n">ivan</span><span class="o">/</span><span class="n">Downloads</span><span class="o">/</span><span class="n">foobar</span><span class="p">.</span><span class="n">csv</span>
+  <span class="k">with</span> <span class="p">(</span><span class="n">format</span> <span class="n">csv</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Удаляем пустые интервалы:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">delete</span> <span class="k">from</span> <span class="k">work</span> <span class="k">where</span> <span class="n">hours</span> <span class="k">is</span> <span class="k">null</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Всего часов:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="k">sum</span><span class="p">(</span><span class="n">hours</span><span class="p">)</span> <span class="k">from</span> <span class="k">work</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Отчет по неделям:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">date_trunc</span><span class="p">(</span><span class="s1">'week'</span><span class="p">,</span> <span class="nb">date</span><span class="p">)</span> <span class="k">as</span> <span class="n">week</span><span class="p">,</span> <span class="k">sum</span><span class="p">(</span><span class="n">hours</span><span class="p">)</span>
+<span class="k">from</span> <span class="k">work</span>
+<span class="k">group</span> <span class="k">by</span> <span class="n">week</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">week</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>И все это — не выходя из консоли <code class="language-plaintext highlighter-rouge">psql</code>. Представьте, какой гемор был бы
+построить это в Экселе, Гугле или даже на языке программирования вроде
+Питона. Там с одним только парсингом дат и времени наешься, а тут все из
+коробки.</p>
+
+<p>Можно сбросить все отчеты в CSV одной командой, чтобы пересохранить в Excel и
+отправить кому-то по работе.</p>
+
+<p>Словом, одно из немногих утешений сегодня — это SQL/Postgres. Надежный как
+скала, полезный, простой и востребованный.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/so-popups/">Выпадашки на StackOverflow</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-09-27T00:00:00+00:00">
+        Sep 27, 2023
+    </time>
+
+    <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/stackoverflow/" rel="tag">stackoverflow</a>, <a href="/tag/so/" rel="tag">so</a>, <a href="/tag/popups/" rel="tag">popups</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><img src="/assets/static/aws/so-popups/1.jpeg" /></p>
+
+<p>Я как-то <a href="/cookie-popups/">уже писал</a>: нам не везет с дизайнерами. Всякие Гуглы
+и StackOverflow берут ребят с выпадашечным мышлением. Каждый раз, чтобы донести
+информацию до пользователя, дизайнер ставит выпадашку. При этом все равно, что
+выпадашка Васи наползает на выпадашку Пети. Это не его проблема, он добавил, а
+остальное его не касается.</p>
+
+<p>Сегодняшняя страница Stack Overflow как я ее вижу. Слой с бессмысленным текстом
+наползает на какое-то дерьмо про искусственный интеллект. Выпадашка на
+выпадашке. Интересно, как в SO устроена работа дизайнеров и контроль качества?
+Это же Провал Провалыч, и причина одна — несогласованность между дизайнерами.</p>
+
+<p>Нельзя так.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/slack-outdated/">Слак устарел</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-09-27T00:00:00+00:00">
+        Sep 27, 2023
+    </time>
+
+    <a href="/tag/slack/" rel="tag">slack</a>, <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/idiots/" rel="tag">idiots</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Этим утром Слак порадовал вдвойне: сообщил, что устарел не только он, но и моя
+операционная система.</p>
+
+<p><img src="/assets/static/aws/slack/1.jpeg" /></p>
+
+<p>Вообще, радует эта формулировка: программа устарела. Лежат себе не диске
+байты, работают, двигают другие байты, и вдруг раз — устарели. Срок годности
+вышел, что ли? Или ноут долго на солнце стоял?</p>
+
+<p>Всё еще надеясь на лучшее, скачал последний Слак, но увы — программа не
+запускается, нужна версия Мака не ниже чего-то там.</p>
+
+<p><img src="/assets/static/aws/slack/2.jpeg" /></p>
+
+<p>“Устаревание” программы ещё можно понять: ленивые жопы не хотят поддерживать
+то, что сами же написали. Плохо, но не критично. А вот с операционкой я не пойму.
+Во-первых, ваш Слак — это Хром и Node.js, что там может требовать новой
+операционки? Обычный Хром не требует обновления Мака, а вы что, какие-то
+особенные?</p>
+
+<p>Во-вторых, допускаю, что в новой операционке есть какая-то лабуда, но вопрос —
+она действительно нужна в повседневной работе? Без неё не напишешь сообщение
+и не позвонишь? А как раньше без неё жили?</p>
+
+<p>В-третьих, обновление операционки — это простой в работе в лучшем случае на
+полдня. Один шанс из ста, что все программы продолжат работу и пакеты не слетят.
+Вот представь, разработчик Слаки, ты приходишь на работу и хоба! — ничего не
+можешь сделать, пока не обновишь операционку. Таски не двигаешь, часы не
+трекаешь, на митинги не ходишь.</p>
+
+<p>Не нравится? А тебе, значит, можно так делать — отрубить мне программу для
+общения по работе? Ты хотя бы представил мысленно, что сделает пользователь,
+когда увидит это сообщение?</p>
+
+<p>Эх, ребята из Слаки! Откуда вас понабрали? Нет у вас ни этики, ни эмпатии, ни
+мозгов.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/sber-pipeline/">Оплата в Сбере</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-09-27T00:00:00+00:00">
+        Sep 27, 2023
+    </time>
+
+    <a href="/tag/sber/" rel="tag">sber</a>, <a href="/tag/ui/" rel="tag">ui</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><img src="/assets/static/aws/sber-pipeline/1.jpg" /></p>
+
+<p>Кто пользуется Сбером, объясните, пожалуйста. Почему, чтобы заплатить за
+музыкалку, нужно пять экранов? Не один, не два, а пять? При этом каждый экран
+повторяет прошлый на 90%: это реквизиты, всякие КБК, ОКТМО и прочая хрень,
+интересная только бухгалтеру.</p>
+
+<p>Вот я накидал скриншотов:</p>
+
+<p>Первый экран — реквизиты и кнопка “продолжить”.</p>
+
+<p>Второй экран — те же реквизиты и выбор документа.</p>
+
+<p>Третий экран — опять реквизиты(!) и серия/номер документа.</p>
+
+<p>Четвёртый экран — РЕКВИЗИТЫ и сумма платежа.</p>
+
+<p>Пятый экран — РЕКВИЗИТЫ и выбор счета.</p>
+
+<p>Та же беда с коммуналкой, всякими карате, рисовалками и прочее. В коммуналке,
+кстати, еще +3 экрана на ввод показаний с счётчиков.</p>
+
+<p>Не многовато ли?</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/pao-tns/">Извинения за неудобства</a>
             </h2>
 
@@ -151,710 +1567,13 @@
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/masked-input/">Ввод по маске</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/frontend/" rel="tag">frontend</a>, <a href="/tag/jquery/" rel="tag">jquery</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Каждый мамкин фронтендер знает: если в форме есть поле телефона, ставим плагин
-jQuery под названием Masked Input и не паримся. С ним нельзя ввести буквы,
-скобки, дефисы и прочий мусор.</p>
-
-<p><img src="/assets/static/aws/masked-input/1.jpeg" /></p>
-
-<p>Но мамкин фронтендер не знает: если вставить в поле “89623289677” (скажем, из
-Экселя или менеджера паролей), то всратый плагин поместит восьмерку после +7 и
-отбросит последнюю цифру. Результат будет как на второй картинке.</p>
-
-<p><img src="/assets/static/aws/masked-input/2.jpeg" /></p>
-
-<p>То есть всего-то испортили данные, но никого это не волнует. Подумаешь, не
-придет смс, не дозвонится курьер, не выдадут посылку. Фронтендеру не до этих
-мелочей.</p>
-
-<p>Недаром говорят: благие намерения ведут в ад. Хотели сделать удобно на фронте, в
-итоге добавили баг.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/it-errors/">Ошибки</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/it/" rel="tag">it</a>, <a href="/tag/errors/" rel="tag">errors</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Главная беда этой нашей айтишечки — сообщения об ошибках, не связанные с их
-устранением. Примеров можно найти миллион, но вот вам один.</p>
-
-<p>Собираю одну фигню в докере, и команда <code class="language-plaintext highlighter-rouge">apt-get update</code> падает с сообщением, что
-репозиторий не подписан:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>The repository 'http://archive.ubuntu.com/ubuntu focal InRelease' is not signed.
-</code></pre></div></div>
-
-<p>При этом на другом ноуте все собирается как надо.</p>
-
-<p>Оказалось, что это мулька самого Докера, и лечится она командой prune:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker image prune <span class="nt">-f</span>
-docker container prune <span class="nt">-f</span>
-</code></pre></div></div>
-
-<p>Очевидно, без гугла и SO эту проблему не решить в принципе.</p>
-
-<p>В современной айтишке много абстракций, и каждая из них не знает о
-другой. Отсюда эти уродские сообщения: абстракция А считает что-то
-неподписанным, потому что в Б нет места. А не находит файлы, потому что они не
-смонтированы в Б. А валится, потому что в Б другая локаль или кодировка по
-умлочанию.</p>
-
-<p>Задача хорошего программиста в том, чтобы давать понятные сообщения об
-ошибках. Наверное, вас тоже бесило, когда Java говорит: <code class="language-plaintext highlighter-rouge">port is already in
-use</code>. Блин, какой порт? У меня их десять в проекте, тяжело добавить цифру в
-сообщение?</p>
-
-<p>Или тот же Вим. По всему миру люди страдают, не знают как из него выйти. Вопрос
-на SO набрал миллион просмотров и растет дальше. И что делают разработчики вима?
-Вместо того, чтобы добавить бар с действиями как в Nano, объясняют, что
-пользователи тупые.</p>
-
-<p>Напоминает мост в Питере со знаком “Газель не проедет”, где разбились сто
-Газелей. Вместо того, чтобы порвать на тряпки мэра и начальника ГИБДД, ставят
-знаки и постят картинки в Контакте.</p>
-
-<p>То же самое происходит у нас. Вместо понятного сообщения мы ждем, что его
-предоставит вышестоящий слой. Но это бессмысленно: не сделаем мы — не сделает
-никто.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/firewall/">Фаервол</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/macos/" rel="tag">macos</a>, <a href="/tag/firewall/" rel="tag">firewall</a>, <a href="/tag/lulu/" rel="tag">lulu</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Лучшая вещь, что случилась со мной в последнее время — это установка фаервола на
-всех маках. Вот как это произошло.</p>
-
-<p>Когда-то я жаловался, что программы без спроса лезут в интернет
-обновляться. Открыл Саблайм — а он показывает модалку, что вышла новая
-версия. Открыл то, другое, а там то же самое: скачай-обновись.</p>
-
-<p>Идея как это победить простая — нужно отобрать у программы доступ в интернет. Я
-пошел настраивать встроенный фаервол, но оказалось, он убогий: закрывает только
-входящие соединения, а исходящие не трогает. В результате даже если добавить в
-список программу, она спокойно идет в сеть.</p>
-
-<p>Путем гугления нашел программу Lulu. Хоть название и затасканное, программа
-просто супер: удобный интерфейс и настройка. Lulu делит программы на группы:
-родные Эпла, уже установленные и другие. Можно включать и выключать целые
-группы, а можно по отдельности. Правила формируются в разрезе программ, папок,
-регулярных выражений.</p>
-
-<p>Можно настроить гибкий контроль по урлам. Например, дать программе доступ к
-хосту <code class="language-plaintext highlighter-rouge">sync.blabla.com</code> для синхронизации, но запретить обновления по хосту
-<code class="language-plaintext highlighter-rouge">update.blabla.com</code>.</p>
-
-<p>Можно дать временный доступ по номеру процесса. Когда программа запуститься в
-cледующий раз, номер будет другим, и Lulu спросит опять.</p>
-
-<p>Фаервол может работать в интерактивном режиме, показывая диалог на события,
-которых нет в правилах, а может молча разрешать или разрешать все, что
-происходит.</p>
-
-<p>Для себя я сделал так: удалил все правила, кроме Эпловских, а затем настраивал
-вручную. Запретил все программы Адоба, офисного пакета, всякие редакторы вроде
-Саблайма — их задача работать с текстом, а не лазить за обновлениями. Запретил
-обновки для Dash, программы оффлайн-документации, и много что другое.</p>
-
-<p>На старом ноуте обнаружил несколько вирусов. Это программы с названиями типа
-robstoaf, прописанные в автозагрузке. Время от времени они ходят в сеть на левые
-хосты. Возможно, крадут историю браузеров или это ботнет. Так что не слушайте
-байки про то, что под Мак вирусов нет.</p>
-
-<p>Что немаловажно, Lulu запрашивает подтверждение, когда левая программа хочет
-добавить себя в автозагрузку. Всякое дерьмо вроде Zoom, MS Teams прописывают
-себя там, и в итоге запускаются в фоне, даже если вы не просили. Больше этого
-беспредела нет.</p>
-
-<p>Программа так понравилась, что я хотел перевести автору денег, долларов
-сто. Хотел скинуть с Пейпала, а у него только патреон — то есть регистрируйся,
-вводи персональные данные, карту, подтверждай — извините, нет.</p>
-
-<p>Кроме Lulu, у автора есть смежные утилиты для безопасности, например монитор
-клавиатуры на предмет прослушки и что-то еще второстепенное.</p>
-
-<p>Словом, не знаю как жить без Lulu: теперь это первая программа, которую я ставлю
-на Мак. Как раз недавно ставил ее на свежий ноут. Неистово рекомендую!</p>
-
-<p>Картинки, описание и загрузка здесь:
-https://objective-see.org/products/lulu.html</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/css-awesome/">CSS is Awesome</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/css/" rel="tag">css</a>, <a href="/tag/awesome/" rel="tag">awesome</a>, <a href="/tag/mem/" rel="tag">mem</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Все видели картинку, где текст из заголовка не влезает в рамку. Ха-ха, кривой CSS,
-технологии, <a href="/we-deserve/">которые мы заслужили</a> (с).</p>
-
-<p><img src="/assets/static/aws/css/1.jpeg" /></p>
-
-<p>Хорошо, посмеялись, а теперь вопрос: как должно быть?</p>
-
-<p>Представим, вы всемогущий бог, все браузеры мира под вашим контролем.  Щелкните
-пальцами — и у всех эта картинка покажется так, как вы скажете. Что предпочтете?</p>
-
-<p>Проблема в том, что на картинке типичное UB — undefined behaviour,
-неопределенные поведение. В литровую банку пытаются налить два литра воды.
-Простыми словами, впихнуть невпихуемое. Это невозможно, поэтому кто-то окажется
-в проигрыше.</p>
-
-<p>На самом деле на картинке все правильно: при всем уродстве мы смогли прочитать
-текст. Если бы он был обрезан, мы бы его не увидели, то есть не получили бы
-вообще ничего. А так получили хотя бы часть, пусть и фраза там бестолковая.</p>
-
-<p>Эту картинку я считаю крайне неудачной. Кто-то хотел пошутить, что CSS глючный,
-но выбрал плохой пример: выставил дурацкие ограничения (малую рамку и огромный
-шрифт) и смотрит, как программа не справляется. А она, между прочим, справилась
-— донесла до нас текст.</p>
-
-<p>Так что шутка на троечку.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/bomb-movie/">Фильмы про бомбу</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/bomb/" rel="tag">bomb</a>, <a href="/tag/movies/" rel="tag">movies</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В фильмах про ядерную бомбу повторяется дурацкий штамп. Якобы ученый работает из
-интереса, не задумываясь над последствиями, только по зову сердца. Но ВНЕЗАПНО,
-эффект превосходит все ожидания, бомба оказывается разрушительной, подтягиваются
-политики, и ученый такой — ох, что я наделал, нельзя допустить,
-АСТАНАВИТЕСЬ!!!111 Всякие метания и попытки вернуть все взад.</p>
-
-<p>Это чушь собачья. Ученые прекрасно понимают, над чем они работают, а штамп нужен
-для того, чтобы высосать драму из пальца. Взять того же Фейнмана: после бомбы он
-и преподавал, и клеил женщин пачками, и два раза женился, и танцевал, играл,
-разгадывал секреты Майя и много что еще.</p>
-
-<p>Так что не надо этой лапши про внезапное прозрение. Ну а если с кем-то и правда
-такое было, то надо было думать раньше.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/with-http/">With-http: a Clojure library for testing HTTP</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-21T00:00:00+00:00">
-        Sep 21, 2023
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/tests/" rel="tag">tests</a>, <a href="/tag/http/" rel="tag">http</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>The <a href="https://github.com/igrishaev/with-http">with-http library</a> provides a macro to stub HTTP calls with a
-local Jetty server. it’s declarative, flexible, and extremely useful. I’ve been
-copying it through many projects, and now it’s time to ship it as a standalone
-library.</p>
-
-<p><strong>ToC</strong></p>
-
-<!-- toc -->
-
-<ul>
-  <li><a href="#installation">Installation</a></li>
-  <li><a href="#about">About</a></li>
-  <li><a href="#the-app-routes">The App routes</a></li>
-  <li><a href="#default-handler">Default handler</a></li>
-  <li><a href="#basic-test">Basic test</a></li>
-  <li><a href="#json">JSON</a></li>
-  <li><a href="#slow-responses">Slow responses</a></li>
-  <li><a href="#files--resources">Files &amp; Resources</a></li>
-  <li><a href="#capturing-requests">Capturing requests</a></li>
-</ul>
-
-<!-- tocstop -->
-
-<h2 id="installation">Installation</h2>
-
-<p>Lein:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/with-http</span><span class="w"> </span><span class="s">"0.1.1"</span><span class="p">]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Deps.edn</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">com.github.igrishaev/with-http</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.1"</span><span class="p">}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p><em>Pay attention</em>: since the library is primarily used for tests, put the
-dependency in the corresponding profile or alias. Storing it in global
-dependencies is not a good idea as it becomes a part of the production code
-otherwise.</p>
-
-<h2 id="about">About</h2>
-
-<p>The library provides a <code class="language-plaintext highlighter-rouge">with-http</code> macro of the following form:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">with-http</span><span class="w"> </span><span class="p">[</span><span class="n">port</span><span class="w"> </span><span class="n">app</span><span class="p">]</span><span class="w">
-  </span><span class="n">...body</span><span class="p">)</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">port</code> is the number (1..65535) and the <code class="language-plaintext highlighter-rouge">app</code> is a map of routes. When
-entering the macro, it spawns a local Jetty server on that port in the
-background. The <code class="language-plaintext highlighter-rouge">app</code> map tells the server how to respond to calls.</p>
-
-<p>Now that you have a running server, point your HTTP API clients to
-<code class="language-plaintext highlighter-rouge">http://localhost:&lt;port&gt;</code> to imitate real network interaction. For example, for
-prod, a third-party base URL is https://api.some.cool.service but for tests, it
-is http://localhost:8088. This can be done using environment variables or the
-<a href="https://github.com/juxt/aero">Aero library</a>.</p>
-
-<p>Why not use <code class="language-plaintext highlighter-rouge">with-redefs</code>, would you ask? Well, although <code class="language-plaintext highlighter-rouge">with-redefs</code> looks like a solution at first glance, it’s questionable. Using <code class="language-plaintext highlighter-rouge">with-redefs</code> means lying to yourself. You temporarily
-mute some pieces of the codebase pretending it’s OK, but it’s not.</p>
-
-<p>Often, bugs lurk in the code that you actually substitute using <code class="language-plaintext highlighter-rouge">with-redefs</code>,
-namely:</p>
-
-<ul>
-  <li>
-    <p>you’ve messed up with MD5/SHA/etc algorithms to sign a request. Calling
-localhost would trigger that code and lead to an exception, but <code class="language-plaintext highlighter-rouge">with-redefs</code>
-would not.</p>
-  </li>
-  <li>
-    <p>you process the response poorly, e.g. not taking Content-Type header or
-non-200 status code into account.</p>
-  </li>
-  <li>
-    <p>you cannot imitate delays and timeout exceptions when interacting with HTTP
-API.</p>
-  </li>
-</ul>
-
-<p>The good news is, that the <code class="language-plaintext highlighter-rouge">with-http</code> macro can test all the cases mentioned above and much more.</p>
-
-<h2 id="the-app-routes">The App routes</h2>
-
-<p>The <code class="language-plaintext highlighter-rouge">app</code> parameter is a two-level map of the form:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="nb">path</span><span class="w"> </span><span class="p">{</span><span class="n">method</span><span class="w"> </span><span class="n">response</span><span class="p">}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>For example:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"it was GET"</span><span class="p">}</span><span class="w">
-         </span><span class="no">:post</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">201</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"it was POST"</span><span class="p">}}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Calling <code class="language-plaintext highlighter-rouge">GET /foo</code> and <code class="language-plaintext highlighter-rouge">POST /foo</code> would return 200 and 201 status codes with
-different messages.</p>
-
-<p>The response might be:</p>
-
-<ul>
-  <li>a Ring map;</li>
-  <li>a Ring handler function that accepts a request map and returns a response map;</li>
-  <li>an instance of <code class="language-plaintext highlighter-rouge">java.io.File</code>;</li>
-  <li>a resource: <code class="language-plaintext highlighter-rouge">(clojure.java.io/resource "some/file.txt")</code>;</li>
-  <li>a string.</li>
-</ul>
-
-<p>Other examples:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">params</span><span class="p">]}]</span><span class="w">
-                </span><span class="p">(</span><span class="nf">log/infof</span><span class="w"> </span><span class="s">"Params: %s"</span><span class="w"> </span><span class="n">params</span><span class="p">)</span><span class="w">
-                </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"OK"</span><span class="p">})}}</span><span class="w">
-
-</span><span class="p">{</span><span class="s">"/some/json"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">(</span><span class="nf">io/resource</span><span class="w"> </span><span class="s">"file.json"</span><span class="p">)}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The path might be a vector as well. During the preparation step, it will be
-compiled into a string, for example:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{[</span><span class="s">"/foo/bar/"</span><span class="w"> </span><span class="mi">42</span><span class="w"> </span><span class="s">"/test"</span><span class="p">]</span><span class="w">
- </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"hello"</span><span class="p">}}}</span><span class="w">
-
-</span><span class="c1">;; becomes</span><span class="w">
-
-</span><span class="p">{</span><span class="s">"/foo/bar/42/test"</span><span class="w">
- </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"hello"</span><span class="p">}}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>This is useful when the paths contain parameters.</p>
-
-<p>The <code class="language-plaintext highlighter-rouge">make-url</code> function helps to build a local URL like
-<code class="language-plaintext highlighter-rouge">http://localhost:&lt;port&gt;/&lt;path&gt;</code>. Its second <code class="language-plaintext highlighter-rouge">path</code> argument is either a string
-or a vector which gets compiled into a string:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">make-url</span><span class="w"> </span><span class="n">PORT</span><span class="w"> </span><span class="s">"/foo?a=1&amp;b=2"</span><span class="p">)</span><span class="w">
-</span><span class="c1">;; http://localhost:8899/foo?a=1&amp;b=2</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">make-url</span><span class="w"> </span><span class="mi">8899</span><span class="w"> </span><span class="p">[</span><span class="s">"/users/"</span><span class="w"> </span><span class="mi">42</span><span class="w"> </span><span class="s">"/reports/"</span><span class="w"> </span><span class="mi">99999</span><span class="p">])</span><span class="w">
-</span><span class="c1">;; http://localhost:8899/users/42/reports/99999</span><span class="w">
-</span></code></pre></div></div>
-
-<h2 id="default-handler">Default handler</h2>
-
-<p>The App mapping has a default handler which gets triggered when the client calls
-a non-existing route. By default, it’s 404 status page with the following JSON
-payload:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">NOT-FOUND</span><span class="w">
-  </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">404</span><span class="w">
-   </span><span class="no">:body</span><span class="w"> </span><span class="p">{</span><span class="no">:error</span><span class="w"> </span><span class="s">"with-http: route not found"</span><span class="p">}})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>You can override it by adding the <code class="language-plaintext highlighter-rouge">:default</code> key to the app map. The value might
-be a map, a function, a file and so on.</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"hello"</span><span class="p">}}</span><span class="w">
- </span><span class="no">:default</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">202</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"I'm the default!"</span><span class="p">}}</span><span class="w">
-</span></code></pre></div></div>
-
-<h2 id="basic-test">Basic test</h2>
-
-<p>A simple test to ensure the macro works:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">test-with-http-test-json</span><span class="w">
-
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">app</span><span class="w">
-        </span><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w">
-                       </span><span class="no">:body</span><span class="w"> </span><span class="s">"test"</span><span class="p">}}}</span><span class="w">
-
-        </span><span class="n">url</span><span class="w">
-        </span><span class="p">(</span><span class="nf">make-url</span><span class="w"> </span><span class="n">PORT</span><span class="w"> </span><span class="s">"/foo"</span><span class="p">)</span><span class="w">
-
-        </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">status</span><span class="w"> </span><span class="n">body</span><span class="p">]}</span><span class="w">
-        </span><span class="p">(</span><span class="nf">with-http</span><span class="w"> </span><span class="p">[</span><span class="n">PORT</span><span class="w"> </span><span class="n">app</span><span class="p">]</span><span class="w">
-          </span><span class="p">(</span><span class="nf">client/get</span><span class="w"> </span><span class="n">url</span><span class="p">))]</span><span class="w">
-
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="n">status</span><span class="p">))</span><span class="w">
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="s">"test"</span><span class="w"> </span><span class="n">body</span><span class="p">))))</span><span class="w">
-</span></code></pre></div></div>
-
-<h2 id="json">JSON</h2>
-
-<p>The Ring handler function produced from the <code class="language-plaintext highlighter-rouge">app</code> mapping is wrapped with
-<code class="language-plaintext highlighter-rouge">wrap-json-response</code> and <code class="language-plaintext highlighter-rouge">wrap-json-params</code> middleware layers. It means the body
-of the response might be a collection that gets dumped into JSON:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">test-with-http-test-json</span><span class="w">
-
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">body</span><span class="w">
-        </span><span class="p">{</span><span class="no">:hello</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="s">"test"</span><span class="w"> </span><span class="n">true</span><span class="p">]}</span><span class="w">
-
-        </span><span class="n">app</span><span class="w">
-        </span><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w">
-                       </span><span class="no">:body</span><span class="w"> </span><span class="n">body</span><span class="p">}}}</span><span class="w">
-
-        </span><span class="n">url</span><span class="w">
-        </span><span class="p">(</span><span class="nf">make-url</span><span class="w"> </span><span class="n">PORT</span><span class="w"> </span><span class="s">"/foo"</span><span class="p">)</span><span class="w">
-
-        </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">status</span><span class="w"> </span><span class="n">body</span><span class="p">]}</span><span class="w">
-        </span><span class="p">(</span><span class="nf">with-http</span><span class="w"> </span><span class="p">[</span><span class="n">PORT</span><span class="w"> </span><span class="n">app</span><span class="p">]</span><span class="w">
-          </span><span class="p">(</span><span class="nf">client/get</span><span class="w"> </span><span class="n">url</span><span class="w"> </span><span class="p">{</span><span class="no">:as</span><span class="w"> </span><span class="no">:json</span><span class="p">}))]</span><span class="w">
-
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="n">status</span><span class="p">))</span><span class="w">
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">{</span><span class="no">:hello</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="s">"test"</span><span class="w"> </span><span class="n">true</span><span class="p">]}</span><span class="w"> </span><span class="n">body</span><span class="p">))))</span><span class="w">
-</span></code></pre></div></div>
-
-<h2 id="slow-responses">Slow responses</h2>
-
-<p>To imitate slow responses, provide a function that sleeps for a certain amount
-of time:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[</span><span class="n">_</span><span class="p">]</span><span class="w">
-                </span><span class="p">(</span><span class="nf">Thread/sleep</span><span class="w"> </span><span class="mi">10000</span><span class="p">)</span><span class="w">
-                </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"OK"</span><span class="p">})}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Then ensure you pass the timeout limit into your API call.</p>
-
-<h2 id="files--resources">Files &amp; Resources</h2>
-
-<p>Storing JSON responses in files is a good idea. Here is how you can serve them
-with the macro:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">(</span><span class="nf">io/file</span><span class="w"> </span><span class="s">"dev-resources/test.txt"</span><span class="p">)}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>or</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">(</span><span class="nf">io/file</span><span class="w"> </span><span class="s">"dev-resources/test.json"</span><span class="p">)}}</span><span class="w">
-</span></code></pre></div></div>
-
-<h2 id="capturing-requests">Capturing requests</h2>
-
-<p>Another trick to improve your tests: ensure you pass the right parameters or
-headers to the HTTP API. Provide an atom and a handler function closed over that
-atom. Each time you receive a request, save it’s data to the atom and then
-validate them:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">test-with-http-capture-params</span><span class="w">
-
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">capture!</span><span class="w">
-        </span><span class="p">(</span><span class="nf">atom</span><span class="w"> </span><span class="n">nil</span><span class="p">)</span><span class="w">
-
-        </span><span class="n">app</span><span class="w">
-        </span><span class="p">{</span><span class="s">"/foo"</span><span class="w"> </span><span class="p">{</span><span class="no">:get</span><span class="w"> </span><span class="p">(</span><span class="k">fn</span><span class="w"> </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">params</span><span class="p">]}]</span><span class="w">
-                        </span><span class="p">(</span><span class="nf">reset!</span><span class="w"> </span><span class="n">capture!</span><span class="w"> </span><span class="n">params</span><span class="p">)</span><span class="w">
-                        </span><span class="p">{</span><span class="no">:status</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="no">:body</span><span class="w"> </span><span class="s">"OK"</span><span class="p">})}}</span><span class="w">
-
-        </span><span class="n">url</span><span class="w">
-        </span><span class="p">(</span><span class="nf">make-url</span><span class="w"> </span><span class="n">PORT</span><span class="w"> </span><span class="s">"/foo?a=1&amp;b=2"</span><span class="p">)</span><span class="w">
-
-        </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">status</span><span class="w"> </span><span class="n">body</span><span class="p">]}</span><span class="w">
-        </span><span class="p">(</span><span class="nf">with-http</span><span class="w"> </span><span class="p">[</span><span class="n">PORT</span><span class="w"> </span><span class="n">app</span><span class="p">]</span><span class="w">
-          </span><span class="p">(</span><span class="nf">client/get</span><span class="w"> </span><span class="n">url</span><span class="p">))]</span><span class="w">
-
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="mi">200</span><span class="w"> </span><span class="n">status</span><span class="p">))</span><span class="w">
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="s">"OK"</span><span class="w"> </span><span class="n">body</span><span class="p">))</span><span class="w">
-    </span><span class="p">(</span><span class="nf">is</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="p">{</span><span class="no">:a</span><span class="w"> </span><span class="s">"1"</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="s">"2"</span><span class="p">}</span><span class="w"> </span><span class="o">@</span><span class="n">capture!</span><span class="p">))))</span><span class="w">
-</span></code></pre></div></div>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/windows-snapshots/">Скриншоты на винде</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-18T00:00:00+00:00">
-        Sep 18, 2023
-    </time>
-
-    <a href="/tag/windows/" rel="tag">windows</a>, <a href="/tag/screenshot/" rel="tag">screenshot</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>На винде есть утилита для скриншотов рабочего стола, называется “Ножницы” или
-вроде того (clip). И надо сказать, программа люто, бешено тупая.</p>
-
-<p>Делаю скриншот и хочу сохранить — открывает диалог с именем “безымянный.PNG” (в
-английской версии untitled.PNG). Не будем комментировать расширение капсом; но
-блин, почему файл безымянный? Что мешало назвать его текущей датой с точность до
-минуты?</p>
-
-<p>Далее, если в папке уже есть “безымянный” с прошлого раза, программа предложит
-его перезаписать. Что мешает проверить, что такой файл уже есть и хотя бы
-поставить единичку (двойку, тройку)?</p>
-
-<p>В итоге как дурак дописываешь в конец чушь вроде 123, чтобы сохранить скриншот и
-куда-то отправить.</p>
-
-<p>Вот как на Маке: когда делаешь скриншот, он сперва улетает в угол, и в течении
-10 секунд его можно куда-то перетащить без сохранения на диск. А если не успел,
-он сохранится на рабочий стол с датой и временем в названии. Не нужно париться,
-сохранил или нет, перезаписал или нет.</p>
-
-<p>Что мешало сделать также Микрософту? Они вообще своими программами пользуются?</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/we-deserve/">Мы заслужили</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-18T00:00:00+00:00">
-        Sep 18, 2023
-    </time>
-
-    <a href="/tag/mems/" rel="tag">mems</a>, <a href="/tag/stamps/" rel="tag">stamps</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Выражение “X, который мы заслужили” стало затасканным штампом.</p>
-
-<ul>
-  <li>Киберпанк, который мы заслужили.</li>
-  <li>Футбол, который мы заслужили.</li>
-  <li>Релиз, который мы заслужили.</li>
-  <li>Пайплайн, который мы заслужили.</li>
-</ul>
-
-<p>Блин, кто мы? Чем и как заслужили?</p>
-
-<p>Лет пять назад это было туда-сюда, но сегодня терпеть уже невозможно.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tg-img/">Картинки в Телеграме</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-18T00:00:00+00:00">
-        Sep 18, 2023
-    </time>
-
-    <a href="/tag/telegram/" rel="tag">telegram</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><img src="/assets/static/aws/tg-img/1.jpeg" /></p>
-
-<p>Телеграм бесит ещё одной вещью. Если добавить к тексту картинку, текст
-поджимается под её ширину. Зачем, какой смысл? Текст превращается в мышиный
-хвост, справа сплошная пустота. Половина полезного места уходит в унитаз. Всё
-это ради чего? Чтобы что?</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page25" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 26 из 91</span>
+        <span class="page_number ">Страница 26 из 92</span>
         
         <a href="/page27" class="next">&rarr;</a>
         
