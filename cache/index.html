@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Кэширование</title>
+  <meta name="description" content="Небольшая заметка о кэшировании. Для начала тезис:">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/cache/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px">Ivan Grishaev's blog</p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Кэширование</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-05-11T00:00:00+00:00">
+        May 11, 2025
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/cache/" rel="tag">cache</a>, <a href="/tag/database/" rel="tag">database</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Небольшая заметка о кэшировании. Для начала тезис:</p>
+
+<p><em>Кэш — это лекарство, которое подчас опасней болезни. Пользоваться им нужно
+аккуратно, а еще лучше — не попадать в ситуацию, когда он нужен.</em></p>
+
+<p>Добавление кэша в проект несет много проблем. Например, на сколько его
+устанавливать? Если данные обновились, как его сбросить? Кажется, что ответить
+просто: давай на час, плюс добавим хук в ORM, чтобы после сохранения модели
+сбрасывался такой-то ключ.</p>
+
+<p>На практике все сложнее. Данные могут поступать не только через ORM, но и
+пакетным импортом или вставкой в таблицу из скрипта. Легко прозевать сброс
+ключа, и клиент увидит старые данные. Можно оказаться в ситуации, когда кэши
+будут зависимы: один строится на другом, и какой сбрасывать — не ясно.</p>
+
+<p>Помню, когда программировал на Python и Django, считалось нормой обмазываться
+кэшами на каждый чих. Фреймворк всячески поощрял это: были различные бэкенды
+кэша, декораторы, которые навесил на функцию — и готово. У кэшей даже были
+версии, представляете? С ними отстрелить ногу было еще проще.</p>
+
+<p>По наивности разработчики думают, что если запрос к базе медленный, то его нужно
+кэшировать. Это крайне наивно. База данных для того и создана, чтобы выполнять
+запросы. Современные базы могут выполнять одновременно много, очень много
+запросов. Например, в текущем проекте база, к которой я изрядно приложил руку,
+держит 300 транзакций в секунду — а внутри огромные JSON-документы.</p>
+
+<p>Вот что можно предположить, если база отвечает медленно:</p>
+
+<ul>
+  <li>не используется пул соединений</li>
+  <li>на каждый запрос открывается новое соединение</li>
+  <li>запрос делает полное сканирование таблицы (нет индекса)</li>
+  <li>индекс есть, но из-за кривого where он не работает</li>
+  <li>разработчик делает 100500 get-by-id в цикле</li>
+  <li>в запрос передают 65К параметров вместо массива или json</li>
+  <li>неотимальная вставка, например insert в цикле вместо copy from</li>
+</ul>
+
+<p>Ни один из этих пунктов не рассосется, если добавить кэш. Поэтому сначала нужно
+разобраться, что идет не так. А когда разобрались, проще исправить на месте, чем
+добавлять кэш.</p>
+
+<p>Разумеется, бывают очень сложные запросы, которые нельзя выполнить быстро в силу
+их природы. Но погодите со своим кэшем: такой запрос легко материализовать в
+таблицу и время от времени обновлять. На таблицу можно повесить индекс и
+выбирать из нее. Выходит, кэш легко организовать в базе.</p>
+
+<p>В широком смысле сетевой кэш — это вторая база данных. Если вы не справились с
+одной базой, с чего вы решили, что с двумя будет проще?</p>
+
+<p>Какие еще проблемы кэширования можно назвать? Да хотя бы следующие.</p>
+
+<p><em>Сериализация.</em> Когда вы пишете данные в Memcache, как они сериализируется? Если
+это json, вы теряете даты и типы коллекций, например, множество становится
+списком. Если у вас словарь с целыми числами в ключах, это тоже станет
+проблемой: обратно вы получите строки. Хорошо, когда есть библиотека для
+бинарной сериализации. Но если один и тот же кэш читают в разных языках, это
+станет проблемой: вряд ли такая библиотека есть под все языки (кроме protobuf).</p>
+
+<p>Прогрев. Пока кэш актуален, все хорошо. Но когда тысячи клиентов начнут
+обновлять его, кэш-серверу станет плохо. Нужен фоновый процесс, который обновит
+кэш в фоне за несколько минут до того, как он протух. Кто будет следить за этим
+процессом?</p>
+
+<p><em>Транзакционность.</em> В одном проекте мы так увлеклись кэшами, что словили глюк,
+когда несколько клиентов обновляли один и тот же ключ. Чтобы это разрулить,
+ведущий разработчик написал джанговский Cache с подобием транзакции. Когда
+кто-то хотел прочитать ключ <code class="language-plaintext highlighter-rouge">foo_bar</code>, код проверял, есть ли ключ
+<code class="language-plaintext highlighter-rouge">foo_bar__lock</code>. Если да, это значило, что в этот момент кто-то обновляет ключ
+<code class="language-plaintext highlighter-rouge">foo_bar</code>, и в доступе отказывали. Это был костыль поверх костыля, но мы очень
+гордились.</p>
+
+<p><em>Полнота.</em> Другой пример, о котором писал в комментариях. Когда-то в Wargaming
+мы выкатили новый проект. Главная страница была тяжелой, потому что собирала
+данные из десяти сервисов, плюс было несколько языков. Всю страницу завернули в
+кэш, но не учли, что в ключе не было текущей локали. Вышло так, что первым
+посетителем был кто-то из Чехии. Декоратор посчитал страницу для чешского языка
+и положил в кэш. В течение часа посетители видели страницу на чешском. Кнопку
+для экстренного сброса кэша никто не предусмотрел. И кстати — такая кнопка
+нужна, и она тоже требует затрат.</p>
+
+<p>Резюмируя: лучший кэш — это его отсутствие. Если у вас нет кэшей в проекте —
+искренне поздравляю. Это сильно лучше той ситуации, когда кто-то его затянет.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/alt-ext/">&larr; Альтернатива для Германии</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/mastercard/">Mastercard нанимает &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/827">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/cache/">
+    <input required name="captcha" type="hidden" value="8 &#215; 2">
+
+    <div class="block">
+        <span class="comment-form-label"><small>8 &#215; 2 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
