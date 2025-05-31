@@ -104,6 +104,1360 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/aws-1/">AWS, история первая. Внезапный мегабайт</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Все статьи из цикла AWS</p>
+
+<ul>
+  <li><a href="/aws-0/">Амазон</a></li>
+  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
+  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
+  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
+  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
+</ul>
+
+<p><a href="/aws-0/">Прошлая заметка</a> про AWS была затравкой. Теперь расскажу о случаях в
+Амазоне, от которых трещали мозги.</p>
+
+<p>Первая история касается сервиса Lambda. Он выполняет произвольный код на
+любом языке и возвращает результат. Особенность Лямбды в том, что клиент
+платит только за те ресурсы, что потребил. Считаются время процессора, память и
+диск в секунду. Если не вызывать Лямбду, ее стоимость будет нулевой.</p>
+
+<p>Это выгодно отличает Лямбду от EC2, за который клиент платит всегда. Наверное,
+все видели мемы про бомжа, который скатился в бедность, не выключив инстанс
+EC2.</p>
+
+<p>Кто-то считает, что Лямбда — простой сервис, но это не так. Наоборот, он один из
+самых сложных в AWS. Он работает как огромная очередь задач. Лямбду можно
+скрестить с HTTP-сервером, чтобы принимать сообщения прямо из браузера. Лямбду
+можно прицепить к любому сервису AWS в качестве реакции на что угодно.
+Загрузили файл в S3 — вызвалась лямбда. Отправили сообщеньку в очередь —
+вызвалась лямбда и так далее.</p>
+
+<p>Я работаю в проекте, в котором все на лямбдах. Раньше мне казалось это
+фантасмагорией, но со временем привыкаешь. В порядке вещей, когда лямбда дергает
+лямбду, которая дергает лямбду, которая дергает лямбду. Постепенно видишь в этом
+особый шарм.</p>
+
+<p>У лямбды жесткие лимиты, которые нельзя нарушать. Время работы не может быть
+дольше 15 минут. Если его превысить, лямбда умирает и запускается опять.
+Максимальное число повторов — 4. Ответ не может быть больше 6 мегабайтов. В теле
+может быть только текст, бинарные данные запрещены.</p>
+
+<p>Про размер тела я и хотел рассказать.</p>
+
+<p>Одна из лямбд распухла и стала отдавать JSON, который не пролазил в 6
+мегабайтов. Это нетрудно поправить. Нужно сжать тело Gzip-ом и обернуть в
+base64. Зачем? Как я сказал, в теле не может быть бинарь, потому что данные
+передаются в JSON. Такой вот костылик, но что поделаешь.</p>
+
+<p>Не обошлось без приключений: клиенты лямбды использовали кривую библиотеку,
+которая не учитывала сжатие Gzip. Пришлось починить ее тоже: проверять Content-
+Encoding и оборачивать стрим, если там gzip. В общем, кое-как все подружились, и
+сообщения пошли как надо.  Как-то раз я задался вопросом: какого размера был тот
+ответ, что не влез в лимит?</p>
+
+<p>Добавил лог с размером JSON до сжатия. Оказалось, он был 5.2 мегабайта.</p>
+
+<p>Может быть, не всем понятно это противоречие, но я впал в ступор. Сказано ясно:
+тело не больше 6 мегабайтов, а у нас 5. Почему сообщение не проходит? Откуда
+лишний мегабайт?  Это страшно взволновало меня: происходит какая-то фигня, о
+которой я не догадываюсь.</p>
+
+<p>Я полез в интернет и выяснил, что какой-то бедняга уже наступал на эти
+грабли. На <a href="https://stackoverflow.com/questions/66971400/aws-lambda-body-size-is-too-large-error-but-body-size-is-under-limit">StackOverflow</a> нашелся вопрос, и автор долго искал ответа. Он
+даже писал сводки с апдейтами! Были разные предположения, в том числе такие, что
+AWS дописывает мету в сообщения. Но не мегабайт же! Они что, Анну Каренину в
+заголовках передают?</p>
+
+<p>На сегодняшний день у вопроса 21 тысяча просмотров и ни одного верного ответа
+(за исключением моего). Этот вопрос был скопирован в сервис <a href="https://repost.aws/questions/QU57r4NMQIQROXqW4Vl6YDBQ/">Repost.AWS</a>
+— базу знаний AWS, и там тоже ничего не сказали по делу. Это доказывает: в
+Амазоне бывает нечто, что никто не может объяснить.</p>
+
+<p>Мысль о лишнем мегабайте не отпускала меня. И вот однажды, прогуливаясь, я все
+понял.</p>
+
+<p>Когда лямбда отдает HTTP-сообщение, она строит примерно такой ответ. В его теле
+— строка JSON с данными:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>return HTTPResponse(
+    200,
+    body=json.encode(data),
+    content_type="application/json"
+)
+</code></pre></div></div>
+
+<p>На этом работа программы кончается. А что происходит с ответом? Он
+перестраивается в такой словарик:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{:statusCode 200,
+ :body &lt;JSON-string&gt;,
+ :headers {"content-type" "application/json"}}
+</code></pre></div></div>
+
+<p>Потом словарик кодируется в JSON и отправляется в дебри AWS, которые называются
+Lambda Runtime API. Это очередь, которая отвечает за прием и отдачу
+сообщений. Ваша лямбда — клиент, который забирает оттуда сообщеньки и рапортует
+об исполнении. Примерно как Consumer в Кафке.</p>
+
+<p>Теперь про этот мегабайт. Напомню, что до кодирования наш словарик выглядел так
+(кложурный синтаксис):</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{:statusCode 200,
+ :body "{\"foo\":{\"bar\":[\"a\",\"b\",\"c\"]}}",
+ :headers {"Content-Type" "application/json"}}
+</code></pre></div></div>
+
+<p>Далее он кодируется в JSON. А в поле <code class="language-plaintext highlighter-rouge">:body</code> уже закодированный JSON! Получается
+двойное кодирование: данные перегнали в JSON первый раз, чтобы получить
+текстовое поле body, а потом еще раз, чтобы закодировать верхний словарь!  При
+кодировании JSON происходит экранирование некоторых символов. Например, если в
+строке двойная кавычка, перед ней будет обратный слэш. Покажу это на примере:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(pg.json/write-string "aaa \" bbb")
+"\"aaa \\\" bbb\""
+</code></pre></div></div>
+
+<p>Интересно, сколько же будет этих слэшей? Примерно x2 от числа ключей в словарях
+и строк в значениях. Например, если в словаре два ключа и в значениях строки, то
+слэшей получится 8. Легко посчитать отношение длины JSON с одним и двойным
+кодированием. Оно получится примерно 1.4:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="p">[</span><span class="no">:a</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="no">:c</span><span class="p">]}}</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="nb">count</span><span class="p">)</span><span class="w">
+</span><span class="mi">29</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="p">[</span><span class="no">:a</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="no">:c</span><span class="p">]}}</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w"> </span><span class="nb">count</span><span class="p">)</span><span class="w">
+</span><span class="mi">41</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">/</span><span class="w"> </span><span class="mf">41.0</span><span class="w"> </span><span class="mi">29</span><span class="p">)</span><span class="w">
+</span><span class="mf">1.4137931034482758</span><span class="w">
+
+</span></code></pre></div></div>
+
+<p>Проверим это на больших файлах. В интернете нашелся большой публичный JSON. Вот
+цифры для него:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"https://github.com/seductiveapps/largeJSON/raw/master/100mb.json"</span><span class="w">
+    </span><span class="n">java.net.URL.</span><span class="w">
+    </span><span class="nb">slurp</span><span class="w">
+    </span><span class="n">pg.json/read-string</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="nb">count</span><span class="p">)</span><span class="w">
+</span><span class="mi">60129867</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"https://github.com/seductiveapps/largeJSON/raw/master/100mb.json"</span><span class="w">
+    </span><span class="n">java.net.URL.</span><span class="w">
+    </span><span class="nb">slurp</span><span class="w">
+    </span><span class="n">pg.json/read-string</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="nb">count</span><span class="p">)</span><span class="w">
+
+</span><span class="mi">70361681</span><span class="w">
+</span><span class="p">(</span><span class="nb">/</span><span class="w"> </span><span class="mf">70361681.0</span><span class="w"> </span><span class="mi">60129867</span><span class="p">)</span><span class="w">
+
+</span><span class="mf">1.170161926351841</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Коэффициент вышел 1.17, а размер вырос аж на 10 мегабайтов.</p>
+
+<p><strong>Резюмируя:</strong> двойное JSON-кодирование прибавляет от 5 до 17% к длине строки.
+Прибавка состоит из обратных слэшей из-за экранирования кавычек. В моем случае
+было примерно 800 Кб слешей. 5.3 + 0.8 = 6.1 мегабайтов. Все сходится.
+Напоминает шутку про украденный код на Lisp, где были одни закрывающие скобки.
+Тут то же самое, только слэши.</p>
+
+<p>Вот такая штука. Когда все шаги пройдены, она не кажется загадкой, но как же
+напрягала тогда! Ее нельзя назвать багом, потому что документация не врет: шесть
+мегабайтов. Но дело в том, что эти шесть мегабайтов касаются финального
+сообщения, которое уходит в Runtime API. Это не длина данных, что возвращает ваш
+код, вот в чем дело. И конечно, документация ничего не знает о двойном
+кодировании и проблеме слэшей.</p>
+
+<p><strong>Важно понять:</strong> если вы отдаете HTTP-сообщеньки из Лямбды, и в теле JSON, вы
+кодируете его <strong>дважды</strong>. Это добавляет 5-17% процентов от исходной длины. Лучше
+сразу использовать Gzip+base64, чтобы не выстрелить в ногу.</p>
+
+<p>Итак, с лямбдой разобрались. В следующей заметке будет кулстори про AWS Athena
+(читается “Афина”). Там тоже трещали мозги.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/aws-0/">Амазон</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Все статьи из цикла AWS</p>
+
+<ul>
+  <li><a href="/aws-0/">Амазон</a></li>
+  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
+  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
+  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
+  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
+</ul>
+
+<p>Последние три года я плотно работают с Амазоном. Все больше утверждаюсь в мысли:
+для своих нужд я никогда не возьму Амазон, какими бы пряниками он меня не
+заманивал.</p>
+
+<p>Двадцать лет назад, когда я только познакомился с AWS, он был набором
+сервисов. Если тогда это был город, то сегодня он — целая планета. Число
+сервисов выросло на порядок или два, усложнилось взаимодействие между ними.</p>
+
+<p>Разрабатывая на AWS, важно иметь особый навык — знание AWS. Языка
+программирования и базы данных уже недостаточно. Нужно понимать концепции AWS,
+систему прав и полиси, квоты и много чего другого.</p>
+
+<p>В фирме редко бывает человек, который знает AWS целиком. Чаще всего каждый, как
+муравей, видит маленький ландшафтик, и когда начинаются проблемы взаимодействия,
+их тяжело расследовать.</p>
+
+<p>AWS — это дичайший вендор-лок, то есть зависимость от поставщика. Байки на тему
+“посидим и слезем” остаются байками. Амазон, как пылесос, со временем
+перетягивает на себя все решения — файлы, базу, сообщения — и портировать их
+обратно очень дорого.</p>
+
+<p>Важно понимать, что второго Амазона в мире нет. Бывают сервисы, которые
+повторяют некоторые API Амазона, например S3. Но переехать на что-то другое
+целиком будет очень затратно, причем даже не в плане денег, а нервов.</p>
+
+<p>Амазон дорогой. Разумеется, я не могу назвать, сколько платят заказчики, но это
+весьма дорого даже по западным меркам. Реляционные базы данных —
+дорогие. Лямбды, если их вызывать постоянно — дорогие. Если использовать S3 как
+шину данных между сервисами, это тоже дорого.</p>
+
+<p>Пожалуй, моя главная претензия к AWS — его трудно имитировать локально. Когда у
+вас Постгрес и Редис, все это запускается в Докере и покрывает 99%
+случаев. Постгрес в Докере — это настоящий Постгрес, тот самый, что работает на
+серверах. Любую ситуацию можно повторить локально: блокировку транзакций,
+медленный запрос, загрузку миллиарда записей, попадание в индекс.</p>
+
+<p>С Амазоном так не получится: сервисы DynamoDB, SNS/SQS или Athena нельзя
+запустить в Докере. Можно заткнуть их имитацией, которая выплевывает нужный
+JSON, но… это имитация. В проде случается масса вещей, о которых вы и не
+подозревали.</p>
+
+<p>Для разработки под Амазон нужно dev-окружение. Это такой же Амазон, только он не
+пересекается с продом. Там своя база, инстансы, очереди задач. Вы пишете код,
+заливаете в Амазон, гоняете и смотрите логи. Что-то упало — исправляете код и
+все по-новой. Это долго, потому что каждый шаг выполняется не мгновенно, а по
+нескольку минут.</p>
+
+<p>Разумеется, dev-окружение тарифицируется как обычное. За все нужно
+платить. Кроме прода, заказчик платит за 5-10 dev-окружений. Если вы
+расчитываете стоимость AWS, умножайте хотя бы на два, чтобы заложить бюджет на
+dev-окружения.</p>
+
+<p>Амазон радует крайне неочевидным поведением. Не могу назвать его багами, потому
+что оно описано в докуменации. Но документация огромна, читать ее никогда, да и
+требует усилий. Каждый раз, разобравшись, думаешь: ну все, теперь сюрпризов не
+будет. И буквально через два дня — новая головоломка.</p>
+
+<p>В следующих заметках я расскажу о случаях с AWS, над которыми изрядно поломал
+голову. Надеюсь, они будут кому-то полезны и сэкономят нервы.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/avito-2/">Авито (2)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/avito/" rel="tag">avito</a>, <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/idiots/" rel="tag">idiots</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><img src="/assets/static/aws/avito/2.jpeg" /></p>
+
+<p>Уж простите за спам про Авито, но я не могу, правда. Это какой-то лол.</p>
+
+<p>Продавец выставил серию книг, и я спрашиваю, есть ли среди них такая. Что делает
+бот Авито? Он выплевывает 7 сообщений о том, что:</p>
+
+<ul>
+  <li>можно купить с доставкой</li>
+  <li>сроки отправки</li>
+  <li>сколько занимает проверка товара</li>
+  <li>рейтинг продавца</li>
+  <li>куда нажать, чтобы купить</li>
+</ul>
+
+<p>И остальное, что не влезло на скриншот, хотя информация есть на странице, и я ее
+прекрасно вижу. Самую мелочь — есть ли книга или нет — я так и не узнал.</p>
+
+<p>Как же все это душит. Казалось бы, пройдя все авторизации и преграды, можно
+спросить человека и получить живой ответ.  Но Авито не оставляет шансов: и здесь
+поджидает бот, который засрет переписку бессмыслицей. И не только Авито,
+конечно.</p>
+
+<p>Все это нежно, мягко, с заботой, но поддушивает.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/avito-1/">Авито (1)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/avito/" rel="tag">avito</a>, <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/idiots/" rel="tag">idiots</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><img src="/assets/static/aws/avito/1.jpg" /></p>
+
+<p>Не знаю, что курят в Авито, но система допускает два профиля с одинаковой
+почтой, и я должен выбрать один из них. Может, это из-за разных клиентов:
+десктоп и телефон? Или из кеша пришли левые данные? Это неважно: техническое
+объяснение всегда найдется. Но так быть не должно.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/auth-offends/">Авторизация оскорбляет</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/auth/" rel="tag">auth</a>, <a href="/tag/web/" rel="tag">web</a>, <a href="/tag/services/" rel="tag">services</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Раньше двойная авторизация работала так: ставишь приложение на телефон,
+сканируешь QR-код и получаешь генерилку кодов. Сайт запрашивает код, ты вводишь,
+все довольны.</p>
+
+<p>Теперь сервисы отходят от это схемы. Даже если ты включил двойную авторизацию,
+сайт предложит зайти в другое приложение той же фирмы. Например, чтобы зайти в
+Гмейл, открой Ютуб. Или открой наше мобильное приложение (Гитхаб,
+Яндекс). Вариант с кодом прячут под выпадашку “другие способы”.</p>
+
+<p>Меня оскорбляет такой подход. Я заморачивался, ставил эти коды и считаю их
+безопасней, чем вход в другое приложение. Тем не менее, сервис понизил приоритет
+у кодов и предлагает способ для домохозяек. Не надо так.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/ai-review/">ИИ-ревью</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/ai/" rel="tag">ai</a>, <a href="/tag/review/" rel="tag">review</a>, <a href="/tag/work/" rel="tag">work</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Верьте аль не верьте, но в одном проекте у нас было ИИ-ревью. Слушайте.</p>
+
+<p>Фирма назначила нового технического директора. Уже первый разговор с ним посеял
+тревогу. Его технический стек не имел отношения к тому, что был у нас. Он сходу
+предложил перейти на MongoDB — оставив за кадром факт, что переезд с гигантской
+базы Постгреса занял бы несколько лет. Он много говорил о Chat GPT и о том, как
+ИИ-ревью изменит наши процессы.</p>
+
+<p>Начальство дало добро, и техдир провел три месяца, настраивая ИИ-ревью. Если
+вкратце, оно работало так.</p>
+
+<p>Нашелся бот на Node.js, который парсит дифф и выдирает изменения. Бот крутится в
+CI и запускается на каждом коммите.</p>
+
+<p>Выдрав изменения и собрав контекст, бот отправлял все добро в Chat GPT и
+составлял отчет.</p>
+
+<p>Этот отчет добавлялся в комментарий к пулл-реквесту.</p>
+
+<p>Звучит круто, а что было на самом деле? Это выглядело так. По каждому файлу бот
+писал: добавлена такая-то функция, переименован такой-то параметр, функция
+foo-bar теперь принимает три аргумента, а не два. И все таком духе:
+человекоподобное описание изменений. Ниже он писал вердикт — хороши ли изменения
+или требуют доработки.</p>
+
+<p>Постарайтесь это представить: в пул-реквесте пятнадцать файлов, и по каждому бот
+пишет абзац текста. Получается портянка на два экрана, совершенно тупая и
+бесполезная. Что с того, что написано “добавлена новая функция”? Я из без бота
+вижу, что она добавлена. Вполне может быть, что похожая функция уже есть, либо
+это могло быть inline-выражение, либо есть лучшая версия этой функции в
+библиотеке? Бот ничего об этом не знал.</p>
+
+<p>Открывая PR, ты первым делом видел выхлоп ИИ на два экрана. Нужно было
+проматывать эту фигню, чтобы добраться до кода.</p>
+
+<p>Получилась своего рода версия PR для менеджеров. Ну, знаете, бывает версия для
+слабовидящих, а есть версия для менеджеров. Менеджер не может прочесть код, и
+система генерит ему описание: добавилось то, убавилось это. Читая выхлоп,
+менеджер думает, что понимает код, хотя это не так. Он понимает действие, но не
+понимает причины, не понимает смысла, который стоит за этим кодом.</p>
+
+<p>Чтобы портянка на два экрана не мешала, я стал удалять ее из PR. В том числе не
+только из своих PR, но и коллег, если меня просили сделать ревью. Открывая PR, я
+рассчитываю увидеть код, а не машинный выхлоп, пусть даже его произвел ИИ. И
+знаете, никто не жаловался на удаление. Скоро я заметил, что коллеги молча
+удаляют этот комментарий без моего вмешательства.</p>
+
+<p>Стоит ли говорить, что бот ничего не знал о безопасности и хороших практиках. Он
+спокойно пропускал места, где SQL-параметр подставлялся склейкой строк. Он
+ничего не знал о reflection warning, о кривых запросах, неэффективных циклах,
+запросах мимо индекса.</p>
+
+<p>Удивлял его вердикт: бот мог написать “все отлично” к файлу, к которому у меня
+было три претензии. Мог написать “требует доработки” к файлу, где все
+гладко. Само собой, без каких-либо объяснений, что именно требует доработок и
+каких.</p>
+
+<p>Получался молчаливый бойкот: разработчики не обращали внимания на бота, техдир
+ничего в Кложе не понимал, а бот не давал ответа на вопрос, хороший мы пишем код
+или нет.</p>
+
+<p>Добавлю, что еще раньше техдир хотел подключить в CI сторонний говносервис,
+который делает то же самое. К счастью, в списке поддерживаемых языков не было
+Кложи.</p>
+
+<p>И вот однажды бота отключили. Я не стал спрашивать о причинах: они были
+очевидны. ИИ-ревью не оправдало себя, а директор потратил три месяца на его
+настройку. Ничего не изменилось в лучшую сторону, стало только хуже, потому что
+добавился новый компонент, усложнился CI, были потрачены деньги. Позже директора
+уволили.</p>
+
+<p>В чем была его ошибка? В том, что он не мог четко объяснить, какую проблему он
+решал с помощью ИИ. Я уже писал про это: принимаясь за задачу, спрашивай себя,
+какую проблему ты решаешь. В том проекте у нас было хорошее ревью: никто не
+затягивал процесс, сложные диффы смотрели несколько человек. В команде была
+компетенция в плане Кложи и SQL. Словом, ревью было последним местом, куда бы я
+внедрил ИИ.</p>
+
+<p>Вот что бывает, когда за дело берутся менеджеры. Их стремление автоматизировать
+понятно: вдруг человек уйдет, а мы такие внедрили ИИ, и ладушки: он с нами
+навсегда. Увы, это не работает: есть процессы, которые должен выполнять
+человек. Всякие ИИ могут быть страховкой, но не более того.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/1password-vse/">1Password все</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/1password/" rel="tag">1password</a>, <a href="/tag/udpates/" rel="tag">udpates</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><img src="/assets/static/aws/1password/1.jpeg" /></p>
+
+<p>Вот и все, что нужно знать про менеджеры паролей. Однажды тебе скажут: создавай
+облачную учетку или иди лесом. 1Password упорно шел в этом направлении, так что
+не удивлен. Я и раньше знал, что восьмая версия не работает без облака и сидел
+на шестой. Теперь она насильно обновилась.</p>
+
+<p>К счастью, уже два года переехал на <a href="https://en.wikipedia.org/wiki/Pass_(software)">Unix Pass</a> и планирую об этом
+написать.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/pg-honey">PG2 release 0.1.4: HoneySQL API and shortcuts</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-02-26T00:00:00+00:00">
+        Feb 26, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/honeysql/" rel="tag">honeysql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-pg2-honey">
+  <li><a href="#honeysql-integration--shortcuts" id="toc-item-pg2-honey-honeysql-integration--shortcuts">HoneySQL Integration &amp; Shortcuts</a>    <ul>
+      <li><a href="#get-by-ids" id="toc-item-pg2-honey-get-by-ids">Get by id(s)</a></li>
+      <li><a href="#delete" id="toc-item-pg2-honey-delete">Delete</a></li>
+      <li><a href="#insert-one" id="toc-item-pg2-honey-insert-one">Insert (one)</a></li>
+      <li><a href="#update" id="toc-item-pg2-honey-update">Update</a></li>
+      <li><a href="#find-first" id="toc-item-pg2-honey-find-first">Find (first)</a></li>
+      <li><a href="#prepare" id="toc-item-pg2-honey-prepare">Prepare</a></li>
+      <li><a href="#query-and-execute" id="toc-item-pg2-honey-query-and-execute">Query and Execute</a></li>
+      <li><a href="#honeysql-options" id="toc-item-pg2-honey-honeysql-options">HoneySQL options</a></li>
+    </ul>
+  </li>
+</ul>
+
+<p><a href="https://github.com/igrishaev/pg2">PG2 version 0.1.4</a> is out. In this release, the main feature is
+improvements made to the <code class="language-plaintext highlighter-rouge">pg-honey</code> package which is a wrapper on top of
+HoneySQL.</p>
+
+<h2 id="honeysql-integration--shortcuts">HoneySQL Integration &amp; Shortcuts</h2>
+
+<p>The <code class="language-plaintext highlighter-rouge">pg-honey</code> package allows you to call <code class="language-plaintext highlighter-rouge">query</code> and <code class="language-plaintext highlighter-rouge">execute</code> functions using
+maps rather than string SQL expressions. Internally, maps are transformed into
+SQL using the great <a href="https://github.com/seancorfield/honeysql">HoneySQL library</a>. With HoneySQL, you don’t need
+to format strings to build a SQL, which is clumsy and dangerous in terms of
+injections.</p>
+
+<p>The package also provides several shortcuts for such common dutiles as get a
+single row by id, get a bunch of rows by their ids, insert a row having a map of
+values, update by a map and so on.</p>
+
+<p>For a demo, let’s import the package, declare a config map and create a table
+with some rows as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.honey</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pgh</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10140</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/connect</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table test003 (
+  id integer not null,
+  name text not null,
+  active boolean not null default true
+)"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test003 (id, name, active)
+  values
+  (1, 'Ivan', true),
+  (2, 'Huan', false),
+  (3, 'Juan', true)"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="get-by-ids">Get by id(s)</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">get-by-id</code> function fetches a single row by a primary key which is <code class="language-plaintext highlighter-rouge">:id</code> by
+default:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/get-by-id</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="no">:test003</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w">
+</span><span class="c1">;; {:name "Ivan", :active true, :id 1}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>With options, you can specify the name of the primary key and the column names
+you’re interested in:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/get-by-id</span><span class="w"> </span><span class="n">conn</span><span class="w">
+               </span><span class="no">:test003</span><span class="w">
+               </span><span class="mi">1</span><span class="w">
+               </span><span class="p">{</span><span class="no">:pk</span><span class="w"> </span><span class="p">[</span><span class="no">:raw</span><span class="w"> </span><span class="s">"test003.id"</span><span class="p">]</span><span class="w">
+                </span><span class="no">:fields</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="p">]})</span><span class="w">
+
+</span><span class="c1">;; {:name "Ivan", :id 1}</span><span class="w">
+
+</span><span class="c1">;; SELECT id, name FROM test003 WHERE test003.id = $1 LIMIT $2</span><span class="w">
+</span><span class="c1">;; parameters: $1 = '1', $2 = '1'</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">get-by-ids</code> function accepts a collection of primary keys and fetches them
+using the <code class="language-plaintext highlighter-rouge">IN</code> operator. In additon to options that <code class="language-plaintext highlighter-rouge">get-by-id</code> has, you can
+specify the ordering:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/get-by-ids</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                </span><span class="no">:test003</span><span class="w">
+                </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">999</span><span class="p">]</span><span class="w">
+                </span><span class="p">{</span><span class="no">:pk</span><span class="w"> </span><span class="p">[</span><span class="no">:raw</span><span class="w"> </span><span class="s">"test003.id"</span><span class="p">]</span><span class="w">
+                 </span><span class="no">:fields</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="p">]</span><span class="w">
+                 </span><span class="no">:order-by</span><span class="w"> </span><span class="p">[[</span><span class="no">:id</span><span class="w"> </span><span class="no">:desc</span><span class="p">]]})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Juan"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}]</span><span class="w">
+
+</span><span class="c1">;; SELECT id, name FROM test003 WHERE test003.id IN ($1, $2, $3) ORDER BY id DESC</span><span class="w">
+</span><span class="c1">;; parameters: $1 = '1', $2 = '3', $3 = '999'</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Passing many IDs at once is not recommended. Either pass them by chunks or
+create a temporary table, <code class="language-plaintext highlighter-rouge">COPY IN</code> ids into it and <code class="language-plaintext highlighter-rouge">INNER JOIN</code> with the main
+table.</p>
+
+<h3 id="delete">Delete</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">delete</code> function removes rows from a table. By default, all the rows are
+deleted with no filtering, and the deleted rows are returned:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/delete</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="no">:test003</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Huan"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">false,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Juan"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>You can specify the <code class="language-plaintext highlighter-rouge">WHERE</code> clause and the column names of the result:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/delete</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="no">:test003</span><span class="w">
+            </span><span class="p">{</span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:and</span><span class="w">
+                     </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w">
+                     </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="p">]]</span><span class="w">
+             </span><span class="no">:returning</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Juan"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When the <code class="language-plaintext highlighter-rouge">:returning</code> option set to <code class="language-plaintext highlighter-rouge">nil</code>, no rows are returned.</p>
+
+<h3 id="insert-one">Insert (one)</h3>
+
+<p>To observe all the features of the <code class="language-plaintext highlighter-rouge">insert</code> function, let’s create a separate
+table:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table test004 (
+  id serial primary key,
+  name text not null,
+  active boolean not null default true
+)"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">insert</code> function accepts a collection of maps each represents a row:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/insert</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="no">:test004</span><span class="w">
+            </span><span class="p">[{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Foo"</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">false</span><span class="p">}</span><span class="w">
+             </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Bar"</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="p">}]</span><span class="w">
+            </span><span class="p">{</span><span class="no">:returning</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="p">]})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Foo"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Bar"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It also accepts options to produce the <code class="language-plaintext highlighter-rouge">ON CONFLICT ... DO ...</code>  clause known as
+<code class="language-plaintext highlighter-rouge">UPSERT</code>. The following query tries to insert two rows with existing primary
+keys. Should they exist, the query updates the names of the corresponding rows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/insert</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="no">:test004</span><span class="w">
+            </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Snip"</span><span class="p">}</span><span class="w">
+             </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Snap"</span><span class="p">}]</span><span class="w">
+            </span><span class="p">{</span><span class="no">:on-conflict</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="p">]</span><span class="w">
+             </span><span class="no">:do-update-set</span><span class="w"> </span><span class="p">[</span><span class="no">:name</span><span class="p">]</span><span class="w">
+             </span><span class="no">:returning</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="p">]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The resulting query looks like this:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">test004</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="err">$</span><span class="mi">1</span><span class="p">,</span> <span class="err">$</span><span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="err">$</span><span class="mi">3</span><span class="p">,</span> <span class="err">$</span><span class="mi">4</span><span class="p">)</span>
+  <span class="k">ON</span> <span class="n">CONFLICT</span> <span class="p">(</span><span class="n">id</span><span class="p">)</span>
+  <span class="k">DO</span> <span class="k">UPDATE</span> <span class="k">SET</span> <span class="n">name</span> <span class="o">=</span> <span class="n">EXCLUDED</span><span class="p">.</span><span class="n">name</span>
+  <span class="n">RETURNING</span> <span class="n">id</span><span class="p">,</span> <span class="n">name</span>
+<span class="k">parameters</span><span class="p">:</span> <span class="err">$</span><span class="mi">1</span> <span class="o">=</span> <span class="s1">'1'</span><span class="p">,</span> <span class="err">$</span><span class="mi">2</span> <span class="o">=</span> <span class="s1">'Snip'</span><span class="p">,</span> <span class="err">$</span><span class="mi">3</span> <span class="o">=</span> <span class="s1">'2'</span><span class="p">,</span> <span class="err">$</span><span class="mi">4</span> <span class="o">=</span> <span class="s1">'Snap'</span>
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">insert-one</code> function acts like <code class="language-plaintext highlighter-rouge">insert</code> but accepts and returns a single
+map. It supports <code class="language-plaintext highlighter-rouge">:returning</code> and <code class="language-plaintext highlighter-rouge">ON CONFLICT ...</code> clauses as well:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/insert-one</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                </span><span class="no">:test004</span><span class="w">
+                </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Alter Ego"</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="p">}</span><span class="w">
+                </span><span class="p">{</span><span class="no">:on-conflict</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="p">]</span><span class="w">
+                 </span><span class="no">:do-update-set</span><span class="w"> </span><span class="p">[</span><span class="no">:name</span><span class="w"> </span><span class="no">:active</span><span class="p">]</span><span class="w">
+                 </span><span class="no">:returning</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Alter Ego"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The logs:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">test004</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">active</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="err">$</span><span class="mi">1</span><span class="p">,</span> <span class="err">$</span><span class="mi">2</span><span class="p">,</span> <span class="k">TRUE</span><span class="p">)</span>
+  <span class="k">ON</span> <span class="n">CONFLICT</span> <span class="p">(</span><span class="n">id</span><span class="p">)</span>
+  <span class="k">DO</span> <span class="k">UPDATE</span> <span class="k">SET</span> <span class="n">name</span> <span class="o">=</span> <span class="n">EXCLUDED</span><span class="p">.</span><span class="n">name</span><span class="p">,</span> <span class="n">active</span> <span class="o">=</span> <span class="n">EXCLUDED</span><span class="p">.</span><span class="n">active</span>
+  <span class="n">RETURNING</span> <span class="o">*</span>
+<span class="k">parameters</span><span class="p">:</span> <span class="err">$</span><span class="mi">1</span> <span class="o">=</span> <span class="s1">'2'</span><span class="p">,</span> <span class="err">$</span><span class="mi">2</span> <span class="o">=</span> <span class="s1">'Alter Ego'</span>
+</code></pre></div></div>
+
+<h3 id="update">Update</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">update</code> function alters rows in a table. By default, it doesn’t do any
+filtering and returns all the rows affected. The following query sets the
+boolean <code class="language-plaintext highlighter-rouge">active</code> value for all rows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/update</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="no">:test003</span><span class="w">
+            </span><span class="p">{</span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Huan"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Juan"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">:where</code> clause determines conditions for update. You can also specify
+columns to return:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/update</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="no">:test003</span><span class="w">
+            </span><span class="p">{</span><span class="no">:active</span><span class="w"> </span><span class="n">false</span><span class="p">}</span><span class="w">
+            </span><span class="p">{</span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">]</span><span class="w">
+             </span><span class="no">:returning</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="p">]})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>What is great about <code class="language-plaintext highlighter-rouge">update</code> is, you can use such complex expressions as
+increasing counters, negation and so on. Below, we alter the primary key by
+adding 100 to it, negate the <code class="language-plaintext highlighter-rouge">active</code> column, and change the <code class="language-plaintext highlighter-rouge">name</code> column with
+dull concatenation:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/update</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="no">:test003</span><span class="w">
+            </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="p">[</span><span class="no">:+</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">100</span><span class="p">]</span><span class="w">
+             </span><span class="no">:active</span><span class="w"> </span><span class="p">[</span><span class="no">:not</span><span class="w"> </span><span class="no">:active</span><span class="p">]</span><span class="w">
+             </span><span class="no">:name</span><span class="w"> </span><span class="p">[</span><span class="no">:raw</span><span class="w"> </span><span class="s">"name || name"</span><span class="p">]}</span><span class="w">
+            </span><span class="p">{</span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">]</span><span class="w">
+             </span><span class="no">:returning</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:active</span><span class="p">]})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">101</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Which produces the following query:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">UPDATE</span> <span class="n">test003</span>
+  <span class="k">SET</span>
+    <span class="n">id</span> <span class="o">=</span> <span class="n">id</span> <span class="o">+</span> <span class="err">$</span><span class="mi">1</span><span class="p">,</span>
+    <span class="n">active</span> <span class="o">=</span> <span class="k">NOT</span> <span class="n">active</span><span class="p">,</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">name</span> <span class="o">||</span> <span class="n">name</span>
+  <span class="k">WHERE</span> <span class="n">name</span> <span class="o">=</span> <span class="err">$</span><span class="mi">2</span>
+  <span class="n">RETURNING</span> <span class="n">id</span><span class="p">,</span> <span class="n">active</span>
+<span class="k">parameters</span><span class="p">:</span> <span class="err">$</span><span class="mi">1</span> <span class="o">=</span> <span class="s1">'100'</span><span class="p">,</span> <span class="err">$</span><span class="mi">2</span> <span class="o">=</span> <span class="s1">'Ivan'</span>
+</code></pre></div></div>
+
+<h3 id="find-first">Find (first)</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">find</code> function makes a lookup in a table by column-value pairs. All the
+pairs are joined using the <code class="language-plaintext highlighter-rouge">AND</code> operator:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/find</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="no">:test003</span><span class="w"> </span><span class="p">{</span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Juan"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Find by two conditions:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/find</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="no">:test003</span><span class="w"> </span><span class="p">{</span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="w">
+                         </span><span class="no">:name</span><span class="w"> </span><span class="s">"Juan"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Juan"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="p">}]</span><span class="w">
+
+</span><span class="c1">;; SELECT * FROM test003 WHERE (active = TRUE) AND (name = $1)</span><span class="w">
+</span><span class="c1">;; parameters: $1 = 'Juan'</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The function accepts additional options for <code class="language-plaintext highlighter-rouge">LIMIT</code>, <code class="language-plaintext highlighter-rouge">OFFSET</code>, and <code class="language-plaintext highlighter-rouge">ORDER BY</code>
+clauses:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/find</span><span class="w"> </span><span class="n">conn</span><span class="w">
+          </span><span class="no">:test003</span><span class="w">
+          </span><span class="p">{</span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="p">}</span><span class="w">
+          </span><span class="p">{</span><span class="no">:fields</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="p">]</span><span class="w">
+           </span><span class="no">:limit</span><span class="w"> </span><span class="mi">10</span><span class="w">
+           </span><span class="no">:offset</span><span class="w"> </span><span class="mi">1</span><span class="w">
+           </span><span class="no">:order-by</span><span class="w"> </span><span class="p">[[</span><span class="no">:id</span><span class="w"> </span><span class="no">:desc</span><span class="p">]]</span><span class="w">
+           </span><span class="no">:fn-key</span><span class="w"> </span><span class="nb">identity</span><span class="p">})</span><span class="w">
+
+</span><span class="p">[{</span><span class="s">"id"</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="s">"name"</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">}]</span><span class="w">
+
+</span><span class="c1">;; SELECT id, name FROM test003</span><span class="w">
+</span><span class="c1">;;   WHERE (active = TRUE)</span><span class="w">
+</span><span class="c1">;;   ORDER BY id DESC</span><span class="w">
+</span><span class="c1">;;   LIMIT $1</span><span class="w">
+</span><span class="c1">;;   OFFSET $2</span><span class="w">
+</span><span class="c1">;; parameters: $1 = '10', $2 = '1'</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">find-first</code> function acts the same but returns a single row or
+<code class="language-plaintext highlighter-rouge">nil</code>. Internally, it adds the <code class="language-plaintext highlighter-rouge">LIMIT 1</code> clause to the query:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/find-first</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="no">:test003</span><span class="w">
+                </span><span class="p">{</span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="p">}</span><span class="w">
+                </span><span class="p">{</span><span class="no">:fields</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="p">]</span><span class="w">
+                 </span><span class="no">:offset</span><span class="w"> </span><span class="mi">1</span><span class="w">
+                 </span><span class="no">:order-by</span><span class="w"> </span><span class="p">[[</span><span class="no">:id</span><span class="w"> </span><span class="no">:desc</span><span class="p">]]</span><span class="w">
+                 </span><span class="no">:fn-key</span><span class="w"> </span><span class="nb">identity</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="s">"id"</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="s">"name"</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="prepare">Prepare</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">prepare</code> function makes a prepared statement from a HoneySQL map:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">stmt</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pgh/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w">
+                     </span><span class="no">:from</span><span class="w"> </span><span class="no">:test003</span><span class="w">
+                     </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">0</span><span class="p">]}))</span><span class="w">
+
+</span><span class="c1">;; &lt;Prepared statement, name: s37, param(s): 1, OIDs: [INT8], SQL: SELECT * FROM test003 WHERE id = $1&gt;</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, the zero value is a placeholder for an integer parameter.</p>
+
+<p>Now that the statement is prepared, execute it with the right id:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute-statement</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">stmt</span><span class="w"> </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="w">
+                                 </span><span class="no">:first?</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Juan"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Alternately, use the <code class="language-plaintext highlighter-rouge">[:raw ...]</code> syntax to specify a parameter with a dollar
+sign:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">stmt</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pgh/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:*</span><span class="p">]</span><span class="w">
+                     </span><span class="no">:from</span><span class="w"> </span><span class="no">:test003</span><span class="w">
+                     </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:raw</span><span class="w"> </span><span class="s">"id = $1"</span><span class="p">]}))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/execute-statement</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">stmt</span><span class="w"> </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w">
+                                 </span><span class="no">:first?</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="n">,</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="query-and-execute">Query and Execute</h3>
+
+<p>There are two general functions called <code class="language-plaintext highlighter-rouge">query</code> and <code class="language-plaintext highlighter-rouge">execute</code>. Each of them
+accepts an arbitrary HoneySQL map and performs either <code class="language-plaintext highlighter-rouge">Query</code> or <code class="language-plaintext highlighter-rouge">Execute</code>
+request to the server.</p>
+
+<p>Pay attention that, when using <code class="language-plaintext highlighter-rouge">query</code>, a HoneySQL map cannot have
+parameters. This is a limitation of the <code class="language-plaintext highlighter-rouge">Query</code> command. The following query
+will lead to an error response from the server:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/query</span><span class="w"> </span><span class="n">conn</span><span class="w">
+           </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="p">]</span><span class="w">
+            </span><span class="no">:from</span><span class="w"> </span><span class="no">:test003</span><span class="w">
+            </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">]</span><span class="w">
+            </span><span class="no">:order-by</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="p">]})</span><span class="w">
+
+</span><span class="c1">;; Execution error (PGErrorResponse) at org.pg.Accum/maybeThrowError (Accum.java:207).</span><span class="w">
+</span><span class="c1">;; Server error response: {severity=ERROR, ... message=there is no parameter $1, verbosity=ERROR}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Instead, use either <code class="language-plaintext highlighter-rouge">[:raw ...]</code> syntax or <code class="language-plaintext highlighter-rouge">{:inline true}</code> option:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/query</span><span class="w"> </span><span class="n">conn</span><span class="w">
+           </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="p">]</span><span class="w">
+            </span><span class="no">:from</span><span class="w"> </span><span class="no">:test003</span><span class="w">
+            </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:raw</span><span class="w"> </span><span class="s">"name = 'Ivan'"</span><span class="p">]</span><span class="w"> </span><span class="c1">;; raw (as is)</span><span class="w">
+            </span><span class="no">:order-by</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="p">]})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}]</span><span class="w">
+
+</span><span class="c1">;; OR</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pgh/query</span><span class="w"> </span><span class="n">conn</span><span class="w">
+           </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="p">]</span><span class="w">
+            </span><span class="no">:from</span><span class="w"> </span><span class="no">:test003</span><span class="w">
+            </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">]</span><span class="w">
+            </span><span class="no">:order-by</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="p">]}</span><span class="w">
+           </span><span class="p">{</span><span class="no">:honey</span><span class="w"> </span><span class="p">{</span><span class="no">:inline</span><span class="w"> </span><span class="n">true</span><span class="p">}})</span><span class="w"> </span><span class="c1">;; inline values</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}]</span><span class="w">
+
+</span><span class="c1">;; SELECT id FROM test003 WHERE name = 'Ivan' ORDER BY id ASC</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">execute</code> function acceps a HoneySQL map with parameters:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+               </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="p">]</span><span class="w">
+                </span><span class="no">:from</span><span class="w"> </span><span class="no">:test003</span><span class="w">
+                </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">]</span><span class="w">
+                </span><span class="no">:order-by</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="p">]})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Both <code class="language-plaintext highlighter-rouge">query</code> and <code class="language-plaintext highlighter-rouge">execute</code> accept not <code class="language-plaintext highlighter-rouge">SELECT</code> only but literally everything:
+inserting, updating, creating a table, an index, and more. You can build
+combinations like <code class="language-plaintext highlighter-rouge">INSERT ... FROM SELECT</code> or <code class="language-plaintext highlighter-rouge">UPDATE ... FROM DELETE</code> to
+perform complex logic in a single atomic query.</p>
+
+<h3 id="honeysql-options">HoneySQL options</h3>
+
+<p>Any HoneySQL-specific parameter might be passed through the <code class="language-plaintext highlighter-rouge">:honey</code> submap in
+options. Below, we pass the <code class="language-plaintext highlighter-rouge">:params</code> map to use the <code class="language-plaintext highlighter-rouge">[:param ...]</code>
+syntax. Also, we produce a pretty-formatted SQL for better logs:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pgh/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+             </span><span class="p">{</span><span class="no">:select</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="p">]</span><span class="w">
+              </span><span class="no">:from</span><span class="w"> </span><span class="no">:test003</span><span class="w">
+              </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="no">:=</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="p">[</span><span class="no">:param</span><span class="w"> </span><span class="no">:name</span><span class="p">]]</span><span class="w">
+              </span><span class="no">:order-by</span><span class="w"> </span><span class="p">[</span><span class="no">:id</span><span class="p">]}</span><span class="w">
+             </span><span class="p">{</span><span class="no">:honey</span><span class="w"> </span><span class="p">{</span><span class="no">:pretty</span><span class="w"> </span><span class="n">true</span><span class="w">
+                      </span><span class="no">:params</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">}}})</span><span class="w">
+
+</span><span class="c1">;; SELECT id, name</span><span class="w">
+</span><span class="c1">;; FROM test003</span><span class="w">
+</span><span class="c1">;; WHERE name = $1</span><span class="w">
+</span><span class="c1">;; ORDER BY id ASC</span><span class="w">
+</span><span class="c1">;; parameters: $1 = 'Ivan'</span><span class="w">
+</span></code></pre></div></div>
+
+<p>For more options, please refer to the official <a href="https://github.com/seancorfield/honeysql">HoneySQL
+documentation</a>.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/pg-jdbc">PG2 release 0.1.3: Next.JDBC-compatible API</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-02-20T00:00:00+00:00">
+        Feb 20, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<h2>
+
+    Table of Content
+
+</h2>
+
+<ul id="toc-item-pg2-jdbc">
+  <li><a href="#obtaining-a-connection" id="toc-item-pg2-jdbc-obtaining-a-connection">Obtaining a Connection</a></li>
+  <li><a href="#executing-queries" id="toc-item-pg2-jdbc-executing-queries">Executing Queries</a></li>
+  <li><a href="#transactions" id="toc-item-pg2-jdbc-transactions">Transactions</a></li>
+  <li><a href="#keys-and-namespaces" id="toc-item-pg2-jdbc-keys-and-namespaces">Keys and Namespaces</a></li>
+</ul>
+
+<p><a href="https://github.com/igrishaev/pg2">PG2 version 0.1.3</a> is out. One of its new features is a module which
+mimics <a href="https://github.com/seancorfield/next-jdbc">Next.JDBC</a> API. Of course, it doesn’t cover 100% of Next.JDBC
+features yet most of the functions and macros are there. It will help you to
+introduce PG2 into the project without rewriting all the database-related code
+from scratch.</p>
+
+<h3 id="obtaining-a-connection">Obtaining a Connection</h3>
+
+<p>In Next.JDBC, all the functions and macros accept something that implements the
+<code class="language-plaintext highlighter-rouge">Connectable</code> protocol. It might be a plain Clojure map, an existing connection,
+or a connection pool. The PG2 wrapper follows this design. It works with either
+a map, a connection, or a pool.</p>
+
+<p>Import the namespace and declare a config:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.jdbc</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">jdbc</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10140</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Having a config map, obtain a connection by passing it into the <code class="language-plaintext highlighter-rouge">get-connection</code>
+function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>This approach, although is a part of the Next.JDBC design, is not recommended to
+use. Once you’ve established a connection, you must either close it or, if it
+was borrowed from a pool, return it to the pool. There is a special macro
+<code class="language-plaintext highlighter-rouge">on-connection</code> that covers this logic:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">bind</span><span class="w"> </span><span class="n">source</span><span class="p">]</span><span class="w">
+  </span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If the <code class="language-plaintext highlighter-rouge">source</code> was a map, a new connection is spawned and gets closed
+afterwards. If the <code class="language-plaintext highlighter-rouge">source</code> is a pool, the connection gets returned to the pool.
+When the <code class="language-plaintext highlighter-rouge">source</code> is a connection, nothing happens when exiting the macro.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="n">conn</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>A brief example with a connection pool and a couple of futures. Each future
+borrows a connection from a pool, and returns it afterwards.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pool/with-pool</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">f1</span><span class="w">
+        </span><span class="p">(</span><span class="nf">future</span><span class="w">
+          </span><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn1</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+            </span><span class="p">(</span><span class="nb">println</span><span class="w">
+             </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn1</span><span class="w"> </span><span class="p">[</span><span class="s">"select 'hoho' as message"</span><span class="p">]))))</span><span class="w">
+        </span><span class="n">f2</span><span class="w">
+        </span><span class="p">(</span><span class="nf">future</span><span class="w">
+          </span><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn2</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+            </span><span class="p">(</span><span class="nb">println</span><span class="w">
+             </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn2</span><span class="w"> </span><span class="p">[</span><span class="s">"select 'haha' as message"</span><span class="p">]))))]</span><span class="w">
+    </span><span class="o">@</span><span class="n">f1</span><span class="w">
+    </span><span class="o">@</span><span class="n">f2</span><span class="p">))</span><span class="w">
+
+</span><span class="c1">;; {:message hoho}</span><span class="w">
+</span><span class="c1">;; {:message haha}</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="executing-queries">Executing Queries</h3>
+
+<p>Two functions <code class="language-plaintext highlighter-rouge">execute!</code> and <code class="language-plaintext highlighter-rouge">execute-one!</code> send queries to the database. Each
+of them takes a source, a SQL vector, and a map of options. The SQL vector is a
+sequence where the first item is either a string or a prepared statement, and
+the rest values are parameters.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="s">"select $1 as num"</span><span class="w"> </span><span class="mi">42</span><span class="p">]))</span><span class="w">
+</span><span class="c1">;; [{:num 42}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Pay attention that parameters use a dollar sign with a number but not a question
+mark.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">execute-one!</code> function acts like <code class="language-plaintext highlighter-rouge">execute!</code> but returns the first row
+only. Internaly, this is done by passing the <code class="language-plaintext highlighter-rouge">{:first? true}</code> parameter that
+enables the <code class="language-plaintext highlighter-rouge">First</code> reducer.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="s">"select $1 as num"</span><span class="w"> </span><span class="mi">42</span><span class="p">]))</span><span class="w">
+</span><span class="c1">;; {:num 42}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To prepare a statement, pass a SQL-vector into the <code class="language-plaintext highlighter-rouge">prepare</code> function. The
+result will be an instance of the <code class="language-plaintext highlighter-rouge">PreparedStatement</code> class. To execute a
+statement, put it into a SQL-vector followed by the parameters:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                      </span><span class="p">[</span><span class="s">"select $1::int4 + 1 as num"</span><span class="p">])</span><span class="w">
+        </span><span class="n">res1</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="mi">1</span><span class="p">])</span><span class="w">
+
+        </span><span class="n">res2</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="mi">2</span><span class="p">])]</span><span class="w">
+
+    </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))</span><span class="w">
+
+</span><span class="c1">;; [{:num 2} {:num 3}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, the same <code class="language-plaintext highlighter-rouge">stmt</code> statement is executed twice with different parameters.</p>
+
+<p>More realistic example with inserting data into a table. Let’s prepare the table
+first:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">[</span><span class="s">"create table test2 (id serial primary key, name text not null)"</span><span class="p">])</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Insert a couple of rows returning the result:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                      </span><span class="p">[</span><span class="s">"insert into test2 (name) values ($1) returning *"</span><span class="p">])</span><span class="w">
+
+        </span><span class="n">res1</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">])</span><span class="w">
+
+        </span><span class="n">res2</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Huan"</span><span class="p">])]</span><span class="w">
+
+    </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))</span><span class="w">
+
+</span><span class="c1">;; [{:name "Ivan", :id 1} {:name "Huan", :id 2}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>As it was mentioned above, in Postgres, a prepared statement is always bound to
+a certain connection. Thus, use the <code class="language-plaintext highlighter-rouge">prepare</code> function only inside the
+<code class="language-plaintext highlighter-rouge">on-connection</code> macro to ensure that all the underlying database interaction is
+made within the same connection.</p>
+
+<h3 id="transactions">Transactions</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">with-transaction</code> macro wraps a block of code into a transaction. Before
+entering the block, the macro emits the <code class="language-plaintext highlighter-rouge">BEGIN</code> expression, and <code class="language-plaintext highlighter-rouge">COMMIT</code>
+afterwards, if there was no an exception. Should an exception pop up, the
+transaction gets rolled back with <code class="language-plaintext highlighter-rouge">ROLLBACK</code>, and the exception is re-thrown.</p>
+
+<p>The macro takes a binding symbol which a connection is bound to, a source, an a
+map of options. The standard Next.JDBC transaction options are supported,
+namely:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">:isolation</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:read-only</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:rollback-only</code></li>
+</ul>
+
+<p>Here is an example of inserting a couple of rows in a transaction:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
+        </span><span class="p">(</span><span class="nf">jdbc/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                      </span><span class="p">[</span><span class="s">"insert into test2 (name) values ($1) returning *"</span><span class="p">])]</span><span class="w">
+
+    </span><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:isolation</span><span class="w"> </span><span class="no">:serializable</span><span class="w">
+                                     </span><span class="no">:read-only</span><span class="w"> </span><span class="n">false</span><span class="w">
+                                     </span><span class="no">:rollback-only</span><span class="w"> </span><span class="n">false</span><span class="p">}]</span><span class="w">
+
+      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">res1</span><span class="w">
+            </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Snip"</span><span class="p">])</span><span class="w">
+
+            </span><span class="n">res2</span><span class="w">
+            </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Snap"</span><span class="p">])]</span><span class="w">
+
+        </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))))</span><span class="w">
+
+</span><span class="c1">;; [{:name "Snip", :id 3} {:name "Snap", :id 4}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The Postgres log:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BEGIN
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE
+insert into test2 (name) values ($1) returning *
+  $1 = 'Snip'
+insert into test2 (name) values ($1) returning *
+  $1 = 'Snap'
+COMMIT
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">:isolation</code> parameter might be one of the following:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">:read-uncommitted</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:read-committed</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:repeatable-read</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:serializable</code></li>
+</ul>
+
+<p>To know more about transaction isolation, refer to the official [Postgres
+documentation][transaction-iso].</p>
+
+<p>When <code class="language-plaintext highlighter-rouge">read-only</code> is true, any mutable query will trigger an error response from
+Postgres:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:read-only</span><span class="w"> </span><span class="n">true</span><span class="p">}]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">TX</span><span class="w"> </span><span class="p">[</span><span class="s">"delete from test2"</span><span class="p">]))</span><span class="w">
+
+</span><span class="c1">;; Execution error (PGErrorResponse) at org.pg.Accum/maybeThrowError (Accum.java:207).</span><span class="w">
+</span><span class="c1">;; Server error response: {severity=ERROR, message=cannot execute DELETE in a read-only transaction, verbosity=ERROR}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When <code class="language-plaintext highlighter-rouge">:rollback-only</code> is true, the transaction gets rolled back even there was
+no an exception. This is useful for tests and experiments:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:rollback-only</span><span class="w"> </span><span class="n">true</span><span class="p">}]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">TX</span><span class="w"> </span><span class="p">[</span><span class="s">"delete from test2"</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The logs:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>statement: BEGIN
+execute s1/p2: delete from test2
+statement: ROLLBACK
+</code></pre></div></div>
+
+<p>The table still has its data:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">[</span><span class="s">"select * from test2"</span><span class="p">])</span><span class="w">
+
+</span><span class="c1">;; [{:name "Ivan", :id 1} ...]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The function <code class="language-plaintext highlighter-rouge">active-tx?</code> helps to determine if you’re in the middle of a
+transaction:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/active-tx?</span><span class="w"> </span><span class="n">conn</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">conn</span><span class="p">]</span><span class="w">
+      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">res2</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/active-tx?</span><span class="w"> </span><span class="n">TX</span><span class="p">)]</span><span class="w">
+        </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))))</span><span class="w">
+
+</span><span class="c1">;; [false true]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>It returns <code class="language-plaintext highlighter-rouge">true</code> for transactions tha are in the error state as well.</p>
+
+<h3 id="keys-and-namespaces">Keys and Namespaces</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">pg.jdbc</code> wrapper tries to mimic Next.JDBC and thus uses <code class="language-plaintext highlighter-rouge">kebab-case-keys</code>
+when building maps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="s">"select 42 as the_answer"</span><span class="p">]))</span><span class="w">
+
+</span><span class="c1">;; {:the-answer 42}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To change that behaviour and use <code class="language-plaintext highlighter-rouge">snake_case_keys</code>, pass the <code class="language-plaintext highlighter-rouge">{:kebab-keys?
+false}</code> option map:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                     </span><span class="p">[</span><span class="s">"select 42 as the_answer"</span><span class="p">]</span><span class="w">
+                     </span><span class="p">{</span><span class="no">:kebab-keys?</span><span class="w"> </span><span class="n">false</span><span class="p">}))</span><span class="w">
+
+</span><span class="c1">;; {:the_answer 42}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>By default, Next.JDBC returns full-qualified keys where namespaces are table
+names, for example <code class="language-plaintext highlighter-rouge">:user/profile-id</code> or <code class="language-plaintext highlighter-rouge">:order/created-at</code>. At the moment,
+namespaces are not supported by the wrapper.</p>
+
+<p>For more information, please refer to the official <a href="https://github.com/igrishaev/pg2/blob/master/README.md">README file</a>.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/en/pg2-bench-3">PG2 release 0.1.2: more performance, benchmarks, part 3</a>
             </h2>
 
@@ -170,802 +1524,13 @@ the new processing algorithm works.</p>
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/gzip/">Gzip</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-26T00:00:00+00:00">
-        Jan 26, 2024
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/gzip/" rel="tag">gzip</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Коллеги, используйте gzip! Это простой способ уменьшить трафик в разы, если не
-на порядок. Буквально двумя строчками можно превратить гигабайты CSV в 200-300
-мегабайтов. Разве не чудо? И делается это парой строк.</p>
-
-<p>Теперь подробней. Gzip — старый алгоритм потокового сжатия. Ключевое слово
-“потоковый”. Это значит, алгоритму не нужен файл целиком; он читает окно байтов
-и выдает сжатое окно. За счет этого можно пережать любой поток, в том числе
-бесконечный.</p>
-
-<p>В джаве потоки байтов используют часто. В ней легко втиснуть <code class="language-plaintext highlighter-rouge">GzipInputStream</code>
-или <code class="language-plaintext highlighter-rouge">GzipOutputStream</code>, чтобы закодировать или декодировать поток. Например,
-если источник сжат Gzip, то обернем его так:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"some.file.gzip"</span><span class="w">
-    </span><span class="p">(</span><span class="nf">io/file</span><span class="p">)</span><span class="w">
-    </span><span class="p">(</span><span class="nf">io/input-stream</span><span class="p">)</span><span class="w">
-    </span><span class="p">(</span><span class="nf">GzipInputStream.</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>При чтении получим нормальный текст. А чтобы закодировать поток, делаем иначе:
-навесим на выходной поток <code class="language-plaintext highlighter-rouge">GzipOutputStream</code> и колбасим в него. Только в конце
-надо вызвать <code class="language-plaintext highlighter-rouge">.finish</code>, чтобы добить незавершенное окно.</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"myfile.out.gzip"</span><span class="w">
-              </span><span class="n">io/file</span><span class="w">
-              </span><span class="n">io/input-stream</span><span class="p">)</span><span class="w">
-      </span><span class="n">gzip</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">GzipOutputStream</span><span class="w"> </span><span class="n">out</span><span class="p">)]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">while</span><span class="w"> </span><span class="n">...</span><span class="w">
-    </span><span class="p">(</span><span class="nf">.write</span><span class="w"> </span><span class="n">gzip</span><span class="w"> </span><span class="n">&lt;bytes&gt;</span><span class="p">))</span><span class="w">
-  </span><span class="p">(</span><span class="nf">.finish</span><span class="w"> </span><span class="n">gzip</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Удивляет, что при всей банальности gzip используют мало. А ведь он отлично
-подходит для текстовых данных: HTML, JSON, CSS, JS, CSV. В текущем проекте
-сервисы гоняют гигабайты CSV и JSON, и хоть кто-нибудь подумал о сжатии…</p>
-
-<p>Простой эксперимент: несжатый CSV — 146 мегабайтов, сжатый — 26. Почти в шесть
-раз. Даже если закодировать результат в base64, это даст +30% от 26 мегабайтов,
-то есть всего 35. Выгода все равно 4 раза. В том же Nginx сжатие gzip включается
-одной строкой в конфиге.</p>
-
-<p>Еще больше мою веру укрепил крит на проде. Один из сервисов выплюнул 6
-мегабайтов JSON, что не помещается в квоту AWS Lambda. Пришлось в спешке
-прикручивать сжатие, чтобы сообщенька пролезла.</p>
-
-<p>Соответственно, бесят HTTP-клиенты, которые ничего не знают о Gzip. Работа с
-ними превращается в ад: сам проверь заголовки, сам закодируй-раскодируй… и в
-проекте используется именно такой! Он читает ответ как строку, не проверяя
-Content-Encoding, и если там gzip, получается чешуя. Авторам — большой ай-ай за
-игнор веб-стандартов.</p>
-
-<p>Чем раньше вы возьмете gzip в проект, тем лучше. Потом все равно придется, но
-будет больно.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/women-stories/">Женские истории</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-25T00:00:00+00:00">
-        Jan 25, 2024
-    </time>
-
-    <a href="/tag/women/" rel="tag">women</a>, <a href="/tag/sex/" rel="tag">sex</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Когда читаю женские истории — Твиттер, блоги, журналистику, — вижу один и тот же
-паттерн:</p>
-
-<ul>
-  <li>он мне не нравился, но я осталась на свидании;</li>
-  <li>он мне не нравился, но мы целовались;</li>
-  <li>он мне не нравился, но мы поехали к нему;</li>
-  <li>он мне не нравился, но у нас был секс.</li>
-</ul>
-
-<p>То есть он всю дорогу не нравился, но программа шла по плану — от кафе до
-постели.</p>
-
-<p>Тут два момента: либо женщина и правда не знает, что если человек не нравится,
-то и секс с ним будет плохим. Надеюсь, теперь она это знает.</p>
-
-<p>Либо женщина все знает, но понимает, что в данный момент на мужчину лучше она
-рассчитывать не может. Поэтому все, что случилось, выставляется как одолжение с
-ее стороны.</p>
-
-<p>Чем раньше женщина прервет эту цепочку, тем лучше.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/pseudo-resp/">Изображая ответственность</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-25T00:00:00+00:00">
-        Jan 25, 2024
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Я уже писал про известный шаблон в кино. Ученый делает бомбу годами, хотя даже
-грубые расчеты показывают, что она убьет тысячи людей. Ученый курит сигары, не
-спит, в голове красочные приходы.</p>
-
-<p>И вот бомба готова, ее забирают вояки, чтобы взорвать над городом. Гибнет двести
-тысяч человек. ВНЕЗАПНО ученый чувствует ответственность. Пока не умерли эти
-двести тысяч, кто сгорев, кто разлагаясь от лучевой болезни, ответственности не
-было. А тут появилась. Пропали сон и аппетит, начинаются походы в высшие
-инстанции: господин Президент, я чувствую ответственность.</p>
-
-<p>Словом, бред. Лети в Японию и расскажи погибшим про свою ответственность.</p>
-
-<p>Почему это нормально для фильма, ясно: историю всегда натягивают на
-драму. Неважно, про что фильм: бомба, война, политика — на первом месте стоит
-личная драма, иначе зрители не пойдут. Кроме того, зрителя подводит время. Два
-года создания бомбы сжаты до 40 минут, и для нас с вами она появляется внезапно:
-еще пять минут назад не было, а сегодня уже на стенде.</p>
-
-<p>К фильмам у меня нет претензий за этот штамп. Сняли и ладно. Но раздражает,
-когда псевдо-ответственность появляется в реальной жизни.</p>
-
-<p>Скажем, один из разработчиков Постгреса разразился плачем: жаль, что лицензия не
-позволяет запретить Постгрес в России. Ведь наверняка их армия применяет нашу
-базу. Срач вышел знатный, и даже пришел основатель проекта, чтобы унять
-активиста.</p>
-
-<p>Я не имею отношения к российской армии, но уверен: там используется и Постгрес,
-и Мария, и Питон, и Перл, и Плюсы и тысячи протоколов и стеков. Ровно как и в
-другой армии мира. Но если ты хочешь запретить, то где точность? Программист
-должен мыслить точно. Запрещай конкретно армии России. Почему под запрет
-попадает детский сад, где сервер 1С крутится на Постгресе?</p>
-
-<p>Далее, как быть с евреями, которые еще месяц назад обрушали дома с палестинскими
-детьми? Как-то не очень гуманно. Будем отзывать лицензии у всех фирм Израиля?</p>
-
-<p>Когда Китай скажет “Тайвань наш” и начнет свою “спецоперацию”, будем отзывать
-Постгрес у Китая? А потом возвращать по итогам переговоров?</p>
-
-<p>Еще есть плохие парни вроде торговцев оружием, наркотиками и CP. Свои дела они
-тоже хранят в базах данных, запрещай ты им или нет.</p>
-
-<p>Если думать об этом системно, задача становится слишком сложной. Кто-то должен
-трекать новости и решать, у кого сегодня мы отзываем, а кому возвращаем. Кто
-будет этим заниматься? Разработчик? Останется ли у него время на разработку
-после этих вопросов? Если поручить это секретарю, где гарантия, что он правильно
-истолкует повестку дня?</p>
-
-<p>Все потому, что с разработчиком случился казус из заголовка. ВНЕЗАПНО он
-почувствовал ответственность. Захотелось решать, кому можно пользоваться базой,
-а кому нельзя.</p>
-
-<p>Похожая история была с другим разработчиком, как ни странно, тоже связанным с
-Постгресом. У него на сайте был хороший парсер EXPLAIN ANALYSE, но затем автор
-закрыл доступ из России и Беларуси. Его спросили: зачем? Он накатал телегу про
-танки в Чехословакии. Так запрети доступ танковым войскам РФ. Зачем всем
-запрещаешь? Какую проблему ты пытаешься решить?</p>
-
-<p>Казалось бы, программисты — люди с точным мышлением, а в жизни все наоборот: в
-голове кисель.</p>
-
-<p>Для меня выход из ситуации простой: трусы или крестик. Либо ты выходишь из
-разработки со словами: хорош, я в этом не участвую. Либо пишешь качественный
-код, понимая, что мир огромен, и у тебя нет возможности контролировать, кто и
-как его использует. Оба варианта честные и снимают все вопросы.</p>
-
-<p>Вариант с псевдо-ответственностью лжив от начала до конца. Он ситуативен и
-основан на реакции, в нем нет идеи и своей повестки. Это желание попасть в
-тренд: Гугл-Эпл запрещают, а я чем хуже?</p>
-
-<p>Если вы хороший разработчик, прошу вас, не становитесь плохим
-Оппенгеймером. Косплей на великого человека будет крайне неудачным.</p>
-
-<p>Поэтому: не ищите ответственности там, где ее нет. Просто делайте то, что вы
-делаете хорошо. Соблюдать этот принцип несмотря ни на что — уже большая
-ответственность.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/nesting-01/">Вложенность</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-25T00:00:00+00:00">
-        Jan 25, 2024
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/nesting/" rel="tag">nesting</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Об этом никто не пишет, а ведь проблема серьезная. Я говорю о лишней вложенности
-данных. Недавний пример:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:manager</span><span class="w">
- </span><span class="p">{</span><span class="no">:risk</span><span class="w">
-  </span><span class="p">{</span><span class="no">:time</span><span class="w"> </span><span class="s">"10:30"</span><span class="w">
-   </span><span class="no">:task-id</span><span class="w"> </span><span class="mi">100400</span><span class="p">}}</span><span class="w">
- </span><span class="no">:accounter</span><span class="w">
- </span><span class="p">{</span><span class="no">:business</span><span class="w">
-  </span><span class="p">{</span><span class="no">:time</span><span class="w"> </span><span class="s">"12:35"</span><span class="w">
-   </span><span class="no">:task-id</span><span class="w"> </span><span class="mi">100500</span><span class="p">}}}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Это вложенная мапа: на первом уровне роль менеджера, на втором тип апрува, на
-третьем — детали апрува: дата и ссылка на задачу. Спрашивается, зачем было
-группировать события по роли и типу? Какой смысл? Почему не записать два
-события:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[{</span><span class="no">:role</span><span class="w"> </span><span class="no">:manager</span><span class="w">
-  </span><span class="no">:type</span><span class="w"> </span><span class="no">:risk</span><span class="w">
-  </span><span class="no">:time</span><span class="w"> </span><span class="s">"10:30"</span><span class="w">
-  </span><span class="no">:task-id</span><span class="w"> </span><span class="mi">100400</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:role</span><span class="w"> </span><span class="no">:accounter</span><span class="w">
-  </span><span class="no">:type</span><span class="w"> </span><span class="no">:business</span><span class="w">
-  </span><span class="no">:time</span><span class="w"> </span><span class="s">"12:35"</span><span class="w">
-  </span><span class="no">:task-id</span><span class="w"> </span><span class="mi">100500</span><span class="p">}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Плоско, понятно, нет вложенности. Кому надо, сгруппируют и по роли, и по дате, и
-бог знает как еще. А когда сгруппировано до нас, сперва нужно распутать, а потом
-группировать как надо.</p>
-
-<p>Второй пример: есть мапа с ключом children, в которой вектор мап. В каждой мапе
-— айдишка и имя:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:children</span><span class="w">
- </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test1"</span><span class="p">}</span><span class="w">
-  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}</span><span class="w">
-  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test3"</span><span class="p">}]}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Нужно построить индекс <code class="language-plaintext highlighter-rouge">id =&gt; name</code>, чтобы потом по нему искать. Я быстренько
-прошел по children и собрал словарь:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="mi">1</span><span class="w"> </span><span class="s">"test2"</span><span class="w">
- </span><span class="mi">2</span><span class="w"> </span><span class="s">"test2"</span><span class="w">
- </span><span class="mi">3</span><span class="w"> </span><span class="s">"test3"</span><span class="p">}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>На проде — сплошные промахи мимо индекса. Что такое? Оказалось, не до конца
-прокрутил файлик. У некоторых children есть свои children, то есть структура
-такая:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:children</span><span class="w">
- </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test1"</span><span class="p">}</span><span class="w">
-  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}</span><span class="w">
-  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test3"</span><span class="p">}</span><span class="w">
-  </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">4</span><span class="w">
-   </span><span class="no">:name</span><span class="w"> </span><span class="s">"test4"</span><span class="w">
-   </span><span class="no">:children</span><span class="w">
-   </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">5</span><span class="w">
-     </span><span class="no">:name</span><span class="w"> </span><span class="s">"test5"</span><span class="p">}</span><span class="w">
-    </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">6</span><span class="w">
-     </span><span class="no">:name</span><span class="w"> </span><span class="s">"test6"</span><span class="w">
-     </span><span class="no">:children</span><span class="w">
-     </span><span class="p">[</span><span class="n">...</span><span class="p">]}]}]}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>При этом ограничения в глубину нет: может быть два уровня, может двадцать.</p>
-
-<p>Вот опять: кто этот гений, который сгруппировал? Как ты будешь это обходить?
-Ладно у меня Кложа, я написал <code class="language-plaintext highlighter-rouge">(tree-seq :children :children data)</code> и готово. А
-на каком-нибудь Питоне или Джаве голову сломаешь – тут дерево с обходом, нужен
-стек или очередь. Алгоритмы!</p>
-
-<p>Сделай ты плоский список и добавь parent_id. Кому надо, построит иерархию:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test1"</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test2"</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test3"</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test4"</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test5"</span><span class="w"> </span><span class="no">:parent-id</span><span class="w"> </span><span class="mi">4</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">6</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"test6"</span><span class="w"> </span><span class="no">:parent-id</span><span class="w"> </span><span class="mi">5</span><span class="p">}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>И такое постоянно. Беру любой JSON и вижу, как его можно упростить, убрав лишнюю
-вложенность. Вдвойне обидно, что на эту вложенность кто-то тратил время, а она
-не нужна!</p>
-
-<p>Особенно я не люблю, когда вкладывают равнозначные сущности. Например, у нас два
-автора и у каждого две книги. JSON выглядит так:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
-  </span><span class="no">:name</span><span class="w"> </span><span class="s">"John Smith"</span><span class="w">
-  </span><span class="no">:books</span><span class="w">
-  </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">20</span><span class="w">
-    </span><span class="no">:title</span><span class="w"> </span><span class="s">"The Best Novels"</span><span class="p">}</span><span class="w">
-   </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">30</span><span class="w">
-    </span><span class="no">:title</span><span class="w"> </span><span class="s">"Poems"</span><span class="p">}]}</span><span class="w">
- </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w">
-  </span><span class="no">:name</span><span class="w"> </span><span class="s">"Sam Doe"</span><span class="w">
-  </span><span class="no">:books</span><span class="w">
-  </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">40</span><span class="w">
-    </span><span class="no">:title</span><span class="w"> </span><span class="s">"Some Story"</span><span class="p">}</span><span class="w">
-   </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">50</span><span class="w">
-    </span><span class="no">:title</span><span class="w"> </span><span class="s">"Achieves"</span><span class="p">}]}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Что если нужны не книги по авторам, а просто все книги? Опять ходи собирай.</p>
-
-<p>Я придумал способ как бороться такими случаями. О нем — в следующий раз.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/lotus-pose/">Поза лотоса</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-25T00:00:00+00:00">
-        Jan 25, 2024
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/idiots/" rel="tag">idiots</a>, <a href="/tag/designers/" rel="tag">designers</a>, <a href="/tag/lotus/" rel="tag">lotus</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><img src="/assets/static/aws/lotus/1.jpeg" /></p>
-
-<p>Когда я вижу программиста в позе лотоса, в голове играет сюжет.</p>
-
-<p>К автору картинки приезжает особая команда. Обученные люди сажают автора в позу
-лотоса и дают ноутбук. Его заставляют работать в этой позе час. За попытку
-встать, размяться, подвигать шеей — избиение ноутбуком по голове, а отсчет
-времени сбрасывается.</p>
-
-<p>Глядишь, так дизайнеры отучатся рисовать программиста в позе лотоса!</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/boy-heron/">Мальчик и птица</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-25T00:00:00+00:00">
-        Jan 25, 2024
-    </time>
-
-    <a href="/tag/movies/" rel="tag">movies</a>, <a href="/tag/anime/" rel="tag">anime</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Я знал, что этого делать не следует, но сделал — сходил на мульт “Мальчик и
-птица”. Будет много скепсиса и спойлеров, я предупреждал.</p>
-
-<p>Писать о мультике тяжело. Хаяо Миядзаки — гений и наше все, поэтому любая
-критика в его адрес — что карикатуры на Мухаммеда: порвут на части. Я не буду
-критиковать мастера, а только опишу ощущения от просмотра.</p>
-
-<p>Начнем с того, что фильму не повезло с названием. В оригинале он называется “Как
-поживаете?” — это заголовок книги, по которой он снят. Однако связи между
-сюжетом и названием нет. Лишь один раз герой находит книгу с таким заголовком и
-благополучно забывает о ней. Кто и как поживает — не ясно.</p>
-
-<p><img src="/assets/static/aws/heron/1.jpg" /></p>
-
-<p>В американском прокате мульт назвали “The boy and the heron” — мальчик и
-цапля. Это правильно, потому что мальчика и (псевдо)цаплю мы видим большую часть
-фильма. И хотя у слова “heron” однозначный перевод — цапля, Карл!, — в русском
-прокате она стала птицей. Эта претензия не к Миядзаки, а к переводчикам.</p>
-
-<p>В целом, мульт страдает от тех же проблем, что и <a href="/avatar2/">второй Аватар</a>. При
-запредельном качестве картинки в нем никакой сюжет, все скомкано и
-ситуативно. Зрителя отвлекает миллион незначащих деталей. Досадно, что бюджет
-спустили на визуальную красоту, попустившись смыслом.</p>
-
-<p><img src="/assets/static/aws/heron/2.jpg" /></p>
-
-<p>Мульт идет 2 часа 10 минут — не так уж и мало. Первые 40 минут — это топтание на
-тему “не ходи в запретное место”. Понятно, что когда ребенку говорят не ходить
-куда-то, он пойдет, вопрос в том, как скоро. Но с этим большая затяжка.</p>
-
-<p>Когда герой входит в запретное место, начинается фантасмагория. Каждые десять
-минут он проваливается в новый мир со своими причудами. Мелькают локации,
-существа, загадочные сцены. Все это красиво, но требует ответов: кто это,
-откуда, зачем и что если? Режиссер не считает нужным все это объяснять; он
-забрасывает героя в новую локацию, где другие существа, враги и друзья. Словно
-летишь на карусели и видишь только мелькание.</p>
-
-<p><img src="/assets/static/aws/heron/3.jpg" /></p>
-
-<p>Иногда режиссер дает отдохнуть: показывает пять минут, как девушка режет хлеб,
-мажет маслом и ест. Ме-е-едленно и основа-а-ательно. Без музыки, только звон
-посуды и скрип пола. Красиво, но опять же — назрел миллион вопросов, может,
-объясните хоть что-нибудь? А бутерброд потерпит.</p>
-
-<p>Если вы думаете, что я цепляюсь зря, то вот малая толика вопросов:</p>
-
-<ul>
-  <li>Зачем герой рассек голову камнем?</li>
-  <li>Зачем мачеха пошла в башню?</li>
-  <li>Почему нельзя входить в родильную комнату?</li>
-  <li>Почему мачеха гонит героя прочь?</li>
-  <li>Какую роль играл нерожденный ребенок? Его хотели забрать? Кто и зачем?</li>
-  <li>Какую цель преследовал король попугаев?</li>
-  <li>Что за камни, из которых колдун строил башню? Почему они злые?</li>
-  <li>Что за хранитель гробницы? Почему его не показали?</li>
-  <li>Это все один мир или разные?</li>
-  <li>Если парень в мире мертвых — он умер?</li>
-  <li>Мать парня умерла в больнице или вознеслась на небо, потому что была огненным духом?</li>
-  <li>Что стало в параллельном мире после апокалипсиса?</li>
-  <li>Куда делся дед-колдун? Кто унаследовал его?</li>
-</ul>
-
-<p>Этих вопросов я могу написать пару экранов, но не вижу смысла. Спрашиваю вас:
-может быть, из всей этой каши надо было выбрать что-то одно и хорошенько его
-проработать? А не вываливать на голову, как тарелку с лапшой.</p>
-
-<p><img src="/assets/static/aws/heron/4.jpg" /></p>
-
-<p>Как я уже говорил, сюжету не хватает целостности: непонятно, какую проблему
-решает герой. Он отправился в башню, чтобы спасти мачеху, однако:</p>
-
-<ul>
-  <li>
-    <p>на чердаке он находит послание умершей матери — книгу “Как поживаете?”. Что
-там написано и какую роль играет находка — не ясно.</p>
-  </li>
-  <li>
-    <p>В мире мертвых живут забавные пузыри, которые улетают и становятся
-людьми. Этих пузырей жрут пеликаны. Показана сцена, где они слопали почти все
-пузыри. Как это относится к мачехе? Мы ее спасаем или нерожденных людей?</p>
-  </li>
-  <li>
-    <p>В мире мертвых живет женщина-рыболов, при этом она вовсе не мертвая. Что она
-там делает и зачем помогает герою — непонятно.</p>
-  </li>
-  <li>
-    <p>В другом мире живет горящая девочка, которую приносят в жертву главному
-колдуну. Намекается, что девочка — сестра мачехи и мать героя в мире людей. Как
-все это связано, можно только гадать.</p>
-  </li>
-</ul>
-
-<p>В сюжете напутаны сложные отношения: смущение подростка перед молодой мачехой,
-отстранение от отца, наставничество колдуна. Все это эпизодически, ситуативно,
-без малейшей проработки.</p>
-
-<p>Пожалуй, главное: нет морали. Совершенно не ясно, от чего предостерегает
-режиссер. Как жить, чтобы это не повторилось? Или наоборот: все, что случилось —
-хорошо? Где ориентиры?</p>
-
-<p><img src="/assets/static/aws/heron/5.jpg" /></p>
-
-<p>Изумила пара сцен:</p>
-
-<ul>
-  <li>
-    <p>отец дает беременной жене чемодан со словами “осторожно, он тяжелый”. После
-чего смотрит, как она тащит его в коляску. Помочь беременной жене? Не слышали.</p>
-  </li>
-  <li>
-    <p>Парнишка бьет себя камнем по голове, из нее вытекает ЛИТР крови. Парень
-спокойно идет домой. Хотел бы я это видеть. Нельзя было как-то реалистичней? Как
-писал выше, тема самонаказания не раскрыта.</p>
-  </li>
-</ul>
-
-<p>Словом, если вы смотрели другие мульты Миядзаки, сходите на “Мальчика и птицу”
-из чувства долга: все-таки прощальный мульт. Недочеты можно списать на фирменный
-стиль автора: кроме него таких мультов (почти) никто не делает. В отрыве от
-остального творчества Миядзаки мульт затянут и скучноват. Очень на любителя.</p>
-
-<p>PS: если речь пошла об аниме, в следующем посте расскажу о другом мульте,
-который, напротив, советую посмотреть.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/pg2-bench-2">PG2 benchmarks, part 2</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-24T00:00:00+00:00">
-        Jan 24, 2024
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<h2>
-
-    Table of Content
-
-</h2>
-
-<ul id="toc-item-pg2-bench-2">
-  <li><a href="#introduction" id="toc-item-pg2-bench-2-introduction">Introduction</a></li>
-  <li><a href="#test-1-sending-1000-requests-in-series" id="toc-item-pg2-bench-2-test-1-sending-1000-requests-in-series">Test 1. Sending 1000 requests in series</a></li>
-  <li><a href="#test-2-sending-1000-requests-with-concurrency-of-16" id="toc-item-pg2-bench-2-test-2-sending-1000-requests-with-concurrency-of-16">Test 2. Sending 1000 requests with concurrency of 16</a></li>
-  <li><a href="#test-3-sending-1000-requests-with-concurrency-of-64" id="toc-item-pg2-bench-2-test-3-sending-1000-requests-with-concurrency-of-64">Test 3. Sending 1000 requests with concurrency of 64</a></li>
-</ul>
-
-<p>In the <a href="/en/pg2-bench-1">previous post</a>, I was measuring bare query/execute/copy functions
-of the library. Although it’s useful, it doesn’t render the whole picture
-because it’s unclear how an application will benefit from faster DB access.</p>
-
-<p>This post covers the second group of benchmarks I made: a simple HTTP server
-that reads random data from the database and responds with JSON. The benchmark
-compares PG2 and Next.JDBC as before.</p>
-
-<h2 id="introduction">Introduction</h2>
-
-<p>Some general notes: the server uses Ring Jetty version 1.7.1, JVM 21, Ring-JSON
-0.5.1 for middleware. The handles are synchronous. The application uses
-connection pools for both libraries, and the pools are opened in advance when
-the server gets started. The maximum allowed pool size is 64. HTTP requests are
-sent by the <code class="language-plaintext highlighter-rouge">ab</code> utility with different <code class="language-plaintext highlighter-rouge">-n</code> and <code class="language-plaintext highlighter-rouge">-c</code> keys; the <code class="language-plaintext highlighter-rouge">-l</code> flag is
-always sent.</p>
-
-
-                    <p><a href="/en/pg2-bench-2">Read more &rarr;</a></p>
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/pg2-bench-1">PG2 early announce and benchmarks, part 1</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-22T00:00:00+00:00">
-        Jan 22, 2024
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p><em>TL;DR: <a href="https://github.com/igrishaev/pg2">https://github.com/igrishaev/pg2</a></em></p>
-
-<h2>
-
-    Table of Content
-
-</h2>
-
-<ul id="toc-item-pg2-bench-1">
-  <li><a href="#introduction" id="toc-item-pg2-bench-1-introduction">Introduction</a></li>
-  <li><a href="#how-the-benchmarks-were-made" id="toc-item-pg2-bench-1-how-the-benchmarks-were-made">How the benchmarks were made</a></li>
-  <li><a href="#test-1-querying-a-single-column-series-based-query-with-50000-rows" id="toc-item-pg2-bench-1-test-1-querying-a-single-column-series-based-query-with-50000-rows">Test 1. Querying a single-column, series-based query with 50000 rows</a></li>
-  <li><a href="#benchmark-2-a-complex-multi-column-randomly-generated-select-query" id="toc-item-pg2-bench-1-benchmark-2-a-complex-multi-column-randomly-generated-select-query">Benchmark 2. A complex, multi-column, randomly generated SELECT query</a></li>
-  <li><a href="#test-3-querying-randomly-generated-json" id="toc-item-pg2-bench-1-test-3-querying-randomly-generated-json">Test 3. Querying randomly generated JSON</a></li>
-  <li><a href="#test-4-inserting-a-single-row-with-no-transaction" id="toc-item-pg2-bench-1-test-4-inserting-a-single-row-with-no-transaction">Test 4. Inserting a single row with no transaction</a></li>
-  <li><a href="#test-5-inserting-a-row-in-a-transaction" id="toc-item-pg2-bench-1-test-5-inserting-a-row-in-a-transaction">Test 5. Inserting a row in a transaction</a></li>
-  <li><a href="#test-6-copy-in-a-vast-csv-file-from-disk" id="toc-item-pg2-bench-1-test-6-copy-in-a-vast-csv-file-from-disk">Test 6. COPY IN a vast CSV file from disk</a></li>
-  <li><a href="#test-7-copy-in-a-collection-of-rows-in-csv-format" id="toc-item-pg2-bench-1-test-7-copy-in-a-collection-of-rows-in-csv-format">Test 7. Copy IN a collection of rows in CSV format</a></li>
-  <li><a href="#test-8-copy-in-a-collection-of-rows-in-binary-format" id="toc-item-pg2-bench-1-test-8-copy-in-a-collection-of-rows-in-binary-format">Test 8. Copy IN a collection of rows in binary format</a></li>
-  <li><a href="#test-9-copy-out-a-table-into-an-outputstream" id="toc-item-pg2-bench-1-test-9-copy-out-a-table-into-an-outputstream">Test 9. COPY OUT a table into an OutputStream</a></li>
-  <li><a href="#test-10-measuring-connection-pools" id="toc-item-pg2-bench-1-test-10-measuring-connection-pools">Test 10. Measuring connection pools</a></li>
-</ul>
-
-<h2 id="introduction">Introduction</h2>
-
-<p>During the last year, I was working on <a href="https://github.com/igrishaev/pg">PG</a> — JDBC-free PostgreSQL driver in
-pure Clojure. By purity it means, there is only a TCP socket to read and write
-bytes according to the official PostgreSQL protocol, and nothing more.</p>
-
-<p>It was fun: the very idea of implementing something low-level in Clojure was a
-challenge. I’ve made a series of tricks to squeeze the performance: mutable
-collections in favour of Clojure’s ones, special macros to traverse collections
-using Iterator and .forEach, and so on. After all, my driver was about 1.5 times
-slower than Next.JDBC, and I still think there is room for further improvement.</p>
-
-<p>One may ask what is the point of making a driver from scratch in 2024. The
-reason is, I’m still missing plenty of Postgres features when working with it
-from Clojure. Namely:</p>
-
-<ul>
-  <li>
-    <p>no built-in JSON support. In every project, I’ve got to extend some protocols
-with PGObject, encode and decode the JSON manually;</p>
-  </li>
-  <li>
-    <p>no COPY support. In Postgres, COPY IN/OUT is one of the best features I can
-remember. But there is no built-in CSV nor binary encoding, for example.</p>
-  </li>
-  <li>
-    <p>Poor time support: selecting a timestamp returns an instance of
-<code class="language-plaintext highlighter-rouge">java.sql.Timestamp</code> which is based on <code class="language-plaintext highlighter-rouge">java.util.Date</code>: a mutable object
-deprecated in Java 1.1.</p>
-  </li>
-  <li>
-    <p>Poor array support: only a certain number of types, no multidimensional
-arrays, etc.</p>
-  </li>
-  <li>
-    <p>No built-in connection pool.</p>
-  </li>
-</ul>
-
-<p>Today I deprecated the PG project in favour of <a href="https://github.com/igrishaev/pg2">PG2</a>. This is a successor
-of PG(one), my second attempt to make a JDBC-free driver for Postgres. This time
-around, it’s written completely in Java with a thin Clojure layer. I’ve made
-some benchmarks and it looks like PG2 2-3 times faster than Next.JDBC. There is
-no documentation yet, only integration tests that cover plenty of cases (I
-borrowed the old tests and improved then). Although the documentation is highly
-required, I could not wait to announce PG2 and share the benchmarks.</p>
-
-<h2 id="how-the-benchmarks-were-made">How the benchmarks were made</h2>
-
-<p>I’ve got three Mac devices with core i5, i9, and ARM M1 processors. On each
-device, I’ve got PostgreSQL installed. All the settings are default, no changes
-are made. JVM is version 21 although the 16th is the minimum version. The
-benchmarks are made with Criterium version 0.4.6.</p>
-
-<p>There are two types of benchmarks, actually. In the first group, I measure
-query/execute functions using the Criterium framework. In the second group, I’m
-running a simple HTTP server using Ring + Jetty + JSON and measuring requests
-per second with Apache Benchmark (ab). For each test, I show the source code
-with a chart and comments.</p>
-
-<p>The source code of benchmarks can be found <a href="https://github.com/igrishaev/pg2/blob/master/pg-bench/src/pg/bench.clj">in the repository</a>.</p>
-
-
-                    <p><a href="/en/pg2-bench-1">Read more &rarr;</a></p>
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/pre-2024/">Предновогоднее</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-12-31T00:00:00+00:00">
-        Dec 31, 2023
-    </time>
-
-    <a href="/tag/ny/" rel="tag">NY</a>, <a href="/tag/2024/" rel="tag">2024</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Этот пост — просто чтобы сказать что-нибудь хорошее перед Новым годом.</p>
-
-<p>Спасибо всем, кто меня читает. Я отключил аналитику и не знаю, становится ли
-читателей больше или меньше. Хочется верить, что кому-то все еще интересны мои
-статьи. Надеюсь, это сохранится и в будущем.</p>
-
-<p>Недавно я перенес партию заметок и Телеграма в блог, и в комментариях упрекнули,
-что много нытья про плохой софт. Я перечитал и понял, что это так. Давно
-заметил: находить недостатки в чужой работе легко. Можно взять айфон и найти
-сотню недостатков в интерфейсе. Это обеспечит блог постами на год вперед, но
-кому интересен поток жалоб?</p>
-
-<p>Поэтому я решил писать меньше о проблемах софта и больше — о чем-нибудь
-другом. На ум приходят такие темы:</p>
-
-<ul>
-  <li>
-    <p>большой пост про майнинг с картинками. Я майнил два года, были фермы, горы
-железа и прочего. Год назад я вышел из майнинга и теперь могу рассказать о
-нем.</p>
-  </li>
-  <li>
-    <p>драйвер для Постгреса. Недавно я переписал его на Джаве и теперь он в три раза
-быстрее, чем next.jdbc Шона Корфилда. Пишу и сам в это не верю. Но многое
-нужно поправить, прежде чем выкатить релиз.</p>
-  </li>
-  <li>
-    <p>пост про 1С, на котором я писал года три-четыре еще в Чите. Меня задевает,
-когда про 1С рассуждают те, кто знает его со слов свата кума сестры. Расскажу,
-как за вечер сделать на 1С то, что фронтендеры пилят месяцами.</p>
-  </li>
-</ul>
-
-<p>Всем удачи и добра, увидимся в новом году.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page23" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 24 из 94</span>
+        <span class="page_number ">Страница 24 из 95</span>
         
         <a href="/page25" class="next">&rarr;</a>
         
