@@ -80,16 +80,16 @@ standard `clojure.zip` module for Zippers. Namely, the library provides
 functions for better search and iteration, e.g. breadth-first algorithm,
 specific zippers and so on.
 
--- [User Agent](https://github.com/igrishaev/user-agent) is a simple library to
-parse HTTP User-Agent header. It is based on the UADetector Java library. The
-library has got 650.000 of downloads on Clojars (don't know why).
+-- [User Agent](https://github.com/igrishaev/user-agent) is a helper to parse
+HTTP User-Agent header (based on the UADetector Java library). It has got
+650.000 of downloads on Clojars (don't know why).
 
 -- [Farseer](https://github.com/igrishaev/farseer) is my attempt to build a JSON
 RPS client and server. It's split on sub-projects with core functionality, a
 server, a client and utilities. It follows the official spec and serves multiple
 commands at once, parallel processing, input and output validation and so on.
 
--- [Pact](https://github.com/igrishaev/pact) is a simple library to chain values
+-- [Pact](https://github.com/igrishaev/pact) is a small library to chain values
 through a number of handlers. This approach reminds monads in Haskell and how
 this language manages them: "good" values propagate further, "bad" ones
 interrupt the pipeline.
