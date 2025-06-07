@@ -9,7 +9,7 @@ maintain, some of them I put here for history purpose only.
 
 [clj-commons]: https://github.com/clj-commons
 [webdriver]: https://www.w3.org/TR/webdriver/
-[rome]: https://github.com/rometools/rome
+[rometools]: https://github.com/rometools/rome
 
 -- [Etaoin](https://github.com/clj-commons/etaoin) is a library to automate a
 browser from code. It implements the [Webdriver][webdriver] protocol in pure
