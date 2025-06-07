@@ -109,4 +109,4 @@ another spec (like we do it in Malli nowadays).
 
 -- [Toy Parser](https://github.com/igrishaev/toy-parser) is demo repository for
 students learning parsers. It provides a number of basic parsers and two
-showcases parsing prefix and infix notations.
+showcases processing prefix and infix notations.
