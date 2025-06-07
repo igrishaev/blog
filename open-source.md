@@ -64,7 +64,7 @@ DynamoDB cloud service.
 DB AWS service. Fast and robust with narrow dependencies. Supports almost every
 API. The library is also compatible with Yandex YDB (see on Yandex cloud).
 
--- [Bogus](https://github.com/igrishaev/bogus) is simple UI debugger for
+-- [Bogus](https://github.com/igrishaev/bogus) is a simple UI debugger for
 Clojure. It interrupts execution and renders a window with local variables and a
 simple REPL. By using this REPL, you evaluate expressions relevant to the
 current position and state. I use it every day since I made it.
