@@ -105,18 +105,198 @@
         <li>
 
             <h2>
-                <a class="post-link" href="/slack-update/">Дело раскрыто</a>
+                <a class="post-link" href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
+          datetime="2024-04-24T00:00:00+00:00">
+        Apr 24, 2024
     </time>
 
-    <a href="/tag/slack/" rel="tag">slack</a>, <a href="/tag/updates/" rel="tag">updates</a>
+    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/athena/" rel="tag">athena</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Все статьи из цикла AWS</p>
+
+<ul>
+  <li><a href="/aws-0/">Амазон</a></li>
+  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
+  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
+  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
+  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
+</ul>
+
+<p>Еще одна история о том, как Амазон может попить крови.</p>
+
+<p>Напомню особенности нашей архитектуры. Сервисы записывают в S3 сущности разных
+типов. Их может быть много, например, полтора миллиона такого-то типа. Чтобы
+выгрести сущности разом, мы используем чудо-оружие Амазона — сервис Athena. Он
+собирает файлы из бакета и склеивает в один CSV.</p>
+
+<p>Среди сущностей встречаются выбракованные, и при обходе CSV их нужно
+игнорировать. Один из признаков брака — вложенное поле <code class="language-plaintext highlighter-rouge">attrs</code>, которое равно
+<code class="language-plaintext highlighter-rouge">null</code>. Не проблема: получаю ленивую коллекцию сущностей и накладываю на нее
+фильтр:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(-&gt;&gt; csv
+     (get-lazy-seq ...)
+     (filter
+      (fn [entity]
+        (-&gt; entity :attrs nil?))))
+</code></pre></div></div>
+
+<p>На проде, по различным логам и эксепшенам, вижу, что битые сущности просочились
+в обработку. Как так?</p>
+
+<p>А вот как: в оригинальном JSON поле attrs было <code class="language-plaintext highlighter-rouge">null</code>, все верно. Но при
+агрегации в CSV Амазон экранирует <code class="language-plaintext highlighter-rouge">null</code> кавычками и получается <code class="language-plaintext highlighter-rouge">\"null\"</code>. При
+этом его не волнует, что <code class="language-plaintext highlighter-rouge">null</code> находится в середине JSON-строки, которая уже
+экранирована. Какой-то парсер доходит до <code class="language-plaintext highlighter-rouge">null</code> и пишет его с кавычками.</p>
+
+<p>В результате при чтении JSON получается <code class="language-plaintext highlighter-rouge">{"attrs": "null"}</code>, то есть строка с
+буквами n, u, l, l. Чтобы выкинуть эту запись, я переписал фильтр так:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">aggregate</span><span class="w"> </span><span class="no">:attrs</span><span class="w"> </span><span class="nb">nil?</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">aggregate</span><span class="w"> </span><span class="no">:attrs</span><span class="w"> </span><span class="p">(</span><span class="nb">=</span><span class="w"> </span><span class="s">"null"</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Спрашивается, зачем я оставил первый вариант с чистым <code class="language-plaintext highlighter-rouge">nil?</code> Потому что, если
+однажды мы перейдем на другое хранилище, поле опять станет null вместо <code class="language-plaintext highlighter-rouge">"null"</code>,
+и фикс придется откатывать. А так оба случая покрыты: и нормальный, и кривой.</p>
+
+<p>Разумеется, прикол с <code class="language-plaintext highlighter-rouge">null</code> нигде не описан, в Гугле ничего нет. Счастливой
+отладки, уважаемые коллеги!</p>
+
+<p>Вот так я потерял еще один день. Каждый раз, распутав новый квест от Амазона,
+откидываюсь в кресле и тихо матерюсь. А затем иду дальше.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/grooming/">Весенняя чистка</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-04-18T00:00:00+00:00">
+        Apr 18, 2024
+    </time>
+
+    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/telegram/" rel="tag">telegram</a>, <a href="/tag/grooming/" rel="tag">grooming</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Несколько лет назад я удалился из всех соцсетей — всех без исключения. Ни разу
+не пожалел: было лишь два раза, когда нужно было догнать человека в условном
+ВК. В таких случаях я пишу с телефона жены, прошу почту и дальше общаюсь по
+почте. Если у человека нет почты, а только ВК, то скорее всего, нас ничего не
+связывает.</p>
+
+<p>То же самое делаю с Телеграмом: выхожу из всех каналов и чатов. Покинул
+кложурный чатик, джавный, LaTeX, местное айти-комьюнити, в создании которого
+участвовал, и многое другое.</p>
+
+<p>Остались: человек не про айти, человек про айти и канал банка. Из последнего
+тоже думаю выйти: важной информации мало, сплошные вебинары и графомания а-ля
+“открываем кофейню”. Важную информацию так или иначе дублируют в приложении.</p>
+
+<p>Спрашивается, зачем выходить? Нельзя что ли спрятать каналы в архив? Я и сам не
+знаю: просто хочется сократить информационный шум. Заметил, что все эти чаты и
+каналы приносят мало пользы, но потребляют внимание. Они развивают потребность
+без конца открывать телефон и проверять, что новенького. На это легко подсесть,
+а отучиться сложно.</p>
+
+<p>Мне возражают: да, информации много, но как тогда находить что-то новое? Ответ
+прост: случайно. Просто раз в две недели просматривать популярные ресурсы, и
+если там было что-то стоящее, скорее всего оно будет на главной. А если нет —
+что ж, не повезло, вы об этом не узнаете.</p>
+
+<p>Не вижу повода расстраиваться. В мире полно хороших статей и видео, но мы о них
+не знаем. На условном Хабрахабре примерно одна из ста публикаций полезна, но
+ради нее нужно пролистать 99 других, полных рекламы, написанных копирайтерами за
+100 рублей, или вообще сделанных Гугло-переводчиком. У меня такого желания нет.</p>
+
+<p>Наконец, на любой канал можно подписаться опять и даже прочесть все, что вы
+пропустили. Но пока что сожаления нет, и надеюсь, не будет и в будущем.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/console/">В консоле</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-04-18T00:00:00+00:00">
+        Apr 18, 2024
+    </time>
+
+    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/words/" rel="tag">words</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Забавляет, когда пишут “посмотри в консоле”. Получается, что консоль —
+существительное мужского рода? В пенале, в профиле, в консоле.</p>
+
+<p>Часто ошибаются с постелью. Я еще в постеле. Опоздал на звонок, потому что в
+постеле. Опять мужской род.</p>
+
+<p>Из комментариев: я живу в Рязане. А я в Казане! А я на Кубане!</p>
+
+<p>Самые невезучие слова — это исключения “бреет” и “стелет”. У рэперов есть
+выражение “стелить”, то есть удачно складывать рифмы. В комментариях на Ютубе
+частенько встречается: классно стелишь, бро.</p>
+
+<p>Интересно, есть ли хоть один рэпер, который пишет “стелешь” правильно?
+Сомневаюсь.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/pg-hugsql">PG2 release 0.1.11: HugSQL support</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-04-14T00:00:00+00:00">
+        Apr 14, 2024
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/hugsql/" rel="tag">hugsql</a>
 
 </div>
 
@@ -124,493 +304,305 @@
             <div class="entry">
                 
                     
-<p>Однажды я писал о том, что <a href="/slack-outdated/">Слак отказался работать</a> с
-интересной формулировкой: устарела операционная система. Я обновил приложение,
-но не помогло. Очевидно, Слак захотел доступ к какой-то функции, которой нет в
-текущей операционке. Я решил, что эта функция нужна маркетингу или “более
-удобным” обновлениям.</p>
+<p><em>The latest <a href="https://github.com/igrishaev/pg2">0.1.11 release</a> of PG2 introduces HugSQL support.</em></p>
 
-<p>Так и вышло!</p>
+<p>The <code class="language-plaintext highlighter-rouge">pg2-hugsql</code> package brings integration with the <a href="https://www.hugsql.org/">HugSQL library</a>.
+It creates functions out from SQL files like HugSQL does but these functions use
+the PG2 client instead of JDBC. Under the hood, there is a special database
+adapter as well as a slight override of protocols to make inner HugSQL stuff
+compatible with PG2.</p>
 
-<p>На ноуте, которым я пользуюсь реже всего, я обновился по самые помидоры, чтобы
-знать, к чему готовиться. Накатил операционку, Слак и прочий хлам. И вот что
-происходит: когда Слак находит обновление, он хочет поставить его автоматом. Но
-не хватает прав, и выскакивает такая модалка:</p>
+<p>Since the package already depends on core HugSQL functionality, there is no need
+to add the latter to dependencies: having <code class="language-plaintext highlighter-rouge">pg2-hugsql</code> by itself will be enough
+(see <a href="#installation">Installation</a>).</p>
 
-<p><img src="/assets/static/aws/slack-outdated/1.jpeg" /></p>
+<h3 id="basic-usage">Basic Usage</h3>
 
-<p>Приложи пальчик, а дальше я сама.</p>
+<p>Let’s go through a short demo. Imagine we have a <code class="language-plaintext highlighter-rouge">demo.sql</code> file with the
+following queries:</p>
 
-<p>Эта модалка действует на всю систему. Она вылазит не в Слаке, а на уровне
-операционки. Если бы пишете код, шарите экран, смотрите ютучик — будте готовы,
-что в любой момент она вылезет и потребует реакции.</p>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name create-demo-table :!</span>
+<span class="k">create</span> <span class="k">table</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="p">(</span><span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span> <span class="n">title</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">);</span>
 
-<p>На минуточку: она загораживает все! Вот такой прикол. Через час после закрытия
-Слак проделает то же самое, и модалка вылезет опять.</p>
+<span class="c1">-- :name insert-into-table :! :n</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="p">(</span><span class="n">title</span><span class="p">)</span> <span class="k">values</span> <span class="p">(:</span><span class="n">title</span><span class="p">);</span>
 
-<p>Разумеется, никаких настроек, чтобы это отключить, нет. С трудом нахожу слова в
-адрес людей, кто программировал эту дичь. Взята новая высота — или, скорее,
-пробито дно.</p>
+<span class="c1">-- :name insert-into-table-returning :&lt;!</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="p">(</span><span class="n">title</span><span class="p">)</span> <span class="k">values</span> <span class="p">(:</span><span class="n">title</span><span class="p">)</span> <span class="n">returning</span> <span class="o">*</span><span class="p">;</span>
 
-<p>Но есть способ. Помните я писал про <a href="/firewall/">фаервол Lulu</a>? С его помощью я
-отбираю у программ доступ в сеть, в том числе — к обновлениям. Оказалось, нужно
-добавить запрет как на картинке, и готово — доступа к обновлениям нет, модалка
-не появляется.</p>
+<span class="c1">-- :name select-from-table :? :*</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="k">order</span> <span class="k">by</span> <span class="n">id</span><span class="p">;</span>
 
-<p><img src="/assets/static/aws/slack-outdated/2.jpeg" /></p>
+<span class="c1">-- :name get-by-id :? :1</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="p">:</span><span class="n">id</span> <span class="k">limit</span> <span class="mi">1</span><span class="p">;</span>
 
-<p>Все довольны, все смеются. Но блядским Слаком все равно стараюсь пользоваться
-реже.</p>
+<span class="c1">-- :name get-by-ids :? :*</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="k">where</span> <span class="n">id</span> <span class="k">in</span> <span class="p">(:</span><span class="n">v</span><span class="o">*</span><span class="p">:</span><span class="n">ids</span><span class="p">)</span> <span class="k">order</span> <span class="k">by</span> <span class="n">id</span><span class="p">;</span>
 
-                
-            </div>
+<span class="c1">-- :name insert-rows :&lt;!</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">title</span><span class="p">)</span> <span class="k">values</span> <span class="p">:</span><span class="n">t</span><span class="o">*</span><span class="p">:</span><span class="k">rows</span> <span class="n">returning</span> <span class="o">*</span><span class="p">;</span>
 
-        </li>
-        
-        <li>
+<span class="c1">-- :name update-title-by-id :&lt;!</span>
+<span class="k">update</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="k">set</span> <span class="n">title</span> <span class="o">=</span> <span class="p">:</span><span class="n">title</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="p">:</span><span class="n">id</span> <span class="n">returning</span> <span class="o">*</span><span class="p">;</span>
 
-            <h2>
-                <a class="post-link" href="/services/">Сервисы</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/services/" rel="tag">services</a>, <a href="/tag/programming/" rel="tag">programming</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Приходилось работать в проекте со множеством сервисов. Решил пожаловаться, какое
-же это неблагодарное дело — выскребать данные по углам, чтобы собрать конфету.</p>
-
-<p>Ощущение, что сервисы делают люди, лишенные эмпатии. Например, есть метод
-<code class="language-plaintext highlighter-rouge">get-by-id</code>, чтобы взять сущность по айдишке. Угадайте, сколько сервисов
-поддерживают <code class="language-plaintext highlighter-rouge">get-by-idS</code> — получить список по айдишкам? В лучшем случае
-половина. У оставшейся половины <code class="language-plaintext highlighter-rouge">get-by-ids</code> возвращает сущности порциями по
-сто. Тебе нужно 250? Пиши обертку с пагинацией, <code class="language-plaintext highlighter-rouge">next-page</code>, <code class="language-plaintext highlighter-rouge">limit/offset</code>, вот
-это все.</p>
-
-<p>Вызывал сервис несколько тысяч раз? Начинаются разборки “кто нас
-дидосит”. Вызывай редко, не больше десяти раз, а еще лучше никогда. И везде
-проблемы с сообщением об ошибке. Передал что-то не то — иди смотри логи.</p>
-
-<p>Я согласен с тем, что логику нужно разносить по сервисам. Но сервисы должны
-использовать общую шину данных: базу, очередь сообщений, файлы в S3 в конце
-концов. Гонять друг другу JSON выглядит хорошо в теории, но на практике — фу.</p>
-
-<p>Условный Постгрес выплюнет миллион записей за доли секунды. Забрать этот же
-миллион из другого сервиса — приключение на неделю. Тут и метрики, лимиты,
-квоты, сетевые спайки, etc… А когда таких запросов несколько, сервис ложится
-спать.</p>
-
-<p>Эти сервисы напоминают современного айтишника: хрупкого, тряпковатого мужчину 25
-лет, который чуть что — выгорает. У которого все токсичны и вообще — отстаньте.</p>
-
-<p>Удивляет, что подобные архитектуры строятся намеренно, и их создателям платят
-большие деньги. При этом опция “легкий доступ к данным” в архитектуру не входит.</p>
-
-<p>А мне разгребать.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/kargo-2/">Карго-культ (2)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/kargo/" rel="tag">kargo</a>, <a href="/tag/cult/" rel="tag">cult</a>, <a href="/tag/monkeys/" rel="tag">monkeys</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В комментариях к <a href="/kargo-1/">прошлой заметке</a> один из читателей заметил, что
-эксперимент с обезьянами — выдумка и никогда не проводился. Похоже, он прав!</p>
-
-<p>Впервые эксперимент упоминется в книге <a href="https://www.amazon.com/dp/0875847161">Competing for the Future</a> by Gary
-Hamel and C. K. Prahalad. Вот дословная цитата:</p>
-
-<blockquote>
-  <p>4 monkeys in a room. In the center of the room is a tall pole with a bunch of
-bananas suspended from the top. One of the four monkeys scampers up the pole and
-grabs the bananas. Just as he does, he is hit with a torrent of cold water from
-an overhead shower. He runs like hell back down the pole without the
-bananas. Eventually, the other three try it with the same outcome. Finally, they
-just sit and don’t even try again. To hell with the damn bananas. But then, they
-remove one of the four monkeys and replace him with a new one. The new monkey
-enters the room, spots the bananas and decides to go for it. Just as he is about
-to scamper up the pole, the other three reach out and drag him back down. After
-a while, he gets the message. There is something wrong, bad or evil that happens
-if you go after those bananas. So, they kept replacing an existing monkey with a
-new one and each time, none of the new monkeys ever made it to the top. They
-each got the same message. Don’t climb that pole. None of them knew exactly why
-they shouldn’t climb the pole, they just knew not to. They all respected the
-well established precedent. EVEN AFTER THE SHOWER WAS REMOVED!</p>
-</blockquote>
-
-<p>Эксперимент зашел публике, и его стали широко использовать. Позже несколько
-людей пытались узнать подробности: кто и когда проводил этот эксперимент. Но
-один из авторов умер, а второй отвечал отписками через секретаря. Самое
-интересное, что удалось из него выжать:</p>
-
-<blockquote>
-  <p>Our apologies, but Professor Hamel does not have the original source
-information at hand in terms of your request.</p>
-</blockquote>
-
-<p>Похоже, эксперимент был выдуман авторами, чтобы придать вес другой
-идее. Возможно, они слышали что-то краем уха от зоологов, а остальное
-додумали. Надо иметь в виду, что книга написана в 1996 году, когда интернет был
-убогим, и проверить информацию было невозможно.</p>
-
-<p>Напоминает историю про 25 кадр, который, в отличие от обезьян, был полностью
-развенчан.</p>
-
-<p>Я получил урок, что все популярные истории нужно проверять. Не так уж и трудно
-было погуглить несколько минут. Александру, который написал об этом, больше
-спасибо.</p>
-
-<p>См. обсуждение на <a href="https://skeptics.stackexchange.com/questions/6828/was-the-experiment-with-five-monkeys-a-ladder-a-banana-and-a-water-spray-condu">Stack Exchange</a>.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/kargo-1/">Карго-культ (1)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/kargo/" rel="tag">kargo</a>, <a href="/tag/cult/" rel="tag">cult</a>, <a href="/tag/monkeys/" rel="tag">monkeys</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Возможно, не все знают, как работает карго-культ у обезьян. А это очень
-интересно.</p>
-
-<p>В вольер с обезьянами вешают приманку: всякие сласти и ништяки. Если к ней
-притронуться, обезьян обливают холодной водой. Из-за своей физиологии им это
-очень неприятно, гораздо неприятней, чем людям.</p>
-
-<p>Обезьяны быстро понимают, что приманку трогать нельзя. Когда в вольер
-подсаживают новую обезьяну, старожилы запрещают ей приближаться к приманке.</p>
-
-<p>Дальше самое интересное: постепенно из вольера убирают обезьян, которых
-обливали. Остаются те, которым только запрещали трогать приманку, но которые не
-знают последствий. И все равно: они рьяно запрещают подходить к приманке
-новичкам.</p>
-
-<p>Мораль — команда не должна быть обезьянами в вольере. Все запреты нужно время от
-времени пересматривать, чтобы не растить карго-культ. Удивляет, как часто я
-слышу объяснение в духе “мы делаем так, потому что мы так делаем”. Пусть не все,
-но некоторое из этого нужно сесть и пересмотреть.</p>
-
-<p>Сказанное не значит, что нужно быть бунтарем и расшатывать основы. Здоровый
-баланс между крайностями — вот что нужно соблюдать.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/google-look/">Лук</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/google/" rel="tag">google</a>, <a href="/tag/interface/" rel="tag">interface</a>, <a href="/tag/io/" rel="tag">io</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><img src="/assets/static/aws/google-look/1.jpeg" /></p>
-
-<p>Что ж, таки подъехал новый лук от Гугла. И не соврали: современный и
-прочувственный, что бы это ни значило.</p>
-
-<p>Главное, теперь мы знаем: форму даже с одним импутом можно растянуть на 80
-процентов площади. Дизайнерам воздушных интерфейсов взять на заметку.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/ff-update/">Firefox и обновления</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/firefox/" rel="tag">firefox</a>, <a href="/tag/updates/" rel="tag">updates</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>У меня сложные отношения с Firefox. Все как в песне: мое тело говорит да, но мое
-сердце говорит нет. Иногда я пытаюсь начать с чистого листа, но Firefox делает
-все, чтобы этого не случилось.</p>
-
-<p>Когда вышел Хром, он поразил меня отладочной консолью. Сегодня это норма, но
-тогда, десять лет назад, нигде не было такого легкого доступа к сетевым
-запросам, логам и реплу Javascript. В FF было что-то на голову ниже, но в виде
-плагина, а тут — из коробки. Пока писал, вспомнил — Firebug, вот как он
-назывался.</p>
-
-<p>Когда FF догнал Хром плане консоли, я пользовался им какое-то время. Потом
-устроился в фирму, где были токены Yubikey. В Хроме они работали из коробки, а
-что в FF? Надо скачать и поставить OpenSCP, затем добавить девайс в FF и
-прописать путь к бинарнику. Сам он не может. В итоге худо-бедно работало, но с
-перебоями и перезапуском браузера. Вернулся в Хром.</p>
-
-<p>Сегодня я работаю в фирме, где тоже выдают Yubikey. Я открыл FF, и он сходу
-кидает модалку, которая просит пароль к токену. Минуточку, кто тебя просил? Нет
-ни одной вкладки, которая просит авторизации. Зачем кидаешь модалку? Тем более
-что токен нужен bash-скрипту для VPN, а в браузере он не используется. Какой-то
-бред.</p>
-
-<p><img src="/assets/static/aws/ff-updates/1.jpeg" /></p>
-
-<p>Ладно, стерпим и это. Но с какой-то версии FF запретил опцию “не ставить
-обновления”. Либо они ставятся автоматом, либо браузер долбит мозг постоянной
-плашкой “вышел апдейт, поставь немедленно”. А у меня пунктик — если программа
-кричит об обновлениях, я либо отключаю их, либо не пользуюсь программой. И
-отключить никак не выходит.</p>
-
-<p><img src="/assets/static/aws/ff-updates/2.jpeg" /></p>
-
-<p>Я пошел в <code class="language-plaintext highlighter-rouge">about://config</code> и прошелся по всем атрибутам, содержащим “update” в
-названии. Таковых нашлось штук двадцать. Менял так и этак, ставил 0, -1 и false
-— ничего не помогает. Проклятая плашка регулярно вылазит.</p>
-
-<p>Похоже, опять не судьба выстроить отношения с FF, но я все-таки спрошу. Как в FF
-ставить обновления по требованию? Чтобы я нажал “install update” и оно
-обновилось, а до этого молчало? Неужели Firefox, наше все, звезда опенсорса и все
-такое, больше на это не способен?</p>
-
-<p>Верю, что способен. Вам слово.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/ff-policy/">Firefox и полиси</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
-    </time>
-
-    <a href="/tag/firefox/" rel="tag">firefox</a>, <a href="/tag/policy/" rel="tag">policy</a>, <a href="/tag/updates/" rel="tag">updates</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>На выходных посидел с Firefox. Понял, как заблокировать обновления, а также
-много чего другого.</p>
-
-<p>Если коротко: демократия закончилась. Начиная с какой-то версии Firefox перешел
-на систему полиси для расширенных настроек. Редактор about:config по-прежнему
-работает, но нужно понимать: многие опции теперь — бутафория. Можете до
-посинения что-то включать и выключать, эффекта не будет.</p>
-
-<p>Теперь Firefox работает с полиси. Это JSON-файл с директивами, которые включают
-ту или иную функцию. По сравнению с about:config преимущество в коллекциях: в
-полиси можно задать массив объектов, например, для настройки расширений или
-mime-типов, а в <code class="language-plaintext highlighter-rouge">about:config</code> все было плоским.</p>
-
-<p>Полиси описаны в формате JSON, но на Маке используется яблочный формат plist.
-Может быть, JSON тоже можно, но я не проверял.</p>
-
-<p>Преимущество полиси в том, что можно задать поведение браузера до последних
-мелочей. И все это — в текстовом файле, который хранится в Github. Не нужна
-облачная учетка для синхронизации — вы сами решаете, как раскидывать файл по
-машинам. Я положил в приватный dotfiles, но приведу копию ниже.</p>
-
-<p>Firefox не пытается оспорить то, что указано в полиси. Если сказано не ставить
-обновления — он не ставит. Сказано не проверять браузер по умолчанию — не
-проверяет. Никаких попапов, бейджей, нотификаций, алертов, всплывающих полосок и
-прочей ахинеи.</p>
-
-<p>Теперь технические шаги. Все примеры будут под мак; на другие системы, думаю,
-переложить будет не трудно.</p>
-
-<p>Firefox ищет полиси в разных местах, но самое очевидное — файл <code class="language-plaintext highlighter-rouge">~/Library/
-Preferences/org.mozilla.firefox.plist</code>. Опция <code class="language-plaintext highlighter-rouge">EnterprisePoliciesEnabled</code>
-означает, использовать ли полиси или пропускать их. Установите ее в истину
-командой:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>defaults write ~/Library/Preferences/org.mozilla.firefox EnterprisePoliciesEnabled -bool  TRUE
+<span class="c1">-- :name delete-from-tablee :n</span>
+<span class="k">delete</span> <span class="k">from</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span><span class="p">;</span>
 </code></pre></div></div>
 
-<p>Обратите внимание, что расширение <code class="language-plaintext highlighter-rouge">.plist</code> указывать не нужно.</p>
+<p>Prepare a namespace with all the imports:</p>
 
-<p>Чтобы выключить обновления, задайте <code class="language-plaintext highlighter-rouge">DisableAppUpdate</code> в истину:</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">pg.demo</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">clojure.java.io</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">io</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg.hugsql</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">hug</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pg</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
 
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>defaults write ~/Library/Preferences/org.mozilla.firefox DisableAppUpdate -bool true
-</code></pre></div></div>
+<p>To inject functions from the file, pass it into the <code class="language-plaintext highlighter-rouge">pg.hugsql/def-db-fns</code>
+function:</p>
 
-<p>Перезапустите браузер и откройте About Firefox или настройки — там будет
-следующее:</p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">hug/def-db-fns</span><span class="w"> </span><span class="p">(</span><span class="nf">io/file</span><span class="w"> </span><span class="s">"test/demo.sql"</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
 
-<p><img src="/assets/static/aws/ff-policy/1.jpeg" /></p>
+<p>It accepts either a string path to a file, a resource, or a <code class="language-plaintext highlighter-rouge">File</code>
+object. Should there were no exceptions, and the file was correct, the current
+namespace will get new functions declared in the file. Let’s examine them and
+their metadata:</p>
 
-<p><img src="/assets/static/aws/ff-policy/2.jpeg" /></p>
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">create-demo-table</span><span class="w">
+</span><span class="o">#</span><span class="n">function</span><span class="p">[</span><span class="n">pg.demo...</span><span class="p">]</span><span class="w">
 
-<p>Обновления запрещены, никто не пройдет.</p>
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">create-demo-table</span><span class="w"> </span><span class="n">var</span><span class="w"> </span><span class="nb">meta</span><span class="p">)</span><span class="w">
 
-<p>Список полиси можно посмотреть во вкладке <code class="language-plaintext highlighter-rouge">about:policies</code>. Выглядит так:</p>
+</span><span class="p">{</span><span class="no">:doc</span><span class="w"> </span><span class="s">""</span><span class="w">
+ </span><span class="no">:command</span><span class="w"> </span><span class="no">:!</span><span class="w">
+ </span><span class="no">:result</span><span class="w"> </span><span class="no">:raw</span><span class="w">
+ </span><span class="no">:file</span><span class="w"> </span><span class="s">"test/demo.sql"</span><span class="w">
+ </span><span class="no">:line</span><span class="w"> </span><span class="mi">2</span><span class="w">
+ </span><span class="no">:arglists</span><span class="w"> </span><span class="p">([</span><span class="n">db</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="n">db</span><span class="w"> </span><span class="n">params</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="n">db</span><span class="w"> </span><span class="n">params</span><span class="w"> </span><span class="n">opt</span><span class="p">])</span><span class="w">
+ </span><span class="no">:name</span><span class="w"> </span><span class="n">create-demo-table</span><span class="w">
+ </span><span class="no">:ns</span><span class="w"> </span><span class="o">#</span><span class="nb">namespace</span><span class="p">[</span><span class="n">pg.demo</span><span class="p">]}</span><span class="w">
+</span></code></pre></div></div>
 
-<p><img src="/assets/static/aws/ff-policy/3.jpeg" /></p>
-
-<p>Назревает два вопроса. Первый: как узнать, какие полиси есть в принципе и их
-значения? Второй: ты предлагаешь вводить их в консоли вручную?</p>
-
-<p>Полный список полиси находится <a href="https://mozilla.github.io/policy-templates/">на этой странице</a>, и он довольно
-велик. Проще скачать заголовку под вашу систему и поправить руками. Названия
-директив говорят сами за себя.</p>
-
-<p>По второму пункту — разумеется, нужно создать файл в редакторе, но в случае с
-plist есть нюанс. Файлы plist бывают двух форматов: текстовый и бинарный. В
-первом случае это XML с тегами <code class="language-plaintext highlighter-rouge">&lt;plist&gt;</code>, <code class="language-plaintext highlighter-rouge">&lt;dict&gt;</code> и <code class="language-plaintext highlighter-rouge">&lt;key&gt;</code>. Во втором случае
-там байты вперемешку с текстом.</p>
-
-<p>Беда в том, что Firefox работает только с бинарным plist: если положить
-текстовый, он его игнорирует. Бинарник можно поправить в XCode, но это неудобно:
-не станете же вы хранить бинарь в Github и редактировать программой, которой
-нужно 15 гигов. К счастью, утилита plutil умеет импорт-экспорт, а заодно
-проверяет формат на корректность.</p>
-
-<p>У меня получилась папка в dotfiles со следующими файлами. Прежде всего это
-org.mozilla.firefox.plist, который я <a href="https://gist.github.com/igrishaev/4e0603f0129a62c335f2f38676059753">выложил в Gist</a>. Вот неполный список
-того, что он делает:</p>
+<p>Each newborn function has at most three bodies:</p>
 
 <ul>
-  <li>отключает обновления</li>
-  <li>отключает проверку браузера по умолчанию</li>
-  <li>отключает менеджер паролей, мастер-пароль</li>
-  <li>отключает Pocket</li>
-  <li>убирает партнерские ссылки, top-sites и прочий шлак на главной</li>
-  <li>открывает PDF-файлы в Preview.app. Для меня это важно, потому что встроенные
-открывашки PDF, как правило, убогие</li>
-  <li>отключает всякий трекинг и фингерпринт</li>
-  <li>включает запросы нотификаций, локации</li>
-  <li>блокирует попапы</li>
-  <li>отключает “что новенького”, рекомендованные расширения, фичи.</li>
+  <li><code class="language-plaintext highlighter-rouge">[db]</code></li>
+  <li><code class="language-plaintext highlighter-rouge">[db params]</code></li>
+  <li><code class="language-plaintext highlighter-rouge">[db params opt]</code>,</li>
 </ul>
 
-<p>Второй файл — конфиг Make, чтобы управлять конфигурацией. Он короткий,
-приведу полностью:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DOMAIN = ~/Library/Preferences/org.mozilla.firefox.plist
-SOURCE = org.mozilla.firefox.plist
-
-policy-import: policy-check
- defaults import ${DOMAIN} ${SOURCE}
-
-policy-false:
- defaults write ${DOMAIN} EnterprisePoliciesEnabled -bool FALSE
-
-policy-true:
- defaults write ${DOMAIN} EnterprisePoliciesEnabled -bool TRUE
-
-policy-check:
- plutil ${SOURCE}
-</code></pre></div></div>
-
-<p>Команда <code class="language-plaintext highlighter-rouge">policy-import</code> переносит настройки из текстового .plist-файла в бинарный в
-домашней папке. Она зависит от <code class="language-plaintext highlighter-rouge">policy-check</code>, которая проверяет конфигурацию на
-корректность.</p>
-
-<p>Команды <code class="language-plaintext highlighter-rouge">policy-false</code> и <code class="language-plaintext highlighter-rouge">policy-true</code> отключают и включают полиси. Дело в том,
-что пока они включены, вы не можете обновиться даже если захотите — функция
-запрещена. Чтобы это сделать, отключите полиси, перезапустите браузер,
-обновитесь, затем снова включите. На короткое время ужаснитесь тому, как жили
-раньше: браузер выплюнет сто попапов, что пора обновиться, сделать его главным
-по умолчанию, а вот здесь у нас новая менюшка, а вот новое расширение, ну и все
-такое.</p>
-
-<p>В общем, разобраться с полиси было полезно. По аналогии с Емаксом и прочими
-утилитами, я храню конфиг в дотфайлах и синхронизирую через Гитхаб. Опасение
-вызывает лишь то, что полиси все еще на этапе разработки. Не ровен час,
-обновишься — и все слетит.</p>
-
-<p>Вроде бы хороший конец, но все равно — с толикой грусти. Эта борьба вызвана тем,
-что некие придурки спрятали опции из интерфейса. Не будь придурков — не было бы
-суеты, конфигов и прочего. Энтропия и трение — вот есть то, что здесь описано.</p>
-
-<p>Напоследок — ссылки:</p>
+<p>where:</p>
 
 <ul>
-  <li><a href="https://mozilla.github.io/policy-templates/">Официальный список полиси</a></li>
-  <li><a href="https://github.com/mozilla/policy-templates/blob/master/mac/org.mozilla.firefox.plist">Готовые шаблоны</a></li>
-  <li><a href="https://gist.github.com/igrishaev/4e0603f0129a62c335f2f38676059753">Мой конфиг</a></li>
+  <li><code class="language-plaintext highlighter-rouge">db</code> is a source of a connection. It might either a <code class="language-plaintext highlighter-rouge">Connection</code> object, a
+plain Clojure config map, or a <code class="language-plaintext highlighter-rouge">Pool</code> object.</li>
+  <li><code class="language-plaintext highlighter-rouge">params</code> is a map of HugSQL parameters like <code class="language-plaintext highlighter-rouge">{:id 42}</code>;</li>
+  <li><code class="language-plaintext highlighter-rouge">opt</code> is a map of <code class="language-plaintext highlighter-rouge">pg/execute</code> parameters that affect processing the current
+query.</li>
 </ul>
+
+<p>Now that we have functions, let’s call them. Establish a connection first:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
+  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
+   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10140</span><span class="w">
+   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
+   </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
+  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Let’s create a table using the <code class="language-plaintext highlighter-rouge">create-demo-table</code> function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="s">"demo123"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">create-demo-table</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="p">})</span><span class="w">
+</span><span class="p">{</span><span class="no">:command</span><span class="w"> </span><span class="s">"CREATE TABLE"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Insert something into the table:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">insert-into-table</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
+                         </span><span class="no">:title</span><span class="w"> </span><span class="s">"hello"</span><span class="p">})</span><span class="w">
+</span><span class="mi">1</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">insert-into-table</code> function has the <code class="language-plaintext highlighter-rouge">:n</code> flag in the source SQL file. Thus,
+it returns the number of rows affected by the command. Above, there was a single
+record inserted.</p>
+
+<p>Let’s try an expression that inserts something and returns the data:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">insert-into-table-returning</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                             </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
+                              </span><span class="no">:title</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
+</span><span class="p">[{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now that the table is not empty any longer, let’s select from it:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">select-from-table</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="p">})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:title</span><span class="w"> </span><span class="s">"hello"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">get-by-id</code> shortcut fetches a single row by its primary key. It returs
+<code class="language-plaintext highlighter-rouge">nil</code> for a missing key:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
+                 </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">})</span><span class="w">
+</span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"hello"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
+                 </span><span class="no">:id</span><span class="w"> </span><span class="mi">123</span><span class="p">})</span><span class="w">
+</span><span class="n">nil</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Its bulk version called <code class="language-plaintext highlighter-rouge">get-by-ids</code> relies on the <code class="language-plaintext highlighter-rouge">in (:v*:ids)</code> HugSQL
+syntax. It expands into the following SQL vector: <code class="language-plaintext highlighter-rouge">["... where id in ($1, $2,
+... )" 1 2 ...]</code></p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name get-by-ids :? :*</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="k">where</span> <span class="n">id</span> <span class="k">in</span> <span class="p">(:</span><span class="n">v</span><span class="o">*</span><span class="p">:</span><span class="n">ids</span><span class="p">)</span> <span class="k">order</span> <span class="k">by</span> <span class="n">id</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-by-ids</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
+                  </span><span class="no">:ids</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]})</span><span class="w">
+
+</span><span class="c1">;; 3 is missing</span><span class="w">
+</span><span class="p">[{</span><span class="no">:title</span><span class="w"> </span><span class="s">"hello"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To insert multiple rows at once, use the <code class="language-plaintext highlighter-rouge">:t*</code> syntax which is short for “tuple
+list”. Such a parameter expects a sequence of sequences:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name insert-rows :&lt;!</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="p">:</span><span class="n">i</span><span class="p">:</span><span class="k">table</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">title</span><span class="p">)</span> <span class="k">values</span> <span class="p">:</span><span class="n">t</span><span class="o">*</span><span class="p">:</span><span class="k">rows</span> <span class="n">returning</span> <span class="o">*</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">insert-rows</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
+                   </span><span class="no">:rows</span><span class="w"> </span><span class="p">[[</span><span class="mi">10</span><span class="w"> </span><span class="s">"test10"</span><span class="p">]</span><span class="w">
+                          </span><span class="p">[</span><span class="mi">11</span><span class="w"> </span><span class="s">"test11"</span><span class="p">]</span><span class="w">
+                          </span><span class="p">[</span><span class="mi">12</span><span class="w"> </span><span class="s">"test12"</span><span class="p">]]})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test10"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">10</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test11"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">11</span><span class="p">}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test12"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">12</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Let’s update a single row by its id:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">update-title-by-id</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
+                          </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
+                          </span><span class="no">:title</span><span class="w"> </span><span class="s">"NEW TITLE"</span><span class="p">})</span><span class="w">
+</span><span class="p">[{</span><span class="no">:title</span><span class="w"> </span><span class="s">"NEW TITLE"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Finally, clean up the table:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">delete-from-table</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="passing-the-source-of-a-connection">Passing the Source of a Connection</h3>
+
+<p>Above, we’ve been passing a <code class="language-plaintext highlighter-rouge">Connection</code> object called <code class="language-plaintext highlighter-rouge">conn</code> to all
+functions. But it can be something else as well: a config map or a pool
+object. Here is an example with a map:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">insert-rows</span><span class="w"> </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"..."</span><span class="w"> </span><span class="no">:port</span><span class="w"> </span><span class="n">...</span><span class="w"> </span><span class="no">:user</span><span class="w"> </span><span class="s">"..."</span><span class="p">}</span><span class="w">
+             </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w">
+              </span><span class="no">:rows</span><span class="w"> </span><span class="p">[[</span><span class="mi">10</span><span class="w"> </span><span class="s">"test10"</span><span class="p">]</span><span class="w">
+                     </span><span class="p">[</span><span class="mi">11</span><span class="w"> </span><span class="s">"test11"</span><span class="p">]</span><span class="w">
+                     </span><span class="p">[</span><span class="mi">12</span><span class="w"> </span><span class="s">"test12"</span><span class="p">]]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Pay attention that, when the first argument is a config map, a Connection object
+is established from it, and then it gets closed afterward before exiting a
+function. This might break a pipeline if you rely on a state stored in a
+connection. A temporary table is a good example. Once you close a connection,
+all the temporary tables created within this connection get wiped. Thus, if you
+create a temp table in the first function, and select from it using the second
+function passing a config map, that won’t work: the second function won’t know
+anything about that table.</p>
+
+<p>The first argument might be a Pool instsance as well:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pool/with-pool</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">item1</span><span class="w"> </span><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">pool</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">10</span><span class="p">})</span><span class="w">
+        </span><span class="n">item2</span><span class="w"> </span><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">pool</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">11</span><span class="p">})]</span><span class="w">
+    </span><span class="p">{</span><span class="no">:item1</span><span class="w"> </span><span class="n">item1</span><span class="w">
+     </span><span class="no">:item2</span><span class="w"> </span><span class="n">item2</span><span class="p">}))</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:item1</span><span class="w"> </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test10"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">10</span><span class="p">}</span><span class="n">,</span><span class="w">
+ </span><span class="no">:item2</span><span class="w"> </span><span class="p">{</span><span class="no">:title</span><span class="w"> </span><span class="s">"test11"</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">11</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When the source a pool, each function call borrows a connection from it and
+returns it back afterwards. But you cannot be sure that both <code class="language-plaintext highlighter-rouge">get-by-id</code> calls
+share the same connection. A parallel thread may interfere and borrow a
+connection used in the first <code class="language-plaintext highlighter-rouge">get-by-id</code> before the second <code class="language-plaintext highlighter-rouge">get-by-id</code> call
+acquires it. As a result, any pipeline that relies on a shared state across two
+subsequent function calls might break.</p>
+
+<p>To ensure the functions share the same connection, use either
+<code class="language-plaintext highlighter-rouge">pg/with-connection</code> or <code class="language-plaintext highlighter-rouge">pool/with-connection</code> macros:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pool/with-pool</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pool/with-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">pg/with-tx</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="p">]</span><span class="w">
+      </span><span class="p">(</span><span class="nf">insert-into-table</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"AAA"</span><span class="p">})</span><span class="w">
+      </span><span class="p">(</span><span class="nf">insert-into-table</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="no">:title</span><span class="w"> </span><span class="s">"BBB"</span><span class="p">}))))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, there is 100% guarantee that both <code class="language-plaintext highlighter-rouge">insert-into-table</code> calls share the
+same <code class="language-plaintext highlighter-rouge">conn</code> object borrowed from the pool. It is also wrapped into transaction
+which produces the following session:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">BEGIN</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">demo123</span> <span class="p">(</span><span class="n">title</span><span class="p">)</span> <span class="k">values</span> <span class="p">(</span><span class="err">$</span><span class="mi">1</span><span class="p">);</span>
+  <span class="k">parameters</span><span class="p">:</span> <span class="err">$</span><span class="mi">1</span> <span class="o">=</span> <span class="s1">'AAA'</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">demo123</span> <span class="p">(</span><span class="n">title</span><span class="p">)</span> <span class="k">values</span> <span class="p">(</span><span class="err">$</span><span class="mi">1</span><span class="p">);</span>
+  <span class="k">parameters</span><span class="p">:</span> <span class="err">$</span><span class="mi">1</span> <span class="o">=</span> <span class="s1">'BBB'</span>
+<span class="k">COMMIT</span>
+</code></pre></div></div>
+
+<h3 id="passing-options">Passing Options</h3>
+
+<p>PG2 supports a lot of options when processing a query. To use them, pass a map
+into the third parameter of any function. Above, we override a function that
+processes column names. Let it be not the default <code class="language-plaintext highlighter-rouge">keyword</code> but
+<code class="language-plaintext highlighter-rouge">clojure.string/upper-case</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">conn</span><span class="w">
+           </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+           </span><span class="p">{</span><span class="no">:fn-key</span><span class="w"> </span><span class="n">str/upper-case</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="s">"TITLE"</span><span class="w"> </span><span class="s">"AAA"</span><span class="n">,</span><span class="w"> </span><span class="s">"ID"</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>If you need such keys everywhere, submitting a map into each call might be
+inconvenient. The <code class="language-plaintext highlighter-rouge">def-db-fns</code> function accepts a map of predefined overrides:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">hug/def-db-fns</span><span class="w">
+  </span><span class="p">(</span><span class="nf">io/file</span><span class="w"> </span><span class="s">"test/demo.sql"</span><span class="p">)</span><span class="w">
+  </span><span class="p">{</span><span class="no">:fn-key</span><span class="w"> </span><span class="n">str/upper-case</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now, all the generated functions return string column names in upper case by
+default:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-by-id</span><span class="w"> </span><span class="n">config</span><span class="w">
+           </span><span class="p">{</span><span class="no">:table</span><span class="w"> </span><span class="n">TABLE</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">})</span><span class="w">
+
+</span><span class="p">{</span><span class="s">"TITLE"</span><span class="w"> </span><span class="s">"AAA"</span><span class="n">,</span><span class="w"> </span><span class="s">"ID"</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>For more details, refer to the official <a href="https://www.hugsql.org/">HugSQL</a> documentation.</p>
 
                 
             </div>
@@ -620,74 +612,53 @@ policy-check:
         <li>
 
             <h2>
-                <a class="post-link" href="/foles-mac-to-win/">Файлы с мака на винду</a>
+                <a class="post-link" href="/preview-text/">Preview и текст</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
+          datetime="2024-04-13T00:00:00+00:00">
+        Apr 13, 2024
     </time>
 
-    <a href="/tag/mac/" rel="tag">mac</a>, <a href="/tag/windows/" rel="tag">windows</a>, <a href="/tag/fat32/" rel="tag">fat32</a>
+    <a href="/tag/mac/" rel="tag">mac</a>, <a href="/tag/software/" rel="tag">software</a>, <a href="/tag/preview/" rel="tag">preview</a>
 
 </div>
 
 
             <div class="entry">
                 
-                    <p>Небольшая заметка, чтобы в будущем не искать в интернете.</p>
+                    <p>Обнаружил, что программа Preview на Маке распознает текст на картинках. Выглядит
+так. Исходник:</p>
 
-<p>Предположим, нужно перенести большой файл с мака на виндоуз. Сеть не настроена,
-файлы не пошарены, настроить все это займет час. В распоряжении есть флешка
-большой емкости, но вот засада:</p>
+<p><img src="/assets/static/aws/preview-text/01.png" /></p>
 
-<ul>
-  <li>
-    <p>файловая система NTFS на маке работает только для чтения;</p>
-  </li>
-  <li>
-    <p>яблочная файловая система APFS не видна в винде;</p>
-  </li>
-  <li>
-    <p>файловая система FAT32 работает в обоих средах, но не поддерживает файлы
-больше двух гигабайт.</p>
-  </li>
-</ul>
+<p>и процесс копирования:</p>
 
-<p>Что же делать? Можно поставить продвинутый архиватор с поддержкой
-мульти-архивов. Это когда архив делится на тома foobar.zip.01, 02 и так далее
-заданной величины. Но ставить софт очень не хочется.</p>
+<p><img src="/assets/static/aws/preview-text/02.png" /></p>
 
-<p>Оказывается, все утилиты есть в коробке. На маке делаем так:</p>
+<p>Озарение пришло после того, как я привычно выделил текст, думая, что работаю с
+PDF. И только потом заметил, что это PNG.</p>
 
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>split -b 2024m SomeMovie.mkv SomeMovie.mkv.
-</code></pre></div></div>
+<p>Распознавание работает неплохо, разве что слетают лидирующие пробелы. Но это
+ничего: достаточно вставить в редактор, выделить и нажать TAB — и все починится.</p>
 
-<p>Последний аргумент с точкой — шаблон нарезанных кусков. К ним будут добавлены
-строки aa, ab, ac и так далее для правильной сортировки. Если исходный файл был
-5 гигабайтов, получатся файлы <code class="language-plaintext highlighter-rouge">SomeMovie.mkv.aa</code>, <code class="language-plaintext highlighter-rouge">SomeMovie.mkv.ab</code> и
-<code class="language-plaintext highlighter-rouge">SomeMovie.mkv.ac</code>.</p>
+<p>Это еще один довод в пользу Preview. <a href="/preview/">Я уже писал</a> об этой программе
+и повторю — это произведение искусства. Она умеет невероятно много для работы с
+картинками и PDF. Доступна из коробки, бесплатна.</p>
 
-<p>Скидываем все добро на флешку, и теперь с FAT32 не будет проблем, потому что
-каждый кусок не превышает два гига. Чтобы собрать файл на винде, запускаем
-команду:</p>
+<p>Больше всего я ценю ее за скромность. Preview не требует обновлений, не
+показывает Tip of the day, не открывает попапы “смотри что я могу”. Она одна
+стоит того, чтобы купить Мак.</p>
 
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>copy /b SomeMovie.mkv.* SomeMovie.mkv
-</code></pre></div></div>
+<p>Возможно, она поможет вам скопировать код из скриншота. Об этом я, кстати, тоже
+<a href="/codepic/">давненько писал</a>: иногда, чтобы месаджер не испортил код, его проще
+переслать картинкой. А с помощью Preview — восстановить обратно.</p>
 
-<p>Очевидно, это нужно делать не на флешке, а на жестком диске. Можно положить
-рядом батник, если собирать будете не вы.</p>
-
-<p>Польза способа в том, что не нужен сторонний софт, права администратора и прочая
-ахинея. Просто работает.</p>
-
-<p><strong>UPD</strong>: в комментариях к написли про exFat, а я про него как-то
-забыл. Действительно, с ним все работает. Поэтому все, что описано выше,
-пригодится, если флешка мала. Например, когда нужно перетащить файл на 16 гигов,
-а флешка только два.</p>
+<p>Или скачал ноты для дочки в PDF, а там в подвале реклама. Не беда, накрыл белым
+прямоугольником — и нет рекламы. Красота же. Где еще так можно?</p>
 
                 
             </div>
@@ -697,119 +668,67 @@ policy-check:
         <li>
 
             <h2>
-                <a class="post-link" href="/aws-3/">AWS, история третья. Разрывы</a>
+                <a class="post-link" href="/lists-ui/">Списки в интерфейсе</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
+          datetime="2024-04-13T00:00:00+00:00">
+        Apr 13, 2024
     </time>
 
-    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/athena/" rel="tag">athena</a>, <a href="/tag/s3/" rel="tag">s3</a>
+    <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/lists/" rel="tag">lists</a>, <a href="/tag/software/" rel="tag">software</a>
 
 </div>
 
 
             <div class="entry">
                 
-                    <p>Все статьи из цикла AWS</p>
+                    <p>Не понимаю, откуда у дизайнеров такие беды со списками.</p>
 
-<ul>
-  <li><a href="/aws-0/">Амазон</a></li>
-  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
-  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
-  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
-  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
-</ul>
+<p><img src="/assets/static/aws/lists-ui/01.jpg" /></p>
 
-<p>В третьей истории расскажу, как я страдал от сетевых проблем в Амазоне. Как
-абонент Уральский: раньше не было разрывов, а теперь есть разрывы.</p>
+<p>Простое правило: список всегда упорядочен по алфавиту. Всегда и точка. Не по
+системной айдишке, не по важности, не по фазе Луны, а по алфавиту.</p>
 
-<p>У нас в проекте много лямбд, и каждая вызывает другие. При таком раскладе
-невыгодно передавать результат напрямую. Можно использовать S3 как шину
-данных. Например, одна лямбда вызывает другую и говорит: положи результат в
-такой-то бакет и файл. Затем опрашивает файл, пока он не появится.</p>
+<p>Если критериев сортировки несколько, список становится таблицей. Клик по колонке
+переключает сортировку на нее. Но у списка, повторю в третий раз, сортировка
+одна — по алфавиту. Без учета регистра, конечно.</p>
 
-<p>Это удобно, когда результат огромен: иные лямбды производят CSV-шки по нескольку
-гигабайт. Не гонять же их напрямую между лямбдами. Но файлы привносят хаос: не
-всегда очевидно, кто произвел файл и кто его потребители. Если изменить путь,
-через день придет коллега из другого сервиса и скажет: мы каждый день забираем
-файл из этой папки, куда он делся? Или наоборот: ты обнаружил, что некий сервис
-производит удобный файл, в котором все есть. Через месяц он перестал появляться,
-потому что они переехали на что-то другое. Мы вам ничего не обещали.</p>
+<p>На скриншотах видно, что дизайнеры не знают этого правила. Пункт “Turn off…”,
+хоть и начинается с T, идет первым. Edit message оказался ближе к
+концу. Refactor — еще до середины, Create gist — предпоследний.</p>
 
-<p>Файлы CSV удобно стримить прямо из S3. Послал GET-запрос, получил InputStream.
-Передал его в парсер и готово: получается ленивая коллекция кортежей. Навесил на
-нее map/filter, все обработалось как нужно, красота. Не нужно сохранять файл на
-диск.</p>
+<p>Дизайнеры объединяют команды в группы, но сами группы идут от балды. В менюшках
+нет никакой организации. Их можно назвать одним словом — хаос. Каждый раз, когда
+выпадает такая менюха, как дурак сканируешь с самого начала, вместо того, чтобы
+прыгнуть на нужное место. O(N) и O(1)? Не слышали.</p>
 
-<p>То же самое с форматом JSONL, где каждая строка — отдельный объект JSON. Из
-стрима получаешь Reader, из него ленивый line-seq, и пошел колбасить.</p>
+<p>То же самое относится к якобы “списку настроек” Эпла. Он выглядит как список, но
+не ведитесь. Пункты разбиты на группы, между которыми едва заметные
+разделители. Заголовков у групп нет. Почему Lock Screen, Touch ID и Users в
+одной группе, а Passwords в другой? Такой вопрос можно задать к любой другой
+группе.</p>
 
-<p>Неожиданно это схема перестала работать с большими файлами. Где-то на середине
-цикл обрывается с IOException. Чего я только не пробовал: оборачивал стрим в
-BufferedInputStream с разным размером, засекал время обработки, передавал опции
-в к S3… ничего не помогло. Запросы в Гугл тоже ничего внятного выдали.</p>
+<p><img src="/assets/static/aws/lists-ui/02.png" /></p>
 
-<p>У меня подозрение, что дело в неравномерном чтении. Когда вы читаете файл,
-Амазон определяет скорость забора байтиков. Поскольку мы читаем и обрабатываем
-стрим в одном потоке, чтение чередуется с простоем на обработку данных. В
-больших файлах я нашел записи, которые больше других во много раз.  Возможно,
-что когда обработка доходила до них, ожидание было больше среднего, и Амазон
-закрывал соединение.</p>
+<p>Цветовое кодирование сбивает с толку. Сетевые штучки нарисованы синим, а
+периферия — уши, клава, мышь — белым. Для других групп это правило нарушается:
+там все цвета. Дурдом.</p>
 
-<p>Я пытался повторить это на публичных файлах S3: читал в цикле N байтов и где-то
-на середине ставил длинный Thread/sleep. Но S3 покорно ждал аж две минуты, и
-эксперимент провалился.</p>
+<p>Пункт Wifi, хоть и начинается с W, идет первым. Displays — в середине, Battery —
+ближе к концу.</p>
 
-<p>Словом, я так и не выяснил, почему вылазит IOException, но смог это исправить в
-два шага.</p>
+<p>Давайте договоримся: любой список идет по алфавиту. Да, пусть Delete окажется
+наверху, а Translate — внизу. Никто не умрет, и так будет лучше: человек сразу
+найдет то, что ему нужно.</p>
 
-<p>Первый — файл S3 тупо записывается во временный файл, и дальше с ним работаешь
-локально. Перенос стрима делается одним методом <code class="language-plaintext highlighter-rouge">InputStream.transferTo</code>. Во
-время переноса ошибки связи не возникают.</p>
-
-<p>Второй — иные агрегаты достигают 3.5 гигабайтов, а у лямбды ограничение на 10
-гигабайтов места. Скачал три агрегата — и привет, out of disk space. Поэтому при
-записи файл кодируется Gzip-ом, а при чтении — декодируется обратно.</p>
-
-<p>Все вместе дало мне функцию, которая:</p>
-
-<ul>
-  <li>посылает запрос к S3, получает стрим</li>
-  <li>создает временный файл</li>
-  <li>переносит стрим в файл, попутно сжимая Gzip-ом</li>
-  <li>возвращает <code class="language-plaintext highlighter-rouge">GzipInputStream</code> из файла</li>
-</ul>
-
-<p>Со стороны кажется, что вызвал <code class="language-plaintext highlighter-rouge">get-s3-reader</code> — и байтики потекли, делов-то. А
-внутри вот какие штучки.</p>
-
-<p>Примечательно, что в одном проекте я сам спровоцировал
-<code class="language-plaintext highlighter-rouge">IOException</code>. Разработчик до меня позаботился о переносе файла S3 во временный
-файл. Я подумал, что он просто не знает, как обработать данные из сети и убрал
-запись на диск. Возможно, он что-то знал, но не оставил комментария. А надо
-было!</p>
-
-<p>Из этой истории следует: никогда не обрабатывайте файл S3 сразу из сети.
-Сохраните его во временный файл и потом читайте локально — так надежней. Рано
-или поздно вы схватите <code class="language-plaintext highlighter-rouge">IOException</code>, а на расследование будет времени. Чтобы
-сэкономить диск, оберните файл в Gzip.</p>
-
-<hr />
-
-<p>На этом я закончу истории про Амазон. У меня есть еще несколько, но они не такие
-интересные и сводятся к тезису “думал так, а оно эдак”. Ну и обсасывать одну и
-ту же тему уже не хочется.</p>
-
-<p>Думаю, вы поняли, что в Амазоне хватает странностей. Это не баги, потому что все
-они описаны в документации. Примерно как в Javascript: никто не знает, почему
-<code class="language-plaintext highlighter-rouge">{} + [] = 0</code>, а <code class="language-plaintext highlighter-rouge">[] + {} = [object Object]</code>. Да, в стандарте описано, но кому
-от этого легче?  Выбирая Амазон, закладывайте время и деньги на подобные
-непонятки.</p>
+<p>Кстати, дурацкие иконки — карандаш, часики, мусорный бак, ножницы, что там
+еще… — нужно убрать. Никто не ищет Cut по иконке ножниц среди календарей и
+часов. Дизайнеры-обезьянки качают иконки паками, не понимая, что только мусорят
+ими.</p>
 
                 
             </div>
@@ -819,111 +738,380 @@ BufferedInputStream с разным размером, засекал время 
         <li>
 
             <h2>
-                <a class="post-link" href="/aws-2/">AWS, история вторая. Афина прекрасная</a>
+                <a class="post-link" href="/github-ide/">Github IDE</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2024-03-10T00:00:00+00:00">
-        Mar 10, 2024
+          datetime="2024-04-13T00:00:00+00:00">
+        Apr 13, 2024
     </time>
 
-    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/athena/" rel="tag">athena</a>, <a href="/tag/s3/" rel="tag">s3</a>
+    <a href="/tag/software/" rel="tag">software</a>, <a href="/tag/github/" rel="tag">github</a>, <a href="/tag/ui/" rel="tag">ui</a>
 
 </div>
 
 
             <div class="entry">
                 
-                    <p>Все статьи из цикла AWS</p>
+                    <p>С тяжелым сердцем смотрю, как Микрософт уродует интерфейс Гитхаба.</p>
 
-<ul>
-  <li><a href="/aws-0/">Амазон</a></li>
-  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
-  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
-  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
-  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
-</ul>
+<p>Раньше Гитхаб просто показывал код. Ну, с минимальной подсветкой и ссылками на
+строки. Все изменилось, как только его купили Микрософты.</p>
 
-<p>Расскажу о еще одном случае с AWS, который стоил мне пару бессонных ночей.</p>
+<p>Теперь Гитхаб — что-то вроде онлайн-ИДЕ. Стоит куда-то кликнуть, как появляются
+попапы, колонки сдвигаются, открываются ссылки для переходов к определению и все
+остальное. Может быть, кому-то это нужно, но в своем случае не припомню.</p>
 
-<p>В Амазоне есть славный сервис Athena — супер-пупер агрегатор всего и вся. Он
-тащит терабайты данных из разных источников, обрабатывает и складывает в другие
-сервисы. Хадуп на стероидах. По-русски читается “Афина”.</p>
+<p>До двойного клика:</p>
 
-<p>Мы пользуемся им так. Есть лямбда, которая складывает в S3 сущности в JSON.
-Сущностей более миллиона. Другим сервисам нужны все сущности разом — и
-оказывается, выгрести их из S3 невозможно.</p>
+<p><img src="/assets/static/aws/github-ide/01.png" /></p>
 
-<p>Почему? Даже если предположить, что за секунду мы скачаем 10 сущностей
-параллельно (что невозможно), за 900 секунд мы получим 9000 сущностей, что
-меньше одного процента. А нам нужно не девять тысяч, а миллион. Напомню, что 900
-секунд — это 15 минут, максимальное время работы лямбды.</p>
+<p>и после него:</p>
 
-<p>Архитектуру дизайнил не я, поэтому не спрашивайте, почему так.</p>
+<p><img src="/assets/static/aws/github-ide/02.png" /></p>
 
-<p>На помощь приходит Афина. Мы говорим ей: склей все JSON файлы из бакета в один и
-положи туда-то. Афине, при всей мощи Амазона, нужно на это 4 минуты.  Чудес не
-бывает, и чтобы забрать из S3 миллион файлов, Амазону нужно попотеть.</p>
+<p>На скриншотах выше — типичный косяк веб-интерфейса. Я всего-то дважды кликнул на
+функцию read-non-quoted-string, чтобы выделить и скопировать название. В
+результате дерево каталогов исчезло, код переехал влево, а справа появилась
+новая выпадашка.</p>
 
-<p>В ответ на нашу просьбу Афина дает айдишник задания, и мы его поллим. Готово?
-Нет. Готово? Нет. Готово? Да. И если да, в ответе будет ссылка на файл-агрегат.</p>
+<p>Разве не уроды? Кто просил двигать колонки и что-то скрывать-открывать? Я просто
+дважды кликнул.</p>
 
-<p>Таких агрегатов у нас несколько, и я столкнулся с тем, что лямбда не
-укладывается в 15 минут. Если тратить по 4 минуты на агрегат, то на ожидание
-трёх уйдёт 12 минут.  Процессинг файлов занимает еще 5-6 минут, и готово — ты не
-успел.</p>
+<p>Интерфейс словно перешел в режим редактирования, потому что курсор стал
+вертикальной чертой. При этом текст ввести нельзя — документ по-прежнему
+read-only. Это просто вынос мозга.</p>
 
-<p>Тратить 12 минут впустую глупо, поэтому я сделал поллинг Афины параллельным. В
-самом деле, зачем ждать 4 минуты, если можно запустить второй поллинг? Логично
-же? Но вот к чему это привело.</p>
+<p>Обратите внимание, что в результате перестановок курсор оказался в неправильном
+месте. Я кликнул на середину <code class="language-plaintext highlighter-rouge">read-non-quoted-string</code>, а на втором скриншоте он
+остался на конце сигнатуры за <code class="language-plaintext highlighter-rouge">...in]</code>. При этом выделена правая квадратная
+скобка. Что происходит?</p>
 
-<p>Кто-то заметил, что в отчетах стали появляться “дырки”, то есть пустые ячейки. С
-точки зрения кода это выглядит так, словно в агрегате не было записей. Сначала я
-отнеткивался, но потом проверил размеры агрегатов. Оказалось, что сегодняшний
-файл, собранный Афиной, в два раза меньше вчерашнего. Или наоборот: вчера ок, а
-сегодня половина. Файл не битый, открывается, просто в нем половина данных.</p>
+<p>Разбудите меня, когда у нас, наконец, будут нормальные дизайнеры.</p>
 
-<p>После гуглений, осбуждений и вырванных волос обнаружились сразу три бага.</p>
+                
+            </div>
 
-<p>Первый — разработчик, который писал код до меня, допустил ошибку. Он поллил
-Афину по условию “пока статус pending”. Если что-то другое, он читал результат.
-Оказалось, что у задачи может быть три статуса: pending, ready и error. И в
-нашем случае статус был error.</p>
+        </li>
+        
+        <li>
 
-<p>Второй — даже если задача в статусе error, она содержит ссылку на собранный
-файл. Да, Афина не смогла, и файл собран частично. Считается, что это лучше, чем
-ничего.</p>
+            <h2>
+                <a class="post-link" href="/en/pg-arrays">PG2 release 0.1.9: arrays</a>
+            </h2>
 
-<p>Третий — в чем была причина error? Напомню, что я запускал в Афине несколько
-задач параллельно. Каждая задача собирала файлы из S3. В итоге сработал лимит на
-доступ к S3 — он ответил, что кто-то слишком часто обращается ко мне, убавьте
-пыл, господа. Поэтому задача упала.</p>
+            
+<div class="post-meta">
 
-<p>Интересно, что S3 не волнует, что обращается к нему не сторонний потребитель, а
-сама Афина. При всем абсурде я считаю это правильным, потому что если лимит
-задан, он должен соблюдаться глобально, без поблажек “для своих”.</p>
+    <time class="post-time"
+          datetime="2024-04-04T00:00:00+00:00">
+        Apr 4, 2024
+    </time>
 
-<p>В итоге я сделал следующее. Все отчеты, которые обращаются к Афине, я разнес по
-времени с разницей в 5-10 минут. Раньше они стартовали одновременно, что
-порождало много задач в Афину, а та насиловала S3. С разницей по времени стало
-легче.</p>
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/array/" rel="tag">array</a>
 
-<p>Потом я додумался до решения лучше. Сделал фейковый warmup-отчет, который
-работает как прогрев кеша. Он запускается первым и триггерит все задачи в Афине.
-Когда другим отчетам что-то нужно из Афины, они проверяют, была ли задача с
-такими параметрами за последние 2 часа. Если да, ссылка на агрегат берется из
-старой задачи.</p>
+</div>
 
-<p>Вот такая она, борьба с AWS. Перечитываю и понимаю, что, хоть и звучит умно,
-хвастаться здесь нечем. Не будь этой архитектуры, результат обошелся бы дешевле.
-Усилия потрачены, но неясно зачем.</p>
 
-<p>Я пишу комментарии к коду, надеясь, что следующий разработчик поймет хоть толику
-все этой котовасии. Но не особо на это надеюсь: скорее всего, он скажет — что
-это наговнокодили такое? Пойду переделаю. И все повторится.</p>
+            <div class="entry">
+                
+                    
+<p>The latest <a href="https://github.com/igrishaev/pg2">0.1.9 release</a> of PG2 supports Postgres arrays.</p>
+
+<p>In JDBC, arrays have always been a pain. Every time you’re about to pass an
+array to the database and read it back, you’ve got to wrap your data in various
+Java classes, extend protocols, and multimethods. In Postgres, the array type is
+quite powerful yet underestimated due to poor support of drivers. This is one
+more reason for running this project: to bring easy access to Postgres arrays.</p>
+
+<p>PG2 tries its best to provide seamless connection between Clojure vectors and
+Postgres arrays. When reading an array, you get a Clojure vector. And vice
+versa: to pass an array object into a query, just submit a vector.</p>
+
+<p>PG2 supports arrays of any type: not only primitives like numbers and strings
+but <code class="language-plaintext highlighter-rouge">uuid</code>, <code class="language-plaintext highlighter-rouge">numeric</code>, <code class="language-plaintext highlighter-rouge">timestamp(tz)</code>, <code class="language-plaintext highlighter-rouge">json(b)</code>, and more as well.</p>
+
+<p>Arrays might have more than one dimension. Nothing prevents you from having a 3D
+array of integers like <code class="language-plaintext highlighter-rouge">cube::int[][][]</code>, and it becomes a nested vector when
+fetched by PG2.</p>
+
+<p><em>A technical note: PG2 supports both encoding and decoding of arrays in both
+text and binary modes.</em></p>
+
+<p>Here is a short demo session. Let’s prepare a table with an array of strings:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table arr_demo_1 (id serial, text_arr text[])"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Insert a simple item:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into arr_demo_1 (text_arr) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[</span><span class="s">"one"</span><span class="w"> </span><span class="s">"two"</span><span class="w"> </span><span class="s">"three"</span><span class="p">]]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In arrays, some elements might be NULL:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into arr_demo_1 (text_arr) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[</span><span class="s">"foo"</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="s">"bar"</span><span class="p">]]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now let’s check what we’ve got so far:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from arr_demo_1"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:text_arr</span><span class="w"> </span><span class="p">[</span><span class="s">"one"</span><span class="w"> </span><span class="s">"two"</span><span class="w"> </span><span class="s">"three"</span><span class="p">]}</span><span class="w">
+ </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:text_arr</span><span class="w"> </span><span class="p">[</span><span class="s">"foo"</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="s">"bar"</span><span class="p">]}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Postgres supports plenty of operators for arrays. Say, the <code class="language-plaintext highlighter-rouge">&amp;&amp;</code> one checks if
+there is at least one common element on both sides. Here is how we find those
+records that have either “tree”, “four”, or “five”:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"select * from arr_demo_1 where text_arr &amp;&amp; $1"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[</span><span class="s">"three"</span><span class="w"> </span><span class="s">"four"</span><span class="w"> </span><span class="s">"five"</span><span class="p">]]})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:text_arr</span><span class="w"> </span><span class="p">[</span><span class="s">"one"</span><span class="w"> </span><span class="s">"two"</span><span class="w"> </span><span class="s">"three"</span><span class="p">]</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Another useful operator is <code class="language-plaintext highlighter-rouge">@&gt;</code> that checks if the left array contains all
+elements from the right array:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"select * from arr_demo_1 where text_arr @&gt; $1"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[</span><span class="s">"foo"</span><span class="w"> </span><span class="s">"bar"</span><span class="p">]]})</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:text_arr</span><span class="w"> </span><span class="p">[</span><span class="s">"foo"</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="s">"bar"</span><span class="p">]</span><span class="n">,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Let’s proceed with numeric two-dimensional arrays. They’re widely used in math,
+statistics, graphics, and similar areas:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table arr_demo_2 (id serial, matrix bigint[][])"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Here is how you insert a matrix:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into arr_demo_2 (matrix) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[[[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="mi">6</span><span class="p">]]</span><span class="w">
+                       </span><span class="p">[[</span><span class="mi">6</span><span class="w"> </span><span class="mi">5</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">1</span><span class="p">]]]]})</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:inserted</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Pay attention: each number can be NULL but you cannot have NULL for an entire
+sub-array. This will trigger an error response from Postgres.</p>
+
+<p>Reading the matrix back:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from arr_demo_2"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:matrix</span><span class="w"> </span><span class="p">[[[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="mi">6</span><span class="p">]]</span><span class="w">
+                 </span><span class="p">[[</span><span class="mi">6</span><span class="w"> </span><span class="mi">5</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="mi">1</span><span class="p">]]]}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>A crazy example: let’s have a three dimension array of timestamps with a time
+zone. No idea how it can be used but still:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table arr_demo_3 (id serial, matrix timestamp[][][])"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">-matrix</span><span class="w">
+  </span><span class="p">[[[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]</span><span class="w">
+    </span><span class="p">[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]</span><span class="w">
+    </span><span class="p">[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]]</span><span class="w">
+   </span><span class="p">[[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]</span><span class="w">
+    </span><span class="p">[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]</span><span class="w">
+    </span><span class="p">[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]]</span><span class="w">
+   </span><span class="p">[[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]</span><span class="w">
+    </span><span class="p">[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]</span><span class="w">
+    </span><span class="p">[[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]</span><span class="w">
+     </span><span class="p">[(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">OffsetDateTime/now</span><span class="p">)]]]])</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into arr_demo_3 (matrix) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="n">-matrix</span><span class="p">]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now read it back:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from arr_demo_3"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:matrix</span><span class="w">
+  </span><span class="p">[</span><span class="n">...</span><span class="w"> </span><span class="n">truncated</span><span class="w">
+   </span><span class="p">[[[</span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x5ed6e62b</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272169"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">xb9d6851</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272197"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x6e35ed84</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272207"</span><span class="p">]]</span><span class="w">
+     </span><span class="n">...</span><span class="w">
+     </span><span class="p">[</span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x7319d217</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272236"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x6153154d</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272241"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x2e4ffd44</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272247"</span><span class="p">]]]</span><span class="w">
+    </span><span class="n">...</span><span class="w">
+    </span><span class="p">[[</span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x32c6e526</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272405"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x496a5bc6</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272418"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x283531ee</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272426"</span><span class="p">]]</span><span class="w">
+     </span><span class="n">...</span><span class="w">
+     </span><span class="p">[</span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x677b3def</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272459"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x46d5039f</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272467"</span><span class="p">]</span><span class="w">
+      </span><span class="o">#</span><span class="n">object</span><span class="p">[</span><span class="n">java.time.LocalDateTime</span><span class="w"> </span><span class="mi">0</span><span class="n">x3d0b906</span><span class="w"> </span><span class="s">"2024-04-01T18:32:48.272475"</span><span class="p">]]]]]</span><span class="n">,</span><span class="w">
+  </span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>You can have an array of JSON(b) objects, too:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create table arr_demo_4 (id serial, json_arr jsonb[])"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Inserting an array of three maps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">  </span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+              </span><span class="s">"insert into arr_demo_4 (json_arr) values ($1)"</span><span class="w">
+              </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[{</span><span class="no">:foo</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span><span class="w"> </span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="mi">2</span><span class="p">}</span><span class="w"> </span><span class="p">{</span><span class="no">:test</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]}]]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Elements might be everything that can be JSON-encoded: numbers, strings,
+boolean, etc. The only tricky case is a vector. To not break the algorithm that
+traverses the matrix, wrap a vector element with <code class="language-plaintext highlighter-rouge">pg/json-wrap</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"insert into arr_demo_4 (json_arr) values ($1)"</span><span class="w">
+            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[[</span><span class="mi">42</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span><span class="no">:some</span><span class="w"> </span><span class="s">"object"</span><span class="p">}</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/json-wrap</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">])]]})</span><span class="w">
+
+</span><span class="c1">;; Signals that the [1 2 3] is not a nested array but an element.</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now read it back:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from arr_demo_4"</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="no">:json_arr</span><span class="w"> </span><span class="p">[</span><span class="mi">42</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="p">{</span><span class="no">:some</span><span class="w"> </span><span class="s">"object"</span><span class="p">}</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]]}]</span><span class="w">
+</span></code></pre></div></div>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/ms-teams/">Microsoft Teams</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-30T00:00:00+00:00">
+        Mar 30, 2024
+    </time>
+
+    <a href="/tag/software/" rel="tag">software</a>, <a href="/tag/teams/" rel="tag">teams</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Худшая программа, с которой мне приходится работать — это Microsoft Teams, и вот
+почему.</p>
+
+<p>Teams — это Слак семилетней давности: тормозной и глючный. Если сегодняшний Слак
+еще более-менее, то после него Тимс — словно сидишь под водой: каждое действие
+на долю секунды медленней.</p>
+
+<p>Удивляет, что в Микрософте сделали быстрый редактор VS Code, но не осилили
+месаджер. По-моему, ребят из Teams надо запереть в комнате с командой VS Code,
+чтобы те передали опыт. Странно, что никому не приходит это в голову.</p>
+
+<p>За короткую жизнь Teams сменил несколько приложений. Сначала был Teams
+Classic. Потом вышел Teams for School and Work. Теперь вышел Teams New. Это
+говорит о том, что первое приложение сделано настолько плохо, что проще
+выпустить новое, чем исправлять старое. Этого никто не скрывает: первый Teams
+был сделан тяп-ляп, чтобы не дать Слаке занять весь рынок.</p>
+
+
+                    <p><a href="/ms-teams/">Read more &rarr;</a></p>
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/meaning-of-life-2/">Смысл жизни</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-30T00:00:00+00:00">
+        Mar 30, 2024
+    </time>
+
+    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/meaning/" rel="tag">meaning</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Опасаюсь, что после сорока лет я начну искать смысл жизни. Знаете, бывает: живет
+человек, вроде бы все хорошо, а потом раз — на столе Евангелие, Будда и все
+такое. Начинаются брожения и поиски бога.</p>
+
+<p>Но пока мне 38, и вроде бы ничего не предвещает беды. Я по-прежнему уверен, что
+бога нет, души нет, мир случаен. Вселенная конечна. Любовь — гормоны и
+инстинкты.</p>
+
+<p>Философы — балаболы. Ни у одного я не видел крупицы смысла. А если крупицы и
+есть, то искать их среди 600 страниц — так себе удовольствие.</p>
+
+<p>У Ницше не понял ни абзаца. Читал Гегеля — ощущения, словно вода сквозь
+пальцы. Слова понятны, смысла не вижу даже отдаленно.</p>
+
+<p>Самый клевый чел — Иван Павлов. Он один сделал больше, чем все Гегели, Вольтеры
+и Канты вместе взятые.</p>
+
+<p>Читал изыскания Толстого: долгий трактат о том, как он искал бога. Каким-то
+образом, много раз воздвигнув и разрушив всякие доводы, он построил модель мира,
+в которой прожил остаток дней. Мне как стороннему наблюдателю это кажется
+странным. Да, построил свою модель. Это примерно как написать свою версию
+популярной библиотеки: интересно, стимулирует мозг, не сидишь без дела. Главное
+— процесс.</p>
+
+<p>Я не вижу проблем в том, что нет смысла. Зачем смысл? Все, кто утверждали, что
+нашли его, фактически обманули себя. Подобно Толстому, построили свою модель,
+которая со стороны смотрится нелепо. Я не хочу жить в модели.</p>
+
+<p>Нам навязывают смысл еще на этапе сада и школы. И во взрослой жизни найдутся те,
+кто подскажут: смысл такой-то, нужно делать то и это. А ведь самое лучшее — жить
+без смысла. Делать то, что хочется прямо сейчас. И не бояться это признать: да,
+моя жизнь бессмысленна. Но зато интересна!</p>
 
                 
             </div>
@@ -936,7 +1124,7 @@ BufferedInputStream с разным размером, засекал время 
         
         <a href="/page22" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 23 из 95</span>
+        <span class="page_number ">Страница 23 из 96</span>
         
         <a href="/page24" class="next">&rarr;</a>
         
