@@ -105,6 +105,596 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/aws-3/">AWS, история третья. Разрывы</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/athena/" rel="tag">athena</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Все статьи из цикла AWS</p>
+
+<ul>
+  <li><a href="/aws-0/">Амазон</a></li>
+  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
+  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
+  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
+  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
+</ul>
+
+<p>В третьей истории расскажу, как я страдал от сетевых проблем в Амазоне. Как
+абонент Уральский: раньше не было разрывов, а теперь есть разрывы.</p>
+
+<p>У нас в проекте много лямбд, и каждая вызывает другие. При таком раскладе
+невыгодно передавать результат напрямую. Можно использовать S3 как шину
+данных. Например, одна лямбда вызывает другую и говорит: положи результат в
+такой-то бакет и файл. Затем опрашивает файл, пока он не появится.</p>
+
+<p>Это удобно, когда результат огромен: иные лямбды производят CSV-шки по нескольку
+гигабайт. Не гонять же их напрямую между лямбдами. Но файлы привносят хаос: не
+всегда очевидно, кто произвел файл и кто его потребители. Если изменить путь,
+через день придет коллега из другого сервиса и скажет: мы каждый день забираем
+файл из этой папки, куда он делся? Или наоборот: ты обнаружил, что некий сервис
+производит удобный файл, в котором все есть. Через месяц он перестал появляться,
+потому что они переехали на что-то другое. Мы вам ничего не обещали.</p>
+
+<p>Файлы CSV удобно стримить прямо из S3. Послал GET-запрос, получил InputStream.
+Передал его в парсер и готово: получается ленивая коллекция кортежей. Навесил на
+нее map/filter, все обработалось как нужно, красота. Не нужно сохранять файл на
+диск.</p>
+
+<p>То же самое с форматом JSONL, где каждая строка — отдельный объект JSON. Из
+стрима получаешь Reader, из него ленивый line-seq, и пошел колбасить.</p>
+
+<p>Неожиданно это схема перестала работать с большими файлами. Где-то на середине
+цикл обрывается с IOException. Чего я только не пробовал: оборачивал стрим в
+BufferedInputStream с разным размером, засекал время обработки, передавал опции
+в к S3… ничего не помогло. Запросы в Гугл тоже ничего внятного выдали.</p>
+
+<p>У меня подозрение, что дело в неравномерном чтении. Когда вы читаете файл,
+Амазон определяет скорость забора байтиков. Поскольку мы читаем и обрабатываем
+стрим в одном потоке, чтение чередуется с простоем на обработку данных. В
+больших файлах я нашел записи, которые больше других во много раз.  Возможно,
+что когда обработка доходила до них, ожидание было больше среднего, и Амазон
+закрывал соединение.</p>
+
+<p>Я пытался повторить это на публичных файлах S3: читал в цикле N байтов и где-то
+на середине ставил длинный Thread/sleep. Но S3 покорно ждал аж две минуты, и
+эксперимент провалился.</p>
+
+<p>Словом, я так и не выяснил, почему вылазит IOException, но смог это исправить в
+два шага.</p>
+
+<p>Первый — файл S3 тупо записывается во временный файл, и дальше с ним работаешь
+локально. Перенос стрима делается одним методом <code class="language-plaintext highlighter-rouge">InputStream.transferTo</code>. Во
+время переноса ошибки связи не возникают.</p>
+
+<p>Второй — иные агрегаты достигают 3.5 гигабайтов, а у лямбды ограничение на 10
+гигабайтов места. Скачал три агрегата — и привет, out of disk space. Поэтому при
+записи файл кодируется Gzip-ом, а при чтении — декодируется обратно.</p>
+
+<p>Все вместе дало мне функцию, которая:</p>
+
+<ul>
+  <li>посылает запрос к S3, получает стрим</li>
+  <li>создает временный файл</li>
+  <li>переносит стрим в файл, попутно сжимая Gzip-ом</li>
+  <li>возвращает <code class="language-plaintext highlighter-rouge">GzipInputStream</code> из файла</li>
+</ul>
+
+<p>Со стороны кажется, что вызвал <code class="language-plaintext highlighter-rouge">get-s3-reader</code> — и байтики потекли, делов-то. А
+внутри вот какие штучки.</p>
+
+<p>Примечательно, что в одном проекте я сам спровоцировал
+<code class="language-plaintext highlighter-rouge">IOException</code>. Разработчик до меня позаботился о переносе файла S3 во временный
+файл. Я подумал, что он просто не знает, как обработать данные из сети и убрал
+запись на диск. Возможно, он что-то знал, но не оставил комментария. А надо
+было!</p>
+
+<p>Из этой истории следует: никогда не обрабатывайте файл S3 сразу из сети.
+Сохраните его во временный файл и потом читайте локально — так надежней. Рано
+или поздно вы схватите <code class="language-plaintext highlighter-rouge">IOException</code>, а на расследование будет времени. Чтобы
+сэкономить диск, оберните файл в Gzip.</p>
+
+<hr />
+
+<p>На этом я закончу истории про Амазон. У меня есть еще несколько, но они не такие
+интересные и сводятся к тезису “думал так, а оно эдак”. Ну и обсасывать одну и
+ту же тему уже не хочется.</p>
+
+<p>Думаю, вы поняли, что в Амазоне хватает странностей. Это не баги, потому что все
+они описаны в документации. Примерно как в Javascript: никто не знает, почему
+<code class="language-plaintext highlighter-rouge">{} + [] = 0</code>, а <code class="language-plaintext highlighter-rouge">[] + {} = [object Object]</code>. Да, в стандарте описано, но кому
+от этого легче?  Выбирая Амазон, закладывайте время и деньги на подобные
+непонятки.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/aws-2/">AWS, история вторая. Афина прекрасная</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/athena/" rel="tag">athena</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Все статьи из цикла AWS</p>
+
+<ul>
+  <li><a href="/aws-0/">Амазон</a></li>
+  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
+  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
+  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
+  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
+</ul>
+
+<p>Расскажу о еще одном случае с AWS, который стоил мне пару бессонных ночей.</p>
+
+<p>В Амазоне есть славный сервис Athena — супер-пупер агрегатор всего и вся. Он
+тащит терабайты данных из разных источников, обрабатывает и складывает в другие
+сервисы. Хадуп на стероидах. По-русски читается “Афина”.</p>
+
+<p>Мы пользуемся им так. Есть лямбда, которая складывает в S3 сущности в JSON.
+Сущностей более миллиона. Другим сервисам нужны все сущности разом — и
+оказывается, выгрести их из S3 невозможно.</p>
+
+<p>Почему? Даже если предположить, что за секунду мы скачаем 10 сущностей
+параллельно (что невозможно), за 900 секунд мы получим 9000 сущностей, что
+меньше одного процента. А нам нужно не девять тысяч, а миллион. Напомню, что 900
+секунд — это 15 минут, максимальное время работы лямбды.</p>
+
+<p>Архитектуру дизайнил не я, поэтому не спрашивайте, почему так.</p>
+
+<p>На помощь приходит Афина. Мы говорим ей: склей все JSON файлы из бакета в один и
+положи туда-то. Афине, при всей мощи Амазона, нужно на это 4 минуты.  Чудес не
+бывает, и чтобы забрать из S3 миллион файлов, Амазону нужно попотеть.</p>
+
+<p>В ответ на нашу просьбу Афина дает айдишник задания, и мы его поллим. Готово?
+Нет. Готово? Нет. Готово? Да. И если да, в ответе будет ссылка на файл-агрегат.</p>
+
+<p>Таких агрегатов у нас несколько, и я столкнулся с тем, что лямбда не
+укладывается в 15 минут. Если тратить по 4 минуты на агрегат, то на ожидание
+трёх уйдёт 12 минут.  Процессинг файлов занимает еще 5-6 минут, и готово — ты не
+успел.</p>
+
+<p>Тратить 12 минут впустую глупо, поэтому я сделал поллинг Афины параллельным. В
+самом деле, зачем ждать 4 минуты, если можно запустить второй поллинг? Логично
+же? Но вот к чему это привело.</p>
+
+<p>Кто-то заметил, что в отчетах стали появляться “дырки”, то есть пустые ячейки. С
+точки зрения кода это выглядит так, словно в агрегате не было записей. Сначала я
+отнеткивался, но потом проверил размеры агрегатов. Оказалось, что сегодняшний
+файл, собранный Афиной, в два раза меньше вчерашнего. Или наоборот: вчера ок, а
+сегодня половина. Файл не битый, открывается, просто в нем половина данных.</p>
+
+<p>После гуглений, осбуждений и вырванных волос обнаружились сразу три бага.</p>
+
+<p>Первый — разработчик, который писал код до меня, допустил ошибку. Он поллил
+Афину по условию “пока статус pending”. Если что-то другое, он читал результат.
+Оказалось, что у задачи может быть три статуса: pending, ready и error. И в
+нашем случае статус был error.</p>
+
+<p>Второй — даже если задача в статусе error, она содержит ссылку на собранный
+файл. Да, Афина не смогла, и файл собран частично. Считается, что это лучше, чем
+ничего.</p>
+
+<p>Третий — в чем была причина error? Напомню, что я запускал в Афине несколько
+задач параллельно. Каждая задача собирала файлы из S3. В итоге сработал лимит на
+доступ к S3 — он ответил, что кто-то слишком часто обращается ко мне, убавьте
+пыл, господа. Поэтому задача упала.</p>
+
+<p>Интересно, что S3 не волнует, что обращается к нему не сторонний потребитель, а
+сама Афина. При всем абсурде я считаю это правильным, потому что если лимит
+задан, он должен соблюдаться глобально, без поблажек “для своих”.</p>
+
+<p>В итоге я сделал следующее. Все отчеты, которые обращаются к Афине, я разнес по
+времени с разницей в 5-10 минут. Раньше они стартовали одновременно, что
+порождало много задач в Афину, а та насиловала S3. С разницей по времени стало
+легче.</p>
+
+<p>Потом я додумался до решения лучше. Сделал фейковый warmup-отчет, который
+работает как прогрев кеша. Он запускается первым и триггерит все задачи в Афине.
+Когда другим отчетам что-то нужно из Афины, они проверяют, была ли задача с
+такими параметрами за последние 2 часа. Если да, ссылка на агрегат берется из
+старой задачи.</p>
+
+<p>Вот такая она, борьба с AWS. Перечитываю и понимаю, что, хоть и звучит умно,
+хвастаться здесь нечем. Не будь этой архитектуры, результат обошелся бы дешевле.
+Усилия потрачены, но неясно зачем.</p>
+
+<p>Я пишу комментарии к коду, надеясь, что следующий разработчик поймет хоть толику
+все этой котовасии. Но не особо на это надеюсь: скорее всего, он скажет — что
+это наговнокодили такое? Пойду переделаю. И все повторится.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/aws-1/">AWS, история первая. Внезапный мегабайт</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Все статьи из цикла AWS</p>
+
+<ul>
+  <li><a href="/aws-0/">Амазон</a></li>
+  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
+  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
+  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
+  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
+</ul>
+
+<p><a href="/aws-0/">Прошлая заметка</a> про AWS была затравкой. Теперь расскажу о случаях в
+Амазоне, от которых трещали мозги.</p>
+
+<p>Первая история касается сервиса Lambda. Он выполняет произвольный код на
+любом языке и возвращает результат. Особенность Лямбды в том, что клиент
+платит только за те ресурсы, что потребил. Считаются время процессора, память и
+диск в секунду. Если не вызывать Лямбду, ее стоимость будет нулевой.</p>
+
+<p>Это выгодно отличает Лямбду от EC2, за который клиент платит всегда. Наверное,
+все видели мемы про бомжа, который скатился в бедность, не выключив инстанс
+EC2.</p>
+
+<p>Кто-то считает, что Лямбда — простой сервис, но это не так. Наоборот, он один из
+самых сложных в AWS. Он работает как огромная очередь задач. Лямбду можно
+скрестить с HTTP-сервером, чтобы принимать сообщения прямо из браузера. Лямбду
+можно прицепить к любому сервису AWS в качестве реакции на что угодно.
+Загрузили файл в S3 — вызвалась лямбда. Отправили сообщеньку в очередь —
+вызвалась лямбда и так далее.</p>
+
+<p>Я работаю в проекте, в котором все на лямбдах. Раньше мне казалось это
+фантасмагорией, но со временем привыкаешь. В порядке вещей, когда лямбда дергает
+лямбду, которая дергает лямбду, которая дергает лямбду. Постепенно видишь в этом
+особый шарм.</p>
+
+<p>У лямбды жесткие лимиты, которые нельзя нарушать. Время работы не может быть
+дольше 15 минут. Если его превысить, лямбда умирает и запускается опять.
+Максимальное число повторов — 4. Ответ не может быть больше 6 мегабайтов. В теле
+может быть только текст, бинарные данные запрещены.</p>
+
+<p>Про размер тела я и хотел рассказать.</p>
+
+<p>Одна из лямбд распухла и стала отдавать JSON, который не пролазил в 6
+мегабайтов. Это нетрудно поправить. Нужно сжать тело Gzip-ом и обернуть в
+base64. Зачем? Как я сказал, в теле не может быть бинарь, потому что данные
+передаются в JSON. Такой вот костылик, но что поделаешь.</p>
+
+<p>Не обошлось без приключений: клиенты лямбды использовали кривую библиотеку,
+которая не учитывала сжатие Gzip. Пришлось починить ее тоже: проверять Content-
+Encoding и оборачивать стрим, если там gzip. В общем, кое-как все подружились, и
+сообщения пошли как надо.  Как-то раз я задался вопросом: какого размера был тот
+ответ, что не влез в лимит?</p>
+
+<p>Добавил лог с размером JSON до сжатия. Оказалось, он был 5.2 мегабайта.</p>
+
+<p>Может быть, не всем понятно это противоречие, но я впал в ступор. Сказано ясно:
+тело не больше 6 мегабайтов, а у нас 5. Почему сообщение не проходит? Откуда
+лишний мегабайт?  Это страшно взволновало меня: происходит какая-то фигня, о
+которой я не догадываюсь.</p>
+
+<p>Я полез в интернет и выяснил, что какой-то бедняга уже наступал на эти
+грабли. На <a href="https://stackoverflow.com/questions/66971400/aws-lambda-body-size-is-too-large-error-but-body-size-is-under-limit">StackOverflow</a> нашелся вопрос, и автор долго искал ответа. Он
+даже писал сводки с апдейтами! Были разные предположения, в том числе такие, что
+AWS дописывает мету в сообщения. Но не мегабайт же! Они что, Анну Каренину в
+заголовках передают?</p>
+
+<p>На сегодняшний день у вопроса 21 тысяча просмотров и ни одного верного ответа
+(за исключением моего). Этот вопрос был скопирован в сервис <a href="https://repost.aws/questions/QU57r4NMQIQROXqW4Vl6YDBQ/">Repost.AWS</a>
+— базу знаний AWS, и там тоже ничего не сказали по делу. Это доказывает: в
+Амазоне бывает нечто, что никто не может объяснить.</p>
+
+<p>Мысль о лишнем мегабайте не отпускала меня. И вот однажды, прогуливаясь, я все
+понял.</p>
+
+<p>Когда лямбда отдает HTTP-сообщение, она строит примерно такой ответ. В его теле
+— строка JSON с данными:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>return HTTPResponse(
+    200,
+    body=json.encode(data),
+    content_type="application/json"
+)
+</code></pre></div></div>
+
+<p>На этом работа программы кончается. А что происходит с ответом? Он
+перестраивается в такой словарик:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{:statusCode 200,
+ :body &lt;JSON-string&gt;,
+ :headers {"content-type" "application/json"}}
+</code></pre></div></div>
+
+<p>Потом словарик кодируется в JSON и отправляется в дебри AWS, которые называются
+Lambda Runtime API. Это очередь, которая отвечает за прием и отдачу
+сообщений. Ваша лямбда — клиент, который забирает оттуда сообщеньки и рапортует
+об исполнении. Примерно как Consumer в Кафке.</p>
+
+<p>Теперь про этот мегабайт. Напомню, что до кодирования наш словарик выглядел так
+(кложурный синтаксис):</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{:statusCode 200,
+ :body "{\"foo\":{\"bar\":[\"a\",\"b\",\"c\"]}}",
+ :headers {"Content-Type" "application/json"}}
+</code></pre></div></div>
+
+<p>Далее он кодируется в JSON. А в поле <code class="language-plaintext highlighter-rouge">:body</code> уже закодированный JSON! Получается
+двойное кодирование: данные перегнали в JSON первый раз, чтобы получить
+текстовое поле body, а потом еще раз, чтобы закодировать верхний словарь!  При
+кодировании JSON происходит экранирование некоторых символов. Например, если в
+строке двойная кавычка, перед ней будет обратный слэш. Покажу это на примере:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(pg.json/write-string "aaa \" bbb")
+"\"aaa \\\" bbb\""
+</code></pre></div></div>
+
+<p>Интересно, сколько же будет этих слэшей? Примерно x2 от числа ключей в словарях
+и строк в значениях. Например, если в словаре два ключа и в значениях строки, то
+слэшей получится 8. Легко посчитать отношение длины JSON с одним и двойным
+кодированием. Оно получится примерно 1.4:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="p">[</span><span class="no">:a</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="no">:c</span><span class="p">]}}</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="nb">count</span><span class="p">)</span><span class="w">
+</span><span class="mi">29</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">{</span><span class="no">:bar</span><span class="w"> </span><span class="p">[</span><span class="no">:a</span><span class="w"> </span><span class="no">:b</span><span class="w"> </span><span class="no">:c</span><span class="p">]}}</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w"> </span><span class="nb">count</span><span class="p">)</span><span class="w">
+</span><span class="mi">41</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">/</span><span class="w"> </span><span class="mf">41.0</span><span class="w"> </span><span class="mi">29</span><span class="p">)</span><span class="w">
+</span><span class="mf">1.4137931034482758</span><span class="w">
+
+</span></code></pre></div></div>
+
+<p>Проверим это на больших файлах. В интернете нашелся большой публичный JSON. Вот
+цифры для него:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"https://github.com/seductiveapps/largeJSON/raw/master/100mb.json"</span><span class="w">
+    </span><span class="n">java.net.URL.</span><span class="w">
+    </span><span class="nb">slurp</span><span class="w">
+    </span><span class="n">pg.json/read-string</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="nb">count</span><span class="p">)</span><span class="w">
+</span><span class="mi">60129867</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"https://github.com/seductiveapps/largeJSON/raw/master/100mb.json"</span><span class="w">
+    </span><span class="n">java.net.URL.</span><span class="w">
+    </span><span class="nb">slurp</span><span class="w">
+    </span><span class="n">pg.json/read-string</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="n">pg.json/write-string</span><span class="w">
+    </span><span class="nb">count</span><span class="p">)</span><span class="w">
+
+</span><span class="mi">70361681</span><span class="w">
+</span><span class="p">(</span><span class="nb">/</span><span class="w"> </span><span class="mf">70361681.0</span><span class="w"> </span><span class="mi">60129867</span><span class="p">)</span><span class="w">
+
+</span><span class="mf">1.170161926351841</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Коэффициент вышел 1.17, а размер вырос аж на 10 мегабайтов.</p>
+
+<p><strong>Резюмируя:</strong> двойное JSON-кодирование прибавляет от 5 до 17% к длине строки.
+Прибавка состоит из обратных слэшей из-за экранирования кавычек. В моем случае
+было примерно 800 Кб слешей. 5.3 + 0.8 = 6.1 мегабайтов. Все сходится.
+Напоминает шутку про украденный код на Lisp, где были одни закрывающие скобки.
+Тут то же самое, только слэши.</p>
+
+<p>Вот такая штука. Когда все шаги пройдены, она не кажется загадкой, но как же
+напрягала тогда! Ее нельзя назвать багом, потому что документация не врет: шесть
+мегабайтов. Но дело в том, что эти шесть мегабайтов касаются финального
+сообщения, которое уходит в Runtime API. Это не длина данных, что возвращает ваш
+код, вот в чем дело. И конечно, документация ничего не знает о двойном
+кодировании и проблеме слэшей.</p>
+
+<p><strong>Важно понять:</strong> если вы отдаете HTTP-сообщеньки из Лямбды, и в теле JSON, вы
+кодируете его <strong>дважды</strong>. Это добавляет 5-17% процентов от исходной длины. Лучше
+сразу использовать Gzip+base64, чтобы не выстрелить в ногу.</p>
+
+<p>Итак, с лямбдой разобрались. В следующей заметке будет кулстори про AWS Athena
+(читается “Афина”). Там тоже трещали мозги.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/aws-0/">Амазон</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Все статьи из цикла AWS</p>
+
+<ul>
+  <li><a href="/aws-0/">Амазон</a></li>
+  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
+  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
+  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
+  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
+</ul>
+
+<p>Последние три года я плотно работают с Амазоном. Все больше утверждаюсь в мысли:
+для своих нужд я никогда не возьму Амазон, какими бы пряниками он меня не
+заманивал.</p>
+
+<p>Двадцать лет назад, когда я только познакомился с AWS, он был набором
+сервисов. Если тогда это был город, то сегодня он — целая планета. Число
+сервисов выросло на порядок или два, усложнилось взаимодействие между ними.</p>
+
+<p>Разрабатывая на AWS, важно иметь особый навык — знание AWS. Языка
+программирования и базы данных уже недостаточно. Нужно понимать концепции AWS,
+систему прав и полиси, квоты и много чего другого.</p>
+
+<p>В фирме редко бывает человек, который знает AWS целиком. Чаще всего каждый, как
+муравей, видит маленький ландшафтик, и когда начинаются проблемы взаимодействия,
+их тяжело расследовать.</p>
+
+<p>AWS — это дичайший вендор-лок, то есть зависимость от поставщика. Байки на тему
+“посидим и слезем” остаются байками. Амазон, как пылесос, со временем
+перетягивает на себя все решения — файлы, базу, сообщения — и портировать их
+обратно очень дорого.</p>
+
+<p>Важно понимать, что второго Амазона в мире нет. Бывают сервисы, которые
+повторяют некоторые API Амазона, например S3. Но переехать на что-то другое
+целиком будет очень затратно, причем даже не в плане денег, а нервов.</p>
+
+<p>Амазон дорогой. Разумеется, я не могу назвать, сколько платят заказчики, но это
+весьма дорого даже по западным меркам. Реляционные базы данных —
+дорогие. Лямбды, если их вызывать постоянно — дорогие. Если использовать S3 как
+шину данных между сервисами, это тоже дорого.</p>
+
+<p>Пожалуй, моя главная претензия к AWS — его трудно имитировать локально. Когда у
+вас Постгрес и Редис, все это запускается в Докере и покрывает 99%
+случаев. Постгрес в Докере — это настоящий Постгрес, тот самый, что работает на
+серверах. Любую ситуацию можно повторить локально: блокировку транзакций,
+медленный запрос, загрузку миллиарда записей, попадание в индекс.</p>
+
+<p>С Амазоном так не получится: сервисы DynamoDB, SNS/SQS или Athena нельзя
+запустить в Докере. Можно заткнуть их имитацией, которая выплевывает нужный
+JSON, но… это имитация. В проде случается масса вещей, о которых вы и не
+подозревали.</p>
+
+<p>Для разработки под Амазон нужно dev-окружение. Это такой же Амазон, только он не
+пересекается с продом. Там своя база, инстансы, очереди задач. Вы пишете код,
+заливаете в Амазон, гоняете и смотрите логи. Что-то упало — исправляете код и
+все по-новой. Это долго, потому что каждый шаг выполняется не мгновенно, а по
+нескольку минут.</p>
+
+<p>Разумеется, dev-окружение тарифицируется как обычное. За все нужно
+платить. Кроме прода, заказчик платит за 5-10 dev-окружений. Если вы
+расчитываете стоимость AWS, умножайте хотя бы на два, чтобы заложить бюджет на
+dev-окружения.</p>
+
+<p>Амазон радует крайне неочевидным поведением. Не могу назвать его багами, потому
+что оно описано в докуменации. Но документация огромна, читать ее никогда, да и
+требует усилий. Каждый раз, разобравшись, думаешь: ну все, теперь сюрпризов не
+будет. И буквально через два дня — новая головоломка.</p>
+
+<p>В следующих заметках я расскажу о случаях с AWS, над которыми изрядно поломал
+голову. Надеюсь, они будут кому-то полезны и сэкономят нервы.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/avito-2/">Авито (2)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/avito/" rel="tag">avito</a>, <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/idiots/" rel="tag">idiots</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><img src="/assets/static/aws/avito/2.jpeg" /></p>
+
+<p>Уж простите за спам про Авито, но я не могу, правда. Это какой-то лол.</p>
+
+<p>Продавец выставил серию книг, и я спрашиваю, есть ли среди них такая. Что делает
+бот Авито? Он выплевывает 7 сообщений о том, что:</p>
+
+<ul>
+  <li>можно купить с доставкой</li>
+  <li>сроки отправки</li>
+  <li>сколько занимает проверка товара</li>
+  <li>рейтинг продавца</li>
+  <li>куда нажать, чтобы купить</li>
+</ul>
+
+<p>И остальное, что не влезло на скриншот, хотя информация есть на странице, и я ее
+прекрасно вижу. Самую мелочь — есть ли книга или нет — я так и не узнал.</p>
+
+<p>Как же все это душит. Казалось бы, пройдя все авторизации и преграды, можно
+спросить человека и получить живой ответ.  Но Авито не оставляет шансов: и здесь
+поджидает бот, который засрет переписку бессмыслицей. И не только Авито,
+конечно.</p>
+
+<p>Все это нежно, мягко, с заботой, но поддушивает.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/avito-1/">Авито (1)</a>
             </h2>
 
@@ -782,632 +1372,13 @@ documentation</a>.</p>
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/pg-jdbc">PG2 release 0.1.3: Next.JDBC-compatible API</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-02-20T00:00:00+00:00">
-        Feb 20, 2024
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<h2>
-
-    Table of Content
-
-</h2>
-
-<ul id="toc-item-pg2-jdbc">
-  <li><a href="#obtaining-a-connection" id="toc-item-pg2-jdbc-obtaining-a-connection">Obtaining a Connection</a></li>
-  <li><a href="#executing-queries" id="toc-item-pg2-jdbc-executing-queries">Executing Queries</a></li>
-  <li><a href="#transactions" id="toc-item-pg2-jdbc-transactions">Transactions</a></li>
-  <li><a href="#keys-and-namespaces" id="toc-item-pg2-jdbc-keys-and-namespaces">Keys and Namespaces</a></li>
-</ul>
-
-<p><a href="https://github.com/igrishaev/pg2">PG2 version 0.1.3</a> is out. One of its new features is a module which
-mimics <a href="https://github.com/seancorfield/next-jdbc">Next.JDBC</a> API. Of course, it doesn’t cover 100% of Next.JDBC
-features yet most of the functions and macros are there. It will help you to
-introduce PG2 into the project without rewriting all the database-related code
-from scratch.</p>
-
-<h3 id="obtaining-a-connection">Obtaining a Connection</h3>
-
-<p>In Next.JDBC, all the functions and macros accept something that implements the
-<code class="language-plaintext highlighter-rouge">Connectable</code> protocol. It might be a plain Clojure map, an existing connection,
-or a connection pool. The PG2 wrapper follows this design. It works with either
-a map, a connection, or a pool.</p>
-
-<p>Import the namespace and declare a config:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.jdbc</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">jdbc</span><span class="p">])</span><span class="w">
-
-</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
-  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
-   </span><span class="no">:port</span><span class="w"> </span><span class="mi">10140</span><span class="w">
-   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:dbname</span><span class="w"> </span><span class="s">"test"</span><span class="p">})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Having a config map, obtain a connection by passing it into the <code class="language-plaintext highlighter-rouge">get-connection</code>
-function:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
-  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>This approach, although is a part of the Next.JDBC design, is not recommended to
-use. Once you’ve established a connection, you must either close it or, if it
-was borrowed from a pool, return it to the pool. There is a special macro
-<code class="language-plaintext highlighter-rouge">on-connection</code> that covers this logic:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">bind</span><span class="w"> </span><span class="n">source</span><span class="p">]</span><span class="w">
-  </span><span class="n">...</span><span class="p">)</span><span class="w">
-</span></code></pre></div></div>
-
-<p>If the <code class="language-plaintext highlighter-rouge">source</code> was a map, a new connection is spawned and gets closed
-afterwards. If the <code class="language-plaintext highlighter-rouge">source</code> is a pool, the connection gets returned to the pool.
-When the <code class="language-plaintext highlighter-rouge">source</code> is a connection, nothing happens when exiting the macro.</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="n">conn</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>A brief example with a connection pool and a couple of futures. Each future
-borrows a connection from a pool, and returns it afterwards.</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pool/with-pool</span><span class="w"> </span><span class="p">[</span><span class="n">pool</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">f1</span><span class="w">
-        </span><span class="p">(</span><span class="nf">future</span><span class="w">
-          </span><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn1</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
-            </span><span class="p">(</span><span class="nb">println</span><span class="w">
-             </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn1</span><span class="w"> </span><span class="p">[</span><span class="s">"select 'hoho' as message"</span><span class="p">]))))</span><span class="w">
-        </span><span class="n">f2</span><span class="w">
-        </span><span class="p">(</span><span class="nf">future</span><span class="w">
-          </span><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn2</span><span class="w"> </span><span class="n">pool</span><span class="p">]</span><span class="w">
-            </span><span class="p">(</span><span class="nb">println</span><span class="w">
-             </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn2</span><span class="w"> </span><span class="p">[</span><span class="s">"select 'haha' as message"</span><span class="p">]))))]</span><span class="w">
-    </span><span class="o">@</span><span class="n">f1</span><span class="w">
-    </span><span class="o">@</span><span class="n">f2</span><span class="p">))</span><span class="w">
-
-</span><span class="c1">;; {:message hoho}</span><span class="w">
-</span><span class="c1">;; {:message haha}</span><span class="w">
-</span></code></pre></div></div>
-
-<h3 id="executing-queries">Executing Queries</h3>
-
-<p>Two functions <code class="language-plaintext highlighter-rouge">execute!</code> and <code class="language-plaintext highlighter-rouge">execute-one!</code> send queries to the database. Each
-of them takes a source, a SQL vector, and a map of options. The SQL vector is a
-sequence where the first item is either a string or a prepared statement, and
-the rest values are parameters.</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="s">"select $1 as num"</span><span class="w"> </span><span class="mi">42</span><span class="p">]))</span><span class="w">
-</span><span class="c1">;; [{:num 42}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Pay attention that parameters use a dollar sign with a number but not a question
-mark.</p>
-
-<p>The <code class="language-plaintext highlighter-rouge">execute-one!</code> function acts like <code class="language-plaintext highlighter-rouge">execute!</code> but returns the first row
-only. Internaly, this is done by passing the <code class="language-plaintext highlighter-rouge">{:first? true}</code> parameter that
-enables the <code class="language-plaintext highlighter-rouge">First</code> reducer.</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="s">"select $1 as num"</span><span class="w"> </span><span class="mi">42</span><span class="p">]))</span><span class="w">
-</span><span class="c1">;; {:num 42}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>To prepare a statement, pass a SQL-vector into the <code class="language-plaintext highlighter-rouge">prepare</code> function. The
-result will be an instance of the <code class="language-plaintext highlighter-rouge">PreparedStatement</code> class. To execute a
-statement, put it into a SQL-vector followed by the parameters:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
-        </span><span class="p">(</span><span class="nf">jdbc/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w">
-                      </span><span class="p">[</span><span class="s">"select $1::int4 + 1 as num"</span><span class="p">])</span><span class="w">
-        </span><span class="n">res1</span><span class="w">
-        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="mi">1</span><span class="p">])</span><span class="w">
-
-        </span><span class="n">res2</span><span class="w">
-        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="mi">2</span><span class="p">])]</span><span class="w">
-
-    </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))</span><span class="w">
-
-</span><span class="c1">;; [{:num 2} {:num 3}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Above, the same <code class="language-plaintext highlighter-rouge">stmt</code> statement is executed twice with different parameters.</p>
-
-<p>More realistic example with inserting data into a table. Let’s prepare the table
-first:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">[</span><span class="s">"create table test2 (id serial primary key, name text not null)"</span><span class="p">])</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Insert a couple of rows returning the result:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
-        </span><span class="p">(</span><span class="nf">jdbc/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w">
-                      </span><span class="p">[</span><span class="s">"insert into test2 (name) values ($1) returning *"</span><span class="p">])</span><span class="w">
-
-        </span><span class="n">res1</span><span class="w">
-        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">])</span><span class="w">
-
-        </span><span class="n">res2</span><span class="w">
-        </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Huan"</span><span class="p">])]</span><span class="w">
-
-    </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))</span><span class="w">
-
-</span><span class="c1">;; [{:name "Ivan", :id 1} {:name "Huan", :id 2}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>As it was mentioned above, in Postgres, a prepared statement is always bound to
-a certain connection. Thus, use the <code class="language-plaintext highlighter-rouge">prepare</code> function only inside the
-<code class="language-plaintext highlighter-rouge">on-connection</code> macro to ensure that all the underlying database interaction is
-made within the same connection.</p>
-
-<h3 id="transactions">Transactions</h3>
-
-<p>The <code class="language-plaintext highlighter-rouge">with-transaction</code> macro wraps a block of code into a transaction. Before
-entering the block, the macro emits the <code class="language-plaintext highlighter-rouge">BEGIN</code> expression, and <code class="language-plaintext highlighter-rouge">COMMIT</code>
-afterwards, if there was no an exception. Should an exception pop up, the
-transaction gets rolled back with <code class="language-plaintext highlighter-rouge">ROLLBACK</code>, and the exception is re-thrown.</p>
-
-<p>The macro takes a binding symbol which a connection is bound to, a source, an a
-map of options. The standard Next.JDBC transaction options are supported,
-namely:</p>
-
-<ul>
-  <li><code class="language-plaintext highlighter-rouge">:isolation</code></li>
-  <li><code class="language-plaintext highlighter-rouge">:read-only</code></li>
-  <li><code class="language-plaintext highlighter-rouge">:rollback-only</code></li>
-</ul>
-
-<p>Here is an example of inserting a couple of rows in a transaction:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
-
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w">
-        </span><span class="p">(</span><span class="nf">jdbc/prepare</span><span class="w"> </span><span class="n">conn</span><span class="w">
-                      </span><span class="p">[</span><span class="s">"insert into test2 (name) values ($1) returning *"</span><span class="p">])]</span><span class="w">
-
-    </span><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">{</span><span class="no">:isolation</span><span class="w"> </span><span class="no">:serializable</span><span class="w">
-                                     </span><span class="no">:read-only</span><span class="w"> </span><span class="n">false</span><span class="w">
-                                     </span><span class="no">:rollback-only</span><span class="w"> </span><span class="n">false</span><span class="p">}]</span><span class="w">
-
-      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">res1</span><span class="w">
-            </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Snip"</span><span class="p">])</span><span class="w">
-
-            </span><span class="n">res2</span><span class="w">
-            </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="n">stmt</span><span class="w"> </span><span class="s">"Snap"</span><span class="p">])]</span><span class="w">
-
-        </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))))</span><span class="w">
-
-</span><span class="c1">;; [{:name "Snip", :id 3} {:name "Snap", :id 4}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The Postgres log:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BEGIN
-SET TRANSACTION ISOLATION LEVEL SERIALIZABLE
-insert into test2 (name) values ($1) returning *
-  $1 = 'Snip'
-insert into test2 (name) values ($1) returning *
-  $1 = 'Snap'
-COMMIT
-</code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">:isolation</code> parameter might be one of the following:</p>
-
-<ul>
-  <li><code class="language-plaintext highlighter-rouge">:read-uncommitted</code></li>
-  <li><code class="language-plaintext highlighter-rouge">:read-committed</code></li>
-  <li><code class="language-plaintext highlighter-rouge">:repeatable-read</code></li>
-  <li><code class="language-plaintext highlighter-rouge">:serializable</code></li>
-</ul>
-
-<p>To know more about transaction isolation, refer to the official [Postgres
-documentation][transaction-iso].</p>
-
-<p>When <code class="language-plaintext highlighter-rouge">read-only</code> is true, any mutable query will trigger an error response from
-Postgres:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:read-only</span><span class="w"> </span><span class="n">true</span><span class="p">}]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">TX</span><span class="w"> </span><span class="p">[</span><span class="s">"delete from test2"</span><span class="p">]))</span><span class="w">
-
-</span><span class="c1">;; Execution error (PGErrorResponse) at org.pg.Accum/maybeThrowError (Accum.java:207).</span><span class="w">
-</span><span class="c1">;; Server error response: {severity=ERROR, message=cannot execute DELETE in a read-only transaction, verbosity=ERROR}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>When <code class="language-plaintext highlighter-rouge">:rollback-only</code> is true, the transaction gets rolled back even there was
-no an exception. This is useful for tests and experiments:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">{</span><span class="no">:rollback-only</span><span class="w"> </span><span class="n">true</span><span class="p">}]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">TX</span><span class="w"> </span><span class="p">[</span><span class="s">"delete from test2"</span><span class="p">]))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The logs:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>statement: BEGIN
-execute s1/p2: delete from test2
-statement: ROLLBACK
-</code></pre></div></div>
-
-<p>The table still has its data:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="p">[</span><span class="s">"select * from test2"</span><span class="p">])</span><span class="w">
-
-</span><span class="c1">;; [{:name "Ivan", :id 1} ...]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The function <code class="language-plaintext highlighter-rouge">active-tx?</code> helps to determine if you’re in the middle of a
-transaction:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/active-tx?</span><span class="w"> </span><span class="n">conn</span><span class="p">)]</span><span class="w">
-    </span><span class="p">(</span><span class="nf">jdbc/with-transaction</span><span class="w"> </span><span class="p">[</span><span class="n">TX</span><span class="w"> </span><span class="n">conn</span><span class="p">]</span><span class="w">
-      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">res2</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/active-tx?</span><span class="w"> </span><span class="n">TX</span><span class="p">)]</span><span class="w">
-        </span><span class="p">[</span><span class="n">res1</span><span class="w"> </span><span class="n">res2</span><span class="p">]))))</span><span class="w">
-
-</span><span class="c1">;; [false true]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>It returns <code class="language-plaintext highlighter-rouge">true</code> for transactions tha are in the error state as well.</p>
-
-<h3 id="keys-and-namespaces">Keys and Namespaces</h3>
-
-<p>The <code class="language-plaintext highlighter-rouge">pg.jdbc</code> wrapper tries to mimic Next.JDBC and thus uses <code class="language-plaintext highlighter-rouge">kebab-case-keys</code>
-when building maps:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">[</span><span class="s">"select 42 as the_answer"</span><span class="p">]))</span><span class="w">
-
-</span><span class="c1">;; {:the-answer 42}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>To change that behaviour and use <code class="language-plaintext highlighter-rouge">snake_case_keys</code>, pass the <code class="language-plaintext highlighter-rouge">{:kebab-keys?
-false}</code> option map:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/on-connection</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="n">config</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">jdbc/execute-one!</span><span class="w"> </span><span class="n">conn</span><span class="w">
-                     </span><span class="p">[</span><span class="s">"select 42 as the_answer"</span><span class="p">]</span><span class="w">
-                     </span><span class="p">{</span><span class="no">:kebab-keys?</span><span class="w"> </span><span class="n">false</span><span class="p">}))</span><span class="w">
-
-</span><span class="c1">;; {:the_answer 42}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>By default, Next.JDBC returns full-qualified keys where namespaces are table
-names, for example <code class="language-plaintext highlighter-rouge">:user/profile-id</code> or <code class="language-plaintext highlighter-rouge">:order/created-at</code>. At the moment,
-namespaces are not supported by the wrapper.</p>
-
-<p>For more information, please refer to the official <a href="https://github.com/igrishaev/pg2/blob/master/README.md">README file</a>.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/pg2-bench-3">PG2 release 0.1.2: more performance, benchmarks, part 3</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-02-06T00:00:00+00:00">
-        Feb 6, 2024
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<h2>
-
-    Table of Content
-
-</h2>
-
-<ul id="toc-item-pg2-bench-3">
-  <li><a href="#introduction" id="toc-item-pg2-bench-3-introduction">Introduction</a></li>
-  <li><a href="#test1-reading-a-single-column-random-query" id="toc-item-pg2-bench-3-test1-reading-a-single-column-random-query">Test1. Reading a single-column random query</a></li>
-  <li><a href="#test2-reading-a-multi-column-complex-random-query" id="toc-item-pg2-bench-3-test2-reading-a-multi-column-complex-random-query">Test2. Reading a multi-column, complex random query</a></li>
-  <li><a href="#test3-reading-random-json" id="toc-item-pg2-bench-3-test3-reading-random-json">Test3. Reading random JSON</a></li>
-  <li><a href="#test-4-connection-pools" id="toc-item-pg2-bench-3-test-4-connection-pools">Test 4. Connection pools</a></li>
-  <li><a href="#test-5-forcibly-evaluate-each-row-after-reading" id="toc-item-pg2-bench-3-test-5-forcibly-evaluate-each-row-after-reading">Test 5. Forcibly evaluate each row after reading</a></li>
-  <li><a href="#test-6-benchmarking-the-http-server-with-various--c-values" id="toc-item-pg2-bench-3-test-6-benchmarking-the-http-server-with-various--c-values">Test 6. Benchmarking the HTTP server with various -c values</a>    <ul>
-      <li><a href="#1-concurrent-request" id="toc-item-pg2-bench-3-1-concurrent-request">1 concurrent request</a></li>
-      <li><a href="#16-concurrent-requests" id="toc-item-pg2-bench-3-16-concurrent-requests">16 concurrent requests</a></li>
-      <li><a href="#64-concurrent-requests" id="toc-item-pg2-bench-3-64-concurrent-requests">64 concurrent requests</a></li>
-    </ul>
-  </li>
-  <li><a href="#summary" id="toc-item-pg2-bench-3-summary">Summary</a></li>
-</ul>
-
-<h2 id="introduction">Introduction</h2>
-
-<p>The <a href="https://github.com/igrishaev/pg2">PG2 library</a> version 0.1.2 is out. One of its features is a
-significant performance boost when processing SELECT queries. The more fields
-and rows you have in a result, the faster is the processing. Here is a chart
-that measures a query with a single column:</p>
-
-<p><img src="/assets/static/aws/pg2-bench-3/01.svg" class="svg-chart" /></p>
-
-<p>No difference between the previous release of PG and the new one. But with nine
-fields, the average execution time is less now:</p>
-
-<p><img src="/assets/static/aws/pg2-bench-3/02.svg" class="svg-chart" /></p>
-
-<p>Briefly, PG2 0.1.2 allows you to fetch the data 7-8 times faster than Next.JDBC
-does. But before we proceed with other charts and numbers, let me explain how
-the new processing algorithm works.</p>
-
-
-                    <p><a href="/en/pg2-bench-3">Read more &rarr;</a></p>
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/gzip/">Gzip</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-26T00:00:00+00:00">
-        Jan 26, 2024
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/gzip/" rel="tag">gzip</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Коллеги, используйте gzip! Это простой способ уменьшить трафик в разы, если не
-на порядок. Буквально двумя строчками можно превратить гигабайты CSV в 200-300
-мегабайтов. Разве не чудо? И делается это парой строк.</p>
-
-<p>Теперь подробней. Gzip — старый алгоритм потокового сжатия. Ключевое слово
-“потоковый”. Это значит, алгоритму не нужен файл целиком; он читает окно байтов
-и выдает сжатое окно. За счет этого можно пережать любой поток, в том числе
-бесконечный.</p>
-
-<p>В джаве потоки байтов используют часто. В ней легко втиснуть <code class="language-plaintext highlighter-rouge">GzipInputStream</code>
-или <code class="language-plaintext highlighter-rouge">GzipOutputStream</code>, чтобы закодировать или декодировать поток. Например,
-если источник сжат Gzip, то обернем его так:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"some.file.gzip"</span><span class="w">
-    </span><span class="p">(</span><span class="nf">io/file</span><span class="p">)</span><span class="w">
-    </span><span class="p">(</span><span class="nf">io/input-stream</span><span class="p">)</span><span class="w">
-    </span><span class="p">(</span><span class="nf">GzipInputStream.</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>При чтении получим нормальный текст. А чтобы закодировать поток, делаем иначе:
-навесим на выходной поток <code class="language-plaintext highlighter-rouge">GzipOutputStream</code> и колбасим в него. Только в конце
-надо вызвать <code class="language-plaintext highlighter-rouge">.finish</code>, чтобы добить незавершенное окно.</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"myfile.out.gzip"</span><span class="w">
-              </span><span class="n">io/file</span><span class="w">
-              </span><span class="n">io/input-stream</span><span class="p">)</span><span class="w">
-      </span><span class="n">gzip</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">GzipOutputStream</span><span class="w"> </span><span class="n">out</span><span class="p">)]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">while</span><span class="w"> </span><span class="n">...</span><span class="w">
-    </span><span class="p">(</span><span class="nf">.write</span><span class="w"> </span><span class="n">gzip</span><span class="w"> </span><span class="n">&lt;bytes&gt;</span><span class="p">))</span><span class="w">
-  </span><span class="p">(</span><span class="nf">.finish</span><span class="w"> </span><span class="n">gzip</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Удивляет, что при всей банальности gzip используют мало. А ведь он отлично
-подходит для текстовых данных: HTML, JSON, CSS, JS, CSV. В текущем проекте
-сервисы гоняют гигабайты CSV и JSON, и хоть кто-нибудь подумал о сжатии…</p>
-
-<p>Простой эксперимент: несжатый CSV — 146 мегабайтов, сжатый — 26. Почти в шесть
-раз. Даже если закодировать результат в base64, это даст +30% от 26 мегабайтов,
-то есть всего 35. Выгода все равно 4 раза. В том же Nginx сжатие gzip включается
-одной строкой в конфиге.</p>
-
-<p>Еще больше мою веру укрепил крит на проде. Один из сервисов выплюнул 6
-мегабайтов JSON, что не помещается в квоту AWS Lambda. Пришлось в спешке
-прикручивать сжатие, чтобы сообщенька пролезла.</p>
-
-<p>Соответственно, бесят HTTP-клиенты, которые ничего не знают о Gzip. Работа с
-ними превращается в ад: сам проверь заголовки, сам закодируй-раскодируй… и в
-проекте используется именно такой! Он читает ответ как строку, не проверяя
-Content-Encoding, и если там gzip, получается чешуя. Авторам — большой ай-ай за
-игнор веб-стандартов.</p>
-
-<p>Чем раньше вы возьмете gzip в проект, тем лучше. Потом все равно придется, но
-будет больно.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/women-stories/">Женские истории</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-25T00:00:00+00:00">
-        Jan 25, 2024
-    </time>
-
-    <a href="/tag/women/" rel="tag">women</a>, <a href="/tag/sex/" rel="tag">sex</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Когда читаю женские истории — Твиттер, блоги, журналистику, — вижу один и тот же
-паттерн:</p>
-
-<ul>
-  <li>он мне не нравился, но я осталась на свидании;</li>
-  <li>он мне не нравился, но мы целовались;</li>
-  <li>он мне не нравился, но мы поехали к нему;</li>
-  <li>он мне не нравился, но у нас был секс.</li>
-</ul>
-
-<p>То есть он всю дорогу не нравился, но программа шла по плану — от кафе до
-постели.</p>
-
-<p>Тут два момента: либо женщина и правда не знает, что если человек не нравится,
-то и секс с ним будет плохим. Надеюсь, теперь она это знает.</p>
-
-<p>Либо женщина все знает, но понимает, что в данный момент на мужчину лучше она
-рассчитывать не может. Поэтому все, что случилось, выставляется как одолжение с
-ее стороны.</p>
-
-<p>Чем раньше женщина прервет эту цепочку, тем лучше.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/pseudo-resp/">Изображая ответственность</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-01-25T00:00:00+00:00">
-        Jan 25, 2024
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Я уже писал про известный шаблон в кино. Ученый делает бомбу годами, хотя даже
-грубые расчеты показывают, что она убьет тысячи людей. Ученый курит сигары, не
-спит, в голове красочные приходы.</p>
-
-<p>И вот бомба готова, ее забирают вояки, чтобы взорвать над городом. Гибнет двести
-тысяч человек. ВНЕЗАПНО ученый чувствует ответственность. Пока не умерли эти
-двести тысяч, кто сгорев, кто разлагаясь от лучевой болезни, ответственности не
-было. А тут появилась. Пропали сон и аппетит, начинаются походы в высшие
-инстанции: господин Президент, я чувствую ответственность.</p>
-
-<p>Словом, бред. Лети в Японию и расскажи погибшим про свою ответственность.</p>
-
-<p>Почему это нормально для фильма, ясно: историю всегда натягивают на
-драму. Неважно, про что фильм: бомба, война, политика — на первом месте стоит
-личная драма, иначе зрители не пойдут. Кроме того, зрителя подводит время. Два
-года создания бомбы сжаты до 40 минут, и для нас с вами она появляется внезапно:
-еще пять минут назад не было, а сегодня уже на стенде.</p>
-
-<p>К фильмам у меня нет претензий за этот штамп. Сняли и ладно. Но раздражает,
-когда псевдо-ответственность появляется в реальной жизни.</p>
-
-<p>Скажем, один из разработчиков Постгреса разразился плачем: жаль, что лицензия не
-позволяет запретить Постгрес в России. Ведь наверняка их армия применяет нашу
-базу. Срач вышел знатный, и даже пришел основатель проекта, чтобы унять
-активиста.</p>
-
-<p>Я не имею отношения к российской армии, но уверен: там используется и Постгрес,
-и Мария, и Питон, и Перл, и Плюсы и тысячи протоколов и стеков. Ровно как и в
-другой армии мира. Но если ты хочешь запретить, то где точность? Программист
-должен мыслить точно. Запрещай конкретно армии России. Почему под запрет
-попадает детский сад, где сервер 1С крутится на Постгресе?</p>
-
-<p>Далее, как быть с евреями, которые еще месяц назад обрушали дома с палестинскими
-детьми? Как-то не очень гуманно. Будем отзывать лицензии у всех фирм Израиля?</p>
-
-<p>Когда Китай скажет “Тайвань наш” и начнет свою “спецоперацию”, будем отзывать
-Постгрес у Китая? А потом возвращать по итогам переговоров?</p>
-
-<p>Еще есть плохие парни вроде торговцев оружием, наркотиками и CP. Свои дела они
-тоже хранят в базах данных, запрещай ты им или нет.</p>
-
-<p>Если думать об этом системно, задача становится слишком сложной. Кто-то должен
-трекать новости и решать, у кого сегодня мы отзываем, а кому возвращаем. Кто
-будет этим заниматься? Разработчик? Останется ли у него время на разработку
-после этих вопросов? Если поручить это секретарю, где гарантия, что он правильно
-истолкует повестку дня?</p>
-
-<p>Все потому, что с разработчиком случился казус из заголовка. ВНЕЗАПНО он
-почувствовал ответственность. Захотелось решать, кому можно пользоваться базой,
-а кому нельзя.</p>
-
-<p>Похожая история была с другим разработчиком, как ни странно, тоже связанным с
-Постгресом. У него на сайте был хороший парсер EXPLAIN ANALYSE, но затем автор
-закрыл доступ из России и Беларуси. Его спросили: зачем? Он накатал телегу про
-танки в Чехословакии. Так запрети доступ танковым войскам РФ. Зачем всем
-запрещаешь? Какую проблему ты пытаешься решить?</p>
-
-<p>Казалось бы, программисты — люди с точным мышлением, а в жизни все наоборот: в
-голове кисель.</p>
-
-<p>Для меня выход из ситуации простой: трусы или крестик. Либо ты выходишь из
-разработки со словами: хорош, я в этом не участвую. Либо пишешь качественный
-код, понимая, что мир огромен, и у тебя нет возможности контролировать, кто и
-как его использует. Оба варианта честные и снимают все вопросы.</p>
-
-<p>Вариант с псевдо-ответственностью лжив от начала до конца. Он ситуативен и
-основан на реакции, в нем нет идеи и своей повестки. Это желание попасть в
-тренд: Гугл-Эпл запрещают, а я чем хуже?</p>
-
-<p>Если вы хороший разработчик, прошу вас, не становитесь плохим
-Оппенгеймером. Косплей на великого человека будет крайне неудачным.</p>
-
-<p>Поэтому: не ищите ответственности там, где ее нет. Просто делайте то, что вы
-делаете хорошо. Соблюдать этот принцип несмотря ни на что — уже большая
-ответственность.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page25" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 26 из 96</span>
+        <span class="page_number ">Страница 26 из 97</span>
         
         <a href="/page27" class="next">&rarr;</a>
         
