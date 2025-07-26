@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Приши, улучшай"
+title: "Пиши, улучшай"
 permalink: /write-and-check/
 tags: programming code
 ---
