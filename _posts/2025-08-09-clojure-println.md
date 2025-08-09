@@ -60,7 +60,7 @@ Why?
 
 When you pass more than one argument to the `println` function, it doesn't print
 them at once. Instead, it sends them to the underlying `java.io.Writer` instance
-in a cycle. Under the hood, each `.print` Java invocation is synchronized so no
+in a cycle. Under the hood, each `.write` Java invocation is synchronized so no
 one can interfere when a certain chunk of characters is being printed.
 
 But then multiple threads print something in a cycle, **they do interfere**. For
