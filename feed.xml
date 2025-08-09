@@ -6,9 +6,131 @@
 </description>
     <link>https://grishaev.me/</link>
     <atom:link href="https://grishaev.me/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Tue, 15 Jul 2025 07:37:18 +0000</pubDate>
-    <lastBuildDate>Tue, 15 Jul 2025 07:37:18 +0000</lastBuildDate>
+    <pubDate>Sat, 09 Aug 2025 13:24:33 +0000</pubDate>
+    <lastBuildDate>Sat, 09 Aug 2025 13:24:33 +0000</lastBuildDate>
     <generator>Jekyll v4.2.0</generator>
+    
+      <item>
+        <title>Don't use println with two and more arguments</title>
+        <description>&lt;p&gt;When printing, please avoid &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;println&lt;/code&gt; invocations with more than one argument,
+for example:&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;defn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;process&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;println&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;processing item&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Above, we have two items passed into the function, not one. This style can let
+you down when processing data in parallel.&lt;/p&gt;
+
+&lt;p&gt;Let’s run this function with a regular &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;map&lt;/code&gt; as follows:&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;doall&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+ &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;map&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;process&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;range&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;10&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)))&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The output looks fair:&lt;/p&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;processing item 1
+processing item 2
+processing item 3
+processing item 4
+processing item 5
+processing item 6
+processing item 7
+processing item 8
+processing item 9
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Replace &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;map&lt;/code&gt; with &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pmap&lt;/code&gt; which is a semi-parallel method of processing. Now the
+output goes nuts:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&quot;language-clojure(doall&quot;&gt;(pmap process (range 10)))
+
+processing itemprocessing item  10
+
+processing item processing item8 7
+processing item 6
+processing itemprocessing item 4
+processing item 3
+processing item 2
+ 5
+processing item
+ 9
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Why?&lt;/p&gt;
+
+&lt;p&gt;When you pass more than one argument to the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;println&lt;/code&gt; function, it doesn’t print
+them at once. Instead, it sends them to the underlying &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;java.io.Writer&lt;/code&gt; instance
+in a cycle. Under the hood, each &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;.print&lt;/code&gt; Java invocation is synchronized so no
+one can interfere when a certain chunk of characters is being printed.&lt;/p&gt;
+
+&lt;p&gt;But then multiple threads print something in a cycle, &lt;strong&gt;they do interfere&lt;/strong&gt;. For
+example, one thread prints “processing item” and before it prints “1”, another
+thread prints “processing item”. At this moment, you have “processing
+itemprocessing item” on your screen.&lt;/p&gt;
+
+&lt;p&gt;Then, the first thread prints “1” and since it’s the last argument to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;println&lt;/code&gt;,
+it adds &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\n&lt;/code&gt; at the end. Now the second thread prints “2” with a line break at
+the end, so you see this:&lt;/p&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;processing itemprocessing item
+1
+2
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The more cores and threads you computer has, the more entangled the output
+becomes.&lt;/p&gt;
+
+&lt;p&gt;This kind of a mistake happens often. People do such complex things in a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;map&lt;/code&gt;
+function like querying DB, fetching data from API and so on. They forget that
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pmap&lt;/code&gt; can bootstrap such cases up to ten times. But unfortunately, all prints
+produced by a function passed to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pmap&lt;/code&gt; get entangled.&lt;/p&gt;
+
+&lt;p&gt;There are two things to remember. The first one is to not use &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;println&lt;/code&gt; with
+more than one argument. For two and more, use &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;printf&lt;/code&gt; as follows:&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;defn&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;process&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;printf&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;processing item %d%n&quot;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Above, the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;%n&lt;/code&gt; sequence stands for a platform-specific line-ending character
+(or a sequence of characters, if Windows). Let’ check it out:&lt;/p&gt;
+
+&lt;div class=&quot;language-clojure highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;pmap&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;process&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;range&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;10&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)))&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+
+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;processing&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;processing&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;processing&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;processing&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;processing&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;processing&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;processing&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;processing&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;8&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;processing&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;9&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;processing&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;7&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Although the order of numbers is random due to the parallel nature of &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pmap&lt;/code&gt;,
+each line has been consistent.&lt;/p&gt;
+
+&lt;p&gt;One may say “just use logging” but too often, setting up logging is another
+pain: add &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;clojure.tools.logging&lt;/code&gt;, add &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;log4this&lt;/code&gt;, add &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;log4that&lt;/code&gt;, put
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;logging.xml&lt;/code&gt; into the class path and so on.&lt;/p&gt;
+
+&lt;p&gt;The second thing: for IO-heavy computations, consider &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pmap&lt;/code&gt; over &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;map&lt;/code&gt;. It
+takes an extra “p” character but completes the task ten times faster. Amazing!&lt;/p&gt;
+</description>
+        <pubDate>Sat, 09 Aug 2025 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/clojure-println/</link>
+        <guid isPermaLink="true">https://grishaev.me/clojure-println/</guid>
+        
+        <category>clojure</category>
+        
+        <category>programming</category>
+        
+        
+      </item>
     
       <item>
         <title>Пустая истина (3)</title>
@@ -603,36 +725,6 @@ demo1 и demo2. В одном пример с префиксной нотаци�
         <category>work</category>
         
         <category>life</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Австралийское время</title>
-        <description>&lt;p&gt;Несколько раз я упоминал про один австралийский стартап. При всех минусах
-кодовой базы у него было и преимущество: разница во времени с
-заказчиком. Пересечение было совсем небольшим, буквально два-три часа. День
-начинался с созвона, мне давали задачу, мы ее обсуждали. Потом народ из
-Австралии шел ужинать, и день был полностью моим. Без созвонов, чатов и
-обсуждений. При этом я всегда имел две активных задачи, чтобы в случае зависания
-одной переключиться на другую. Утром я докладывал, что сделал вчера, и все были
-довольны.&lt;/p&gt;
-
-&lt;p&gt;Много воды с тех пор утекло, но порой я скучаю по такому формату. Разница с
-заказчиком в час-два означает, что ты не делишь с ним головные боли и причуды:
-планинги, ретро, спринты, тимбилдинги, уведомления в Тимс. Иной раз хочется,
-чтобы ничего этого не было. Чтобы был только git pull и git push, ну и
-зарплата. А на тимбилдинге и без меня обойдутся.&lt;/p&gt;
-
-&lt;p&gt;Это так, минутка малодушия. Вздохнул и пошел дальше.&lt;/p&gt;
-</description>
-        <pubDate>Sat, 05 Jul 2025 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/no-calls-2/</link>
-        <guid isPermaLink="true">https://grishaev.me/no-calls-2/</guid>
-        
-        <category>work</category>
-        
-        <category>australia</category>
         
         
       </item>

@@ -105,6 +105,141 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/clojure-println/">Don't use println with two and more arguments</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-08-09T00:00:00+00:00">
+        Aug 9, 2025
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>When printing, please avoid <code class="language-plaintext highlighter-rouge">println</code> invocations with more than one argument,
+for example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">process</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="s">"processing item"</span><span class="w"> </span><span class="n">x</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, we have two items passed into the function, not one. This style can let
+you down when processing data in parallel.</p>
+
+<p>Let’s run this function with a regular <code class="language-plaintext highlighter-rouge">map</code> as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">doall</span><span class="w">
+ </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="n">process</span><span class="w"> </span><span class="p">(</span><span class="nb">range</span><span class="w"> </span><span class="mi">10</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The output looks fair:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>processing item 1
+processing item 2
+processing item 3
+processing item 4
+processing item 5
+processing item 6
+processing item 7
+processing item 8
+processing item 9
+</code></pre></div></div>
+
+<p>Replace <code class="language-plaintext highlighter-rouge">map</code> with <code class="language-plaintext highlighter-rouge">pmap</code> which is a semi-parallel method of processing. Now the
+output goes nuts:</p>
+
+<pre><code class="language-clojure(doall">(pmap process (range 10)))
+
+processing itemprocessing item  10
+
+processing item processing item8 7
+processing item 6
+processing itemprocessing item 4
+processing item 3
+processing item 2
+ 5
+processing item
+ 9
+</code></pre>
+
+<p>Why?</p>
+
+<p>When you pass more than one argument to the <code class="language-plaintext highlighter-rouge">println</code> function, it doesn’t print
+them at once. Instead, it sends them to the underlying <code class="language-plaintext highlighter-rouge">java.io.Writer</code> instance
+in a cycle. Under the hood, each <code class="language-plaintext highlighter-rouge">.print</code> Java invocation is synchronized so no
+one can interfere when a certain chunk of characters is being printed.</p>
+
+<p>But then multiple threads print something in a cycle, <strong>they do interfere</strong>. For
+example, one thread prints “processing item” and before it prints “1”, another
+thread prints “processing item”. At this moment, you have “processing
+itemprocessing item” on your screen.</p>
+
+<p>Then, the first thread prints “1” and since it’s the last argument to <code class="language-plaintext highlighter-rouge">println</code>,
+it adds <code class="language-plaintext highlighter-rouge">\n</code> at the end. Now the second thread prints “2” with a line break at
+the end, so you see this:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>processing itemprocessing item
+1
+2
+</code></pre></div></div>
+
+<p>The more cores and threads you computer has, the more entangled the output
+becomes.</p>
+
+<p>This kind of a mistake happens often. People do such complex things in a <code class="language-plaintext highlighter-rouge">map</code>
+function like querying DB, fetching data from API and so on. They forget that
+<code class="language-plaintext highlighter-rouge">pmap</code> can bootstrap such cases up to ten times. But unfortunately, all prints
+produced by a function passed to <code class="language-plaintext highlighter-rouge">pmap</code> get entangled.</p>
+
+<p>There are two things to remember. The first one is to not use <code class="language-plaintext highlighter-rouge">println</code> with
+more than one argument. For two and more, use <code class="language-plaintext highlighter-rouge">printf</code> as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">process</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">printf</span><span class="w"> </span><span class="s">"processing item %d%n"</span><span class="w"> </span><span class="n">x</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, the <code class="language-plaintext highlighter-rouge">%n</code> sequence stands for a platform-specific line-ending character
+(or a sequence of characters, if Windows). Let’ check it out:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pmap</span><span class="w"> </span><span class="n">process</span><span class="w"> </span><span class="p">(</span><span class="nb">range</span><span class="w"> </span><span class="mi">10</span><span class="p">)))</span><span class="w">
+
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">0</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">2</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">1</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">4</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">3</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">5</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">6</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">8</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">9</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">7</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Although the order of numbers is random due to the parallel nature of <code class="language-plaintext highlighter-rouge">pmap</code>,
+each line has been consistent.</p>
+
+<p>One may say “just use logging” but too often, setting up logging is another
+pain: add <code class="language-plaintext highlighter-rouge">clojure.tools.logging</code>, add <code class="language-plaintext highlighter-rouge">log4this</code>, add <code class="language-plaintext highlighter-rouge">log4that</code>, put
+<code class="language-plaintext highlighter-rouge">logging.xml</code> into the class path and so on.</p>
+
+<p>The second thing: for IO-heavy computations, consider <code class="language-plaintext highlighter-rouge">pmap</code> over <code class="language-plaintext highlighter-rouge">map</code>. It
+takes an extra “p” character but completes the task ten times faster. Amazing!</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/vacuous-truth-3/">Пустая истина (3)</a>
             </h2>
 
@@ -810,49 +945,6 @@ demo1 и demo2. В одном пример с префиксной нотаци�
 <p>Честное слово, нам нужны дни, когда нет ни созвонов, ни чатов, ни почты. Дни,
 когда можно поработать в полном отрыве от команды и вечером написать, как много
 сделал.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/no-calls-2/">Австралийское время</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-07-05T00:00:00+00:00">
-        Jul 5, 2025
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/australia/" rel="tag">australia</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Несколько раз я упоминал про один австралийский стартап. При всех минусах
-кодовой базы у него было и преимущество: разница во времени с
-заказчиком. Пересечение было совсем небольшим, буквально два-три часа. День
-начинался с созвона, мне давали задачу, мы ее обсуждали. Потом народ из
-Австралии шел ужинать, и день был полностью моим. Без созвонов, чатов и
-обсуждений. При этом я всегда имел две активных задачи, чтобы в случае зависания
-одной переключиться на другую. Утром я докладывал, что сделал вчера, и все были
-довольны.</p>
-
-<p>Много воды с тех пор утекло, но порой я скучаю по такому формату. Разница с
-заказчиком в час-два означает, что ты не делишь с ним головные боли и причуды:
-планинги, ретро, спринты, тимбилдинги, уведомления в Тимс. Иной раз хочется,
-чтобы ничего этого не было. Чтобы был только git pull и git push, ну и
-зарплата. А на тимбилдинге и без меня обойдутся.</p>
-
-<p>Это так, минутка малодушия. Вздохнул и пошел дальше.</p>
 
                 
             </div>
