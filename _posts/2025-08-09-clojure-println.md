@@ -63,7 +63,7 @@ them at once. Instead, it sends them to the underlying `java.io.Writer` instance
 in a cycle. Under the hood, each `.write` Java invocation is synchronized so no
 one can interfere when a certain chunk of characters is being printed.
 
-But then multiple threads print something in a cycle, **they do interfere**. For
+But when multiple threads print something in a cycle, **they do interfere**. For
 example, one thread prints "processing item" and before it prints "1", another
 thread prints "processing item". At this moment, you have "processing
 itemprocessing item" on your screen.
