@@ -83,8 +83,8 @@ becomes.
 
 This kind of a mistake happens often. People do such complex things in a `map`
 function like querying DB, fetching data from API and so on. They forget that
-`pmap` can bootstrap such cases up to ten times. But unfortunately, all prints
-produced by a function passed to `pmap` get entangled.
+`pmap` can bootstrap such cases up to ten times. But unfortunately, all prints,
+should invoked with two or more arguments, get entangled.
 
 There are two things to remember. The first one is to not use `println` with
 more than one argument. For two and more, use `printf` as follows:
