@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Поддежка и Джира"
+title: "Поддержка и Джира"
 permalink: /support-jira/
 tags: support jira
 telegram_id: 864
