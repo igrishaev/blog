@@ -105,6 +105,681 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/clojure-println/">Don't use println with two and more arguments</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-08-09T00:00:00+00:00">
+        Aug 9, 2025
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>When printing, please avoid <code class="language-plaintext highlighter-rouge">println</code> invocations with more than one argument,
+for example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">process</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="s">"processing item"</span><span class="w"> </span><span class="n">x</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, we have two items passed into the function, not one. This style can let
+you down when processing data in parallel.</p>
+
+<p>Let’s run this function with a regular <code class="language-plaintext highlighter-rouge">map</code> as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">doall</span><span class="w">
+ </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="n">process</span><span class="w"> </span><span class="p">(</span><span class="nb">range</span><span class="w"> </span><span class="mi">10</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The output looks fair:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>processing item 1
+processing item 2
+processing item 3
+processing item 4
+processing item 5
+processing item 6
+processing item 7
+processing item 8
+processing item 9
+</code></pre></div></div>
+
+<p>Replace <code class="language-plaintext highlighter-rouge">map</code> with <code class="language-plaintext highlighter-rouge">pmap</code> which is a semi-parallel method of processing. Now the
+output goes nuts:</p>
+
+<pre><code class="language-clojure(doall">(pmap process (range 10)))
+
+processing itemprocessing item  10
+
+processing item processing item8 7
+processing item 6
+processing itemprocessing item 4
+processing item 3
+processing item 2
+ 5
+processing item
+ 9
+</code></pre>
+
+<p>Why?</p>
+
+<p>When you pass more than one argument to the <code class="language-plaintext highlighter-rouge">println</code> function, it doesn’t print
+them at once. Instead, it sends them to the underlying <code class="language-plaintext highlighter-rouge">java.io.Writer</code> instance
+in a cycle. Under the hood, each <code class="language-plaintext highlighter-rouge">.write</code> Java invocation is synchronized so no
+one can interfere when a certain chunk of characters is being printed.</p>
+
+<p>But when multiple threads print something in a cycle, <strong>they do interfere</strong>. For
+example, one thread prints “processing item” and before it prints “1”, another
+thread prints “processing item”. At this moment, you have “processing
+itemprocessing item” on your screen.</p>
+
+<p>Then, the first thread prints “1” and since it’s the last argument to <code class="language-plaintext highlighter-rouge">println</code>,
+it adds <code class="language-plaintext highlighter-rouge">\n</code> at the end. Now the second thread prints “2” with a line break at
+the end, so you see this:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>processing itemprocessing item
+1
+2
+</code></pre></div></div>
+
+<p>The more cores and threads you computer has, the more entangled the output
+becomes.</p>
+
+<p>This kind of a mistake happens often. People do such complex things in a <code class="language-plaintext highlighter-rouge">map</code>
+function like querying DB, fetching data from API and so on. They forget that
+<code class="language-plaintext highlighter-rouge">pmap</code> can bootstrap such cases up to ten times. But unfortunately, all prints,
+should invoked with two or more arguments, get entangled.</p>
+
+<p>There are two things to remember. The first one is to not use <code class="language-plaintext highlighter-rouge">println</code> with
+more than one argument. For two and more, use <code class="language-plaintext highlighter-rouge">printf</code> as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">process</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">printf</span><span class="w"> </span><span class="s">"processing item %d%n"</span><span class="w"> </span><span class="n">x</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, the <code class="language-plaintext highlighter-rouge">%n</code> sequence stands for a platform-specific line-ending character
+(or a sequence of characters, if Windows). Let’ check it out:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pmap</span><span class="w"> </span><span class="n">process</span><span class="w"> </span><span class="p">(</span><span class="nb">range</span><span class="w"> </span><span class="mi">10</span><span class="p">)))</span><span class="w">
+
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">0</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">2</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">1</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">4</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">3</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">5</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">6</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">8</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">9</span><span class="w">
+</span><span class="n">processing</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="mi">7</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Although the order of numbers is random due to the parallel nature of <code class="language-plaintext highlighter-rouge">pmap</code>,
+each line has been consistent.</p>
+
+<p>One may say “just use logging” but too often, setting up logging is another
+pain: add <code class="language-plaintext highlighter-rouge">clojure.tools.logging</code>, add <code class="language-plaintext highlighter-rouge">log4this</code>, add <code class="language-plaintext highlighter-rouge">log4that</code>, put
+<code class="language-plaintext highlighter-rouge">logging.xml</code> into the class path and so on.</p>
+
+<p>The second thing: for IO-heavy computations, consider <code class="language-plaintext highlighter-rouge">pmap</code> over <code class="language-plaintext highlighter-rouge">map</code>. It
+takes an extra “p” character but completes the task ten times faster. Amazing!</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/vacuous-truth-3/">Пустая истина (3)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-07-15T00:00:00+00:00">
+        Jul 15, 2025
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/logic/" rel="tag">logic</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>После второго раунда обсуждений стало ясно, почему every от пустого множества
+дает истину. Читатель <a href="https://t.me/themishkun">Миша Левченко</a> дал внятное объяснение, которое
+понятно мне как программисту. Оно не опирается на кванторы и логику. И хотя
+вывод все равно не нравится, приведу объяснение здесь.</p>
+
+<p>Дело в том, что операции над списками нужно рассматривать как свертку. Есть
+такая функция <code class="language-plaintext highlighter-rouge">reduce</code> (она же <code class="language-plaintext highlighter-rouge">fold</code>), которая принимает функцию двух
+аргументов и коллекцию. Результат функции такой:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>fn(fn(fn(fn(item0, item1), item2), item3), item4)...
+</code></pre></div></div>
+
+<p>Например, для сложения чисел 1, 2, 3, 4 получим форму:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(((1 + 2) + 3) + 4)
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">Reduce</code> может накапливать в том числе другую коллекцию: словарь или список. Это
+вообще очень мощная функция. Про себя я называю ее царицей функций, потому что
+через reduce можно выразить что угодно.</p>
+
+<p>Reduce выше прекрасно работает, если элементов два и более. Когда их один или
+ноль, начинаются граничные случаи. Одно из решений в том, что <code class="language-plaintext highlighter-rouge">reduce</code> может
+принимать т.к. <code class="language-plaintext highlighter-rouge">init</code> — первичный элемент, который подставляется в начало
+цепочки. Чаще всего он выступает коллекцией-аккумулятором, но может быть и
+простым скаляром.</p>
+
+<p>Если передать <code class="language-plaintext highlighter-rouge">init</code>, форма будет такой:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>fn(fn(fn(init, item0), item1), item2)...
+</code></pre></div></div>
+
+<p>Другими словами, он гарантирует, что элементов больше нуля. Если основной список
+пустой, просто вернем init.</p>
+
+<p>Так вот, в терминах свертки функция <code class="language-plaintext highlighter-rouge">ALL</code> (которую я раньше называл <code class="language-plaintext highlighter-rouge">every?</code>)
+выглядит так:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(func ALL [fn-pred items]
+  (reduce (fn [x y]
+         (and x (fn-pred y)))
+       true
+       items))
+</code></pre></div></div>
+
+<p>Демо:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(ALL int? [1 2 3])
+true
+
+(ALL int? [1 nil 3])
+false
+
+(ALL int? [])
+true
+</code></pre></div></div>
+
+<p>А вот функция <code class="language-plaintext highlighter-rouge">ANY</code> (что хотя бы один элемент вернул истину для предиката):</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(func ANY [fn-pred items]
+  (reduce (fn [x y]
+         (or x (fn-pred y)))
+       false
+       items))
+</code></pre></div></div>
+
+<p>Демо:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(ANY int? [1 nil 3])
+true
+
+(ANY int? [nil nil nil])
+false
+
+(ANY int? [])
+false
+</code></pre></div></div>
+
+<p>Аналогично работают функции суммирования: это <code class="language-plaintext highlighter-rouge">reduce</code>, где начальные элементы
+равны 0 и 1. Поэтому <code class="language-plaintext highlighter-rouge">(+)</code> дает 0, а <code class="language-plaintext highlighter-rouge">(*)</code> — 1.</p>
+
+<p>Как видим, все это можно объяснить без греческих букв и терминов. А пустая
+истина, о которой я писал ранее, считается истиной только потому, что таков
+начальный элемент свертки.</p>
+
+<p>Другое дело, что такой подход все равно мне не нравится. В каждом из них скрыт
+начальный элемент: для <code class="language-plaintext highlighter-rouge">ALL</code> — <code class="language-plaintext highlighter-rouge">true</code>, для <code class="language-plaintext highlighter-rouge">ANY</code> — <code class="language-plaintext highlighter-rouge">false</code>, единица для
+умножения и так далее. Считается очевидным, что он должен быть именно таким. А
+мне это не очевидно. Я спотыкаюсь, когда вижу, что произведение элементов
+пустого списка равно единице. Я бы предпочел неопределённость — то есть null.</p>
+
+<p>Я в курсе про нейтральный элемент: ноль для сложения, единица для умножения. Но
+на пустых списках это как-то не очень. Душа не принимает, если совсем честно.</p>
+
+<p>В самом деле, в математике оператор умножения — бинарный, ему нужно два
+операнда. Нельзя записать что-то вроде <code class="language-plaintext highlighter-rouge">5 * = 5</code> — тут не хватает операнда
+справа. С какой стати мы обходим математические правила — не ясно.</p>
+
+<p>Я часто использую <code class="language-plaintext highlighter-rouge">reduce</code> и вывел правило: всегда указываю начальный
+элемент. Например, чтобы сложить список чисел, я пишу так:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(reduce + 0 numbers)
+</code></pre></div></div>
+
+<p>вместо</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(apply + numbers)
+</code></pre></div></div>
+
+<p>Потому что во втором случае не очевидно, во что накапливается результат.</p>
+
+<p>Словом, пока что меня отпустило на тему пустой истины. Все оказалось просто: это
+свертка, где начальный элемент — истина. Крайне неочевидно, на мой взгляд. Чтобы
+не отстрелить ногу, либо проверяйте коллекцию на пустоту, либо пишите явный
+<code class="language-plaintext highlighter-rouge">reduce</code>, где начальный элемент — ложь, если того требует контекст.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/vacuous-truth-2/">Пустая истина (2)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-07-15T00:00:00+00:00">
+        Jul 15, 2025
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/logic/" rel="tag">logic</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>После прошлой заметки мне стали приходить, что называется, письма читателей. Их
+можно разделить на два вида.</p>
+
+<p>Первый — ты не шаришь в логике, сейчас я все объясню. Гляди… (далее километр
+греческих букв, термины “антецедент”, “консеквент” и другие). Вывалив все это,
+человек считает, что открыл мне глаза. Я ничего из этого не понимаю, поэтому
+прошу — не утруждайтесь подобными доказательствами.</p>
+
+<p>Второй тип писем — в языке X предикат every работает так же: для пустого
+множества вернет истину независимо от предиката. Да, согласен. Еще пять лет
+назад выполнил в Постгресе такой запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="mi">1</span> <span class="o">=</span> <span class="k">ALL</span> <span class="p">(</span><span class="n">array</span><span class="p">[]::</span><span class="nb">int</span><span class="p">[]);</span>
+<span class="n">t</span>
+</code></pre></div></div>
+
+<p>, получил истину и опечалился. Если же поменять <code class="language-plaintext highlighter-rouge">ALL</code> на <code class="language-plaintext highlighter-rouge">ANY</code>, получим
+противоположный результат:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="mi">1</span> <span class="o">=</span> <span class="k">ANY</span> <span class="p">(</span><span class="n">array</span><span class="p">[]::</span><span class="nb">int</span><span class="p">[]);</span>
+<span class="n">f</span>
+</code></pre></div></div>
+
+<p>Здесь мы уподобляемся Джаваскриптерам: подаем нелепый ввод, получаем нелепый
+вывод. При этом силимся подвести его под какую-то базу: антецеденты-консеквенты,
+кванторы и прочее.</p>
+
+<p>А дело в другом: аппарат логики не учитывает неопределенность. Это утопичная
+модель, где есть только истина и ложь — третьего не дано. В тех местах, где
+модель не ложится на реальность, начинаются подтасовки: истину раз — и обозвали
+“пустой”. То есть как бы истина, но не совсем.</p>
+
+<p>Меня это страшно бесит, прям так, что не передать словами. Если результат
+отличен от истины и лжи, заведи под него тип. Переработай модель логики, в конце
+концов. Признай, что старая модель ограничена и не подходит под прикладные
+задачи. И уж чего точно я не пойму, так это того, почему в языках
+программирования мы опираемся на логику бог знает какой давности. Нужно делать
+так, чтобы удобно здесь и сейчас, а не как принято в учебнике логики.</p>
+
+<p>Правильный ответ в том, что в функции every пустое множество — это
+неопределенность, краевой случай. То же самое, что получить первый элемент
+массива, когда он пуст. В зависимости от языка мы получим null или исключение,
+но точно не число 42 с пометкой “пустое” — это нонсенс.</p>
+
+<p>Обратимся к более достойной науке, чем логика — математике. Рассмотрим функцию
+<code class="language-plaintext highlighter-rouge">y = 1/x</code> (см. график ниже). Прелесть этой функции в том, что в точке 0 ее
+значение не определено. Если точнее, при <code class="language-plaintext highlighter-rouge">x=0</code> результат будет бесконечностью,
+причем даже нельзя сказать, какой именно — положительной или отрицательной. В
+зависимости от того, с какой стороны приближаться к нулю — правой или левой —
+функция будет уходить в плюс- и минус-бесконечность.</p>
+
+<p><img src="/assets/static/aws/vacuous-truth-2/1.jpeg" /></p>
+
+<p>Область определения этой функции записывается так: <code class="language-plaintext highlighter-rouge">(-inf, 0);(0, +inf)</code>. В нуле
+функция не определена — и при этом никто не умер. Бывают функции и с большим
+количеством точек и даже целых областей, где они не определены. И ничего — нас
+это устраивает, с функцией можно работать.</p>
+
+<p>(В скобках отмечу, стандарт чисел с плавающей запятой предусматривает комбинации
+битов, которые трактуются как обычная бесконечность, а также плюс- и
+минус-версии. То же самое касается нуля: может быть ноль, минус ноль и плюс
+ноль. Это помогает при сходимости рядов, когда мы пришли к нулю и хотим знать
+откуда — справа или слева. По крайней мере в Фортране этими штуками
+пользовались).</p>
+
+<p>Другой пример из математики — решение квадратного уравнения вида <code class="language-plaintext highlighter-rouge">ax^2 + bx + c
+= 0</code>. У него может быть либо два корня, либо один, либо никаких. Во втором
+случае еще можно слукавить: сказать, что один корень — это два
+одинаковых. Ладно, но с третьим вариантом это не прокатит. Нельзя вернуть
+какое-то левое число и сказать, что это пустой корень. Они не определены.</p>
+
+<p>Пример из географии: чтобы попасть на северный полюс, нужно идти на север. Каким
+же будет северное направление на Северном полюсе? Ответ — никаким, оно не
+определено.</p>
+
+<p>То же самое с предикатами: когда нас просят сказать, что все камни белые, но
+камней нет, это неопределенность. Потому что если сказать да, оказывается, что
+камни в том числе черные, прозрачные, резиновые — и все это одновременно. Этого
+не было, если бы every возвращал NULL — я имею в виду не в коде, а на уровне
+логики.</p>
+
+<p>Уж не говорю, что пустая истина совершенно неприемлема на бытовом уровне. Это
+либо троллинг, либо саботаж, либо неразбериха.</p>
+
+<p>Когда я читаю в документации: <em>if the stream is empty then true is returned and
+the predicate is not evaluated</em> — мне немного плохеет. Выходит так, что функция
+возвращает один и тот же результат при РАЗНЫХ случаях. А значит, ответственность
+перекладывается на тебя — будь добр сам проверяй, пустое множество или не
+пустое.</p>
+
+<p>Это просто плохой API — что, в общем-то, не редкость. Надо это признать и больше
+так не делать. А вот оправдываться логикой и чепухой а-ля “антецедент-квантор” —
+это отстой.</p>
+
+<p>Под конец напомню вам о Булгакове. Если свежесть отлична от первой, это уже не
+свежесть. Если перед истиной стоит какой-то тег — пустая, неполная, вторичная —
+то это не истина. Вот и все, что нужно запомнить. И это — истина.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/vacuous-truth-1/">Пустая истина (1)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-07-15T00:00:00+00:00">
+        Jul 15, 2025
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/logic/" rel="tag">logic</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Расскажу, как однажды погорел на забавной вещи под названием “пустая
+истина”. Это было лет пять назад, когда я ничего про это не знал.</p>
+
+<p>Значит, смотрите: когда мускулистые греки работали над логикой, они ввели в том
+числе предикаты. Например, белый? – это предикат. Если применить его к любому
+предмету, получим истину или ложь.</p>
+
+<p>Также греки придумали пакетную версию предикатов, батч, так сказать. Это
+супер-предикаты “каждый из”, “любой из”, “ни один из”. Все они принимают другой
+предикат и множество объектов. Далее они редьюсят множество логических
+результатов в один (простите за функциональные термины).</p>
+
+<p>Если на столе три белых камня, то выражение “все камни – белые” вернет
+истину. Если один – тоже истину. Если сто белых и один черный – ложь. А что
+случится, если камней нет? Греки почесали бороды и сказали – будет тоже истина,
+только назовем ее пустой.</p>
+
+<p>В результате: если на столе нет камней, выражение “все камни – белые” будет
+истинно. Таким же истинным будет выражение “все камни – черные”, в крапинку и
+полоску. Все камни обладают какими угодно свойствами одновременно. Одна беда –
+их нет.</p>
+
+<p>На мой взгляд, греки подложили нам свинью. Истина, как известно, одна – не
+бывает двух разных истин. Когда вводят истину с какой-то характеристикой,
+получается черт знает что. Вроде бы это истина, но какая-то другая, что требует
+особого обращения с ней.</p>
+
+<p>Напоминает диалог Булгакова об осетрине второй свежести: голубчик, это вздор!
+Свежесть бывает только одна – первая, она же последняя. Если осетрина второй
+свежести, значит, она тухлая.</p>
+
+<p>Знал же человек!</p>
+
+<p>Интересно, что греческая вторая свежесть, тьфу, пустая истина идеально ложится
+на быдлокод! Это при том, что программировать греки не умели.</p>
+
+<p>Предположим, нужно написать функцию, которая принимает предикат и список
+объектов. Функция возвращает истину, если предикат справедлив для каждого
+элемента. Вот как выглядит самая тупая реализация:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>func is_every(fn_pred, items):
+  for item in items:
+    if not fn_pred(item):
+      return false;
+  return true;
+</code></pre></div></div>
+
+<p>Все просто: бежим по списку, как только предикат вернул ложь, мы тоже возвращаем
+ложь. Если прошли по всем элементам, значит, лжи ни разу не было, и мы
+возвращаем истину. Если список пуст, мы благополучно пропустим цикл и перейдем к
+выражению с истиной.</p>
+
+<p>Как это связано с моей работой? Несколько лет назад в Exoscale я делал систему
+прав доступа, аналог IAM в Амазоне. Из базы читались разрешения, и нужно было
+проверить, что каждое из них совпадает с политикой ресурса. Для этого я вызывал
+кложурную функцию <code class="language-plaintext highlighter-rouge">every?</code>:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(every? policy-match? permissions)
+</code></pre></div></div>
+
+<p>Оказалось, Рич Хикки знал эти штучки, и для пустого множества <code class="language-plaintext highlighter-rouge">every?</code>
+возвращает истину. Это легко проверить:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(every? int? [1 2 3])
+true
+
+(every? int? [1 "a" 3])
+false
+
+(every? int? [])
+true
+</code></pre></div></div>
+
+<p>Вышло так, что если у пользователя вообще не было прав, то список был пуст и
+every? возвращала истину. В результате пользователь, который не имел доступа ни
+к чему, имел доступ ко всему – из-за моих бедных знаний в этой области.</p>
+
+<p>С тех пор у меня отпечаталось в подкорке, что перед <code class="language-plaintext highlighter-rouge">every?</code> должна быть
+проверка на пустоту. Пустая истина может трактоваться как угодно, но мне нужна
+точность.</p>
+
+<p>Второе – я не согласен с греками. Видимо, они еще не знали про NULL и
+неопределенность, плохо понимали троичную логику. Увы, наш мир сложнее, чем
+<code class="language-plaintext highlighter-rouge">true</code> и <code class="language-plaintext highlighter-rouge">false</code>, есть нуллы и другие досадные вещи. Но нужно жить с ними, а не
+сводить к каким-то сомнительным истинам.</p>
+
+<p>Кстати, пустая истина позволяет сказать жене: все мои любовницы – брюнетки. Если
+у вас нет любовниц, это тоже будет истиной. Разве что придется потратить время
+на объяснение, но ничего. Истина дороже.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/google-prices/">Подорожание Google Workspace</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-07-15T00:00:00+00:00">
+        Jul 15, 2025
+    </time>
+
+    <a href="/tag/google/" rel="tag">google</a>, <a href="/tag/ai/" rel="tag">ai</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Гугл пишет, что поднимет цену на подписку Google Workspace. Это для тех, кто
+привязял домен к Гуглу и тем самым создал мини-организацию из одного
+человека. Правда, со временем я открыл учетки для других членов семьи, включая
+маму, потому что никто не помнит пароль, да и пройдет авторизацию Гугла сегодня
+не каждый. Так что сейчас в моей организации пять человек.</p>
+
+<p>Интересна причина роста цен — это внедрение AI и некие фичи:</p>
+
+<blockquote>
+  <p>The updated subscription pricing reflects the significant added AI value, as
+well as the many new features we have introduced and are launching to Google
+Workspace editions</p>
+</blockquote>
+
+<p>В тот момент я подумал: Гугл напоминает российский Газпром. Потому что все
+развлечения Газпрома оплачивает потребитель — покупку футбольных клубов,
+километры списанных труб, бонусы менеждеров. За все это платит простолюдин,
+неважно какие успехи рапортует Газпром по телевизору.</p>
+
+<p>То же самое с Гуглом — казалось бы, он и так гребет деньги лопатой за рекламу;
+собирает и продает личные данные; везде где можно предлагает платный Gemini. И
+все равно этого мало, поэтому пусть заплатит потребитель.</p>
+
+<p>Тем чудикам, которые топят за ИИ, советую подумать: на ровном месте мы получили
+прибавку к цене только потому, что компания внедряет ИИ. Такая вот новая
+нормальность.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/github-buttons/">Кнопки в Гитхабе</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-07-15T00:00:00+00:00">
+        Jul 15, 2025
+    </time>
+
+    <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/github/" rel="tag">github</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>У Гитхаба странный интерфейс — посмотрите на картинки ниже.</p>
+
+<p>Первая картинка: я хочу смержить пул-реквест. Нажимаю кнопку Squash and merge,
+ожидаю, что произойдет то, что написано на кнопке — логично же?</p>
+
+<p><img src="/assets/static/aws/github-buttons/1.jpeg" /></p>
+
+<p>Но мерджа не происходит. Вместо этого появляется форма с двумя полями, а кнопка
+Confirm squash and merge проваливается ниже. Как у Чуковского: “и подушка как
+лягушка ускакала от меня”. Нужно мотать вниз и жать ее еще раз.</p>
+
+<p><img src="/assets/static/aws/github-buttons/2.jpeg" /></p>
+
+<p>Вот эти убегающие кнопки — бич Гитхаба. Вроде нажал, а всплыло что-то
+другое. Кстати, после мерджа обычно я удаляю ветку, и кнопка Delete branch
+оказывается на 10 сантиметров ВЫШЕ. То есть сначала нажал кнопку на высоте X,
+потом X+10 см, потом снова X-10 см.  Дизайнеру Гитхаба это норм — не жмет, не
+чешется.</p>
+
+<p>Вы, конечно, скажете: надо запросить описание коммита. Ну вот ниже на картинке
+есть форма комментариев — она статична и не появляется по клику. Можно сделать
+такой же статичный инбокс для мерджа. Еще лучше — сделать так, чтобы кнопка не
+уплывала вниз, а оставалась на месте, при этом поле повляется ПОД ней. Чаще
+всего я ничего не пишу, поэтому просто нажал бы кнопку еще раз.</p>
+
+<p>Решений может быть много, но то, что сейчас — крайне неудачно.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/toy-parser/">Игрушечный парсер</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-07-05T00:00:00+00:00">
+        Jul 5, 2025
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/clojure/" rel="tag">clojure</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>Месяц назад я помогал одной студентке с домашней работой по Кложе. Да, я тоже
+удивился: есть вуз, где на первом курсе пишут парсеры на этом языке. Сомневаюсь,
+что у студентов что-то останется в голове: после интенсива Кложи их перебросили
+на Пролог, и в чем замысел такого обучения — загадка.</p>
+
+<p>Тем не менее была домашка, которую нужно было сделать. Я помогал с двумя
+заданиями: написать комбинаторные парсеры для разбора постфиксной и инфиксной
+нотаций. Я всегда любил парсеры, и хоть не силен в них, не прочь что-нибудь
+распарсить своими силами.</p>
+
+<p>Так что если вы студент(ка) и пишете парсеры, <a href="https://github.com/igrishaev/toy-parser">загляните в репозиторий</a>.</p>
+
+<p>Там простой модуль с комментариями и базовыми парсерами. Также есть два модуля
+demo1 и demo2. В одном пример с префиксной нотацией, во втором — с
+инфиксной. Второй пример интересен тем, что там используется рекурсивный парсер,
+и поэтому нужны конструкции declare и var.</p>
+
+<p>Эти парсеры в высшей степени просты, и по-хорошему им нужна доработка. Скажем, в
+случае ошибки возвращать не nil, а сообщение о том, что пошло не так. Это
+сделано нарочно, чтобы акцент остался на главном: парсинге и комбинации
+парсеров.</p>
+
+<p>Если будут вопросы, пишите.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/support-jira/">Поддержка и Джира</a>
             </h2>
 
@@ -276,514 +951,13 @@
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/no-calls-2/">Австралийское время</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-07-05T00:00:00+00:00">
-        Jul 5, 2025
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>, <a href="/tag/australia/" rel="tag">australia</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Несколько раз я упоминал про один австралийский стартап. При всех минусах
-кодовой базы у него было и преимущество: разница во времени с
-заказчиком. Пересечение было совсем небольшим, буквально два-три часа. День
-начинался с созвона, мне давали задачу, мы ее обсуждали. Потом народ из
-Австралии шел ужинать, и день был полностью моим. Без созвонов, чатов и
-обсуждений. При этом я всегда имел две активных задачи, чтобы в случае зависания
-одной переключиться на другую. Утром я докладывал, что сделал вчера, и все были
-довольны.</p>
-
-<p>Много воды с тех пор утекло, но порой я скучаю по такому формату. Разница с
-заказчиком в час-два означает, что ты не делишь с ним головные боли и причуды:
-планинги, ретро, спринты, тимбилдинги, уведомления в Тимс. Иной раз хочется,
-чтобы ничего этого не было. Чтобы был только git pull и git push, ну и
-зарплата. А на тимбилдинге и без меня обойдутся.</p>
-
-<p>Это так, минутка малодушия. Вздохнул и пошел дальше.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/java-logging/">Логирование в Джаве</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-07-05T00:00:00+00:00">
-        Jul 5, 2025
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/java/" rel="tag">java</a>, <a href="/tag/logging/" rel="tag">logging</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Есть в Джаве одна вещь, которая сделана очень, очень плохо — минус бесконечность
-по любой шкале. Это логирование, причем как встроенное, так и
-сторонее. Справедливости ради, оно плохо сделано везде, но это слабое
-оправдание.</p>
-
-<p>Первая причина — сугубо внутренняя. Джависты — это люди, которые могут раздуть
-код в десять строчек на десять пакетов. Любое хорошее начинание превращается в
-Лунапарк с официальным сайтом, платной версией и уродской документацией.</p>
-
-<p>Хорошим примером служит история с Log4j. Когда я читал, что было под капотом,
-вставали волосы во всех местах. Ощущение, что разработчики объехали все
-сумасшедшие дома, записали пожелания пациентов и выполнили их дословно. Добавьте
-в шаблоны Тьюринг-полный язык? Хорошая идея. Хочу подгрузку классов по урлам?
-Считайте, уже сделано. Напишите фасад над фасадом над фасадом? Уже в этом
-релизе.</p>
-
-<p>Итог понятен: если громоздить подобные вещи, окажутся уязвимости. В результате
-целый месяц люди чинили интернет, корпоративный софт, Майнкрафт(!) и все
-остальное.</p>
-
-<p>Вторая причина объясняется одним словом — состояние. В Джаве и других языках
-логирование устроено одинаково. В памяти сидит глобальный маршрутизатор, который
-определяет, куда какие логи складывать. У этого подхода много бед. Первая —
-инициация происходит неявно, например при чтении файла logback.xml из
-ресурсов. Вторая — программная настройка довольно сложна: нужно два экрана кода,
-чтобы связать фабрики логгеров с фабриками аппендеров.</p>
-
-<p>Третья, которая заслуживает отдельного абзаца — это то, что я называю “воровство
-работы”. Как быть, если библиотека А использует log4shit, а В — log4crap? В этом
-случае log4crap переопределяет настройки log4shit, направляя поток сообщений в
-свой маршрутизатор. Повторюсь, все это происходит неявно, потому что покрыто
-“легковесными” фасадами.</p>
-
-<p>Долгое время я думал, что logback (вроде бы самая адекватная библиотека
-логирования) — самостоятельное решение. Оказалось, это всего лишь фасад над
-уродским slf4j. Представьте себе объем работы и глубину стека вызовов! Один
-вагон классов для базовой функциональности, второй — чтобы приделать ему
-человеческое лицо.</p>
-
-<p>Разобраться, почему этот лог идет сюда, а не туда, бывает очень
-трудно. Логирование настраивают в муках, а потом боятся на него дышать.</p>
-
-<p>Глобальное логирование простительно языкам эпохи Си. В последнем есть подсистема
-syslog (системный журнал), которую однажды открыл и пишешь из любого места
-программы. По современным меркам такой подход устарел.</p>
-
-<p>На мой взгляд, проблема решается тем, чтобы убрать из логирования
-состояние. Система предлагает интерфейс Logger с методами debug, info, error и
-другими. Есть реализации этого интерфейса для записи в консоль, файл, системный
-журнал. Конкретная реализация нас не волнует: мы просто передаем объект logger,
-трактуя его как экземпляр интерфейса.</p>
-
-<p>Этот логгер можно (и нужно) передавать в конструктор класса. Например, в каждое
-подключение к базе можно передать свой логгер. То же самое относится к парсерам,
-серверам и так далее.</p>
-
-<p>Это решает проблемы, упомянутые выше. Базовые логгеры для консоли и файла у нас
-есть. Можно сделать классы-комбо, которые принимают несколько логгеров и пишут
-сообщения в каждый. Можно сделать асинхронный логгер, можно прикрутить Кафку,
-CloudWatch, словом — что угодно. Достаточно унаследовать класс от интерфейса
-Logger и инициировать ресурсы в конструкторе.</p>
-
-<p>Попутно решается проблема тестов: я могу передать логгер, который складирует
-сообщения в память и потом их прочитать.</p>
-
-<p>Смысл в том, что убрав состояние, ты кардинально снижаешь сложность программы, а
-значит — стоимость ее сопровождения, в том числе ментальную.</p>
-
-<p>Увы, сегодня мы бесконечно далеки от такого подхода. Во-первых, Джависты
-поднимут лай, во-вторых, уже написаны десятки тысяч библиотек на базе log4shit,
-log4crap и прочих поделок. Мы обречены поддерживать этот цирк.</p>
-
-<p>Поэтому меня лихорадит, когда в Кложурной слаке кидают анонс: гайз, я написал
-библиотеку логирования, это легковесный фасад поверх очередного log4shit. Иные
-отчаянные ребята пишут логирование с нуля, но идут по тем же граблям: оно
-глобально, не гибко, не очевидно, и хочется захлопнуть ноутбук.</p>
-
-<p>Заметка самому себе — попытаться написать нормальный логгер. Верю, что это
-возможно.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/game-center/">Game Center</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-07-05T00:00:00+00:00">
-        Jul 5, 2025
-    </time>
-
-    <a href="/tag/apple/" rel="tag">apple</a>, <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/gamecenter/" rel="tag">gamecenter</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В мире Эпла есть одна заноза в заднице, которая называется Game Center. Никто не
-знает, что это и зачем. Просто каждый раз он вылазит при запуске игры, что-то
-требует, ознакамливает, уведомляет. Почему нельзя спрятать это поделие под ковер
-— не ясно.</p>
-
-<p>Летел я недавно в самолете. Когда мозги уже совсем потекли, решил поиграть на
-телефоне. Включаю — на весь экран вылазит плашка “что нового в Game
-Center”. Абсолютно тупая и бессодержательная, ничем из этого я даже близко
-пользоваться не собираюсь. Барахло не умещается на одном экране, поэтому
-всплывает другой: помоги своим друзьям чего-то там.</p>
-
-<p><img src="/assets/static/aws/game-center/1.jpeg" /></p>
-
-<p><img src="/assets/static/aws/game-center/2.jpeg" /></p>
-
-<p>Почему я должен чем-то помогать? Почему нельзя сделать это автоматом, я без
-понятия.</p>
-
-<p>А вот сегодня: долгий звонок, запускаю на ноуте шахматы. Получаю модальную
-выпадашку, в которой то же самое: что нового, помоги друзьям. Пока не
-прокликаешь на всех устройствах, от тебя не отстанут.</p>
-
-<p><img src="/assets/static/aws/game-center/3.jpeg" /></p>
-
-<p>От этой тупизны закрываешь лицо руками. Инженеры Эпла скатились до уровня
-фронтендера, у которого на все один ответ — выпадашка. Ну, нельзя блокировать
-окно какой-то второстепенной хренью, понимаете? Нельзя и все тут. Придумай
-другие пути. Даже если настаивает отдел юристов, должен быть способ показать эту
-хрень в другой момент, а не когда пользователь сел поиграть.</p>
-
-<p>Как я писал, никто не знает, что такое Game Center и почему нельзя сделать его
-скрытой службой. Скажем, нужно хранить сохранения в играх между девайсами. Так
-записывай их в iCloud, делов-то. Если апишки iCloud не хватает, вынеси в
-отдельную службу. Но зачем без конца о ней уведомлять?</p>
-
-<p>Бред, просто бред и ничего больше.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/designers/">Дизайнеры и фронтендеры</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-07-05T00:00:00+00:00">
-        Jul 5, 2025
-    </time>
-
-    <a href="/tag/design/" rel="tag">design</a>, <a href="/tag/frontend/" rel="tag">frontend</a>, <a href="/tag/life/" rel="tag">life</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Признаться, я не люблю дизайнеров и фронтендеров. Не лично кого-то, а в
-массе. Причина проста — эти ребята вечно все ломают. Конечно, эти профессии
-нужны, однако люди, которые отвечают за интерфейс и при этом ничего не ломают,
-встречаются раз на тысячу — и это не преувеличение. По моей оценке, наверное
-один из тысячи дизайнеров или фронтендеров думает о том, чтобы не навредить
-своими правками. И только потом об изменениях в интерфейсе.</p>
-
-<p>Причина этому проста. Чаще всего дизайнер — обычный сотрудник, который приходит
-в фирму, а через год-два уходит. Его наняли, он должен что-то делать. Скорее
-всего дизайнер никогда не пользовался сервисом, который дизайнерит, не имеет
-представления о том, что нужно клиентам. Он надувает кнопки, перемещает их из
-угла в угол, делает интерфейс воздушным.</p>
-
-<p>С фронтендером то же самое: это обезьянка, которая не пользуется сервисом и не
-понимает нужды клиентов. Обезьянка внедряет реакты-редуксы, делает ссылкам
-onClick, чтобы их нельзя было открыть новой вкладке, словом — занимается
-ерундой, потому что зарплату нужно отрабатывать.</p>
-
-<p>Простой пример. Сегодня я обновил клиент для VPN. Когда он работает, то в трее
-висит иконка. Если нажать на нее, выпадет меню, где можно выбрать “disconnect”
-или “connect”, чтобы по-быстрому отключить-включить текущий сервер. Когда
-приложение свернуто в трей, оно не отображается в главной панели.</p>
-
-<p>А что после обновления? Теперь в меню только два пункта: “open” и “quit”. Пункт
-“open” открывает приложение, и нужно тыкнуть кнопку Disconnect. И теперь
-приложение всегда висит в панели задач, даже если если свернуто в трей.</p>
-
-<p>Разве человек, который поменял интерфейс, не идиот? Ничего, что количество
-кликов стало больше? Как же не писать проклятия в адрес того, кто на ровном
-месте создал неудобства? И главное, кто просил?</p>
-
-<p>Другой пример — Модульбанк, услугами которого я пользовался. Это было в ту пору,
-пока он не вырос: банк был маленьким и эффективным. Звонишь, ждешь два гудка, и
-трубку снимает живой человек — не бот и даже не голосовое меню.</p>
-
-<p>Долгое время у них было хорошее приложение: быстрое, простое как лопата. Но
-потом у банка завелись деньжата, и пошло: голосовое меню, графомания в
-Телеграме, рассылки и в том числе — новый дизайнер приложений. А этот клоун взял
-и переставил все пункты местами. Например, передвинул шаблоны платежей в
-историю. Часто бывало, что я открывал приложение и не мог найти нужную
-кнопку. Искал методом перебора, тыкая все по очереди.</p>
-
-<p>Тому дизайнеру и голову не пришло, что клиенты уже давно пользуются приложением
-и привыкли к нему. Да, может быть та или иная кнопка выглядит не так, как
-советует условный Мильчин. Ну и что? Люди-то привыкли! Они в гробу видали
-Мильчина. Твоя задача — поддерживать и улучшать то, что сделали до тебя, а не
-строить с нуля.</p>
-
-<p>Главную причину я уже назвал: этот дизайнер не был клиентом банка. Он не был ИП
-Ивановым, который каждый день совершает платежи, выплачивает сотрудником
-зарплату, обменивает валюту. Дизайнер сам был сотрудником и отрабатывал
-зарплату. Вместо приложения у него была установлена демка. Вот в чем дело.</p>
-
-<p>Пример с другим банком. Раньше у них был статичный интерфейс, и каждый счет
-можно было открыть в новой вкладке. А потом наняли мартышку с
-реактами-редуксами. Теперь ни одну сущность нельзя открыть в новой вкладке:
-ссылок нет, по клику вываливаются выпадашки. Приходится дублировать вкладки и
-прокликивать каждую с начала.</p>
-
-<p>С бекендом такой проблемы нет, потому что существуют протоколы и
-соглашения. Представьте, что условный Гугл без предупреждения обновил апишку
-почты. В одно утро отваливаются все клиенты, и Гугл такой —
-переписывайте. Такого не бывает. Разумеется, иной раз компании ломают апишки, но
-это случается гораздо реже, чем новый дизайн.</p>
-
-<p>Если дизайнер или фронтендер не хочет, чтобы его ненавидели, нужно всего-то
-пользоваться продуктом, который дизайнишь, и понимать, чего хотят пользователи —
-и чего они не хотят. Эти две вещи дают хороший дизайн. Все остальное — отработка
-зарплаты.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/damn-popup/">Выпадашка под пальцем</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-07-05T00:00:00+00:00">
-        Jul 5, 2025
-    </time>
-
-    <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/popup/" rel="tag">popup</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Может быть, замечали: открываешь приложение, и прямо под большой палец
-выскакивает выпадашка. Этим страдают банки, маркетплейсы, всякие Авито. Чаще
-всего информация нерелевантна: вот тебе загородная недвижимость, хотя я никогда
-не интересовался. Плати как ИП — да, я ИП, но прекрасно плачу как
-физлицо. Участвуй в розыгрыше золотого слитка — без комментариев.</p>
-
-<p>Ощущение, что выпадашки работают по принципу “лишь бы что-то показать”. Если
-прошел таймаут с последнего показа, выскочит что-то еще, причем неважно
-что. Главное — показать.</p>
-
-<p>Все мы знаем, что в фирмах проводят исследования, и если так делают, значит
-надо. Мое мнение: эти в кавычках “исследователи” подгоняют систему так, что
-получаются правильные результаты. Эти результаты показывают начальству, отдел
-получает больше денег и так по кругу.</p>
-
-<p>Доказательство простое. Во-первых, выпадашка появляется под большим пальцем, а
-во-вторых, с задержкой. Часто жмешь на нее случайно или в спешке. Например,
-нужно срочно перекинуть денег на карту ребенку, когда он на кассе, а тут раз —
-выиграй автомобиль. Нажал и куда-то улетел. Система зафиксировала, что ты
-перешел, а значит — заинтересован. Просмотр был? Был. Метрики увеличились?
-Увеличились.</p>
-
-<p>Другой трюк — делать кнопку закрытия ничтожно малой. Видел такое в мобильной
-версии Хабра. Вся область отвечает за переход, а крестик размером 3x3
-мм. Забавно, что даже после перехода баннер не закрывается. Выходило так, что я
-пытался закрыть, промахивался, улетал на рекламную страницу, возвращался, снова
-не попадал, и так три раза. С точки зрения системы это три перехода.</p>
-
-<p>Аналитик мыслит очень примитивно. Составляется тепловая карта и туда, где
-горячо, ставят выпадашки. При этом аналитик уверен, что переходы вызваны
-искренним интересом клиента. Или он понимает, в чем дело, но врет начальству.</p>
-
-<p>Напоминает ошибку выжившего. Приходят сигналы, но они неверно
-истолковываются. Помните, повреждения самолетов наносили на схему? Получалась
-тепловая карта. И только один человек понял, как ее истолковать. Остальные
-тыкали пальцем и говорили: если здесь много, сюда и фигачь.</p>
-
-<p>Если бы маркетолог спросил пользователя, нравится ли ему, когда на главной два
-баннера и три тултипа, в ответ ему бы покрутили пальцем у виска. Поэтому
-маркетолог избегает прямого общения с потребителем. Вместо этого он проводит
-когортный анализ, строит тепловую карту, считает средний балл в App Store. Все
-это цифры, а цифры хороши тем, что их можно подогнать в любую сторону.</p>
-
-<p>Мораль в том, что не нужно объяснять глупость умыслом. Три баннера на главной —
-это глупость. Причины могут быть разными, например нет координации между
-сервисами, которые показывают выпадашки. Но последствия одинаковы —
-бардак. Как-то давно я показывал скриншот со StackOverflow: там одна
-промо-выпадашка закрыла другую. Два дизайнера не договорились, отдел качества не
-заметил, вот и все. Просто глупость.</p>
-
-<p>Или глупость сегодня тоже считается исследованием?</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/copy-paste-4/">Вставка со стилями (4)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-07-05T00:00:00+00:00">
-        Jul 5, 2025
-    </time>
-
-    <a href="/tag/text/" rel="tag">text</a>, <a href="/tag/copy/" rel="tag">copy</a>, <a href="/tag/paste/" rel="tag">paste</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><img src="/assets/static/aws/copy-paste-4/1.jpeg" /></p>
-
-<p>Вот о чем я говорил стопицот раз. Человек пишет письмо, и нужно вставить кусок
-из какой-то веб-панели. Вот как выглядит результат: идет нормальный текст, потом
-смена шрифта, кофейный на темно-коричневом фоне, потом синий на черном. Слава
-богу, после этого снова идет нормальный текст.</p>
-
-<p>Спрашивается, почему вставленный кусок набран другим шрифтом, цветом и с другим
-фоном? Откуда эта предпосылка? Какими умозаключениями к этому пришли?</p>
-
-<p>Самое ужасное, что это поведение везде по умолчанию. Если человек хочет, чтобы
-документ выглядел нормально, он должен быть продвинутым: понимать, что такое
-Paste matching formatting, помнить, сколько служебных клавиш зажимать (две, три,
-четыре), знать о программах вроде <a href="https://apps.apple.com/ru/app/pure-paste/id1611378436">Pure Paste</a>.</p>
-
-<p>Люди, которые программируют поведение как на картинке — когда простая вставка
-уродует документ — полные отбросы. Других эпитетов у меня нет.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/copy-paste-3/">Вставка со стилями (3)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-07-05T00:00:00+00:00">
-        Jul 5, 2025
-    </time>
-
-    <a href="/tag/text/" rel="tag">text</a>, <a href="/tag/copy/" rel="tag">copy</a>, <a href="/tag/paste/" rel="tag">paste</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В комментариях к прошлой заметке выяснилось, как сделать вставку без стилей. Для
-меня это настолько важно, что напишу отдельно.</p>
-
-<p>Читатель @snffy дал ссылку на программу, которая делает в точности то, что
-нужно. Называется <a href="https://apps.apple.com/ru/app/pure-paste/id1611378436">Pure Paste</a>. Она прослушивает буфер обмена, и если там
-форматированная разметка, приводит ее к чистому тексту. Программа поддерживает
-всякие опции, например что делать со списками, ссылками и так далее. Можно
-указать программы, чей буфер игнорировать — по умолчанию это Эксель. У каждой
-опции есть выпадашка с примерами: как было и как будет, если ее включить.</p>
-
-<p>В числе прочего программа чистит ссылки от utm-тегов, трекинговых айди, номеров
-сессий и остального. Поддерживаются 200 с лишним популярных сервисов и их
-параметров. Больше нет оправдания тем, кто кидает ссылку с миллионом тегов в
-адресной строке.</p>
-
-<p><img src="/assets/static/aws/copy-paste-3/1.jpeg" /></p>
-
-<p>Идея проста и понятна, спрашивается — как же я сам не догадался сделать что-то
-похожее. Я немного умею в Swift и в принципе бы осилил.</p>
-
-<p>Если вдруг у вас корпоративный Мак, где запрещен AppStore, то программу можно
-скачать с сайта автора — правда, не последнюю версию.</p>
-
-<p>Удивительно, что на столь специфический запрос нашлась утилита, которая делает в
-точности то, что нужно. Видимо, на другом конце планеты у автора тоже горела
-задница от уродской вставки. Приятно видеть, что ты не один такой. Потому что
-кому ни скажи о проблеме, каждый повторяет как попугай: просто нажми
-Alt+Shift+Command+V.</p>
-
-<p>Желаю этим советчикам жать по четыре клавиши, пока рука не отвалится от
-гангрены.</p>
-
-<p>Интересно было пошариться <a href="https://sindresorhus.com/apps">по сайту</a> автора утилиты. У него их несколько
-десятков — судя по всему, он поставил цель обеспечить себя разработкой. С
-радостью перевел ему денег, потому что программа замечательная. Другие утилиты
-автора не пробовал, на это нет времени.</p>
-
-<p>Что ж, еще одной головной болью меньше. Еще одно “преимущество” современных
-приложений отключено. Вообще, вы задумывались, сколько сил уходит на борьбу с
-ними? Блокировщики рекламы, блокировщики кук, блокировщики социальных виджетов,
-блокировка обновлений, отключение уведомлений, всевозможные прокси и
-noDPI… борьба, борьба, и конца этому не видно. Счастье, что нет-нет да
-попадется софт, который поставил и забыл о проблеме — хотя бы на некоторое
-время.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 2 из 97</span>
+        <span class="page_number ">Страница 2 из 98</span>
         
         <a href="/page3" class="next">&rarr;</a>
         

@@ -105,6 +105,550 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/clojure-debug/">Avoid code you cannot debug</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-06-13T00:00:00+00:00">
+        Jun 13, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/debugging/" rel="tag">debugging</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>This is a small tip I’d like to share with Clojure programmers.</p>
+
+<p><strong>In a project, avoid code you cannot debug.</strong> It’s simple: if you can put a
+tag like <code class="language-plaintext highlighter-rouge">#debug</code> or similar somewhere in the middle, run a test and hang in a
+debugging session, you’re good. But if you cannot, you’ll be in trouble one day.</p>
+
+<p>Thus, any kind of DSL or yet another “smart” solution is a source of potential
+problems. Take Meander, for example. Imagine I have a map like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w">
+ </span><span class="no">:address</span><span class="w"> </span><span class="p">{</span><span class="no">:city</span><span class="w"> </span><span class="s">"Chita"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>and I want it to become this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w">
+ </span><span class="no">:city</span><span class="w"> </span><span class="s">"Chita"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>With Meander, I would write:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">m/match</span><span class="w">
+  </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:address</span><span class="w"> </span><span class="p">{</span><span class="no">:city</span><span class="w"> </span><span class="s">"Chita"</span><span class="p">}}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="n">?name</span><span class="w"> </span><span class="no">:address</span><span class="w"> </span><span class="p">{</span><span class="no">:city</span><span class="w"> </span><span class="n">?city</span><span class="p">}}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="n">?name</span><span class="w"> </span><span class="no">:city</span><span class="w"> </span><span class="n">?city</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>and it works fine. But one day, my datasource suddenly returns a user without an
+address:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:address</span><span class="w"> </span><span class="n">nil</span><span class="p">}</span><span class="w">
+</span><span class="c1">;; or just {:name "Ivan"}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>which is completely fine because a user might have no address associated with
+them. By passing that map into <code class="language-plaintext highlighter-rouge">m/match</code>, I expect it to return <code class="language-plaintext highlighter-rouge">{:name "Ivan"
+:city nil}</code> but no: there will be an exception:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">m/match</span><span class="w">
+   </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:address</span><span class="w"> </span><span class="n">nil</span><span class="p">}</span><span class="w">
+   </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="n">?name</span><span class="w"> </span><span class="no">:address</span><span class="w"> </span><span class="p">{</span><span class="no">:city</span><span class="w"> </span><span class="n">?city</span><span class="p">}}</span><span class="w">
+   </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="n">?name</span><span class="w"> </span><span class="no">:city</span><span class="w"> </span><span class="n">?city</span><span class="p">})</span><span class="w">
+
+</span><span class="n">Unhandled</span><span class="w"> </span><span class="n">clojure.lang.ExceptionInfo</span><span class="w">
+   </span><span class="n">non</span><span class="w"> </span><span class="n">exhaustive</span><span class="w"> </span><span class="n">pattern</span><span class="w"> </span><span class="n">match</span><span class="w">
+   </span><span class="p">{}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The line “non exhaustive pattern match” tells nothing to me nor the ex-data
+does. The message is fuzzy, there is no context, the ex-data has nothing useful
+(it’s an empty map). Having such an entry in logs or Sentry would not help you
+in a bit.</p>
+
+<p>Moreover, you cannot debug it. The <code class="language-plaintext highlighter-rouge">m/match</code> macro expands into a huge block of
+code. Debugging it somewhere in the middle would be quite challenging.</p>
+
+<p>Now compare it with a plain function that splits the data step by step:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">remap-user</span><span class="w"> </span><span class="p">[</span><span class="n">entry</span><span class="p">]</span><span class="w">
+
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[{</span><span class="n">username</span><span class="w"> </span><span class="no">:name</span><span class="w">
+         </span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">address</span><span class="p">]}</span><span class="w">
+        </span><span class="n">entry</span><span class="w">
+
+        </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">city</span><span class="p">]}</span><span class="w">
+        </span><span class="n">address</span><span class="p">]</span><span class="w">
+
+    </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="n">username</span><span class="w">
+     </span><span class="no">:city</span><span class="w"> </span><span class="n">city</span><span class="p">}))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>First, it works with both maps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">remap-user</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">})</span><span class="w">
+</span><span class="n">=&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="n">,</span><span class="w"> </span><span class="no">:city</span><span class="w"> </span><span class="n">nil</span><span class="p">}</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">remap-user</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:address</span><span class="w"> </span><span class="p">{</span><span class="no">:city</span><span class="w"> </span><span class="s">"Chita"</span><span class="p">}})</span><span class="w">
+</span><span class="n">=&gt;</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="n">,</span><span class="w"> </span><span class="no">:city</span><span class="w"> </span><span class="s">"Chita"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Second, I can always put a debugging tag into that function and observe the
+local variables, the state and even run some expressions. With Meander, it’s
+just impossible or only possible with certain effort.</p>
+
+<p>Third, if a city is required, I’d put something like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">assert</span><span class="w"> </span><span class="n">city</span><span class="w"> </span><span class="s">"The city is missing"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>and get a clear exception I want.</p>
+
+<p>Vast Meander patterns are completely unmaintainable. Pass something weird and
+you’ll get a “non exhaustive pattern match” message with no idea about what went
+wrong.</p>
+
+<p>Finally, debugging is crucial. If you cannot hang in the middle of execution and
+observe the state, that’s bad. Most Clojure programmers believe it’s a special
+language liberating you from debugging errors, but it’s not true. Debugging has
+not gone anywhere even with such a great language as Clojure.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/yt-pause/">Пауза в Ютубе</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-06-12T00:00:00+00:00">
+        Jun 12, 2023
+    </time>
+
+    <a href="/tag/youtube/" rel="tag">youtube</a>, <a href="/tag/video/" rel="tag">video</a>, <a href="/tag/subtitles/" rel="tag">subtitles</a>, <a href="/tag/pause/" rel="tag">pause</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Не помню, чтобы кто-то жаловался вот на что. Когда ставишь Ютуб на паузу,
+появляется доселе невидимый бар управления, который ложится аккурат на субтитры.</p>
+
+<p>Речь идет о субтитрах в обучающих роликах, в основном языковых. Но это может
+быть доклад, митап или сцена из фильма.</p>
+
+<p><img src="/assets/static/aws/yt-pause/1.jpg" /></p>
+
+<p>Со своими субтитрами Ютуб решил ловко: в момент паузы они приподнимаются. Но не
+могут же сдвинуться буквы на видео! Частично проблему можно решить, изменив
+размеры окна, но это уловки для бедных.</p>
+
+<p>Спрашивается, почему бы не вынести кнопки в отдельную полосу? Да, они займут
+место, ну и что? Почему проблему интерфейса рашают за счет контента? Почему
+интерфейс налазит на видео, вместо того чтобы быть снизу?</p>
+
+<p>То есть Гугл решил: внизу видео что-то не нужное, поставим туда кнопки. А там,
+на минуточку, бывает текст, и его даже порой читают. Например я.</p>
+
+<p>В других сервисах бывает еще хуже. Поставил на паузу — и появляются темные
+градиенты, жирные блямбы, выезжают скрытые кнопки, рекомендации и все прочее. Я
+просто хочу что-то рассмотреть или прочитать, почему мне мешают? Дизайнер,
+добавь в угол экрана две белые палочки — знак паузы. И не в центр, потому что в
+центре самое нужное, а в угол. Этого хватит. Но нет, нужно загадить как можно
+больше пространства.</p>
+
+<p>Кстати, один из способов решить эту проблему — <a href="/youtube-desktop/">смотреть Ютуб в VLC</a>, о чем
+я писал раньше. Слегка экстремально, но проблемы субтитров нет.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/pdf-correct/">Корректура в PDF</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-06-10T00:00:00+00:00">
+        Jun 10, 2023
+    </time>
+
+    <a href="/tag/book/" rel="tag">book</a>, <a href="/tag/pdf/" rel="tag">pdf</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Если кто не знает, откуда столько ненависти к PDF, сейчас объясню.</p>
+
+<p>У PDF одно назначение — просмотр и печать документов. Это конечный артефакт,
+который получают при компиляции проекта — будь то Индизайн, Латех, что
+угодно. Править PDF после его получения — это то же самое, что править байтики в
+exe-файле, вместо того, чтобы поправить код.</p>
+
+<p>Один раз <a href="/preview/">я даже писал</a> про возможности Preview по работе с PDF, но все это уловки
+для бедных, когда нет исходника.</p>
+
+<p>Тезис о том, что с PDF нельзя работать как с документом, подтверждает следующий
+опыт: <strong>середина 2023 года, тридцать лет с момента появления PDF — и не найти
+программы, которая бы работала с ним без ошибок</strong>.</p>
+
+<p>Если конкретно, то я готовлю вторую книгу к печати. Заказал корректуру, говорю:
+готов распечатать и прислать любой службой за мой счет. Нет, берем только
+PDF. Ладно, выслал, получил обратно с комментариями.</p>
+
+<p>Теперь самое интересное. Внос правок сводится к шагам: перешел к очередному
+комментарию, поправил исходник, удалил коммент. Что же пошло не так? А вот что.</p>
+
+<p>Preview на Mac M1 не может удалить некоторые комментарии. Те, что с типом
+Highlight — да, а Note — нет. Специально проверил, старый Preview на Интеле
+может, но поведение неочевидно. В целом работа с аннотациями в Preview глючная:
+коммент может висеть еще долго после удаления. Иногда фокус смещается
+произвольно и удаляется не тот коммент.</p>
+
+<p>Не все это можно передать в картинках, но например: слева у комментария есть
+опция удаления, а справа у Note — нет.</p>
+
+<p><img src="/assets/static/aws/pdf/1.jpeg" /></p>
+
+<p>Для демонстрации других косяков нужно записывать гифки, к чему я не готов.</p>
+
+<p>Вы скажете — браузер. Не вопрос, открыл в Хроме, а там такое:</p>
+
+<p><img src="/assets/static/aws/pdf/2.jpeg" /></p>
+
+<p>Плюс комменты нельзя удалять, read-only.</p>
+
+<p>Может, Акробат наше все? Ну, уже сам факт, что установка требует sudo, внушает опасения. Ладно, поставил. Документ не открывается перетаскиванием в программу — только File -&gt; Open, только хардкор. Удаление комментов работает, но если скопировать текст из PDF, получим такое:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Âòîðàÿ ãëàâà ïîñâÿùåíà ðåëÿöèîííûì áàçàì äàííûõ,
+</code></pre></div></div>
+
+<p>Словом, кто вносил корректуру, тот в цирке не смеется.</p>
+
+<p>Повторю тезис из начала заметки: любая работа с PDF — это боль по
+определению. Он специально сделан так, чтобы правки были максимально
+затруднены. Бинарный формат, девять редакций, адское легаси. Любая программа,
+которая предлагает редактирование PDF — это н…балово. Оно работает только в
+примитивных случаях, а как что-то серьезней — сплошная беда.</p>
+
+<p>Поэтому, кстати, я считаю, что корректор, который не работает с бумагой — это
+слабый корректор. Хороший как минимум не должен ее избегать.</p>
+
+<p><strong>UPD</strong></p>
+
+<p>Продолжение заметки. Добрые люди подсказали два варианта: PDF Expert и Master
+PDF Editor. Первая не обслуживает пользователей из России, но ставится из
+brew. Оказалось, она не работает без облачной учетной записи. Попап закрывает
+интерфейс, хоть усрись, но создай учетку. Скриншот не сохранил, прогу удалил.
+Поставил Master PDF Editor, на первый взгляд все отлично. Посидел два часа,
+вносил корректуру. Сохранил файл и перекинул на другой комп. Открываю, а там:</p>
+
+<p><img src="/assets/static/aws/pdf/3.jpeg" /></p>
+
+<p>Знаете, это уже не смешно. Похоже, на вопрос из прошлой заметки — есть ли в
+природе программа, которая работает с PDF без ошибок — ответ все-таки
+отрицательный.</p>
+
+<p>Эту работу я как-нибудь доделаю, но она стоила много нервов. <em>Очень, очень много
+нервов.</em></p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/strings-80/">Строки по 80</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-06-08T00:00:00+00:00">
+        Jun 8, 2023
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/git/" rel="tag">git</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Иной айтишник нет-нет да пожалуется на разбиение строк по 80 символов. Считаю
+нужным прояснить ситуацию.</p>
+
+<p>Коротко: если это текст в системе контроля версий — код, readme или вроде того —
+он должен быть разбит. Не обязательно по 80 символов, можно 90, 100
+или 120. Главное выбрать число и следовать ему.</p>
+
+<p>Обыватель думает, что число 80 связано с перфокартой. Да, на них действительно
+было столько дырок, потому что 80 символов умещалось в терминале. Но дело не
+только в этом. Откройте любую книгу и посчитайте число знаков в строке. Их будет
+от 60 до 80, в среднем 65. Почему?</p>
+
+<p>Ответ никак не связан с перфокартой. Эти 65-70 знаков в сочетании с 10 шрифтом
+дают строку длиной 12 см. В свою очередь 12 см — та длина, которую глаз читает
+на комфортном расстоянии без поворота головы.</p>
+
+<p>Как-то так:</p>
+
+<p><img src="/assets/static/aws/strings80/1.jpeg" /></p>
+
+<p>Откройте любой журнал. Две колонки по 50 символов, потому что шрифт
+меньше. Сделайте в одну — никто не прочтет.</p>
+
+<p>Теперь я растянул редактор на всю ширину. Как это читать? Вы будете крутить
+головой, как лошадь на привязи:</p>
+
+<p><img src="/assets/static/aws/strings80/2.png" /></p>
+
+<p>А так нормально:</p>
+
+<p><img src="/assets/static/aws/strings80/3.png" /></p>
+
+<p>Тут влетает бунтарь с криками: как так, за меня решили, задели хрупкие чувства!
+Дайте свободу, я сам настрою. Мне не жалко, но есть проблема: редактор
+приходится ужимать до такого состояния:</p>
+
+<p><img src="/assets/static/aws/strings80/4.png" /></p>
+
+<p>У меня так-то 400 файлов открыто, и под каждый менять размер окна — не много ль
+чести? Можно вынести файл в отдельное окно, но опять же — заморочки.</p>
+
+<p>Далее — конфликты. Если параграф не нарезан на строки по 80 символов, исправить
+конфликты невозможно. Пожалуйста, прочтите это предложение еще раз: <strong>исправить
+конфликты невозможно</strong>. Без нарезки параграф — это единая строка, и если Вася
+исправил букву в начале, а Петя — в конце, это конфликт. Пишите претензии
+создателям Git, CSV и другим системам контроля версий. Их рабочая единица —
+строка, и других не предвидится.</p>
+
+<p>Подобные конфликты решаются вручную и больше никак. Продвинутые тузлы подсветят
+изменения внутри строки, но что-то сложнее пары опечаток решить невозможно. У
+нас уже было такое: вместе с коллегой поправили документацию в markdown. В итоге
+я откатил свои правки и накладывал повторно на его мердж. Спасибо, больше не
+надо.</p>
+
+<p>Наконец, в хорошем редакторе проблема нарезки не стоит в принципе. <code class="language-plaintext highlighter-rouge">C-x f</code> задает
+ширину колонки, <code class="language-plaintext highlighter-rouge">M-q</code> поджимает текущий абзац. Чтобы поджать весь документ, жмем
+<code class="language-plaintext highlighter-rouge">C-x h</code> и <code class="language-plaintext highlighter-rouge">M-q</code>. Занимает секунду.</p>
+
+<p>Кстати, принцип, когда подряд идущие строки объединяются в параграф, а пустая
+строка отбивает параграфы, придумали не в markdown. Это сделал Кнут для своего
+TeX, за что ему честь и хвала.</p>
+
+<p>Вот, пожалуй, все, что нужно знать про нарезку строк.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/git-pretty/">Гигиена в Git</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-06-07T00:00:00+00:00">
+        Jun 7, 2023
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/git/" rel="tag">git</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Несколько правил, чтобы держать Git приличном виде.</p>
+
+<p>Одна задача — один коммит. Слияние ветки происходит только через squash, другие
+методы запрещены.</p>
+
+<p>В сообщении к коммиту указан только номер задачи и ее заголовок, например
+<code class="language-plaintext highlighter-rouge">[FOOBAR-123] Make some crap</code>. Иная графомания нежелательна — идите за ней в
+задачу.</p>
+
+<p>Перед слиянием коммиты переносят наверх с помощью rebase относительно
+родителя. Так вы лишний раз убедитесь, что все в порядке.</p>
+
+<p>После слияния ветка удаляется автоматом.</p>
+
+<p>У каждого PR есть expire. Висит две недели — значит никому не нужен и удаляется
+автоматом. В следующий раз команда будет расторопней.</p>
+
+<p>Чем больше веток — тем хуже. В идеале это master с тегами релизов и
+feature-ветки. И больше ничего.</p>
+
+<p>Пуш в мастер запрещен всем, кроме одного человека (техдиректора).</p>
+
+<p>Слияние без апрува запрещено (а лучше двух).</p>
+
+<p>Kdiff3 — пожалуй, лучшее средство разрешения конфликтов:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w"> </span><span class="nb">&gt;</span><span class="w"> </span><span class="n">brew</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">--cask</span><span class="w"> </span><span class="n">kdiff3</span><span class="w">
+
+</span><span class="o">#</span><span class="w"> </span><span class="o">~</span><span class="n">/.gitconfig</span><span class="w">
+
+</span><span class="p">[</span><span class="nb">merge</span><span class="p">]</span><span class="w">
+  </span><span class="n">tool</span><span class="w"> </span><span class="nb">=</span><span class="w"> </span><span class="n">kdiff3</span><span class="w">
+</span><span class="p">[</span><span class="n">diff</span><span class="p">]</span><span class="w">
+  </span><span class="n">tool</span><span class="w"> </span><span class="nb">=</span><span class="w"> </span><span class="n">kdiff3</span><span class="w">
+</span><span class="p">[</span><span class="n">mergetool</span><span class="w"> </span><span class="s">"kdiff3"</span><span class="p">]</span><span class="w">
+  </span><span class="nb">path</span><span class="w"> </span><span class="nb">=</span><span class="w"> </span><span class="n">/Applications/kdiff3.app/Contents/MacOS/kdiff3</span><span class="w">
+</span><span class="p">[</span><span class="n">difftool</span><span class="w"> </span><span class="s">"kdiff3"</span><span class="p">]</span><span class="w">
+  </span><span class="nb">path</span><span class="w"> </span><span class="nb">=</span><span class="w"> </span><span class="n">/Applications/kdiff3.app/Contents/MacOS/kdiff3</span><span class="w">
+</span></code></pre></div></div>
+
+<p><strong>UPD</strong> Ограничение на один коммит не касается локальной ветки, в которой вы
+пилите задачу. Их может быть хоть два, хоть двести. Важно, что при слиянии
+методом squash они объединяются, и в главной ветке остается один коммит с
+номером задачи.</p>
+
+<p>Бывает, коллега делает задачу неделями и после аппрува жмет “Merge”. В истории
+оказывается 50+ коммитов с подписями “working”, “fix tests”, “fix linter”,
+“updated” и так далее. Спрашивается, зачем это команде? В своей ветке делай что
+хочешь, а в общей соблюдай приличия.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/apple-vr/">Apple VR</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-06-06T00:00:00+00:00">
+        Jun 6, 2023
+    </time>
+
+    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/apple/" rel="tag">apple</a>, <a href="/tag/vr/" rel="tag">vr</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В рекламе Эпла есть совершенно криповый момент. Дочки играют на полу, а батя
+смотрит на них сквозь гарнитуру — снимает.</p>
+
+<p><img src="/assets/static/aws/vr/1.png" /></p>
+
+<p><img src="/assets/static/aws/vr/2.png" /></p>
+
+<p>Выглядит он как Дарт Вейдер или инвалид, вынужденный таскать какой-то девайс. Уж
+наверное игра с детьми — тот случай, когда нужно убрать гаджеты и предаться
+живому общению. А батя напялил ведро на голову и стал похож на киборгов из
+“Призрака в доспехах”, которым ставили бюджетные протезы вместо глаз.</p>
+
+<p>Я даже в телефон не смотрю при детях, чтобы не подавать плохой пример. А тут
+такое, жесть.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/successful-success/">Десять советов, которые я дал бы себе в молодости</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-06-05T00:00:00+00:00">
+        Jun 5, 2023
+    </time>
+
+    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/success/" rel="tag">success</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Есть такой пошлый формат — кто-то успешный дает советы молодой аудитории. Заводи
+знакомства, качай софт-скилы, фокусируйся, помни о главном. Вся эта олдовая
+мудрость, поучение молодых, вы поняли.</p>
+
+<p>Каждый раз удивляюсь одной вещи. Почему-то никто не спросит докладчика:
+милейший, а ты следовал своим советам в 20 лет? Ответ очевиден — конечно нет. Он
+просто херачил, шел напролом к цели и вот пришел. Теперь его пригласили
+выступать перед публикой.</p>
+
+<p>Как правило, человек плохо оценивает себя. Даже если он видит, что известней и
+богаче других, то находит этому нелепые объяснения.  Это ошибка выжившего:
+причины успеха вовсе не те, что ты несешь со сцены. Они могут быть сомнительными,
+криминальными или вообще неизвестными. Это может быть совпадение времени и
+места. Но что-то нужно сказать, и он говорит, хотя все это не имеет смысла.</p>
+
+<p>В самом деле: начните делать то, что советовали Стив Джобс и Билл Гейтс, и ни к
+какому успеху вы не придете. Более того, вы же не пойдете с них догонять:
+смотри, я делал как ты говорил, но не помогает. Зачем тогда слушать, если нет
+гарантий?</p>
+
+<p>Советы успешных людей — это тьфу и растереть. Они пришли к цели без каких-либо
+советов, а значит, вы можете так же. Вполне возможно, в зале сидит потенциальный
+Билл Гейтс, но вместо того, чтобы идти к мечте, он слушает чью-то блажь.</p>
+
+<p>Сюда же относятся курсы успешного успеха, интервью Дудей, всякие блоггеры и
+прочее. Пока вы их слушаете, вы не делаете свое и льете воду на чужую мельницу.</p>
+
+<p>Поэтому один совет, который я могу дать — поменьше слушать чужих мнений. Делай
+то, что считаешь нужным и иди с этим правилом через всю жизнь.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/sql-distinct-on/">SQL и DISTINCT ON</a>
             </h2>
 
@@ -384,528 +928,13 @@ duration: 0.414 ms
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/pascal-exercises/">Задачник по Паскалю</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-05-15T00:00:00+00:00">
-        May 15, 2023
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/pascal/" rel="tag">pascal</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В сотый раз повторяется одно и то же. Человек учит язык — неважно Питон, Кложу,
-что угодно — и спрашивает: посоветуйте задачки. Ему кидают ссылки на Exercism,
-Project Euler и похожие сайты. Мой ответ не меняется годами: покупаешь задачник
-по Турбо-Паскалю за 300 рублей и решаешь на своей Кложе, Питоне или PHP. Или
-просто качаешь из интернета первый попавшийся.</p>
-
-<p>Думаете, кто-то так делает? Конечно, нет. Мало того, поднимается драма: как так,
-у нас современные языки, а ты со своим Паскалем! Оставь дерьмо мамонта в покое.</p>
-
-<p>Сколько себя помню, всегда поражала эта избирательность. Эти задачи буду решать,
-а эти не буду. Эти современные и хорошие, а эти старые. Иной раз мне доказывают,
-мол, концепции Паскаля плохо ложатся на Кложу, поэтому решать их неудобно.</p>
-
-<p>Я аж представил себе. Начальство: Иван, вот тебе задача, надо сделать то и
-это. А я такой: ребята, она плохо ложится на концепцию языка, не буду делать. А
-они: конечно, дорогой, вот задача получше, а эту делать не будем. Исправим,
-чтобы ложилась.</p>
-
-<p>Думаю, ясно, что решать надо все задачи. В том числе те, что в старых
-учебниках. А почему именно из учебников, тому следуют пункты.</p>
-
-<ul>
-  <li>
-    <p>Сразу много задач. Купив сборник, вы получите не две-три интересных задачки, а
-две-три сотни.</p>
-  </li>
-  <li>
-    <p>Если это толковый сборник, задачи в нем собраны по разделам: арифметика,
-циклы, массивы, связные списки, файлы, графика и так далее. В каждом разделе
-задачи идут по нарастанию сложности. Это позволит набить руку в той теме, где
-вы плаваете.</p>
-  </li>
-  <li>
-    <p>Поскольку задачи составлены для школьников и студентов, они перекликаются с
-учебной программой. Решая задачи, вы заодно ее подтяните.</p>
-  </li>
-</ul>
-
-<p>Примеры задач, которые можно сделать на любом языке:</p>
-
-<ul>
-  <li>
-    <p>квадратное уравнение. По коэффициентам a, b, c найти корни или сообщить, что
-их нет.</p>
-  </li>
-  <li>
-    <p>игра “угадай число”. Компьютер загадывает число от 0 до 100, ваша задача —
-угадать его. На ваши попытки компьютер отвечает “нет, больше”, “нет, меньше”
-или “угадал”.</p>
-  </li>
-  <li>
-    <p>пересечение прямоугольников, точки и окружности по их координатам</p>
-  </li>
-  <li>
-    <p>задачи на массивы и связные списки, чтобы лучше понимать коллекции</p>
-  </li>
-  <li>
-    <p>графики, исследование функций.</p>
-  </li>
-  <li>
-    <p>запись данных о сотруднике в файл и их чтение.</p>
-  </li>
-</ul>
-
-<p>Что из этого плохо ложится на современный язык? Может, за “не хочу” стоит “не
-могу” или “лень вспоминать”?</p>
-
-<p>Какой смысл открывать условный Exercism, регистрироваться, подтверждать почту,
-отписываться от рассылки? Чтобы что? Я уже накидал задач на неделю, сиди
-решай. В учебнике их на год. Что ты хочешь найти? Чего не хватает?</p>
-
-<p>Наконец, еще один пункт в пользу сборника задач — это работа с книгой. Не знаю
-как это работает, но бумажная книга эффективней, чем тупление в монитор. Для
-меня это совершенно очевидно. Скорей всего, включается другой отдел мозга, но
-объяснение не так важно.</p>
-
-<p>Изучать язык тяжело. Красивые сайты пытаются это скрыть или развлечь
-пользователя, потому что их цель — донаты и показ рекламы. У задачника этой цели
-нет. Это более хардкорный вариант, но тем он и лучше.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/msg-call/">Звонки в мессаджерах</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-05-09T00:00:00+00:00">
-        May 9, 2023
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/mobile/" rel="tag">mobile</a>, <a href="/tag/telegram/" rel="tag">telegram</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Совет — чтобы не бесить людей, звоните на обычный мобильный. Не в Телеграм, не в
-Ватсап и не Вайбер. Мало что раздражает так сильно, как звонки в какой-то
-программе.</p>
-
-<p>Только что звонил родственник в Телеграме. Это просто п..здец, простите. У меня
-три устройства: телефон, ноут, комп. Все три одновременно завыли, на каждом
-распахнулось окно. Ощущение, что воздушная тревога. Через две секунды вызов на
-телефоне пропал, но продолжился на ноуте. Что происходит?</p>
-
-<p>То же самое с Ватсапом. Сидишь, быдлокодишь под музыку, весь в себе. Внезапно
-подскакиваешь от звонка и окна на весь экран. Просто издевательство.</p>
-
-<p>Даже если не обращать на это внимание, есть важный момент. У звонков в Телеграме
-и иже с ним ужасное качество. Звук пропадает, сыпется, словом — гораздо хуже
-мобильной связи.</p>
-
-<p>Причина в том, как устроены звонки в приложениях. Каждое из них звонит на
-местный номер. Там сервер, который заворачивает звук в трафик и шлет куда-то
-далеко. Оттуда он направляется в страну получателя, и ему звонят с местного
-номера. Получается звонок с местного на местный с целой пропастью
-посередине. Даже если собеседники в одном здании, маршрут выходит изрядный.</p>
-
-<p>Конечно, при звонке из России в условную Турцию вариантов не остается — не
-платить же опсосу по 70 рублей за минуту. Здесь Телеграм и Ватсап выручают. Но
-удивляют нищеброды-соседи или знакомые из твоего города, которые упорно звонят
-из приложения. Зачем? Чтобы сэкономить пять минут? Они везде идут пакетами, что
-там экономить? Хуже пенсионеров, честное слово.</p>
-
-<p>Раздражает еще то, что на Айфоне последние номера хранятся с учетом
-приложения. Например, когда мне звонят с Ватсапа, я сбрасываю и перезваниваю с
-мобильного. Но если нажать на последний вызов, выскочит проклятый
-Ватсап. Приходится заходить в контакт и жать на тот же номер с мобильным типом.</p>
-
-<p>Раз и навсегда: для связи внутри страны — только мобильная связь. Мессенджеры —
-если вы в разных странах или важна приватность, причем по обоюдному согласию. В
-остальном звонить из приложения — днище и зашквар. Объясните, пожалуйста, тем,
-кто этого не понимает.</p>
-
-<p>PS: в Телеграме можно запретить входящие звонки всем или с учетом контактов. В
-других программах, кажется, это невозможно.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/pg-lib/">PG: Postgres-related libraries for Clojure</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-05-06T00:00:00+00:00">
-        May 6, 2023
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>The <a href="https://github.com/igrishaev/pg">PG project</a> holds a set of packages related to PostgreSQL. This is a
-breakdown of my unsuccessful attempt to write a PostgreSQL client in pure
-Clojure (stored in the <code class="language-plaintext highlighter-rouge">_</code> directory). Although I didn’t achieve the goal, some
-parts of the code are now shipped as separated packages and might be useful for
-someone.</p>
-
-<p>At the moment, the most interesting modules are <code class="language-plaintext highlighter-rouge">pg-copy</code> and <code class="language-plaintext highlighter-rouge">pg-copy-jdbc</code>
-that <code class="language-plaintext highlighter-rouge">COPY</code> the data using the binary Postgres format which is faster than CSV.</p>
-
-<h2 id="table-of-contents">Table of Contents</h2>
-
-<h2>
-
-    
-
-</h2>
-
-<ul id="toc-item-pg-lib-en">
-  <li><a href="#table-of-contents" id="toc-item-pg-lib-en-table-of-contents">Table of Contents</a>    <ul>
-      <li><a href="#pg-common" id="toc-item-pg-lib-en-pg-common">pg-common</a>        <ul>
-          <li><a href="#installation" id="toc-item-pg-lib-en-installation">Installation</a></li>
-          <li><a href="#usage" id="toc-item-pg-lib-en-usage">Usage</a></li>
-        </ul>
-      </li>
-      <li><a href="#pg-encode" id="toc-item-pg-lib-en-pg-encode">pg-encode</a>        <ul>
-          <li><a href="#installation-1" id="toc-item-pg-lib-en-installation-1">Installation</a></li>
-          <li><a href="#usage-1" id="toc-item-pg-lib-en-usage-1">Usage</a></li>
-          <li><a href="#type-specific-encoding" id="toc-item-pg-lib-en-type-specific-encoding">Type-specific encoding</a></li>
-          <li><a href="#table-of-supported-types-and-oids" id="toc-item-pg-lib-en-table-of-supported-types-and-oids">Table of supported types and OIDs</a></li>
-          <li><a href="#extending-the-encoding-rules" id="toc-item-pg-lib-en-extending-the-encoding-rules">Extending the encoding rules</a></li>
-          <li><a href="#default-oids" id="toc-item-pg-lib-en-default-oids">Default OIDs</a></li>
-        </ul>
-      </li>
-      <li><a href="#pg-joda-time" id="toc-item-pg-lib-en-pg-joda-time">pg-joda-time</a>        <ul>
-          <li><a href="#installation-2" id="toc-item-pg-lib-en-installation-2">Installation</a></li>
-          <li><a href="#usage-2" id="toc-item-pg-lib-en-usage-2">Usage</a></li>
-          <li><a href="#table-of-types-and-oids" id="toc-item-pg-lib-en-table-of-types-and-oids">Table of Types and OIDs</a></li>
-        </ul>
-      </li>
-      <li><a href="#pg-copy" id="toc-item-pg-lib-en-pg-copy">pg-copy</a>        <ul>
-          <li><a href="#installation-3" id="toc-item-pg-lib-en-installation-3">Installation</a></li>
-          <li><a href="#usage-3" id="toc-item-pg-lib-en-usage-3">Usage</a></li>
-          <li><a href="#oid-hints" id="toc-item-pg-lib-en-oid-hints">OID hints</a></li>
-          <li><a href="#hints-in-metadata" id="toc-item-pg-lib-en-hints-in-metadata">Hints in metadata</a></li>
-          <li><a href="#working-with-maps" id="toc-item-pg-lib-en-working-with-maps">Working with maps</a></li>
-          <li><a href="#other-functions" id="toc-item-pg-lib-en-other-functions">Other functions</a></li>
-        </ul>
-      </li>
-      <li><a href="#pg-copy-jdbc" id="toc-item-pg-lib-en-pg-copy-jdbc">pg-copy-jdbc</a>        <ul>
-          <li><a href="#installation-4" id="toc-item-pg-lib-en-installation-4">Installation</a></li>
-          <li><a href="#usage-4" id="toc-item-pg-lib-en-usage-4">Usage</a></li>
-          <li><a href="#parallel-copy" id="toc-item-pg-lib-en-parallel-copy">Parallel COPY</a></li>
-          <li><a href="#measurements" id="toc-item-pg-lib-en-measurements">Measurements</a>            <ul>
-              <li><a href="#plain-copy" id="toc-item-pg-lib-en-plain-copy">Plain COPY</a></li>
-              <li><a href="#parallel-copy-1" id="toc-item-pg-lib-en-parallel-copy-1">Parallel COPY</a></li>
-              <li><a href="#summary" id="toc-item-pg-lib-en-summary">Summary</a></li>
-            </ul>
-          </li>
-        </ul>
-      </li>
-    </ul>
-  </li>
-</ul>
-
-
-                    <p><a href="/en/pg-lib/">Read more &rarr;</a></p>
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/own/">Свое</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-05-02T00:00:00+00:00">
-        May 2, 2023
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Иногда в фирме пишут велосипеды даже с учетом того, что есть открытые
-библиотеки. Раньше я по-разному к этому относился, а теперь пришел к
-компромиссу.</p>
-
-<p>С одной стороны, кустарные поделки напрягают меня как разработчика. Устраиваясь
-в фирму, меньше всего хочется встретить свою ORM, свой роутинг или шаблонную
-систему. Обычно это глючный код, написанный по принципу “потому что
-можем”. Хочется работать с популярными библиотеками, у которых документация,
-сообщество, канал в Слаке.</p>
-
-<p>С другой стороны, свои решения продвигают фирму на рынке и в сообществе. Это
-привлекает разработчиков, служит рекламой, упрощает найм. В вакансиях можно
-указать, что задание должно быть сделано именно на этих библиотеках, потому что
-на них построены решения фирмы.</p>
-
-<p>Правда, чтобы это работало, фирма должна как можно раньше выкладывать свои
-решения в open source. Это то же самое, что с ребенком: если вечно держать его
-взаперти, будет вред. Библиотека должна быть на Гитхабе, должно быть сообщество,
-словом — фирма должна как можно сильнее пиарить свой код, чтобы считаться
-центром идей в своей области. И программисты будут в нее стремиться.</p>
-
-<p>Удивляет порой, что у фирмы есть неплохие решения, но они киснут в приватных
-репозиториях — без документации, без развития. Что бы не выложить их в паблик? Я
-вообще не припомню кода, который нельзя было бы опубликовать именно по причине
-кражи бизнеса. За любым кодом стоит понимание его командой и видение
-будущего. Скачав исходники Яндекса вы не сделаете новый Яндекс. Единственное
-опасение — это ошибки и низкий уровень кода, за который стыдно. Именно это и
-лечит open source: его код сразу готов к жизненным трудностям.</p>
-
-<p>Бесит, когда делаешь тестовое задание на популярных библиотеках, а в команде
-говорят: забудь, чему тебя учили, у нас своя атмосфера. Ребят: свою атмосферу
-нужно проталкивать вовне! Задавать стандарты, вовлекать людей, а не держать в
-тайне от мира. Вы что-то скрываете, а скрывать нечего.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/prog-level/">Уровень</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-04-30T00:00:00+00:00">
-        Apr 30, 2023
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Пока мир сходит с ума по искусственному интеллекту, всплакну о низком уровне
-разработчиков. Подкатило, нужно выплеснуть.</p>
-
-<p>Ситуация: разработчик пишет функцию <code class="language-plaintext highlighter-rouge">get-by-id</code>, чтобы достать сущность из
-базы. Не моргнув глазом, он передает ее в <code class="language-plaintext highlighter-rouge">map</code> на пять тысяч элементов. Это, на
-минутку, один запрос, а запросов может десятки в секунду. Подобные вещи
-приходится ловить в code review и объяснять, что один запрос лучше, чем пять
-тысяч.</p>
-
-<p>Идет 2023 год, а программисты пишут SQL конкатенацией строк. В порядке вещей код
-на два экрана с <code class="language-plaintext highlighter-rouge">format</code>, <code class="language-plaintext highlighter-rouge">str</code> и <code class="language-plaintext highlighter-rouge">join</code>, который ни понять, ни
-отладить. Полученный запрос уходит в базу, и дай бог, чтобы оно работало. Если
-передать nil или пустой список, получим битый SQL, потому что автор этого не
-предусмотрел. И конечно, инъекции во все поля.</p>
-
-<p>Почему-то программисты не могут записать и получить данные из базы. Им нужна
-ORM, и чтобы она сразу мапилась на REST. Получается километр глючного кода без
-документации и поддержки. Автор ORM отлынивает от задач под видом ее
-доработки. Часть команды уходит в партизаны: работают с базой через SELECT и
-UPDATE в обход ORM. Так спокойней, главное чтобы автор ORM не зашел в
-пулл-реквест.</p>
-
-<p>Разработчики игнорируют линтеры. Проект уже не раз сменил команду, люди пишут в
-разных редакторах, и ни у кого он толком не настроен. Кривые отступы, экраны
-закомментированного кода, неиспользуемые импорты и переменные. Это в порядке
-вещей.</p>
-
-<p>Программисты не доводят дело до конца, хотя в бóльшей степени это упрек
-руководству. Например, у кого-то задача, чтобы была документация
-Swagger. Человек пишет генератор json-файла, покрывает тестами, все
-готово. Осталось захостить, чтобы документацию увидели клиенты. Но прилетает
-горящая задача или девопс-инженер уходит в отпуск. В итоге документация есть, но
-ее никто не видит. Задача не достигнута, время потрачено зря, но это никого не
-смущает. Недостигнутые цели я вижу постоянно.</p>
-
-<p>Сюда же относятся висящие пул-реквесты. Открываешь борду и видишь у кого пять, а
-у кого семь пул-реквестов. Зачем программист писал код, если его не принимают?
-Если бы он смотрел Ютуб, эффект был бы тот же. Почти во всех системах можно
-задать auto-expire, не говоря уж о ботах, которых полно.</p>
-
-<p>Беда с локальным окружением. Программисту лень потратить день на
-<code class="language-plaintext highlighter-rouge">docker-compose.yaml</code>, чтобы сервисы работали локально. Приходится объяснять,
-что локальный ресурс лучше стейджинга где-то в Амазоне.</p>
-
-<p>Иной программист генерит айдишники для базы вручную. Берет рандом от 0 до 9999 и
-густо перчит номером треда, числом миллисекунд и фазой Луны. И это работает в
-проде.</p>
-
-<p>Программисты любят кокетничать, что уперлись в базу: терабайты данных, не
-вывозит нагрузку, все дела. При этом в базу уходят кривейшие запросы, а сама она
-превратилась в свалку, потому что там хранят кэш, логи S3 и черт знает что.</p>
-
-<p>У программистов туго с отладкой. Под отладкой я имею в виду остановку кода на
-середине, чтобы выяснить локальные переменные. Это могут единицы. Остальные либо
-ставят принты и мотают экраны логов, либо вообще сдаются. Иные заявляют, что в
-божественной Кложе отладчик не нужен. Это вообще за гранью.</p>
-
-<p>И наконец, главное: карго-культ. Так писали до нас, так пишем и мы. Кривой
-нейминг? Дурацкая организация кода? Ничего, консистенси важнее. И хотя прошлый
-разраб видел Кложу второй раз в жизни, все следуют его бредовым начинаниям.</p>
-
-<p>Все это я видел даже когда писал на Дельфи и 1С до прихода в промышленную
-разработку. Меняются лица, а косяки остаются с нами. Конечно, я их тоже
-совершал, но будучи записанными, они переживаются легче.</p>
-
-<p>Все, отпустило, работаем дальше.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/gpt-help/">Помощь Chat GPT</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-04-18T00:00:00+00:00">
-        Apr 18, 2023
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/ai/" rel="tag">ai</a>, <a href="/tag/chat-gpt/" rel="tag">chat-gpt</a>, <a href="/tag/latex/" rel="tag">latex</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Сегодня я столкнулся с “помощью” Chat GPT, а точнее — его необдуманным применением.</p>
-
-<p>Я немного занимаюсь Латехом, и когда верстал книгу, решал массу технических вопросов. Что-то вышло изящно, а что-то нет: работает, но коробит душу. Хочу закрыть эти недостатки в будущем.</p>
-
-<p>Добрые люди подсказали группу в Телеграме, где тусят любители Латеха. Зашел туда и задал наболевший вопрос про жирный шрифт в minted. Через какое-то время один пользователь (судя по био, женщина), скинула ответ с примером на Латехе. Я горячо поблагодарил и побежал пробовать.</p>
-
-<p>Запускаю — ошибка, что нет такого-то свойства. Ладно, думаю, устарели пакеты. Обновил все под чистую. Запускаю — то же самое. Что же это за свойство? Полез в документацию пакета, а там его вообще нет. Пакет ничего не знает об этом свойстве.</p>
-
-<p>Посмотрел на ответ свежим взглядом и понял — это Chat GPT (вчера вечером мозги были уже не те). Во-первых, в нем повествовательный стиль: “обратите внимание”, “вы можете” и так далее. От первого лица в Телеграме так не пишут. Во-вторых, в копипасте я нашел артефакты, свойственные интерфейсу Chat GPT. В частности, название языка перед участком кода (python, latex). Их всегда забывают вычистить при копировании ответа целиком.</p>
-
-<p>Что тут можно сказать? История не нова. Помните сервисы вопросов и ответов на Яндексе и Мейл.ру? Раньше домохозяйки копировали с Википедии. Теперь то же самое, только научились пользоваться Chat GPT. Понимаю, почему на StackOverflow запретили им пользоваться — можно засрать сервис нерабочим кодом без какой-либо ответственности.</p>
-
-<p>Лишний раз убеждаюсь в том, <a href="/ai/">о чем писал недавно</a>. Chat GPT — это никакой не интеллект. Это языковая модель, которая производит текст, максимально близкий к вопросу. Ей неважно, работает код или нет, у нее другие метрики. А мне, наоборот, важно. Мне платят за код, который не только <strong>выглядит</strong> хорошо, но и <strong>работает</strong> хорошо. Единственный способ проверить код — запустить его и предъявить результат работы. Этого Chat GPT не может, и поэтому мне с ним не по пути.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/dropdowns/">Выпадашки</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-04-10T00:00:00+00:00">
-        Apr 10, 2023
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/ui/" rel="tag">ui</a>, <a href="/tag/dropdown/" rel="tag">dropdown</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Бич современного интерфейса — это выпадающие элементы, которые я называю “выпадашками”. Часто упоминаю их, когда пишу об интерфейсе, и вот пора сделать отдельный пост.</p>
-
-<p>Я не люблю выпадашки по одной причине: почти всегда в интерфейсе хватает места, чтобы уместить скрытые элементы. Непонятно почему дизайнер прячет их от меня, оставляя три точки или гамбургер. Приходится кликать, чтобы узнать, что под ними.</p>
-
-<p>Типичный пример — форма комментариев на Хабре. Действие “Ответить” выражено текстом, к этому вопросов нет. Затем идет иконка закладки. Далее выпадашка, под которой ссылка, редактирование и жалоба. Зачем было их прятать? Места хватит и для иконок, и для текстовых ссылок.</p>
-
-<p><img src="/assets/static/aws/dropdown/1.png" /></p>
-
-<p>Пользуясь случаем, замечу, что у выпадашки адская разреженность. Ее можно было сжать в два раза без какого-либо ущерба.</p>
-
-<p>Другой пример — форма закладок на том же Хабре. Закладки бывают двух типов: статьи и комментарии. Почему переключалка сделана в виде выпадашки? Что мешало расположить элементы по горизонтали: Статьи / Комментарии?</p>
-
-<p><img src="/assets/static/aws/dropdown/2.png" /></p>
-
-<p>Выпадашки пришли к нам с мобильных устройств. Там мало места, поэтому приходится что-то прятать. Но почему пользователь десктопа должен страдать? Кому-то лень добавить проверку на разрешение или прописать стиль. В итоге на мониторе места столько, что влезет несколько страниц книги, но кнопки спрятаны под выпадашку.</p>
-
-<p>Впрочем, и на Айпаде я видал интерфейсы, когда на весь экран пустота и в правом верхнем углу жалкое многоточие.</p>
-
-<p>Из недавнего: в англоязычной Википедии обновился интерфейс. Конечно, самое нужное убрали под выпадашку. Если раньше на язык достаточно было кликнуть, то теперь он заботливо спрятан в выпадающее меню.</p>
-
-<p><img src="/assets/static/aws/dropdown/3.png" /></p>
-
-<p>Выпадашки ради выпадашек. У меня есть инструмент — значит, воспользуюсь, неважно нужен он или нет. К сожалению, сегодня для выпадашки даже не нужен Джаваскрипт, хватает обычного CSS, и это только усугубляет положение.</p>
-
-<p>С ростом экрана дизайнер не знает, как им воспользоваться. Поэтому искусственно раздувает интерфейс: больше отступы, крупнее иконки, половину кнопок под выпадашку. Скрытая профессиональная импотенция.</p>
-
-<p>Обычно желаешь таким дизайнерам всяческих наказаний, но сейчас у меня хорошее настроение, и хотелось бы закончить на позитивной ноте. Если вы дизайнер интерфейсов и часто пользуетесь выпадашкой — займитесь  физическим и печатным дизайном. У предметов и бумаги почти не бывает выпадающих элементов, а если они и есть, то их тяжело и дорого делать: во-первых, дольше процесс, а во-вторых, оторвутся на раз-два.</p>
-
-<p>Со временем придет ясность, что все элементы можно расположить, не пряча один под другой. Но это требует усилий над собой.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page35" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 36 из 97</span>
+        <span class="page_number ">Страница 36 из 98</span>
         
         <a href="/page37" class="next">&rarr;</a>
         
