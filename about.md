@@ -14,12 +14,10 @@ links above). Quite good with Postgres and LaTeX.
 
 [cv]: https://github.com/igrishaev/CV
 [cv-pdf]: https://github.com/igrishaev/CV/raw/master/Ivan_Grishaev_CV.pdf
-[current]: https://www.rbinternational.com/en/raiffeisen.html
 
-At the moment, I'm a backend engineer at [Raiffeisen Bank
-International][current] (Austria). There, I do a lot of Clojure and SQL every
-day. If you are interested, check out my [CV on GitHub][cv] or download a [PDF
-version][cv-pdf].
+At the moment, I'm a backend engineer at a vast European fintech company. There,
+I do a lot of Clojure and SQL every day. If you are interested, check out my [CV
+on GitHub][cv] or download a [PDF version][cv-pdf].
 
 My profiles:
 
