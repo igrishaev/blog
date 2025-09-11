@@ -105,6 +105,98 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/soft-delete/">Soft delete</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-04-24T00:00:00+00:00">
+        Apr 24, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/delete/" rel="tag">delete</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Многие знают о технике мягкого удаления. Это когда записи не удаляются физически
+из базы, а помечаются флажком <code class="language-plaintext highlighter-rouge">is_deleted</code> или выставляется время
+<code class="language-plaintext highlighter-rouge">deleted_at</code>. Удобно, что ничего не удаляется, не нужно воевать с внешними
+ключами и ограничением целостности. Самое главное — если что-то пошло не так, то
+снял флажок, и данные на месте.</p>
+
+<p>Все это хорошо, и я тоже так думал, пока не поработал в одном проекте. Там была
+огромная база с кучей таблиц и техникой мягкого удаления. Только тогда я понял,
+что это билет в ад.</p>
+
+<p>Начнем с того, что удаленные записи отнимают место на диске. За несколько лет их
+набегает порядочное количество. Удаленные записи по-прежнему участвуют в
+индексах, и они тоже занимают место, замедляют обход. В Постгресе есть
+функциональные индексы когда запись попадает только при условии <code class="language-plaintext highlighter-rouge">NOT is_deleted</code>
+или <code class="language-plaintext highlighter-rouge">deleted_at IS NULL</code>. Но чаще всего этим не заморачиваются, и в индекс
+валится все.</p>
+
+<p>Бывает, удаленная запись мешает критерию уникальности, и тогда ее выключают из
+уникального индекса. Например, поле <code class="language-plaintext highlighter-rouge">email</code> уникально только среди не удаленных
+пользователей. Поэтому записи как в примере ниже</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    email        | is_deleted
+-----------------|-------
+ivan@grishaev.me | false
+ivan@grishaev.me | true
+</code></pre></div></div>
+
+<p>могут спокойно сосуществовать. Но восстановить вторую запись нельзя, потому что
+она вступит в конфликт с первой. Спрашивается: зачем мы ее храним? Что с ней
+можно сделать? Ничего. Это просто балласт.</p>
+
+<p>Что касается запросов, то разработчики часто забывают условие <code class="language-plaintext highlighter-rouge">WHERE NOT
+is_deleted</code>, и в выборке оказываются удаленные данные.</p>
+
+<p>А в другом проекте было по-другому: проблему удаления решали переносом в другие
+таблицы. Например, для таблицы messages создается ее аналог
+<code class="language-plaintext highlighter-rouge">messages_deleted</code>. Запись переносится атомарно таким запросом:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span><span class="k">delete</span> <span class="k">from</span> <span class="n">messages</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span> <span class="n">returning</span> <span class="o">*</span><span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">messages_deleted</span> <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">deleted</span>
+</code></pre></div></div>
+
+<p>Перенос обратно:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span><span class="k">delete</span> <span class="k">from</span> <span class="n">messages_deleted</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span> <span class="n">returning</span> <span class="o">*</span><span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">messages</span> <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">deleted</span>
+</code></pre></div></div>
+
+<p>Есть и другой вариант этого запроса без выражения <code class="language-plaintext highlighter-rouge">WITH</code>; можно сделать это
+триггером, хоть я и не люблю их. Важно, что запрос выполняется атомарно даже
+если не заключен в транзакцию. При этом запись переходит между таблицами на
+стороне сервера. Она даже не приходит клиенту.</p>
+
+<p>На первый взгляд это неудобно, потому что нужны лишние таблицы. Но как
+замечательно это оказалось на практике! В основной таблице только актуальные
+данные, никаких флажков и предикатов. Выбирая что-то из messages, ты на 100%
+уверен, что нет риска выбрать что-то не то. Данные всегда в чистоте. Если
+однажды мы решим, что удаленные сообщения не нужны, мы грохнем таблицу
+messages_deleted без риска задеть живые данные.</p>
+
+<p>С тех пор я придерживаюсь переноса, если это возможно.</p>
+
+<p>Принцип “я ничего не удаляю” аналогичен принципу “я ничего не выбрасываю”. С ним
+база, простите меня, засирается. И хотя перенос данных не значит их удаление, он
+очищает рабочую область — а это крайне важно.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/reading/">Чтение</a>
             </h2>
 
@@ -931,68 +1023,6 @@ PDF. И только потом заметил, что это PNG.</p>
 еще… — нужно убрать. Никто не ищет Cut по иконке ножниц среди календарей и
 часов. Дизайнеры-обезьянки качают иконки паками, не понимая, что только мусорят
 ими.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/github-ide/">Github IDE</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-04-13T00:00:00+00:00">
-        Apr 13, 2024
-    </time>
-
-    <a href="/tag/software/" rel="tag">software</a>, <a href="/tag/github/" rel="tag">github</a>, <a href="/tag/ui/" rel="tag">ui</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>С тяжелым сердцем смотрю, как Микрософт уродует интерфейс Гитхаба.</p>
-
-<p>Раньше Гитхаб просто показывал код. Ну, с минимальной подсветкой и ссылками на
-строки. Все изменилось, как только его купили Микрософты.</p>
-
-<p>Теперь Гитхаб — что-то вроде онлайн-ИДЕ. Стоит куда-то кликнуть, как появляются
-попапы, колонки сдвигаются, открываются ссылки для переходов к определению и все
-остальное. Может быть, кому-то это нужно, но в своем случае не припомню.</p>
-
-<p>До двойного клика:</p>
-
-<p><img src="/assets/static/aws/github-ide/01.png" /></p>
-
-<p>и после него:</p>
-
-<p><img src="/assets/static/aws/github-ide/02.png" /></p>
-
-<p>На скриншотах выше — типичный косяк веб-интерфейса. Я всего-то дважды кликнул на
-функцию read-non-quoted-string, чтобы выделить и скопировать название. В
-результате дерево каталогов исчезло, код переехал влево, а справа появилась
-новая выпадашка.</p>
-
-<p>Разве не уроды? Кто просил двигать колонки и что-то скрывать-открывать? Я просто
-дважды кликнул.</p>
-
-<p>Интерфейс словно перешел в режим редактирования, потому что курсор стал
-вертикальной чертой. При этом текст ввести нельзя — документ по-прежнему
-read-only. Это просто вынос мозга.</p>
-
-<p>Обратите внимание, что в результате перестановок курсор оказался в неправильном
-месте. Я кликнул на середину <code class="language-plaintext highlighter-rouge">read-non-quoted-string</code>, а на втором скриншоте он
-остался на конце сигнатуры за <code class="language-plaintext highlighter-rouge">...in]</code>. При этом выделена правая квадратная
-скобка. Что происходит?</p>
-
-<p>Разбудите меня, когда у нас, наконец, будут нормальные дизайнеры.</p>
 
                 
             </div>

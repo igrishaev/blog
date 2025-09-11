@@ -105,6 +105,114 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/aws-sdk-fix/">SDK, работа над ошибками</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-07-20T00:00:00+00:00">
+        Jul 20, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/sdk/" rel="tag">sdk</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Давайте поможем инженерам из Amazon с их SDK 2.0. Разберем наиболее серьезную
+ошибку – частичную инициализацию объекта.</p>
+
+<p>В прошлой заметке я упоминал, как создаются объекты в SDK. Если коротко, у
+классов скрыты конструкторы, и нужно пользоваться билдером. Получается что-то
+вроде такого:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">GetObjectRequest</span> <span class="n">request</span> <span class="o">=</span> <span class="nc">GetObjectRequest</span><span class="o">.</span><span class="na">builder</span><span class="o">()</span>
+  <span class="o">.</span><span class="na">bucket</span><span class="o">(</span><span class="s">"acme-releases"</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">key</span><span class="o">(</span><span class="s">"path/to/file.txt"</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">ifEtagMatches</span><span class="o">(</span><span class="s">"...."</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">ifModifiedSince</span><span class="o">(</span><span class="s">"..."</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">build</span><span class="o">()</span>
+</code></pre></div></div>
+
+<p>Билдер не знает, какие из параметров обязательны, а какие нет. В примере выше
+код работает. Если убрать вызов .bucket или .key, все скомпилируется, но при
+запуске получим:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Execution error (IllegalArgumentException)
+at ....xml.internal.marshall.SimpleTypePathMarshaller
+
+Parameter 'Bucket' must not be null
+</code></pre></div></div>
+
+<p>Обратите внимание, что ошибка приехала из какого-то XML-маршаллера, хотя
+никакого XML и тем более маршаллизации здесь нет. Тело пустое, и просто
+составляется URL.</p>
+
+<p>Подчеркну: программистам из Амазона вполне ОК, что объект инициирован
+частично. Спрашивается, что можно сделать с объектом <code class="language-plaintext highlighter-rouge">GetObjectRequest</code>, если у
+него не заполнен бакет? Ничего. Зачем тогда позволять такую ситуацию?</p>
+
+<p>Как они вообще представляют работу со своим SDK? Пользователь садится и
+перебором проверяет, какие поля нужны, а какие нет? Ладно я знаю, что бакет и
+ключ необходимы, но ведь кто-то не знает. И узнает он только когда бахнет прод.</p>
+
+<p>Проблема решается просто. Все поля объекта делятся на обязательные и нет – по
+аналогии с аргументами <code class="language-plaintext highlighter-rouge">args</code> и <code class="language-plaintext highlighter-rouge">kwargs</code> в Питоне. Обязательные поля потому так
+и называются, что без них невозможно дернуть конструктор или порождающий
+статичный метод. В нашем случае обязательны бакет и ключ. С ними код становится
+таким:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">GetObjectRequest</span> <span class="n">request</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">GetObjectRequest</span><span class="o">(</span>
+  <span class="s">"acme-releases"</span><span class="o">,</span> <span class="s">"path/to/file"</span>
+<span class="o">).</span><span class="na">withEtag</span><span class="o">(</span><span class="s">"..."</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">withModifiedSince</span><span class="o">(</span><span class="s">"..."</span><span class="o">)</span>
+</code></pre></div></div>
+
+<p>либо то же самое с билдером:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">GetObjectRequest</span> <span class="n">request</span> <span class="o">=</span> <span class="nc">GetObjectRequest</span><span class="o">.</span><span class="na">builder</span><span class="o">(</span>
+  <span class="s">"acme-releases"</span><span class="o">,</span> <span class="s">"path/to/file"</span><span class="o">)</span>
+<span class="o">.</span><span class="na">etag</span><span class="o">(</span><span class="s">"..."</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">modifiedSince</span><span class="o">(</span><span class="s">"..."</span><span class="o">)</span>
+  <span class="o">.</span><span class="na">build</span><span class="o">()</span>
+</code></pre></div></div>
+
+<p>То есть хоть разбейся в лепешку, но обязательные параметры передай.</p>
+
+<p>Ну? Что мешало так сделать? Здесь даже паттерны сохранены, чтобы не пострадало
+чувство прекрасного.</p>
+
+<p>Заметим, что я не говорю отсебятину: все это сказано в книге Effective Java
+авторства Джошуа Блоха. Он так и пишет: используйте неизменяемые объекты, не
+допускайте частичной инициализации, требуйте обязательные поля сразу – не
+надейтесь, что кто-то заполнит из позже. Кумир джавистов говорит, как делать
+правильно. Почему в Амазоне решили, что сами с усами?</p>
+
+<p>Впрочем, пока я писал это, подумал – может, все гораздо проще? Может быть, за
+SDK сажают мидлов и стажеров, пока они без задач? Скажем, наняли стажера, а у
+тимлида релиз, погружать человека некогда, поэтому его сажают за SDK. Вполне
+похоже на правду.</p>
+
+<p>У нас так было в Датаарте: пока человек без работы, его сажали за всякий
+внутренний хлам. Форму заказа пиццы, аукцион парковочных мест, каталог
+сотрудников. Все это было крайне низкого качества, потому что шло через десятки
+джунов и мидлов без какого-либо контроля качества.</p>
+
+<p>Может и в Амазоне такой же порядок? Кто знает, расскажите. Потому что чем иначе
+объяснить такое качество SDK – я не знаю.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/solid/">SOLID</a>
             </h2>
 
@@ -1425,58 +1533,6 @@ Content-Type, потому что последний – это метаинфо
 Content-Type.</p>
 
 <p>Верю, что когда-нибудь в Амазоне это поймут.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/interstellar-tick/">Время в Interstellar</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-07-05T00:00:00+00:00">
-        Jul 5, 2024
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/interstellar/" rel="tag">interstellar</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Вы же смотрели Интерстеллар? Помните высадку на планету с волной? А музыку в
-фоне, такую тревожную, помните? Тик-так, тик-так по нарастающей?</p>
-
-<p>Этот тик-так — неспроста. Каждый тик равен 1.37 секунды, и за это время на Земле
-проходят сутки. Именно такое соотношение времени между Землей и той планетой
-из-за близости к черной дыре. Ганс Циммер гений.</p>
-
-<p>Когда знаешь об этом, в сцену добавляется новый оттенок. Теперь уже не смотришь
-на метания за разбитым кораблем: слушаешь тик-так и представляешь, как впустую
-проходит чья-то жизнь — твоя, например.</p>
-
-<p>Иногда по вечерам, вытряхнув себя из-за компа, я чувствую что-то похожее. Словно
-жизнь — это фильм, а в фоне кто-то цокает языком. Исправляешь чей-то быдлокод и
-косяки, потом идешь домой и думаешь — что я вообще делал?</p>
-
-<p>Нечто похожее встретилось в дневниках Корнея Чуковского времен блокады
-Ленинграда: “дни сгорают как бумажные”. Потому он и великий писатель, что не
-уходят, не летят, а именно сгорают.</p>
-
-<p>Впрочем, потом меня отпускает, и я снова иду править чужой код и косяки. И так
-постоянно.</p>
-
-<iframe width="100%" height="500" src="https://www.youtube.com/embed/60h6lpnSgck" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
-</iframe>
-
 
                 
             </div>

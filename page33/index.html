@@ -105,6 +105,178 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/pg-docs/06/">PG docs, part 6. SSL</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-09-30T00:00:00+00:00">
+        Sep 30, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/notifications/" rel="tag">notifications</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><em>(This is a new documentation chapter from the <a href="https://github.com/igrishaev/pg">PG project</a>.)</em></p>
+
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+  <li><a href="/en/pg-docs/04/">Arrays</a></li>
+  <li><a href="/en/pg-docs/05/">Notifications</a></li>
+  <li><a href="/en/pg-docs/06/">SSL</a></li>
+  <li><a href="/en/pg-docs/07/">COPY</a></li>
+  <li><a href="/en/pg-docs/08/">HoneySQL</a></li>
+</ul>
+
+<p>In this chapter:</p>
+
+<ul>
+  <li><a href="#setup">Setup</a></li>
+  <li><a href="#edn-config">EDN Config</a></li>
+  <li><a href="#testing">Testing</a></li>
+</ul>
+
+<p>The recent update of PG introduces SSL support. Install the newest version of PG
+as follows:</p>
+
+<p>Lein:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-client</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">]</span><span class="w">
+</span><span class="p">[</span><span class="n">com.github.igrishaev/pg-ssl</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">]</span><span class="w"> </span><span class="c1">;; optional, for a custom SSL context</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Deps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">com.github.igrishaev/pg-client</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">}</span><span class="w">
+ </span><span class="n">com.github.igrishaev/pg-ssl</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="setup">Setup</h2>
+
+<p>The are two ways to set up an SSL connection to the database. The first, and
+simple, is to set the <code class="language-plaintext highlighter-rouge">:ssl?</code> boolean flag to true and just connect:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"some.cloud.host.com"</span><span class="w">
+ </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
+ </span><span class="no">:ssl?</span><span class="w"> </span><span class="n">true</span><span class="w">
+ </span><span class="n">...</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In this case, the entire SSL pipeline is held by Java. It tries to find the
+corresponding keys and certificates using the standard KeyStore and TrustStore
+which you configure on your own.</p>
+
+<p>The second and more flexible way is to provide a custom SSL context to the
+connection map. It must be an instance of the <code class="language-plaintext highlighter-rouge">javax.net.ssl.SSLContext</code>
+class. Building such an instance from scratch is quite miserable though. To make
+your life easier, there is a thin wrapper on top of the great <a href="https://github.com/aphyr/less-awful-ssl">Less Awful
+SSL</a> library that takes a map of certificates and keys and
+returns an instance of <code class="language-plaintext highlighter-rouge">SSLContext</code>. Since it requires a third-party library,
+it’s shipped as a standalone package pg-ssl. Add it to the project:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-client</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">]</span><span class="w"> </span><span class="c1">;; lein</span><span class="w">
+</span><span class="c1">;; or</span><span class="w">
+</span><span class="p">{</span><span class="n">com.github.igrishaev/pg-ssl</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">}}</span><span class="w"> </span><span class="c1">;; deps</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now pass the <code class="language-plaintext highlighter-rouge">:ssl-context</code> parameter in addition to <code class="language-plaintext highlighter-rouge">:ssl?</code>. It’s a map with
+the string keys <code class="language-plaintext highlighter-rouge">:key-file</code>, <code class="language-plaintext highlighter-rouge">:cert-file</code>, and <code class="language-plaintext highlighter-rouge">:ca-cert-file</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">foo.bar</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+    </span><span class="p">[</span><span class="n">pg.ssl</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">ssl</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"some.cloud.host.com"</span><span class="w">
+ </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
+ </span><span class="no">:ssl?</span><span class="w"> </span><span class="n">true</span><span class="w">
+ </span><span class="no">:ssl-context</span><span class="w">
+ </span><span class="p">(</span><span class="nf">ssl/context</span><span class="w"> </span><span class="p">{</span><span class="no">:key-file</span><span class="w"> </span><span class="s">"/path/to/client.key"</span><span class="w">
+               </span><span class="no">:cert-file</span><span class="w"> </span><span class="s">"/path/to/client.crt"</span><span class="w">
+               </span><span class="no">:ca-cert-file</span><span class="w"> </span><span class="s">"/path/to/root.crt"</span><span class="p">})}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">:ca-cert-file</code> parameter might be missing if just <code class="language-plaintext highlighter-rouge">:key-file</code> and
+<code class="language-plaintext highlighter-rouge">:cert-file</code> are enough.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ssl/context</span><span class="w"> </span><span class="p">{</span><span class="no">:key-file</span><span class="w"> </span><span class="s">"/path/to/client.key"</span><span class="w">
+              </span><span class="no">:cert-file</span><span class="w"> </span><span class="s">"/path/to/client.crt"</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="edn-config">EDN Config</h2>
+
+<p>Often, we store the configuration in an EDN file. To declare SSL context there,
+prepend it with a reader tag called <code class="language-plaintext highlighter-rouge">#pg/ssl-context</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:ssl?</span><span class="w"> </span><span class="n">true</span><span class="w">
+ </span><span class="no">:ssl-context</span><span class="w"> </span><span class="o">#</span><span class="n">pg/ssl-context</span><span class="w"> </span><span class="p">{</span><span class="no">:key-file</span><span class="w"> </span><span class="n">...</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When reading EDN, pass that tag to the <code class="language-plaintext highlighter-rouge">:readers</code> map as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="ss">'pg/ssl-context</span><span class="w"> </span><span class="n">pg.ssl/ssl-context-reader</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The tag wraps the map with a function that builds the <code class="language-plaintext highlighter-rouge">SSLContext</code> from it.</p>
+
+<p>Some cloud platforms give you only the root certificate. In that case, generate
+both the client key and the the client certificate on your own using the root
+certificate. Something like:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">umask </span><span class="nv">u</span><span class="o">=</span>rw,go<span class="o">=</span> <span class="o">&amp;&amp;</span> openssl req <span class="nt">-days</span> 365 <span class="nt">-new</span> <span class="nt">-nodes</span> <span class="nt">-subj</span> <span class="s1">'/C=US/ST=Test/L=Test/O=Personal/OU=Personal/emailAddress=test@test.com/CN=test'</span> <span class="nt">-keyout</span> client.key <span class="nt">-out</span> client.csr
+<span class="nb">umask </span><span class="nv">u</span><span class="o">=</span>rw,go<span class="o">=</span> <span class="o">&amp;&amp;</span> openssl x509 <span class="nt">-days</span> 365 <span class="nt">-req</span>  <span class="nt">-CAcreateserial</span> <span class="nt">-in</span> client.csr <span class="nt">-CA</span> root.crt <span class="nt">-CAkey</span> server.key <span class="nt">-out</span> client.crt
+</code></pre></div></div>
+
+<p>When generating the certificates, pay attention to the <code class="language-plaintext highlighter-rouge">CN</code> field which is
+“test” in our case. In terms of PostgreSQL, it should match the database
+user. Different users will have different certificates.</p>
+
+<h2 id="testing">Testing</h2>
+
+<p>The SSL functionality is difficult to test in Docker so I’ve got to run a native
+instance. Here is a brief setup.</p>
+
+<ul>
+  <li>In <code class="language-plaintext highlighter-rouge">postgresql.conf</code>, enable the <code class="language-plaintext highlighter-rouge">ssl</code> parameter and specify paths to the
+files:</li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssl=on
+ssl_cert_file='/Users/ivan/work/pg/certs/server.crt'
+ssl_key_file='/Users/ivan/work/pg/certs/server.key'
+ssl_ca_file = '/Users/ivan/work/pg/certs/root.crt'
+</code></pre></div></div>
+
+<ul>
+  <li>In <code class="language-plaintext highlighter-rouge">pg_hba.conf</code>, enable the “cert” validation type for SSL connections:</li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>hostssl all all all cert
+</code></pre></div></div>
+
+<p>Finally, create a user with a name that matches the <code class="language-plaintext highlighter-rouge">CN</code> field:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">user</span> <span class="o">&lt;</span><span class="n">CN</span><span class="o">-</span><span class="n">field</span><span class="o">&gt;</span> <span class="k">with</span> <span class="n">password</span> <span class="s1">'******'</span><span class="p">;</span>
+</code></pre></div></div>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/sql/">SQL</a>
             </h2>
 
@@ -716,46 +888,6 @@ https://objective-see.org/products/lulu.html</p>
 — донесла до нас текст.</p>
 
 <p>Так что шутка на троечку.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/bomb-movie/">Фильмы про бомбу</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/bomb/" rel="tag">bomb</a>, <a href="/tag/movies/" rel="tag">movies</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В фильмах про ядерную бомбу повторяется дурацкий штамп. Якобы ученый работает из
-интереса, не задумываясь над последствиями, только по зову сердца. Но ВНЕЗАПНО,
-эффект превосходит все ожидания, бомба оказывается разрушительной, подтягиваются
-политики, и ученый такой — ох, что я наделал, нельзя допустить,
-АСТАНАВИТЕСЬ!!!111 Всякие метания и попытки вернуть все взад.</p>
-
-<p>Это чушь собачья. Ученые прекрасно понимают, над чем они работают, а штамп нужен
-для того, чтобы высосать драму из пальца. Взять того же Фейнмана: после бомбы он
-и преподавал, и клеил женщин пачками, и два раза женился, и танцевал, играл,
-разгадывал секреты Майя и много что еще.</p>
-
-<p>Так что не надо этой лапши про внезапное прозрение. Ну а если с кем-то и правда
-такое было, то надо было думать раньше.</p>
 
                 
             </div>

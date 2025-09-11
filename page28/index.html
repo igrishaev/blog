@@ -105,6 +105,120 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/aws-2/">AWS, история вторая. Афина прекрасная</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-03-10T00:00:00+00:00">
+        Mar 10, 2024
+    </time>
+
+    <a href="/tag/aws/" rel="tag">aws</a>, <a href="/tag/cloud/" rel="tag">cloud</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/athena/" rel="tag">athena</a>, <a href="/tag/s3/" rel="tag">s3</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Все статьи из цикла AWS</p>
+
+<ul>
+  <li><a href="/aws-0/">Амазон</a></li>
+  <li><a href="/aws-1/">AWS, история первая. Внезапный мегабайт</a></li>
+  <li><a href="/aws-2/">AWS, история вторая. Афина прекрасная</a></li>
+  <li><a href="/aws-3/">AWS, история третья. Разрывы</a></li>
+  <li><a href="/aws-4/">AWS, история четвертая. Когда null не совсем null</a></li>
+</ul>
+
+<p>Расскажу о еще одном случае с AWS, который стоил мне пару бессонных ночей.</p>
+
+<p>В Амазоне есть славный сервис Athena — супер-пупер агрегатор всего и вся. Он
+тащит терабайты данных из разных источников, обрабатывает и складывает в другие
+сервисы. Хадуп на стероидах. По-русски читается “Афина”.</p>
+
+<p>Мы пользуемся им так. Есть лямбда, которая складывает в S3 сущности в JSON.
+Сущностей более миллиона. Другим сервисам нужны все сущности разом — и
+оказывается, выгрести их из S3 невозможно.</p>
+
+<p>Почему? Даже если предположить, что за секунду мы скачаем 10 сущностей
+параллельно (что невозможно), за 900 секунд мы получим 9000 сущностей, что
+меньше одного процента. А нам нужно не девять тысяч, а миллион. Напомню, что 900
+секунд — это 15 минут, максимальное время работы лямбды.</p>
+
+<p>Архитектуру дизайнил не я, поэтому не спрашивайте, почему так.</p>
+
+<p>На помощь приходит Афина. Мы говорим ей: склей все JSON файлы из бакета в один и
+положи туда-то. Афине, при всей мощи Амазона, нужно на это 4 минуты.  Чудес не
+бывает, и чтобы забрать из S3 миллион файлов, Амазону нужно попотеть.</p>
+
+<p>В ответ на нашу просьбу Афина дает айдишник задания, и мы его поллим. Готово?
+Нет. Готово? Нет. Готово? Да. И если да, в ответе будет ссылка на файл-агрегат.</p>
+
+<p>Таких агрегатов у нас несколько, и я столкнулся с тем, что лямбда не
+укладывается в 15 минут. Если тратить по 4 минуты на агрегат, то на ожидание
+трёх уйдёт 12 минут.  Процессинг файлов занимает еще 5-6 минут, и готово — ты не
+успел.</p>
+
+<p>Тратить 12 минут впустую глупо, поэтому я сделал поллинг Афины параллельным. В
+самом деле, зачем ждать 4 минуты, если можно запустить второй поллинг? Логично
+же? Но вот к чему это привело.</p>
+
+<p>Кто-то заметил, что в отчетах стали появляться “дырки”, то есть пустые ячейки. С
+точки зрения кода это выглядит так, словно в агрегате не было записей. Сначала я
+отнеткивался, но потом проверил размеры агрегатов. Оказалось, что сегодняшний
+файл, собранный Афиной, в два раза меньше вчерашнего. Или наоборот: вчера ок, а
+сегодня половина. Файл не битый, открывается, просто в нем половина данных.</p>
+
+<p>После гуглений, осбуждений и вырванных волос обнаружились сразу три бага.</p>
+
+<p>Первый — разработчик, который писал код до меня, допустил ошибку. Он поллил
+Афину по условию “пока статус pending”. Если что-то другое, он читал результат.
+Оказалось, что у задачи может быть три статуса: pending, ready и error. И в
+нашем случае статус был error.</p>
+
+<p>Второй — даже если задача в статусе error, она содержит ссылку на собранный
+файл. Да, Афина не смогла, и файл собран частично. Считается, что это лучше, чем
+ничего.</p>
+
+<p>Третий — в чем была причина error? Напомню, что я запускал в Афине несколько
+задач параллельно. Каждая задача собирала файлы из S3. В итоге сработал лимит на
+доступ к S3 — он ответил, что кто-то слишком часто обращается ко мне, убавьте
+пыл, господа. Поэтому задача упала.</p>
+
+<p>Интересно, что S3 не волнует, что обращается к нему не сторонний потребитель, а
+сама Афина. При всем абсурде я считаю это правильным, потому что если лимит
+задан, он должен соблюдаться глобально, без поблажек “для своих”.</p>
+
+<p>В итоге я сделал следующее. Все отчеты, которые обращаются к Афине, я разнес по
+времени с разницей в 5-10 минут. Раньше они стартовали одновременно, что
+порождало много задач в Афину, а та насиловала S3. С разницей по времени стало
+легче.</p>
+
+<p>Потом я додумался до решения лучше. Сделал фейковый warmup-отчет, который
+работает как прогрев кеша. Он запускается первым и триггерит все задачи в Афине.
+Когда другим отчетам что-то нужно из Афины, они проверяют, была ли задача с
+такими параметрами за последние 2 часа. Если да, ссылка на агрегат берется из
+старой задачи.</p>
+
+<p>Вот такая она, борьба с AWS. Перечитываю и понимаю, что, хоть и звучит умно,
+хвастаться здесь нечем. Не будь этой архитектуры, результат обошелся бы дешевле.
+Усилия потрачены, но неясно зачем.</p>
+
+<p>Я пишу комментарии к коду, надеясь, что следующий разработчик поймет хоть толику
+все этой котовасии. Но не особо на это надеюсь: скорее всего, он скажет — что
+это наговнокодили такое? Пойду переделаю. И все повторится.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/aws-1/">AWS, история первая. Внезапный мегабайт</a>
             </h2>
 
@@ -1451,75 +1565,6 @@ namespaces are not supported by the wrapper.</p>
 
 <p>For more information, please refer to the official <a href="https://github.com/igrishaev/pg2/blob/master/README.md">README file</a>.</p>
 
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/pg2-bench-3">PG2 release 0.1.2: more performance, benchmarks, part 3</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-02-06T00:00:00+00:00">
-        Feb 6, 2024
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<h2>
-
-    Table of Content
-
-</h2>
-
-<ul id="toc-item-pg2-bench-3">
-  <li><a href="#introduction" id="toc-item-pg2-bench-3-introduction">Introduction</a></li>
-  <li><a href="#test1-reading-a-single-column-random-query" id="toc-item-pg2-bench-3-test1-reading-a-single-column-random-query">Test1. Reading a single-column random query</a></li>
-  <li><a href="#test2-reading-a-multi-column-complex-random-query" id="toc-item-pg2-bench-3-test2-reading-a-multi-column-complex-random-query">Test2. Reading a multi-column, complex random query</a></li>
-  <li><a href="#test3-reading-random-json" id="toc-item-pg2-bench-3-test3-reading-random-json">Test3. Reading random JSON</a></li>
-  <li><a href="#test-4-connection-pools" id="toc-item-pg2-bench-3-test-4-connection-pools">Test 4. Connection pools</a></li>
-  <li><a href="#test-5-forcibly-evaluate-each-row-after-reading" id="toc-item-pg2-bench-3-test-5-forcibly-evaluate-each-row-after-reading">Test 5. Forcibly evaluate each row after reading</a></li>
-  <li><a href="#test-6-benchmarking-the-http-server-with-various--c-values" id="toc-item-pg2-bench-3-test-6-benchmarking-the-http-server-with-various--c-values">Test 6. Benchmarking the HTTP server with various -c values</a>    <ul>
-      <li><a href="#1-concurrent-request" id="toc-item-pg2-bench-3-1-concurrent-request">1 concurrent request</a></li>
-      <li><a href="#16-concurrent-requests" id="toc-item-pg2-bench-3-16-concurrent-requests">16 concurrent requests</a></li>
-      <li><a href="#64-concurrent-requests" id="toc-item-pg2-bench-3-64-concurrent-requests">64 concurrent requests</a></li>
-    </ul>
-  </li>
-  <li><a href="#summary" id="toc-item-pg2-bench-3-summary">Summary</a></li>
-</ul>
-
-<h2 id="introduction">Introduction</h2>
-
-<p>The <a href="https://github.com/igrishaev/pg2">PG2 library</a> version 0.1.2 is out. One of its features is a
-significant performance boost when processing SELECT queries. The more fields
-and rows you have in a result, the faster is the processing. Here is a chart
-that measures a query with a single column:</p>
-
-<p><img src="/assets/static/aws/pg2-bench-3/01.svg" class="svg-chart" /></p>
-
-<p>No difference between the previous release of PG and the new one. But with nine
-fields, the average execution time is less now:</p>
-
-<p><img src="/assets/static/aws/pg2-bench-3/02.svg" class="svg-chart" /></p>
-
-<p>Briefly, PG2 0.1.2 allows you to fetch the data 7-8 times faster than Next.JDBC
-does. But before we proceed with other charts and numbers, let me explain how
-the new processing algorithm works.</p>
-
-
-                    <p><a href="/en/pg2-bench-3">Read more &rarr;</a></p>
                 
             </div>
 
