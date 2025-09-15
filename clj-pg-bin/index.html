@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>New library: PG.bin</title>
+  <meta name="description" content="">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/clj-pg-bin/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">New library: PG.bin</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-09-15T00:00:00+00:00">
+        Sep 15, 2025
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/binary/" rel="tag">binary</a>, <a href="/tag/copy/" rel="tag">copy</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    
+<p><a href="https://github.com/igrishaev/pg-bin">PG.bin is a library</a> to parse Postgres COPY dumps made in binary format.</p>
+
+<p>Postgres has a great API to transfer data into and out from a database called
+COPY. What is special about it is that it supports three different formats: CSV,
+text and binary. Both CSV and text are trivial: values are passed using their
+text representation. Only quoting rules and separating characters differ.</p>
+
+<p>Binary format is special in that direction that values are not text. They’re
+passed exactly how they’re stored in Postgres. Thus, binary format is more
+compact: it’s 30% less in size than CSV or text. The same applies to
+performance: COPY-ing a binary data back and forth takes about 15-25% less time.</p>
+
+<p>To parse a binary dump, one must know its structure. This is what the library
+does: it knows how to parse such dumps. It supports most of the built-in
+Postgres types including JSON(b). The API is simple an extensible.</p>
+
+<h2 id="installation">Installation</h2>
+
+<p>Add this to your project:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; lein</span><span class="w">
+</span><span class="p">[</span><span class="n">com.github.igrishaev/pg-bin</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">]</span><span class="w">
+
+</span><span class="c1">;; deps</span><span class="w">
+</span><span class="n">com.github.igrishaev/pg-bin</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.0"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="usage">Usage</h2>
+
+<p>Let’s prepare a binary dump as follows:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">temp</span> <span class="k">table</span> <span class="n">test</span><span class="p">(</span>
+    <span class="n">f_01</span> <span class="n">int2</span><span class="p">,</span>
+    <span class="n">f_02</span> <span class="n">int4</span><span class="p">,</span>
+    <span class="n">f_03</span> <span class="n">int8</span><span class="p">,</span>
+    <span class="n">f_04</span> <span class="nb">boolean</span><span class="p">,</span>
+    <span class="n">f_05</span> <span class="n">float4</span><span class="p">,</span>
+    <span class="n">f_06</span> <span class="n">float8</span><span class="p">,</span>
+    <span class="n">f_07</span> <span class="nb">text</span><span class="p">,</span>
+    <span class="n">f_08</span> <span class="nb">varchar</span><span class="p">(</span><span class="mi">12</span><span class="p">),</span>
+    <span class="n">f_09</span> <span class="nb">time</span><span class="p">,</span>
+    <span class="n">f_10</span> <span class="n">timetz</span><span class="p">,</span>
+    <span class="n">f_11</span> <span class="nb">date</span><span class="p">,</span>
+    <span class="n">f_12</span> <span class="nb">timestamp</span><span class="p">,</span>
+    <span class="n">f_13</span> <span class="n">timestamptz</span><span class="p">,</span>
+    <span class="n">f_14</span> <span class="n">bytea</span><span class="p">,</span>
+    <span class="n">f_15</span> <span class="n">json</span><span class="p">,</span>
+    <span class="n">f_16</span> <span class="n">jsonb</span><span class="p">,</span>
+    <span class="n">f_17</span> <span class="n">uuid</span><span class="p">,</span>
+    <span class="n">f_18</span> <span class="nb">numeric</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span><span class="mi">3</span><span class="p">),</span>
+    <span class="n">f_19</span> <span class="nb">text</span> <span class="k">null</span><span class="p">,</span>
+    <span class="n">f_20</span> <span class="nb">decimal</span>
+<span class="p">);</span>
+
+<span class="k">insert</span> <span class="k">into</span> <span class="n">test</span> <span class="k">values</span> <span class="p">(</span>
+    <span class="mi">1</span><span class="p">,</span>
+    <span class="mi">2</span><span class="p">,</span>
+    <span class="mi">3</span><span class="p">,</span>
+    <span class="k">true</span><span class="p">,</span>
+    <span class="mi">123</span><span class="p">.</span><span class="mi">456</span><span class="p">,</span>
+    <span class="mi">654</span><span class="p">.</span><span class="mi">321</span><span class="p">,</span>
+    <span class="s1">'hello'</span><span class="p">,</span>
+    <span class="s1">'world'</span><span class="p">,</span>
+    <span class="s1">'10:42:35'</span><span class="p">,</span>
+    <span class="s1">'10:42:35+0030'</span><span class="p">,</span>
+    <span class="s1">'2025-11-30'</span><span class="p">,</span>
+    <span class="s1">'2025-11-30 10:42:35'</span><span class="p">,</span>
+    <span class="s1">'2025-11-30 10:42:35.123567+0030'</span><span class="p">,</span>
+    <span class="s1">'</span><span class="se">\x</span><span class="s1">DEADBEEF'</span><span class="p">,</span>
+    <span class="s1">'{"foo": [1, 2, 3, {"kek": [true, false, null]}]}'</span><span class="p">,</span>
+    <span class="s1">'{"foo": [1, 2, 3, {"kek": [true, false, null]}]}'</span><span class="p">,</span>
+    <span class="s1">'4bda6037-1c37-4051-9898-13b82f1bd712'</span><span class="p">,</span>
+    <span class="s1">'123456.123456'</span><span class="p">,</span>
+    <span class="k">null</span><span class="p">,</span>
+    <span class="s1">'123999.999100500'</span>
+<span class="p">);</span>
+
+<span class="err">\</span><span class="k">copy</span> <span class="n">test</span> <span class="k">to</span> <span class="s1">'/Users/ivan/dump.bin'</span> <span class="k">with</span> <span class="p">(</span><span class="n">format</span> <span class="nb">binary</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Let’s peek what’s inside:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>xxd -d /Users/ivan/dump.bin
+
+00000000: 5047 434f 5059 0aff 0d0a 0000 0000 0000  PGCOPY..........
+00000016: 0000 0000 1400 0000 0200 0100 0000 0400  ................
+00000032: 0000 0200 0000 0800 0000 0000 0000 0300  ................
+00000048: 0000 0101 0000 0004 42f6 e979 0000 0008  ........B..y....
+00000064: 4084 7291 6872 b021 0000 0005 6865 6c6c  @.r.hr.!....hell
+00000080: 6f00 0000 0577 6f72 6c64 0000 0008 0000  o....world......
+00000096: 0008 fa0e 9cc0 0000 000c 0000 0008 fa0e  ................
+00000112: 9cc0 ffff f8f8 0000 0004 0000 24f9 0000  ............$...
+00000128: 0008 0002 e7cc 4a0a fcc0 0000 0008 0002  ......J.........
+00000144: e7cb dec3 0d6f 0000 0004 dead beef 0000  .....o..........
+00000160: 0030 7b22 666f 6f22 3a20 5b31 2c20 322c  .0{"foo": [1, 2,
+00000176: 2033 2c20 7b22 6b65 6b22 3a20 5b74 7275   3, {"kek": [tru
+00000192: 652c 2066 616c 7365 2c20 6e75 6c6c 5d7d  e, false, null]}
+00000208: 5d7d 0000 0031 017b 2266 6f6f 223a 205b  ]}...1.{"foo": [
+00000224: 312c 2032 2c20 332c 207b 226b 656b 223a  1, 2, 3, {"kek":
+00000240: 205b 7472 7565 2c20 6661 6c73 652c 206e   [true, false, n
+00000256: 756c 6c5d 7d5d 7d00 0000 104b da60 371c  ull]}]}....K.`7.
+00000272: 3740 5198 9813 b82f 1bd7 1200 0000 0e00  7@Q..../........
+00000288: 0300 0100 0000 0300 0c0d 8004 ceff ffff  ................
+00000304: ff00 0000 1000 0400 0100 0000 0900 0c0f  ................
+00000320: 9f27 0700 32ff ff                        .'..2..
+</code></pre></div></div>
+
+<p>Now the library comes into play:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">some.ns</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">clojure.java.io</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">io</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg-bin.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">copy</span><span class="p">]</span><span class="w">
+   </span><span class="n">taggie.core</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">FIELDS</span><span class="w">
+  </span><span class="p">[</span><span class="no">:int2</span><span class="w">
+   </span><span class="no">:int4</span><span class="w">
+   </span><span class="no">:int8</span><span class="w">
+   </span><span class="no">:boolean</span><span class="w">
+   </span><span class="no">:float4</span><span class="w">
+   </span><span class="no">:float8</span><span class="w">
+   </span><span class="no">:text</span><span class="w">
+   </span><span class="no">:varchar</span><span class="w">
+   </span><span class="no">:time</span><span class="w">
+   </span><span class="no">:timetz</span><span class="w">
+   </span><span class="no">:date</span><span class="w">
+   </span><span class="no">:timestamp</span><span class="w">
+   </span><span class="no">:timestamptz</span><span class="w">
+   </span><span class="no">:bytea</span><span class="w">
+   </span><span class="no">:json</span><span class="w">
+   </span><span class="no">:jsonb</span><span class="w">
+   </span><span class="no">:uuid</span><span class="w">
+   </span><span class="no">:numeric</span><span class="w">
+   </span><span class="no">:text</span><span class="w">
+   </span><span class="no">:decimal</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">copy/parse</span><span class="w"> </span><span class="s">"/Users/ivan/dump.bin"</span><span class="w"> </span><span class="n">FIELDS</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[[</span><span class="mi">1</span><span class="w">
+  </span><span class="mi">2</span><span class="w">
+  </span><span class="mi">3</span><span class="w">
+  </span><span class="n">true</span><span class="w">
+  </span><span class="p">(</span><span class="nb">float</span><span class="w"> </span><span class="mf">123.456</span><span class="p">)</span><span class="w">
+  </span><span class="mf">654.321</span><span class="w">
+  </span><span class="s">"hello"</span><span class="w">
+  </span><span class="s">"world"</span><span class="w">
+  </span><span class="o">#</span><span class="n">LocalTime</span><span class="w"> </span><span class="s">"10:42:35"</span><span class="w">
+  </span><span class="o">#</span><span class="n">OffsetTime</span><span class="w"> </span><span class="s">"10:42:35+00:30"</span><span class="w">
+  </span><span class="o">#</span><span class="n">LocalDate</span><span class="w"> </span><span class="s">"2025-11-30"</span><span class="w">
+  </span><span class="o">#</span><span class="n">LocalDateTime</span><span class="w"> </span><span class="s">"2025-11-30T10:42:35"</span><span class="w">
+  </span><span class="o">#</span><span class="n">OffsetDateTime</span><span class="w"> </span><span class="s">"2025-11-30T10:12:35.123567Z"</span><span class="w">
+  </span><span class="p">(</span><span class="nf">=bytes</span><span class="w"> </span><span class="p">[</span><span class="mi">-34</span><span class="n">,</span><span class="w"> </span><span class="mi">-83</span><span class="n">,</span><span class="w"> </span><span class="mi">-66</span><span class="n">,</span><span class="w"> </span><span class="mi">-17</span><span class="p">])</span><span class="w">
+  </span><span class="s">"{\"foo\": [1, 2, 3, {\"kek\": [true, false, null]}]}"</span><span class="w">
+  </span><span class="s">"{\"foo\": [1, 2, 3, {\"kek\": [true, false, null]}]}"</span><span class="w">
+  </span><span class="o">#</span><span class="n">uuid</span><span class="w"> </span><span class="s">"4bda6037-1c37-4051-9898-13b82f1bd712"</span><span class="w">
+  </span><span class="mf">123456.123</span><span class="n">M</span><span class="w">
+  </span><span class="n">nil</span><span class="w">
+  </span><span class="mf">123999.999100500</span><span class="n">M</span><span class="p">]]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Here and below: I use <a href="https://github.com/igrishaev/taggie">Taggie</a> to render complex values like date &amp;
+time, byte arrays and so one. Really useful!</p>
+
+<p>This is what is going on here: we parse a source pointing to a dump using the
+<code class="language-plaintext highlighter-rouge">parse</code> function. A source might be a file, a byte array, an input stream and so
+on – anything that can be coerced to an input stream using the
+<code class="language-plaintext highlighter-rouge">clojure.java.io/input-stream</code> function.</p>
+
+<p>Binary files produced by Postgres don’t know their structure. Unfortunately,
+there is no information about types, only data. One should help the library
+traverse a binary dump by specifying a vector of types. The <code class="language-plaintext highlighter-rouge">FIELDS</code> variable
+declares the structure of the file. See below what types are supported.</p>
+
+<h2 id="api">API</h2>
+
+<p>There are two functions to parse, namely:</p>
+
+<ul>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">pg-bin.core/parse</code> accepts any source and returns a vector of parsed
+lines. This function is eager meaning it consumes the whole source and
+accumulates lines in a vector.</p>
+  </li>
+  <li>
+    <p><code class="language-plaintext highlighter-rouge">pg-bin.core/parse-seq</code> accepts an <code class="language-plaintext highlighter-rouge">InputStream</code> and returns a lazy sequence
+of parsed lines. It must be called under the <code class="language-plaintext highlighter-rouge">with-open</code> macro as follows:</p>
+  </li>
+</ul>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">in</span><span class="w"> </span><span class="p">(</span><span class="nf">io/input-stream</span><span class="w"> </span><span class="s">"/Users/ivan/dump.bin"</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">lines</span><span class="w"> </span><span class="p">(</span><span class="nf">copy/parse-seq</span><span class="w"> </span><span class="n">in</span><span class="w"> </span><span class="n">FIELDS</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nb">doseq</span><span class="w"> </span><span class="p">[</span><span class="n">line</span><span class="w"> </span><span class="n">lines</span><span class="p">]</span><span class="w">
+      </span><span class="n">...</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Both functions accept a list of fields as the second argument.</p>
+
+<h2 id="skipping-fields">Skipping fields</h2>
+
+<p>When parsing, it’s likely that you don’t need all fields to be parsed. You may
+keep only the leading ones:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">copy/parse</span><span class="w"> </span><span class="n">DUMP_PATH</span><span class="w"> </span><span class="p">[</span><span class="no">:int2</span><span class="w"> </span><span class="no">:int4</span><span class="w"> </span><span class="no">:int8</span><span class="p">])</span><span class="w">
+</span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="p">]]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>To skip fields located in the middle, use either <code class="language-plaintext highlighter-rouge">:skip</code> or an underscore:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">copy/parse</span><span class="w"> </span><span class="n">DUMP_PATH</span><span class="w"> </span><span class="p">[</span><span class="no">:int2</span><span class="w"> </span><span class="no">:skip</span><span class="w"> </span><span class="no">:_</span><span class="w"> </span><span class="no">:boolean</span><span class="p">])</span><span class="w">
+</span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="n">true</span><span class="p">]]</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="raw-fields">Raw fields</h2>
+
+<p>If, for any reason, you have a type in your dump that the library is not aware
+about, or you’d like to examine its binary representation, specify <code class="language-plaintext highlighter-rouge">:raw</code> or
+<code class="language-plaintext highlighter-rouge">:bytes</code>. Each value will be a byte array then. It’s up to you how to deal with
+those bytes:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">copy/parse</span><span class="w"> </span><span class="n">DUMP_PATH</span><span class="w"> </span><span class="p">[</span><span class="no">:raw</span><span class="w"> </span><span class="no">:raw</span><span class="w"> </span><span class="no">:bytes</span><span class="p">])</span><span class="w">
+</span><span class="p">[[</span><span class="o">#</span><span class="n">bytes</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">1</span><span class="p">]</span><span class="w">
+  </span><span class="o">#</span><span class="n">bytes</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">2</span><span class="p">]</span><span class="w">
+  </span><span class="o">#</span><span class="n">bytes</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="mi">3</span><span class="p">]]]</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="handling-json">Handling JSON</h2>
+
+<p>Postgres is well-known for its vast JSON capabilities, and sometimes tables that
+we dump have json(b) columns. Above, you saw that by default, they’re parsed as
+plain strings. This is because there is no a built-in JSON parser in Java and I
+don’t want to tie this library to a certain JSON implementation.</p>
+
+<p>But the library provides a number of macros to extend undelrying
+multi-methods. With a line of code, you can enable parsing json(b) types with
+Chesire, Jsonista, Clojure.data.json, Charred, and JSam. This is how to do it:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">some.ns</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg-bin.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">copy</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg-bin.json</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">json</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">json/set-cheshire</span><span class="w"> </span><span class="nb">keyword</span><span class="p">)</span><span class="w"> </span><span class="c1">;; overrides multimethods</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">copy/parse</span><span class="w"> </span><span class="n">DUMP_PATH</span><span class="w"> </span><span class="n">FIELDS</span><span class="p">)</span><span class="w">
+
+</span><span class="p">[[</span><span class="n">...</span><span class="w">
+  </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="p">{</span><span class="no">:kek</span><span class="w"> </span><span class="p">[</span><span class="n">true</span><span class="w"> </span><span class="n">false</span><span class="w"> </span><span class="n">nil</span><span class="p">]}]}</span><span class="w">
+  </span><span class="p">{</span><span class="no">:foo</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="p">{</span><span class="no">:kek</span><span class="w"> </span><span class="p">[</span><span class="n">true</span><span class="w"> </span><span class="n">false</span><span class="w"> </span><span class="n">nil</span><span class="p">]}]}</span><span class="w">
+  </span><span class="n">...</span><span class="p">]]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">set-cheshire</code> macro extends multimethods assuming you have Cheshire
+installed. Now the <code class="language-plaintext highlighter-rouge">parse</code> function, when facing json(b) types, will decode them
+properly.</p>
+
+<p>The <code class="language-plaintext highlighter-rouge">pg-bin.json</code> namespace provides the following macros:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">set-string</code>: parse json(b) types as strings again;</li>
+  <li><code class="language-plaintext highlighter-rouge">set-cheshire</code>: parse using Cheshire;</li>
+  <li><code class="language-plaintext highlighter-rouge">set-data-json</code>: parse using clojure.data.json;</li>
+  <li><code class="language-plaintext highlighter-rouge">set-jsonista</code>: parse using Jsonista;</li>
+  <li><code class="language-plaintext highlighter-rouge">set-charred</code>: parse using Charred;</li>
+  <li><code class="language-plaintext highlighter-rouge">set-jsam</code>: parse using JSam.</li>
+</ul>
+
+<p>All of them accept optional parameters that are passed into the underlying
+parsing function.</p>
+
+<p>PG.Bin doesn’t introduce any JSON-related dependencies. Each macro assumes you
+have added a required library into the classpath.</p>
+
+<h2 id="metadata">Metadata</h2>
+
+<p>Each parsed line tracks its length in bytes, offset from the beginning of a file
+(or a stream) and a unique index:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">copy/parse</span><span class="w"> </span><span class="n">DUMP_PATH</span><span class="w"> </span><span class="n">FIELDS</span><span class="p">)</span><span class="w">
+    </span><span class="nb">first</span><span class="w">
+    </span><span class="nb">meta</span><span class="p">)</span><span class="w">
+
+</span><span class="o">#</span><span class="no">:pg</span><span class="p">{</span><span class="no">:length</span><span class="w"> </span><span class="mi">306</span><span class="n">,</span><span class="w"> </span><span class="no">:index</span><span class="w"> </span><span class="mi">0</span><span class="n">,</span><span class="w"> </span><span class="no">:offset</span><span class="w"> </span><span class="mi">19</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Knowing these values might help reading a dump by chunks.</p>
+
+<h2 id="supported-types">Supported types</h2>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">:raw :bytea :bytes</code> for raw access and <code class="language-plaintext highlighter-rouge">bytea</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:skip :_ nil</code> to skip a certain field</li>
+  <li><code class="language-plaintext highlighter-rouge">:uuid</code> to parse UUIDs</li>
+  <li><code class="language-plaintext highlighter-rouge">:int2 :short :smallint :smallserial</code> 2-byte integer (short)</li>
+  <li><code class="language-plaintext highlighter-rouge">:int4 :int :integer :oid :serial</code> 4-byte integer (integer)</li>
+  <li><code class="language-plaintext highlighter-rouge">:int8 :bigint :long :bigserial</code> 8-byte integer (long)</li>
+  <li><code class="language-plaintext highlighter-rouge">:numeric :decimal</code> numeric type (becomes <code class="language-plaintext highlighter-rouge">BigDecimal</code>)</li>
+  <li><code class="language-plaintext highlighter-rouge">:float4 :float :real</code> 4-byte float (float)</li>
+  <li><code class="language-plaintext highlighter-rouge">:float8 :double :double-precision</code> 8-byte float (double)</li>
+  <li><code class="language-plaintext highlighter-rouge">:boolean :bool</code> boolean</li>
+  <li><code class="language-plaintext highlighter-rouge">:text :varchar :enum :name :string</code> text values</li>
+  <li><code class="language-plaintext highlighter-rouge">:date</code> becomes <code class="language-plaintext highlighter-rouge">java.time.LocalDate</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:time :time-without-time-zone</code> becomes <code class="language-plaintext highlighter-rouge">java.time.LocalTime</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:timetz :time-with-time-zone</code> becomes <code class="language-plaintext highlighter-rouge">java.time.OffsetTime</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:timestamp :timestamp-without-time-zone</code> becomes <code class="language-plaintext highlighter-rouge">java.time.LocalDateTime</code></li>
+  <li><code class="language-plaintext highlighter-rouge">:timestamptz :timestamp-with-time-zone</code> becomes <code class="language-plaintext highlighter-rouge">java.time.OffsetDateTime</code></li>
+</ul>
+
+<p>Ping me for more types, if needed.</p>
+
+<h2 id="on-writing">On Writing</h2>
+
+<p>At the moment, the library only parses binary dumps. Writing them is possible
+yet requires extra work. Ping me if you really need writing binary files.</p>
+
+<h2 id="scenarios">Scenarios</h2>
+
+<p>Why using this library ever? Imagine you have to fetch a mas-s-s-ive chunk of
+rows from a database, say 2-3 million to build a report. That might be an issue:
+you don’t want to saturate memory, neither you want to paginate using
+LIMIT/OFFSET as it’s slow. A simple solution would be to dump the data you need
+into a file and process it. You won’t keep the database constantly busy as
+you’re working with a dump! Here is a small demo:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">some.ns</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg-bin.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">copy</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">pg-bin.json</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">json</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">make-copy-manager</span><span class="w">
+  </span><span class="s">"
+  Build an instance of CopyManager from a connection.
+  "</span><span class="w">
+  </span><span class="o">^</span><span class="n">CopyManager</span><span class="w"> </span><span class="p">[</span><span class="o">^</span><span class="n">Connection</span><span class="w"> </span><span class="n">conn</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">CopyManager</span><span class="w"> </span><span class="p">(</span><span class="nf">.unwrap</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">BaseConnection</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">data-source</span><span class="p">)</span><span class="w">
+      </span><span class="n">mgr</span><span class="w"> </span><span class="p">(</span><span class="nf">make-copy-manager</span><span class="w"> </span><span class="n">conn</span><span class="p">)</span><span class="w">
+      </span><span class="n">sql</span><span class="w"> </span><span class="s">"copy table_name(col1, col2...) to stdout with (format binary)"</span><span class="w">
+      </span><span class="c1">;; you can use a query without parameters as well</span><span class="w">
+      </span><span class="n">sql</span><span class="w"> </span><span class="s">"copy (select... from... where...) to stdout with (format binary)"</span><span class="w">
+      </span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nf">io/output-stream</span><span class="w"> </span><span class="s">"/path/to/dump.bin"</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">.copyOut</span><span class="w"> </span><span class="n">mgr</span><span class="w"> </span><span class="n">sql</span><span class="w"> </span><span class="n">out</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">in</span><span class="w"> </span><span class="p">(</span><span class="nf">io/input-stream</span><span class="w"> </span><span class="s">"/path/to/dump.bin"</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">lines</span><span class="w"> </span><span class="p">(</span><span class="nf">copy/parse-seq</span><span class="w"> </span><span class="n">in</span><span class="w"> </span><span class="p">[</span><span class="no">:int2</span><span class="w"> </span><span class="no">:text</span><span class="w"> </span><span class="n">...</span><span class="p">])]</span><span class="w">
+    </span><span class="p">(</span><span class="nb">doseq</span><span class="w"> </span><span class="p">[</span><span class="n">line</span><span class="w"> </span><span class="n">lines</span><span class="p">]</span><span class="w">
+      </span><span class="n">...</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Above, we dump the data into a file and then process it. There is a way to
+process lines on the fly using another thread. The second demo:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">conn</span><span class="w">
+      </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">data-source</span><span class="p">)</span><span class="w">
+
+      </span><span class="n">mgr</span><span class="w">
+      </span><span class="p">(</span><span class="nf">make-copy-manager</span><span class="w"> </span><span class="n">conn</span><span class="p">)</span><span class="w">
+
+      </span><span class="n">sql</span><span class="w">
+      </span><span class="s">"copy table_name(col1, col2...) to stdout with (format binary)"</span><span class="w">
+
+      </span><span class="n">in</span><span class="w">
+      </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">PipedInputStream</span><span class="p">)</span><span class="w">
+
+      </span><span class="n">started?</span><span class="w"> </span><span class="p">(</span><span class="nf">promise</span><span class="p">)</span><span class="w">
+
+      </span><span class="n">fut</span><span class="w"> </span><span class="c1">;; a future to process the output</span><span class="w">
+      </span><span class="p">(</span><span class="nf">future</span><span class="w">
+        </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">_</span><span class="w"> </span><span class="n">in</span><span class="p">]</span><span class="w"> </span><span class="c1">;; must close it afterward</span><span class="w">
+          </span><span class="p">(</span><span class="nf">deliver</span><span class="w"> </span><span class="n">started?</span><span class="w"> </span><span class="n">true</span><span class="p">)</span><span class="w"> </span><span class="c1">;; must report we have started</span><span class="w">
+          </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">lines</span><span class="w"> </span><span class="p">(</span><span class="nf">copy/parse-seq</span><span class="w"> </span><span class="n">in</span><span class="w"> </span><span class="p">[</span><span class="no">:int2</span><span class="w"> </span><span class="no">:text</span><span class="w"> </span><span class="n">...</span><span class="p">])]</span><span class="w">
+            </span><span class="p">(</span><span class="nb">doseq</span><span class="w"> </span><span class="p">[</span><span class="n">line</span><span class="w"> </span><span class="n">lines</span><span class="p">]</span><span class="w"> </span><span class="c1">;; process on the fly</span><span class="w">
+              </span><span class="c1">;; without touching the disk</span><span class="w">
+              </span><span class="n">...</span><span class="p">))))]</span><span class="w">
+
+  </span><span class="c1">;; ensure the future has started</span><span class="w">
+  </span><span class="o">@</span><span class="n">started?</span><span class="w">
+
+  </span><span class="c1">;; drain down to the piped output stream</span><span class="w">
+  </span><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">PipedOutputStream</span><span class="w"> </span><span class="n">in</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nf">.copyOut</span><span class="w"> </span><span class="n">mgr</span><span class="w"> </span><span class="n">sql</span><span class="w"> </span><span class="n">out</span><span class="p">))</span><span class="w">
+
+  </span><span class="o">@</span><span class="n">fut</span><span class="w"> </span><span class="c1">;; wait for the future to complete</span><span class="w">
+  </span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/workplace/">&larr; Место работы</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/clj-pg-bin/">
+    <input required name="captcha" type="hidden" value="4 &#215; 9">
+
+    <div class="block">
+        <span class="comment-form-label"><small>4 &#215; 9 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

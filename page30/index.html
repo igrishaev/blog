@@ -105,6 +105,86 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/gzip/">Gzip</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-01-26T00:00:00+00:00">
+        Jan 26, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/gzip/" rel="tag">gzip</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Коллеги, используйте gzip! Это простой способ уменьшить трафик в разы, если не
+на порядок. Буквально двумя строчками можно превратить гигабайты CSV в 200-300
+мегабайтов. Разве не чудо? И делается это парой строк.</p>
+
+<p>Теперь подробней. Gzip — старый алгоритм потокового сжатия. Ключевое слово
+“потоковый”. Это значит, алгоритму не нужен файл целиком; он читает окно байтов
+и выдает сжатое окно. За счет этого можно пережать любой поток, в том числе
+бесконечный.</p>
+
+<p>В джаве потоки байтов используют часто. В ней легко втиснуть <code class="language-plaintext highlighter-rouge">GzipInputStream</code>
+или <code class="language-plaintext highlighter-rouge">GzipOutputStream</code>, чтобы закодировать или декодировать поток. Например,
+если источник сжат Gzip, то обернем его так:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"some.file.gzip"</span><span class="w">
+    </span><span class="p">(</span><span class="nf">io/file</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">io/input-stream</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">GzipInputStream.</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>При чтении получим нормальный текст. А чтобы закодировать поток, делаем иначе:
+навесим на выходной поток <code class="language-plaintext highlighter-rouge">GzipOutputStream</code> и колбасим в него. Только в конце
+надо вызвать <code class="language-plaintext highlighter-rouge">.finish</code>, чтобы добить незавершенное окно.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"myfile.out.gzip"</span><span class="w">
+              </span><span class="n">io/file</span><span class="w">
+              </span><span class="n">io/input-stream</span><span class="p">)</span><span class="w">
+      </span><span class="n">gzip</span><span class="w"> </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">GzipOutputStream</span><span class="w"> </span><span class="n">out</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">while</span><span class="w"> </span><span class="n">...</span><span class="w">
+    </span><span class="p">(</span><span class="nf">.write</span><span class="w"> </span><span class="n">gzip</span><span class="w"> </span><span class="n">&lt;bytes&gt;</span><span class="p">))</span><span class="w">
+  </span><span class="p">(</span><span class="nf">.finish</span><span class="w"> </span><span class="n">gzip</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Удивляет, что при всей банальности gzip используют мало. А ведь он отлично
+подходит для текстовых данных: HTML, JSON, CSS, JS, CSV. В текущем проекте
+сервисы гоняют гигабайты CSV и JSON, и хоть кто-нибудь подумал о сжатии…</p>
+
+<p>Простой эксперимент: несжатый CSV — 146 мегабайтов, сжатый — 26. Почти в шесть
+раз. Даже если закодировать результат в base64, это даст +30% от 26 мегабайтов,
+то есть всего 35. Выгода все равно 4 раза. В том же Nginx сжатие gzip включается
+одной строкой в конфиге.</p>
+
+<p>Еще больше мою веру укрепил крит на проде. Один из сервисов выплюнул 6
+мегабайтов JSON, что не помещается в квоту AWS Lambda. Пришлось в спешке
+прикручивать сжатие, чтобы сообщенька пролезла.</p>
+
+<p>Соответственно, бесят HTTP-клиенты, которые ничего не знают о Gzip. Работа с
+ними превращается в ад: сам проверь заголовки, сам закодируй-раскодируй… и в
+проекте используется именно такой! Он читает ответ как строку, не проверяя
+Content-Encoding, и если там gzip, получается чешуя. Авторам — большой ай-ай за
+игнор веб-стандартов.</p>
+
+<p>Чем раньше вы возьмете gzip в проект, тем лучше. Потом все равно придется, но
+будет больно.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/women-stories/">Женские истории</a>
             </h2>
 
@@ -866,45 +946,13 @@ with a chart and comments.</p>
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/update-observation/">Наблюдение</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-12-29T00:00:00+00:00">
-        Dec 29, 2023
-    </time>
-
-    <a href="/tag/update/" rel="tag">update</a>, <a href="/tag/software/" rel="tag">software</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Обновить программу, которая долго просит обновиться, в надежде, что она оставит
-тебя в покое – то же самое, что дать денег алкашу. Через какое-то время он
-придет снова, но будет просить настойчивее.</p>
-
-<p>Нужно расстаться раньше этого.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page29" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 30 из 99</span>
+        <span class="page_number ">Страница 30 из 100</span>
         
         <a href="/page31" class="next">&rarr;</a>
         
