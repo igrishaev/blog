@@ -110,3 +110,7 @@ another spec (like we do it in Malli nowadays).
 -- [Toy Parser](https://github.com/igrishaev/toy-parser) is demo repository for
 students learning parsers. It provides a number of basic parsers and two
 showcases processing prefix and infix notations.
+
+-- [PG.bin](https://github.com/igrishaev/pg-bin) is library to parse Postgres
+COPY dumps made in binary format. Zero deps, various strategies to handle
+json(b) types. The API is easy to use and extend.
