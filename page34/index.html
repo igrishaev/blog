@@ -105,6 +105,714 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/pg-docs/07/">PG docs, part 7. COPY IN/FROM</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-10-10T00:00:00+00:00">
+        Oct 10, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/copy/" rel="tag">copy</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><em>(This is a new documentation chapter from the <a href="https://github.com/igrishaev/pg">PG project</a>.)</em></p>
+
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+  <li><a href="/en/pg-docs/04/">Arrays</a></li>
+  <li><a href="/en/pg-docs/05/">Notifications</a></li>
+  <li><a href="/en/pg-docs/06/">SSL</a></li>
+  <li><a href="/en/pg-docs/07/">COPY</a></li>
+  <li><a href="/en/pg-docs/08/">HoneySQL</a></li>
+</ul>
+
+<p>In this chapter:</p>
+
+<!-- toc -->
+
+<ul>
+  <li><a href="#theory">Theory</a></li>
+  <li><a href="#csv-vs-binary">CSV vs Binary</a></li>
+  <li><a href="#usage">Usage</a>
+    <ul>
+      <li><a href="#copy-out">COPY out</a></li>
+      <li><a href="#copy-in-from-stream">COPY IN from stream</a></li>
+      <li><a href="#copy-in-rows">COPY IN rows</a></li>
+      <li><a href="#copy-in-maps">COPY IN maps</a></li>
+    </ul>
+  </li>
+</ul>
+
+<!-- tocstop -->
+
+<h2 id="theory">Theory</h2>
+
+<p>The recent update of pg-client library introduces various ways to COPY the data
+into or from the database. It’s much more flexible than the official JDBC
+Postgres driver’s standard <a href="https://jdbc.postgresql.org/documentation/publicapi/org/postgresql/copy/CopyManager.html">CopyManager</a> class.</p>
+
+<p>To remind you, COPY is a massive way of writing or reading data. Copying IN is
+much faster than inserting the rows by chunks. Postgres starts to read the data
+immediately without waiting for the last bit of data to arrive. You can copy
+into the same table in parallel threads. The same applies to copying out: if you
+want to dump a table into a file, use COPY FROM with an OutputStream
+OutputStream rather than selecting everything in memory.</p>
+
+<p>The main disadvantage of JDBC CopyManager is, that it doesn’t do anything about
+data encoding and encoding. It accepts either an InputStream or an OutputStream
+assuming you encode the data on your own. It means, right before you copy the
+data to the database, you’ve got to manually encode them into CSV.</p>
+
+<p>This is not as easy as you might think. When encoding values into CSV, it
+coerces everything to a string using <code class="language-plaintext highlighter-rouge">str</code>. That’s OK for most of the primitive
+types as numbers, booleans or strings: their Clojure representation matches the
+way they’re represented in Postgres. But it doesn’t work for complex types like
+arrays. If you write a vector of <code class="language-plaintext highlighter-rouge">[1 2 3]</code> in CSV you’ll get <code class="language-plaintext highlighter-rouge">"[1 2 3]"</code> which
+is an improper Postgres value. It must have been <code class="language-plaintext highlighter-rouge">{1, 2, 3}</code> instead.</p>
+
+<p>Another flaw of JDBC CopyManager is, that it doesn’t split the data by rows when
+sending them into the database. It simply reads 2Kb of bytes from an InputStream
+and writes them to a socket. At the same time, the PostgreSQL documentation
+<a href="https://postgrespro.ru/docs/postgrespro/14/protocol-flow?lang=en#PROTOCOL-COPY">recommends</a> splitting the data chunks by rows:</p>
+
+<blockquote>
+  <p>The message boundaries are not required to have anything to do with row
+boundaries, although that is often a reasonable choice</p>
+</blockquote>
+
+<p>Moreover, PostgreSQL supports not only CSV but also text and binary formats. The
+text format is somewhat CSV with different separators so it’s not so
+important. But the binary format <em>is</em> indeed! Binary-encoded data are faster to
+parse and process and thus are preferable when dealing with vast chunks of data.</p>
+
+<h2 id="csv-vs-binary">CSV vs Binary</h2>
+
+<p>Here are a couple of measurements I made on my local machine. I made two files
+containing 10 million rows: in CSV and in binary format. Then I used the
+official CopyManager to copy these files in the database. All the server
+settings were default; the machine was an Apple M1 Max 32Gb with 10 Cores.</p>
+
+<p><strong>Single thread COPY</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Rows</th>
+      <th>Format</th>
+      <th>Time, sec</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10M</td>
+      <td>binary</td>
+      <td>17.4</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>CSV</td>
+      <td>51.2</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Parallel COPY</strong></p>
+
+<p>Binary:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Rows</th>
+      <th>Threads</th>
+      <th>Chunk</th>
+      <th>Format</th>
+      <th>Time, sec</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10M</td>
+      <td>8</td>
+      <td>10k</td>
+      <td>binary</td>
+      <td>11.3</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>4</td>
+      <td>10k</td>
+      <td>binary</td>
+      <td>13.7</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>1</td>
+      <td>10k</td>
+      <td>binary</td>
+      <td>28.6</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>CSV:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Rows</th>
+      <th>Threads</th>
+      <th>Chunk</th>
+      <th>Format</th>
+      <th>Time, sec</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10M</td>
+      <td>8</td>
+      <td>10k</td>
+      <td>CSV</td>
+      <td>10.6</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>4</td>
+      <td>10k</td>
+      <td>CSV</td>
+      <td>19.9</td>
+    </tr>
+    <tr>
+      <td>10M</td>
+      <td>1</td>
+      <td>10k</td>
+      <td>CSV</td>
+      <td>71.7</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>It’s plain to see that binary encoding is three times faster than CSV. 17 vs 51 seconds is a significant difference one cannot ignore.</p>
+
+<p>The good news is, the PG library does support binary encoding. It also allows you to perform COPY operations without encoding them manually. The library doesn’t make any InputStreams in the background: it encodes the rows one by one and sends them directly into the database. It also supports binary format of encoding which is a matter of passing a parameter. Also, it does split the data chunks by rows, not by the size of the buffer.</p>
+
+<h2 id="usage">Usage</h2>
+
+<p>Establish a connection to the database first:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.client</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">pg</span><span class="p">])</span><span class="w">
+
+</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/connect</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}))</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="copy-out">COPY out</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">copy-out</code> function dumps a table or a query into a file. It accepts a
+connection object, a SQL expression describing the table, the columns, the
+format and other details, and an instance of an OutputStream. The rows from the
+table or a query get sent to that stream. The function returns a number of rows
+processed.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">sql</span><span class="w">
+      </span><span class="s">"COPY (select s.x as x, s.x * s.x as square from generate_series(1, 9) as s(x))
+      TO STDOUT WITH (FORMAT CSV)"</span><span class="w">
+
+      </span><span class="n">out</span><span class="w">
+      </span><span class="p">(</span><span class="nb">new</span><span class="w"> </span><span class="n">ByteArrayOutputStream</span><span class="p">)]</span><span class="w">
+
+  </span><span class="p">(</span><span class="nf">pg/copy-out</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">sql</span><span class="w"> </span><span class="n">out</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The expression above returns 9 (the number of rows). The actual rows are now in
+the <code class="language-plaintext highlighter-rouge">out</code> variable that stores bytes.</p>
+
+<p>Of course, for massive data it’s better to use not <code class="language-plaintext highlighter-rouge">ByteArrayOutputStream</code> but
+<code class="language-plaintext highlighter-rouge">FileOutputStream</code>. You can produce it as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">with-open</span><span class="w"> </span><span class="p">[</span><span class="n">out</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"/some/file.csv"</span><span class="w">
+                    </span><span class="n">io/file</span><span class="w">
+                    </span><span class="n">io/output-stream</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">pg/copy-out</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">sql</span><span class="w"> </span><span class="n">out</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The PG library doesn’t close the stream assuming you may write multiple data
+into a single stream. It’s up to you when to close it.</p>
+
+<p>To dump the data into a binary file, add the <code class="language-plaintext highlighter-rouge">WITH (FORMAT BINARY)</code> clause to
+the SQL expression. Binary files are more difficult to parse yet they’re faster
+in processing.</p>
+
+<h3 id="copy-in-from-stream">COPY IN from stream</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">copy-in</code> function copies the data from in InputStream into the
+database. The payload of the stream is either produced by the previous
+<code class="language-plaintext highlighter-rouge">copy-out</code> function or manually by dumping the data into CSV/binary format. The
+function returns the number or rows processed by the server.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">in-stream</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"/some/file.csv"</span><span class="w"> </span><span class="n">io/file</span><span class="w"> </span><span class="n">io/input-stream</span><span class="p">))</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">pg/copy-in</span><span class="w"> </span><span class="n">conn</span><span class="w">
+            </span><span class="s">"copy foo (id, name, active) from STDIN WITH (FORMAT CSV)"</span><span class="w">
+            </span><span class="n">in-stream</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; returns 6</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Again, it doesn’t close the input stream. Use the <code class="language-plaintext highlighter-rouge">with-open</code> macro to close it
+explicitly.</p>
+
+<p>The next two functions are more interesting as they bring functionality missing
+in the JDBC.</p>
+
+<h3 id="copy-in-rows">COPY IN rows</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">copy-in-rows</code> function takes a sequence of rows and sends them into the
+database one by one. It doesn’t do any intermediate steps like dumping them into
+an InputStream first. Everything is done on the fly.</p>
+
+<p>The function takes a connection, a SQL expression, and a sequence of rows. A row
+is a sequence of values. The result is a number of rows copied into the
+database.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-rows</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"copy foo (id, name, active, note) from STDIN WITH (FORMAT CSV)"</span><span class="w">
+                 </span><span class="p">[[</span><span class="mi">1</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="n">nil</span><span class="p">]</span><span class="w">
+                  </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="s">"Juan"</span><span class="w"> </span><span class="n">false</span><span class="w"> </span><span class="s">"kek"</span><span class="p">]])</span><span class="w">
+</span><span class="c1">;; 2</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The fourth optional parameter is a map of options. At the moment, the following
+options are supported:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>name</th>
+      <th>default</th>
+      <th>example (or enum)</th>
+      <th>description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:sep</code></td>
+      <td>,</td>
+      <td> </td>
+      <td>a character to separate columns in CSV/text formats</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:end</code></td>
+      <td><code class="language-plaintext highlighter-rouge">\r\n</code></td>
+      <td> </td>
+      <td>a line-ending sequence of characters in CSV/text</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:null</code></td>
+      <td>empty string</td>
+      <td> </td>
+      <td>a string to represent NULL in CSV/text</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:oids</code></td>
+      <td><code class="language-plaintext highlighter-rouge">nil</code></td>
+      <td><code class="language-plaintext highlighter-rouge">[oid/int2 nil oid/date]</code>, <code class="language-plaintext highlighter-rouge">{0 oid/int2, 2 oid/date}</code></td>
+      <td>type hints for proper value encoding. Either a vector or OIDs, or a map of {index =&gt; OID}</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">:format</code></td>
+      <td><code class="language-plaintext highlighter-rouge">:csv</code></td>
+      <td><code class="language-plaintext highlighter-rouge">:csv</code>, <code class="language-plaintext highlighter-rouge">:bin</code>, <code class="language-plaintext highlighter-rouge">:txt</code></td>
+      <td>a keyword to specify the format of a payload.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Copy rows in CSV with custom column separators and NULL representation:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-rows</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"COPY foo (id, name, active, note) FROM STDIN WITH (FORMAT CSV, NULL 'NULL', DELIMITER '|')"</span><span class="w">
+                 </span><span class="n">rows</span><span class="w">
+                 </span><span class="p">{</span><span class="no">:null</span><span class="w"> </span><span class="s">"NULL"</span><span class="w">
+                  </span><span class="no">:sep</span><span class="w"> </span><span class="sc">\|</span><span class="p">})</span><span class="w">
+</span><span class="c1">;; 1000</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Copy rows as a binary payload with custom type hints:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-rows</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"COPY foo (id, name, active, note) from STDIN WITH (FORMAT BINARY)"</span><span class="w">
+                 </span><span class="n">rows</span><span class="w">
+                 </span><span class="p">{</span><span class="no">:format</span><span class="w"> </span><span class="no">:bin</span><span class="w">
+                  </span><span class="no">:oids</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="w"> </span><span class="n">oid/int2</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="n">oid/bool</span><span class="p">}})</span><span class="w">
+</span><span class="c1">;; 1000</span><span class="w">
+</span></code></pre></div></div>
+
+<h3 id="copy-in-maps">COPY IN maps</h3>
+
+<p>Often, we deal not with plain rows but maps. The <code class="language-plaintext highlighter-rouge">copy-in-maps</code> function acts
+but <code class="language-plaintext highlighter-rouge">copy-in-rows</code> but accepts a sequence of maps. Internally, all the maps get
+transformed into rows. To transform it properly, the function needs to know the
+order of the keys.</p>
+
+<p>The funtion accepts a connection, a SQL expression, a sequence of maps and a
+sequence of keys. Internally, it produces a selector from the keys like this:
+<code class="language-plaintext highlighter-rouge">(apply juxt keys)</code> which gets applied to each map.</p>
+
+<p>One more thing about copying maps is, that the <code class="language-plaintext highlighter-rouge">:oids</code> parameter is a map like
+{key =&gt; OID}.</p>
+
+<p>An example of copying the maps in CSV. Pay attention that the second map has
+extra keys which are ignored.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-maps</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"copy foo (id, name, active, note) from STDIN WITH (FORMAT CSV)"</span><span class="w">
+                 </span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="no">:note</span><span class="w"> </span><span class="s">"aaa"</span><span class="p">}</span><span class="w">
+                  </span><span class="p">{</span><span class="no">:aaa</span><span class="w"> </span><span class="n">false</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="no">:note</span><span class="w"> </span><span class="n">nil</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Juan"</span><span class="w"> </span><span class="no">:extra</span><span class="w"> </span><span class="s">"Kek"</span><span class="w"> </span><span class="no">:lol</span><span class="w"> </span><span class="mi">123</span><span class="p">}]</span><span class="w">
+                 </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="no">:note</span><span class="p">]</span><span class="w">
+                 </span><span class="p">{</span><span class="no">:oids</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="n">oid/int2</span><span class="p">}</span><span class="w">
+                  </span><span class="no">:format</span><span class="w"> </span><span class="no">:csv</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Another example where we copy maps using binary format. The <code class="language-plaintext highlighter-rouge">:oids</code> map has a
+single type hint so the <code class="language-plaintext highlighter-rouge">:id</code> fields get transformed to int2 but not bigint
+which is default for Long values.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/copy-in-maps</span><span class="w"> </span><span class="n">conn</span><span class="w">
+                 </span><span class="s">"copy foo (id, name, active, note) from STDIN WITH (FORMAT BINARY)"</span><span class="w">
+                 </span><span class="n">maps</span><span class="w">
+                 </span><span class="p">[</span><span class="no">:id</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="no">:active</span><span class="w"> </span><span class="no">:note</span><span class="p">]</span><span class="w">
+                 </span><span class="p">{</span><span class="no">:oids</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="n">oid/int2</span><span class="p">}</span><span class="w">
+                  </span><span class="no">:format</span><span class="w"> </span><span class="no">:bin</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/chart-lang/">Языки диаграмм</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-10-08T00:00:00+00:00">
+        Oct 8, 2023
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/charts/" rel="tag">charts</a>, <a href="/tag/diagramms/" rel="tag">diagramms</a>, <a href="/tag/uml/" rel="tag">UML</a>, <a href="/tag/ui/" rel="tag">ui</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Есть языки, которые описывают схемы и диаграммы. Например, пишешь что-то такое:</p>
+
+<p><img src="/assets/static/aws/chart-lang/1.jpeg" /></p>
+
+<p>Потом натраливаешь на файл программу и получается картинка:</p>
+
+<p><img src="/assets/static/aws/chart-lang/2.jpeg" /></p>
+
+<p>Казалось бы, все автоматически, красиво, удобно. Но нет.</p>
+
+<p>Когда я верстал первую книгу в Латехе, то использользовал для графиков пакет
+<a href="https://www.overleaf.com/learn/latex/TikZ_package">TikZ</a>. Там то же самое: схематично описываешь сущности, а пакет их
+рендерит. Исходник:</p>
+
+<p><img src="/assets/static/aws/chart-lang/3.jpeg" /></p>
+
+<p>и результат:</p>
+
+<p><img src="/assets/static/aws/chart-lang/4.jpeg" /></p>
+
+<p>Во второй книге я отказался от TikZ по следующим причинам.</p>
+
+<p>Во-первых, синтаксис диаграмм забывается очень быстро. Если работаешь с ними
+каждый день, то проблемы не возникает. Однако чаще всего ты рисуешь диаграмму
+раз в полгода и не трогаешь ее. Когда открываешь файл опять, нужно вспоминать
+все заново. Откуда и куда вести стрелку, нужна ли точка с запятой, ставить <code class="language-plaintext highlighter-rouge">=&gt;</code>
+или <code class="language-plaintext highlighter-rouge">-&gt;&gt;</code> для уголка и все в том же духе. Каждый раз как в первый раз.</p>
+
+<p>Далее, дьявол кроется в деталях. Помните правило 20/80? Большую часть диаграммы
+вы покроете за 20 процентов времени, и возникнет иллюзия — какой я молодец, что
+использую язык! Быстро управился. А потом провозитесь три часа в попытке
+сдвинуть первый прямоугольник влево, а второй — вправо. И рамка будет кривая. И
+позиционирование будет неудобное. Захочется сдвинуть вручную, но нелья — у нас
+же не Фотошоп или Иллюстратор, а код.</p>
+
+<p>Наконец, все эти языки не имеют понятия о восприятии. Когда я рисую диаграмму,
+то думаю о пользователе: насколько ему удобно. Поэтому отталкиваюсь от самых
+важных элементов; насколько хорошо они контрастируют со второстепенным;
+насколько легко проследить процесс; нет ли объектов, которые этому мешают.</p>
+
+<p>Стоит ли говорить, что ничего подобного в языках разметки нет. Они рисуют
+прямоугольники и стрелки, полагая, что пользователь разберется сам. Но это бред
+— пользователю нужен процесс, кем-то осмысленный и показанный наглядно. А не
+нагромождение прямоугольников.</p>
+
+<p>Когда я сел за вторую книгу, то пытался сделать схемы в TikZ как раньше. Но
+обнаружил, что синтаксис забыт начисто, а вспоминать не хочется. В итоге
+нарисовал в <a href="https://monodraw.helftone.com/">Monodraw</a> — программе ASCII-диаграмм — и экспортировал в
+SVG. Это проще и быстрее. Если нужно подвинуть фигуру на клетку влево, я сделаю
+это в один клик. Не нужно вспоминать, какое свойство отвечает за сдвиг и в каких
+единицах оно измеряется.</p>
+
+<p><img src="/assets/static/aws/chart-lang/5.jpeg" /></p>
+
+<p>Против Monodraw можно сказать только то, что она под Мак. Для командной работы,
+возможно, не подойдет. С другой стороны, пусть в команде будет один человек,
+который отвечает за диаграммы. Если их редактируют все подряд, это беда.</p>
+
+<p>Экстраполируя, можно сказать, что языки построения схем — блажь. Их любит
+“серьезный” бизнез, где вещи внедряют лишь затем, что так принято. Хорошим
+примером служит UML — циклопическая абстракция о том, что и как описывать. В нее
+вбухали невероятно много денег и времени; всерьез считали, что если отобразить
+классы диаграммой, логика программы станет очевидной. И что — кто-то пользуется
+UML сегодня? Доводилось ли кому-то посмотреть на UML и сказать: точно, я все
+понял?</p>
+
+<p>Наконец, если программы для диаграмм сводят с ума, остается надежное средство —
+рисовать руками. Берете маркеры и рисуете на доске то, что нужно. Затем снимок
+→ коррекция → красивая картинка.</p>
+
+<p>Как-то раз я делал презентацию об <a href="/htmx/">HTMX</a> для команды, и сама мысль о
+какой-то программе вызывала дрожь. В итоге нарисовал на доске и отфотал. Пара
+слайдов из презентации:</p>
+
+<p><img src="/assets/static/aws/chart-lang/6.jpeg" /></p>
+
+<p><img src="/assets/static/aws/chart-lang/7.jpeg" /></p>
+
+<p>Местами кривовато, но я и не особо старался.</p>
+
+<p>А можно заморочится и нарисовать на бумаге. Например, Bob Nystrom в своих
+знаменитых книгах <a href="https://craftinginterpreters.com/">Crafting Interpreters</a> и
+<a href="https://gameprogrammingpatterns.com/">Game Programming Patterns</a> рисовал схемы
+гелевой ручкой на бумаге, а потом сканировал. Просто сказка:</p>
+
+<p><img src="/assets/static/aws/chart-lang/8.jpeg" /></p>
+
+<p>Какой итог можно подвести? Мне кажется, такой:</p>
+
+<ul>
+  <li>
+    <p>языки диаграмм — прохладная затея, потому что машина не понимает, что
+первично, а что вторично, что удобно пользователю, а что нет;</p>
+  </li>
+  <li>
+    <p>языки диаграмм — идеальный пример правила 80/20. Быстро получаешь почти
+готовый результат, но на доводку уходит много времени;</p>
+  </li>
+  <li>
+    <p>откройте исходник диаграммы через полгода — будет трудно вспомнить, что и как
+поправить;</p>
+  </li>
+  <li>
+    <p>не бойтесь ручного труда — рисунки на доске или бумаге по-прежнему смотрятся
+отлично.</p>
+  </li>
+</ul>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/pg-docs/06/">PG docs, part 6. SSL</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2023-09-30T00:00:00+00:00">
+        Sep 30, 2023
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/notifications/" rel="tag">notifications</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p><em>(This is a new documentation chapter from the <a href="https://github.com/igrishaev/pg">PG project</a>.)</em></p>
+
+<p><strong>ToC</strong></p>
+
+<ul>
+  <li><a href="/en/pg-docs/01/">About &amp; Installation</a></li>
+  <li><a href="/en/pg-docs/02/">The Client</a></li>
+  <li><a href="/en/pg-docs/03/">Connection Pool</a></li>
+  <li><a href="/en/pg-docs/04/">Arrays</a></li>
+  <li><a href="/en/pg-docs/05/">Notifications</a></li>
+  <li><a href="/en/pg-docs/06/">SSL</a></li>
+  <li><a href="/en/pg-docs/07/">COPY</a></li>
+  <li><a href="/en/pg-docs/08/">HoneySQL</a></li>
+</ul>
+
+<p>In this chapter:</p>
+
+<ul>
+  <li><a href="#setup">Setup</a></li>
+  <li><a href="#edn-config">EDN Config</a></li>
+  <li><a href="#testing">Testing</a></li>
+</ul>
+
+<p>The recent update of PG introduces SSL support. Install the newest version of PG
+as follows:</p>
+
+<p>Lein:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-client</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">]</span><span class="w">
+</span><span class="p">[</span><span class="n">com.github.igrishaev/pg-ssl</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">]</span><span class="w"> </span><span class="c1">;; optional, for a custom SSL context</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Deps:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">com.github.igrishaev/pg-client</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">}</span><span class="w">
+ </span><span class="n">com.github.igrishaev/pg-ssl</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="setup">Setup</h2>
+
+<p>The are two ways to set up an SSL connection to the database. The first, and
+simple, is to set the <code class="language-plaintext highlighter-rouge">:ssl?</code> boolean flag to true and just connect:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"some.cloud.host.com"</span><span class="w">
+ </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
+ </span><span class="no">:ssl?</span><span class="w"> </span><span class="n">true</span><span class="w">
+ </span><span class="n">...</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In this case, the entire SSL pipeline is held by Java. It tries to find the
+corresponding keys and certificates using the standard KeyStore and TrustStore
+which you configure on your own.</p>
+
+<p>The second and more flexible way is to provide a custom SSL context to the
+connection map. It must be an instance of the <code class="language-plaintext highlighter-rouge">javax.net.ssl.SSLContext</code>
+class. Building such an instance from scratch is quite miserable though. To make
+your life easier, there is a thin wrapper on top of the great <a href="https://github.com/aphyr/less-awful-ssl">Less Awful
+SSL</a> library that takes a map of certificates and keys and
+returns an instance of <code class="language-plaintext highlighter-rouge">SSLContext</code>. Since it requires a third-party library,
+it’s shipped as a standalone package pg-ssl. Add it to the project:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="n">com.github.igrishaev/pg-client</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">]</span><span class="w"> </span><span class="c1">;; lein</span><span class="w">
+</span><span class="c1">;; or</span><span class="w">
+</span><span class="p">{</span><span class="n">com.github.igrishaev/pg-ssl</span><span class="w"> </span><span class="p">{</span><span class="no">:mvn/version</span><span class="w"> </span><span class="s">"0.1.8"</span><span class="p">}}</span><span class="w"> </span><span class="c1">;; deps</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now pass the <code class="language-plaintext highlighter-rouge">:ssl-context</code> parameter in addition to <code class="language-plaintext highlighter-rouge">:ssl?</code>. It’s a map with
+the string keys <code class="language-plaintext highlighter-rouge">:key-file</code>, <code class="language-plaintext highlighter-rouge">:cert-file</code>, and <code class="language-plaintext highlighter-rouge">:ca-cert-file</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">foo.bar</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w">
+    </span><span class="p">[</span><span class="n">pg.ssl</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">ssl</span><span class="p">]))</span><span class="w">
+
+</span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"some.cloud.host.com"</span><span class="w">
+ </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
+ </span><span class="no">:ssl?</span><span class="w"> </span><span class="n">true</span><span class="w">
+ </span><span class="no">:ssl-context</span><span class="w">
+ </span><span class="p">(</span><span class="nf">ssl/context</span><span class="w"> </span><span class="p">{</span><span class="no">:key-file</span><span class="w"> </span><span class="s">"/path/to/client.key"</span><span class="w">
+               </span><span class="no">:cert-file</span><span class="w"> </span><span class="s">"/path/to/client.crt"</span><span class="w">
+               </span><span class="no">:ca-cert-file</span><span class="w"> </span><span class="s">"/path/to/root.crt"</span><span class="p">})}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">:ca-cert-file</code> parameter might be missing if just <code class="language-plaintext highlighter-rouge">:key-file</code> and
+<code class="language-plaintext highlighter-rouge">:cert-file</code> are enough.</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ssl/context</span><span class="w"> </span><span class="p">{</span><span class="no">:key-file</span><span class="w"> </span><span class="s">"/path/to/client.key"</span><span class="w">
+              </span><span class="no">:cert-file</span><span class="w"> </span><span class="s">"/path/to/client.crt"</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<h2 id="edn-config">EDN Config</h2>
+
+<p>Often, we store the configuration in an EDN file. To declare SSL context there,
+prepend it with a reader tag called <code class="language-plaintext highlighter-rouge">#pg/ssl-context</code>:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:ssl?</span><span class="w"> </span><span class="n">true</span><span class="w">
+ </span><span class="no">:ssl-context</span><span class="w"> </span><span class="o">#</span><span class="n">pg/ssl-context</span><span class="w"> </span><span class="p">{</span><span class="no">:key-file</span><span class="w"> </span><span class="n">...</span><span class="p">}}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When reading EDN, pass that tag to the <code class="language-plaintext highlighter-rouge">:readers</code> map as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="ss">'pg/ssl-context</span><span class="w"> </span><span class="n">pg.ssl/ssl-context-reader</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>The tag wraps the map with a function that builds the <code class="language-plaintext highlighter-rouge">SSLContext</code> from it.</p>
+
+<p>Some cloud platforms give you only the root certificate. In that case, generate
+both the client key and the the client certificate on your own using the root
+certificate. Something like:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">umask </span><span class="nv">u</span><span class="o">=</span>rw,go<span class="o">=</span> <span class="o">&amp;&amp;</span> openssl req <span class="nt">-days</span> 365 <span class="nt">-new</span> <span class="nt">-nodes</span> <span class="nt">-subj</span> <span class="s1">'/C=US/ST=Test/L=Test/O=Personal/OU=Personal/emailAddress=test@test.com/CN=test'</span> <span class="nt">-keyout</span> client.key <span class="nt">-out</span> client.csr
+<span class="nb">umask </span><span class="nv">u</span><span class="o">=</span>rw,go<span class="o">=</span> <span class="o">&amp;&amp;</span> openssl x509 <span class="nt">-days</span> 365 <span class="nt">-req</span>  <span class="nt">-CAcreateserial</span> <span class="nt">-in</span> client.csr <span class="nt">-CA</span> root.crt <span class="nt">-CAkey</span> server.key <span class="nt">-out</span> client.crt
+</code></pre></div></div>
+
+<p>When generating the certificates, pay attention to the <code class="language-plaintext highlighter-rouge">CN</code> field which is
+“test” in our case. In terms of PostgreSQL, it should match the database
+user. Different users will have different certificates.</p>
+
+<h2 id="testing">Testing</h2>
+
+<p>The SSL functionality is difficult to test in Docker so I’ve got to run a native
+instance. Here is a brief setup.</p>
+
+<ul>
+  <li>In <code class="language-plaintext highlighter-rouge">postgresql.conf</code>, enable the <code class="language-plaintext highlighter-rouge">ssl</code> parameter and specify paths to the
+files:</li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ssl=on
+ssl_cert_file='/Users/ivan/work/pg/certs/server.crt'
+ssl_key_file='/Users/ivan/work/pg/certs/server.key'
+ssl_ca_file = '/Users/ivan/work/pg/certs/root.crt'
+</code></pre></div></div>
+
+<ul>
+  <li>In <code class="language-plaintext highlighter-rouge">pg_hba.conf</code>, enable the “cert” validation type for SSL connections:</li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>hostssl all all all cert
+</code></pre></div></div>
+
+<p>Finally, create a user with a name that matches the <code class="language-plaintext highlighter-rouge">CN</code> field:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">user</span> <span class="o">&lt;</span><span class="n">CN</span><span class="o">-</span><span class="n">field</span><span class="o">&gt;</span> <span class="k">with</span> <span class="n">password</span> <span class="s1">'******'</span><span class="p">;</span>
+</code></pre></div></div>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/sql/">SQL</a>
             </h2>
 
@@ -581,181 +1289,6 @@ use</code>. Блин, какой порт? У меня их десять в пр
 <p>То же самое происходит у нас. Вместо понятного сообщения мы ждем, что его
 предоставит вышестоящий слой. Но это бессмысленно: не сделаем мы — не сделает
 никто.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/firewall/">Фаервол</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/macos/" rel="tag">macos</a>, <a href="/tag/firewall/" rel="tag">firewall</a>, <a href="/tag/lulu/" rel="tag">lulu</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Лучшая вещь, что случилась со мной в последнее время — это установка фаервола на
-всех маках. Вот как это произошло.</p>
-
-<p>Когда-то я жаловался, что программы без спроса лезут в интернет
-обновляться. Открыл Саблайм — а он показывает модалку, что вышла новая
-версия. Открыл то, другое, а там то же самое: скачай-обновись.</p>
-
-<p>Идея как это победить простая — нужно отобрать у программы доступ в интернет. Я
-пошел настраивать встроенный фаервол, но оказалось, он убогий: закрывает только
-входящие соединения, а исходящие не трогает. В результате даже если добавить в
-список программу, она спокойно идет в сеть.</p>
-
-<p>Путем гугления нашел программу Lulu. Хоть название и затасканное, программа
-просто супер: удобный интерфейс и настройка. Lulu делит программы на группы:
-родные Эпла, уже установленные и другие. Можно включать и выключать целые
-группы, а можно по отдельности. Правила формируются в разрезе программ, папок,
-регулярных выражений.</p>
-
-<p>Можно настроить гибкий контроль по урлам. Например, дать программе доступ к
-хосту <code class="language-plaintext highlighter-rouge">sync.blabla.com</code> для синхронизации, но запретить обновления по хосту
-<code class="language-plaintext highlighter-rouge">update.blabla.com</code>.</p>
-
-<p>Можно дать временный доступ по номеру процесса. Когда программа запуститься в
-cледующий раз, номер будет другим, и Lulu спросит опять.</p>
-
-<p>Фаервол может работать в интерактивном режиме, показывая диалог на события,
-которых нет в правилах, а может молча разрешать или разрешать все, что
-происходит.</p>
-
-<p>Для себя я сделал так: удалил все правила, кроме Эпловских, а затем настраивал
-вручную. Запретил все программы Адоба, офисного пакета, всякие редакторы вроде
-Саблайма — их задача работать с текстом, а не лазить за обновлениями. Запретил
-обновки для Dash, программы оффлайн-документации, и много что другое.</p>
-
-<p>На старом ноуте обнаружил несколько вирусов. Это программы с названиями типа
-robstoaf, прописанные в автозагрузке. Время от времени они ходят в сеть на левые
-хосты. Возможно, крадут историю браузеров или это ботнет. Так что не слушайте
-байки про то, что под Мак вирусов нет.</p>
-
-<p>Что немаловажно, Lulu запрашивает подтверждение, когда левая программа хочет
-добавить себя в автозагрузку. Всякое дерьмо вроде Zoom, MS Teams прописывают
-себя там, и в итоге запускаются в фоне, даже если вы не просили. Больше этого
-беспредела нет.</p>
-
-<p>Программа так понравилась, что я хотел перевести автору денег, долларов
-сто. Хотел скинуть с Пейпала, а у него только патреон — то есть регистрируйся,
-вводи персональные данные, карту, подтверждай — извините, нет.</p>
-
-<p>Кроме Lulu, у автора есть смежные утилиты для безопасности, например монитор
-клавиатуры на предмет прослушки и что-то еще второстепенное.</p>
-
-<p>Словом, не знаю как жить без Lulu: теперь это первая программа, которую я ставлю
-на Мак. Как раз недавно ставил ее на свежий ноут. Неистово рекомендую!</p>
-
-<p>Картинки, описание и загрузка здесь:
-https://objective-see.org/products/lulu.html</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/css-awesome/">CSS is Awesome</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/css/" rel="tag">css</a>, <a href="/tag/awesome/" rel="tag">awesome</a>, <a href="/tag/mem/" rel="tag">mem</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Все видели картинку, где текст из заголовка не влезает в рамку. Ха-ха, кривой CSS,
-технологии, <a href="/we-deserve/">которые мы заслужили</a> (с).</p>
-
-<p><img src="/assets/static/aws/css/1.jpeg" /></p>
-
-<p>Хорошо, посмеялись, а теперь вопрос: как должно быть?</p>
-
-<p>Представим, вы всемогущий бог, все браузеры мира под вашим контролем.  Щелкните
-пальцами — и у всех эта картинка покажется так, как вы скажете. Что предпочтете?</p>
-
-<p>Проблема в том, что на картинке типичное UB — undefined behaviour,
-неопределенные поведение. В литровую банку пытаются налить два литра воды.
-Простыми словами, впихнуть невпихуемое. Это невозможно, поэтому кто-то окажется
-в проигрыше.</p>
-
-<p>На самом деле на картинке все правильно: при всем уродстве мы смогли прочитать
-текст. Если бы он был обрезан, мы бы его не увидели, то есть не получили бы
-вообще ничего. А так получили хотя бы часть, пусть и фраза там бестолковая.</p>
-
-<p>Эту картинку я считаю крайне неудачной. Кто-то хотел пошутить, что CSS глючный,
-но выбрал плохой пример: выставил дурацкие ограничения (малую рамку и огромный
-шрифт) и смотрит, как программа не справляется. А она, между прочим, справилась
-— донесла до нас текст.</p>
-
-<p>Так что шутка на троечку.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/bomb-movie/">Фильмы про бомбу</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2023-09-27T00:00:00+00:00">
-        Sep 27, 2023
-    </time>
-
-    <a href="/tag/bomb/" rel="tag">bomb</a>, <a href="/tag/movies/" rel="tag">movies</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В фильмах про ядерную бомбу повторяется дурацкий штамп. Якобы ученый работает из
-интереса, не задумываясь над последствиями, только по зову сердца. Но ВНЕЗАПНО,
-эффект превосходит все ожидания, бомба оказывается разрушительной, подтягиваются
-политики, и ученый такой — ох, что я наделал, нельзя допустить,
-АСТАНАВИТЕСЬ!!!111 Всякие метания и попытки вернуть все взад.</p>
-
-<p>Это чушь собачья. Ученые прекрасно понимают, над чем они работают, а штамп нужен
-для того, чтобы высосать драму из пальца. Взять того же Фейнмана: после бомбы он
-и преподавал, и клеил женщин пачками, и два раза женился, и танцевал, играл,
-разгадывал секреты Майя и много что еще.</p>
-
-<p>Так что не надо этой лапши про внезапное прозрение. Ну а если с кем-то и правда
-такое было, то надо было думать раньше.</p>
 
                 
             </div>
