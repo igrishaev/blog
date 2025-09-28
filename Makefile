@@ -63,9 +63,13 @@ wget-github:
 slug ?= $(error Please specify the slug=... argument)
 post_date = $(shell date +'%Y-%m-%d')
 
+id ?= $(error Please specify the id=... argument)
+
 new_file = _posts/${post_date}-${slug}.md
+new_book = _books/${id}-${slug}.md
 
 slug_dir = assets/static/aws/${slug}
+book_dir = assets/static/bookshelf
 
 new-post:
 	touch ${new_file}
@@ -80,3 +84,14 @@ new-post:
 	echo "{% include static.html path=\"${slug}/1.png\" %}" >> ${new_file}
 	mkdir -p ${slug_dir}
 	open ${slug_dir}
+
+new-book:
+	touch ${new_book}
+	echo '---' >> ${new_book}
+	echo 'layout: book' >> ${new_book}
+	echo 'title: ""' >> ${new_book}
+	echo 'author: ""' >> ${new_book}
+	echo "image: ${slug}.jpg" >> ${new_book}
+	echo '---' >> ${new_book}
+	echo '' >> ${new_book}
+	open ${book_dir}
