@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Чат вслух"
-permalink: /shit-storm/
+permalink: /message-storm/
 tags: life
 telegram_id: 938
 ---
@@ -10,7 +10,7 @@ telegram_id: 938
 
 ~~~text
 {:foo 42
- :shit ["some-type"]
+ :data ["some-type"]
  :items [:kek :lol :crap]}
 ~~~
 
