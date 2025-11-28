@@ -105,6 +105,567 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/en/datomic-query/">Conditional Queries in Datomic</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-09-01T20:49:00+00:00">
+        Sep 1, 2017
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/datomic/" rel="tag">datomic</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Let’s discuss one thing related to Clojure and Datomic that might be a bit
+tricky especially if you have never faced it so far.</p>
+
+<p>Imagine you return a list of some entities to the client. It might be a list of
+orders, visits or whatever. Usually, when a user is exploring a long list of
+something, it’s a good idea to let them filter the list by some criteria: price,
+date, age etc. On the server side, you need to apply those filters
+conditionally. Say, when the <code class="language-plaintext highlighter-rouge">date_from</code> query string parameter is passed, you
+apply it to the query as well or live it untouched otherwise. The same for the
+rest of filters.</p>
+
+<p>Things become more tough when filters are applied to foreign entities. For
+example, an order references a user, and a user references a department. If the
+<code class="language-plaintext highlighter-rouge">department_name</code> parameter has been passed, you should join all the required
+tables and filter a proper field.</p>
+
+<p>Joining all the tables even if no filters were supplied is a wrong
+approach. Join operations are expensive and should never be performed in vain. A
+toolset that joins tables should take into account which ones has already been
+added into a query and never link them twice.</p>
+
+<p>Such systems that control the cases mentioned above are names ORMs. They are
+pretty complicated and full of ugly code and implicit hacks. But on the top
+level they behave quite friendly. Say, in <a href="https://www.djangoproject.com/">Django</a> (a major Python
+framework) I would perform something like that:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">query</span> <span class="o">=</span> <span class="n">models</span><span class="p">.</span><span class="n">Order</span><span class="p">.</span><span class="n">objects</span><span class="p">.</span><span class="nb">all</span><span class="p">()</span>
+<span class="n">department_name</span> <span class="o">=</span> <span class="n">request</span><span class="p">.</span><span class="n">query_string</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="s">"department_name"</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">department_name</span><span class="p">:</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="p">.</span><span class="nb">filter</span><span class="p">(</span><span class="n">user__department_name</span><span class="o">=</span><span class="n">department_name</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Looks pretty neat. This automatically joins <code class="language-plaintext highlighter-rouge">users</code> and <code class="language-plaintext highlighter-rouge">department</code> tables
+under the hood using <code class="language-plaintext highlighter-rouge">inner join</code> SQL clause and puts <code class="language-plaintext highlighter-rouge">department.name = ?</code>
+condition into <code class="language-plaintext highlighter-rouge">where</code> section.</p>
+
+<p>People who work with such non-wide spreaded languages as Clojure usually do not
+use ORMs. But still, we need to build complicated queries. The community offers
+a handful of libraries (<a href="https://github.com/krisajenkins/yesql">YeSQL</a>, <a href="https://github.com/jkk/honeysql">HoneySQL</a>, <a href="https://github.com/korma/Korma">Korma</a>)
+where a query is being constructed within data structures: vectors, maps. I’ve
+been always against that approach. Before getting more experienced with Clojure,
+I felt uncomfortable constructing nested vectors like this one:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[:select [:foo :bar]
+ :from :test
+ :where [(= :name "test")
+         (when age-param
+           (&gt; :age age-param))]]
+</code></pre></div></div>
+
+<p>The reason why I do not appreciate that is I cannot see the final query behind
+brackets and colons. It will definitely fail me once I need to express
+something like this (a fragment of a query from production):</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
+  <span class="n">foo</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
+  <span class="n">array_agg</span><span class="p">(</span><span class="n">foo</span><span class="p">.</span><span class="n">type_id</span><span class="p">)</span> <span class="n">filter</span> <span class="p">(</span><span class="k">where</span> <span class="n">foo</span> <span class="k">is</span> <span class="k">not</span> <span class="k">null</span><span class="p">)</span> <span class="k">as</span> <span class="n">type_ids</span><span class="p">,</span>
+  <span class="n">foo</span><span class="p">.</span><span class="n">name</span>
+<span class="k">from</span> <span class="n">foo_table</span> <span class="k">as</span> <span class="n">foo</span>
+</code></pre></div></div>
+
+<p>Modern libraries say it’s easy and fun to express your queries through data
+structures, but it is not, really. It becomes a challenge when applying multiple
+conditions to a data structure without seeing the final result.</p>
+
+<p>A good approach might be using a templating system. Say, <a href="https://github.com/layerware/hugsql">HugSQL</a>
+library allows to inject Clojure snippets into your SQL query. Those snippets
+are surrounded with standard SQL comments so they do not break syntax. There
+won’t be an error if you copy and paste such a Clojure-instrumented query into
+some RDBS administration tool.</p>
+
+<p>Here is an example of declaring such a query:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name get-oreders :?</span>
+<span class="k">select</span> <span class="n">o</span><span class="p">.</span><span class="o">*</span>
+<span class="k">from</span> <span class="n">oreders</span> <span class="n">o</span>
+<span class="cm">/*~ (when (:department-name params) ~*/</span>
+<span class="k">join</span> <span class="k">user</span> <span class="n">u</span> <span class="k">on</span> <span class="n">o</span><span class="p">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span>
+<span class="k">join</span> <span class="n">departments</span> <span class="n">d</span> <span class="k">on</span> <span class="k">user</span><span class="p">.</span><span class="n">department_id</span> <span class="o">=</span> <span class="n">d</span><span class="p">.</span><span class="n">id</span>
+<span class="k">where</span>
+    <span class="n">d</span><span class="p">.</span><span class="n">name</span> <span class="o">=</span> <span class="p">:</span><span class="n">department</span><span class="o">-</span><span class="n">name</span>
+<span class="cm">/*~ ) ~*/</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">o</span><span class="p">.</span><span class="n">created_at</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Than it compiles into a Clojure function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; no joins, no filters</span><span class="w">
+</span><span class="p">(</span><span class="nf">get-oreders</span><span class="w"> </span><span class="n">db</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; causes joins and filtering</span><span class="w">
+</span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">dep-name</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">request</span><span class="w"> </span><span class="no">:params</span><span class="w"> </span><span class="no">:department-name</span><span class="p">)]</span><span class="w">
+  </span><span class="p">(</span><span class="nf">get-oreders</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:department-name</span><span class="w"> </span><span class="n">dep-name</span><span class="p">}))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>You may go further and include <a href="https://github.com/yogthos/Selmer">Selmer</a>, a template library inspired by
+Django. It’s aimed at HTML rendering first but still may be used for any kind of
+documents including SQL.</p>
+
+<p>As I see it, a good templating system would be enough to generate SQL that fits
+your business logic.</p>
+
+<p>Now I’d like to discuss the same problem when using Datomic instead of classical
+RDBS solutions. All the tutorials that I have read do not cover a case then you
+need to apply several filters to a query. Suddenly, it may really become a
+problem. Let’s return to our example with orders. Once you don’t have any
+filters, the query looks simple:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">'</span><span class="p">[</span><span class="no">:find</span><span class="w"> </span><span class="p">(</span><span class="nf">pull</span><span class="w"> </span><span class="n">?o</span><span class="w"> </span><span class="p">[</span><span class="nb">*</span><span class="p">])</span><span class="w">
+  </span><span class="no">:in</span><span class="w"> </span><span class="n">$</span><span class="w">
+  </span><span class="no">:where</span><span class="w"> </span><span class="p">[</span><span class="n">?o</span><span class="w"> </span><span class="no">:order/number</span><span class="p">]]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>But if you’ve got a department name you need to:</p>
+
+<ol>
+  <li>inject a new parameter into <code class="language-plaintext highlighter-rouge">:in</code> section;</li>
+  <li>inject additional clauses into <code class="language-plaintext highlighter-rouge">:where</code> section;</li>
+  <li>prevent joining a user or a department entities twice if you need to filter
+by other department or user field.</li>
+</ol>
+
+<p>As we’ve seen, once you have a template system, you may render SQL queries as
+well. All you need is to write a query, test how does it behaves and then wrap
+some parts of it with special conditional tags.</p>
+
+<p>In Datomic, a query is usually a vector of symbols. Moreover, an immutable
+one. Thus, you cannot modify a query and adding something in the middle of it
+would be difficult. Surely you could wrap a query into an atom or track indexes
+where to inject a new item somehow but all of that would be a mess.</p>
+
+<p>What I propose is using a special kind of a query represented as a map with
+<code class="language-plaintext highlighter-rouge">:find</code>, <code class="language-plaintext highlighter-rouge">:where</code> and other keys. As
+the <a href="http://docs.datomic.com/query.html#list-vs-map">Datomic documentation says</a>, when processing a query, every
+vector is turned into a map anyway. If we had a map, it would be easier to
+inject new items into it.</p>
+
+<p>To avoid wrapping a map with an atom or redefining it continuously inside <code class="language-plaintext highlighter-rouge">let</code>
+clause, there is a great form named <a href="https://clojuredocs.org/clojure.core/cond-%3E">cond-&gt;</a>. It is a mix of both
+threading macro and <code class="language-plaintext highlighter-rouge">cond</code> clause. It takes an initial value and a bunch of
+predicate/update pairs. If a predicate form evaluates in true, an update form is
+fired using the standard threading macro. Thus, an update form should be either
+a function or a list where the second argument is missing and will be
+substituted with a value from a previous pair.</p>
+
+<p>What’s the most interesting about <code class="language-plaintext highlighter-rouge">cond-&gt;</code> is unlike <code class="language-plaintext highlighter-rouge">cond</code> or <code class="language-plaintext highlighter-rouge">case</code> forms, its
+branches are evaluated continuously. Each update form takes a value that a
+previous form has produced. In other terms, an initial value goes through
+multiple updates without being saved in some temporary variable.</p>
+
+<p>In example below, I’ve got a data set that consists from <code class="language-plaintext highlighter-rouge">user</code>, <code class="language-plaintext highlighter-rouge">location</code> and
+<code class="language-plaintext highlighter-rouge">visit</code> entities. Both <code class="language-plaintext highlighter-rouge">user</code> and <code class="language-plaintext highlighter-rouge">location</code> are simple ones and store just
+dates, strings and so on. A <code class="language-plaintext highlighter-rouge">visit</code> is a bit more complex. It means that a user
+has visited a location and assigned a mark to it. Therefore, a visit references
+a user and a location entities as well.</p>
+
+<p>The goal is to get an average mark for a specific location. In addition, such a
+value might be filtered by user’s age, gender or location’s country name. Those
+parameters come from a query string and could be either totally skipped, passed
+partially or completely. I’ve got a function that accepts a location id and a
+map of optional parameters:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">location-avg</span><span class="w">
+  </span><span class="p">[</span><span class="n">location-id</span><span class="w"> </span><span class="p">{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">fromDate</span><span class="w">
+                       </span><span class="n">toDate</span><span class="w">
+                       </span><span class="n">fromAge</span><span class="w">
+                       </span><span class="n">toAge</span><span class="w">
+                       </span><span class="n">gender</span><span class="p">]}]</span><span class="w">
+
+</span></code></pre></div></div>
+
+<p>The initial Datomic query:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">query-initial</span><span class="w">
+  </span><span class="o">'</span><span class="p">{</span><span class="no">:find</span><span class="w"> </span><span class="p">[(</span><span class="nf">avg</span><span class="w"> </span><span class="n">?mark</span><span class="p">)</span><span class="w"> </span><span class="nb">.</span><span class="p">]</span><span class="w">
+    </span><span class="no">:with</span><span class="w"> </span><span class="p">[</span><span class="n">?v</span><span class="p">]</span><span class="w">
+    </span><span class="no">:in</span><span class="w"> </span><span class="p">[</span><span class="n">$</span><span class="w"> </span><span class="n">?location</span><span class="p">]</span><span class="w">
+    </span><span class="no">:args</span><span class="w"> </span><span class="p">[]</span><span class="w">
+    </span><span class="no">:where</span><span class="w"> </span><span class="p">[[</span><span class="n">?v</span><span class="w"> </span><span class="no">:location</span><span class="w"> </span><span class="n">?location</span><span class="p">]</span><span class="w">
+            </span><span class="p">[</span><span class="n">?v</span><span class="w"> </span><span class="no">:mark</span><span class="w"> </span><span class="n">?mark</span><span class="p">]]})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now, here is a long pipeline with comments:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">cond-&gt;</span><span class="w"> </span><span class="n">query-initial</span><span class="w">
+
+  </span><span class="c1">;; First, add two initial arguments: database instance and location reference.</span><span class="w">
+  </span><span class="c1">;; This form will always be evaluated.</span><span class="w">
+  </span><span class="n">true</span><span class="w">
+  </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:args</span><span class="w"> </span><span class="nb">conj</span><span class="w">
+          </span><span class="p">(</span><span class="nf">get-db</span><span class="p">)</span><span class="w">                    </span><span class="c1">;; returns the DB instance</span><span class="w">
+          </span><span class="p">[</span><span class="no">:location/id</span><span class="w"> </span><span class="n">location-id</span><span class="p">])</span><span class="w"> </span><span class="c1">;; location reference</span><span class="w">
+
+  </span><span class="c1">;; If either from- or to- date were passed, join the `visit` entity</span><span class="w">
+  </span><span class="c1">;; and bind its `visited_at` attribute to the `?visited-at` variable.</span><span class="w">
+  </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">fromDate</span><span class="w"> </span><span class="n">toDate</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="nb">conj</span><span class="w">
+          </span><span class="o">'</span><span class="p">[</span><span class="n">?v</span><span class="w"> </span><span class="no">:visited_at</span><span class="w"> </span><span class="n">?visited-at</span><span class="p">])</span><span class="w">
+
+  </span><span class="c1">;; If the `fromDate` filter was passed, do the following:</span><span class="w">
+  </span><span class="c1">;; 1. add a parameter placeholder into the query;</span><span class="w">
+  </span><span class="c1">;; 2. add an actual value to the arguments;</span><span class="w">
+  </span><span class="c1">;; 3. add a proper condition against `?visited-at` variable</span><span class="w">
+  </span><span class="c1">;; (remember, it was bound above).</span><span class="w">
+  </span><span class="n">fromDate</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:in</span><span class="w"> </span><span class="nb">conj</span><span class="w"> </span><span class="ss">'?fromDate</span><span class="p">)</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:args</span><span class="w"> </span><span class="nb">conj</span><span class="w"> </span><span class="n">fromDate</span><span class="p">)</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="nb">conj</span><span class="w">
+           </span><span class="o">'</span><span class="p">[(</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">?visited-at</span><span class="w"> </span><span class="n">?fromDate</span><span class="p">)]))</span><span class="w">
+
+  </span><span class="c1">;; Do the same steps for the `toDate` filter,</span><span class="w">
+  </span><span class="c1">;; but the condition slightly differs (&lt; instead of &gt;).</span><span class="w">
+  </span><span class="n">toDate</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:in</span><span class="w"> </span><span class="nb">conj</span><span class="w"> </span><span class="ss">'?toDate</span><span class="p">)</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:args</span><span class="w"> </span><span class="nb">conj</span><span class="w"> </span><span class="n">toDate</span><span class="p">)</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="nb">conj</span><span class="w">
+           </span><span class="o">'</span><span class="p">[(</span><span class="nb">&lt;</span><span class="w"> </span><span class="n">?visited-at</span><span class="w"> </span><span class="n">?toDate</span><span class="p">)]))</span><span class="w">
+
+  </span><span class="c1">;; To filter by user's fields, we bind a user reference</span><span class="w">
+  </span><span class="c1">;; to the `?user` variable:</span><span class="w">
+  </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">fromAge</span><span class="w"> </span><span class="n">toAge</span><span class="w"> </span><span class="n">gender</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="nb">conj</span><span class="w">
+          </span><span class="o">'</span><span class="p">[</span><span class="n">?v</span><span class="w"> </span><span class="no">:user</span><span class="w"> </span><span class="n">?user</span><span class="p">])</span><span class="w">
+
+  </span><span class="c1">;; If from/to age filters we passed, bind user's age</span><span class="w">
+  </span><span class="c1">;; to the `?birth-date` variable.</span><span class="w">
+  </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">fromAge</span><span class="w"> </span><span class="n">toAge</span><span class="p">)</span><span class="w">
+  </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="nb">conj</span><span class="w">
+          </span><span class="o">'</span><span class="p">[</span><span class="n">?user</span><span class="w"> </span><span class="no">:birth_date</span><span class="w"> </span><span class="n">?birth-date</span><span class="p">])</span><span class="w">
+
+  </span><span class="c1">;; Then add placeholders, arguments and where clauses</span><span class="w">
+  </span><span class="c1">;; for specific filters: fromAge, if passed...</span><span class="w">
+  </span><span class="n">fromAge</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:in</span><span class="w"> </span><span class="nb">conj</span><span class="w"> </span><span class="ss">'?fromAge</span><span class="p">)</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:args</span><span class="w"> </span><span class="nb">conj</span><span class="w"> </span><span class="p">(</span><span class="nf">age-to-ts</span><span class="w"> </span><span class="n">fromAge</span><span class="p">))</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="nb">conj</span><span class="w">
+           </span><span class="o">'</span><span class="p">[(</span><span class="nb">&lt;</span><span class="w"> </span><span class="n">?birth-date</span><span class="w"> </span><span class="n">?fromAge</span><span class="p">)]))</span><span class="w">
+
+  </span><span class="c1">;; ...and the same for toAge.</span><span class="w">
+  </span><span class="n">toAge</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:in</span><span class="w"> </span><span class="nb">conj</span><span class="w"> </span><span class="ss">'?toAge</span><span class="p">)</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:args</span><span class="w"> </span><span class="nb">conj</span><span class="w"> </span><span class="p">(</span><span class="nf">age-to-ts</span><span class="w"> </span><span class="n">toAge</span><span class="p">))</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="nb">conj</span><span class="w">
+           </span><span class="o">'</span><span class="p">[(</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">?birth-date</span><span class="w"> </span><span class="n">?toAge</span><span class="p">)]))</span><span class="w">
+
+  </span><span class="c1">;; To filter by gender, bind user's gender to a variable</span><span class="w">
+  </span><span class="c1">;; and add a clause:</span><span class="w">
+  </span><span class="n">gender</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:in</span><span class="w"> </span><span class="nb">conj</span><span class="w"> </span><span class="ss">'?gender</span><span class="p">)</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:args</span><span class="w"> </span><span class="nb">conj</span><span class="w"> </span><span class="n">gender</span><span class="p">)</span><span class="w">
+   </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="no">:where</span><span class="w"> </span><span class="nb">conj</span><span class="w">
+           </span><span class="o">'</span><span class="p">[</span><span class="n">?user</span><span class="w"> </span><span class="no">:gender</span><span class="w"> </span><span class="n">?gender</span><span class="p">]))</span><span class="w">
+
+  </span><span class="c1">;; The final step is to remap a query (see below).</span><span class="w">
+  </span><span class="n">true</span><span class="w">
+  </span><span class="n">remap-query</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Remapping a query is important because the initial data is a bit wrong. The
+proper structure for a map query looks as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:query</span><span class="w"> </span><span class="n">&lt;query-map&gt;</span><span class="w">
+ </span><span class="no">:args</span><span class="w"> </span><span class="p">[</span><span class="n">db</span><span class="w"> </span><span class="n">location_id</span><span class="w"> </span><span class="n">fromDate</span><span class="w"> </span><span class="n">...</span><span class="p">]}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>In my case, I believe it’s simpler to keep one-level map rather than deal with
+two levels (<code class="language-plaintext highlighter-rouge">:query</code> first, then <code class="language-plaintext highlighter-rouge">:args</code>). It would force me to use <code class="language-plaintext highlighter-rouge">update-in</code>
+instead if just <code class="language-plaintext highlighter-rouge">update</code> and write more code. Here is the <code class="language-plaintext highlighter-rouge">remap-query</code>
+function:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">remap-query</span><span class="w">
+  </span><span class="p">[{</span><span class="n">args</span><span class="w"> </span><span class="no">:args</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">m</span><span class="p">}]</span><span class="w">
+  </span><span class="p">{</span><span class="no">:query</span><span class="w"> </span><span class="p">(</span><span class="nb">dissoc</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="no">:args</span><span class="p">)</span><span class="w">
+   </span><span class="no">:args</span><span class="w"> </span><span class="n">args</span><span class="p">})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Finally, let’s check our results. If somebody passes all the filters, the query
+will look like:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:query</span><span class="w">
+ </span><span class="p">{</span><span class="no">:find</span><span class="w"> </span><span class="p">[(</span><span class="nf">avg</span><span class="w"> </span><span class="n">?mark</span><span class="p">)</span><span class="w"> </span><span class="nb">.</span><span class="p">]</span><span class="n">,</span><span class="w">
+  </span><span class="no">:with</span><span class="w"> </span><span class="p">[</span><span class="n">?v</span><span class="p">]</span><span class="n">,</span><span class="w">
+  </span><span class="no">:in</span><span class="w"> </span><span class="p">[</span><span class="n">$</span><span class="w"> </span><span class="n">?location</span><span class="w"> </span><span class="n">?fromDate</span><span class="w"> </span><span class="n">?toDate</span><span class="w"> </span><span class="n">?fromAge</span><span class="w"> </span><span class="n">?toAge</span><span class="w"> </span><span class="n">?gender</span><span class="p">]</span><span class="n">,</span><span class="w">
+  </span><span class="no">:where</span><span class="w">
+  </span><span class="p">[[</span><span class="n">?v</span><span class="w"> </span><span class="no">:location</span><span class="w"> </span><span class="n">?location</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">?v</span><span class="w"> </span><span class="no">:mark</span><span class="w"> </span><span class="n">?mark</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">?v</span><span class="w"> </span><span class="no">:visited_at</span><span class="w"> </span><span class="n">?visited-at</span><span class="p">]</span><span class="w">
+   </span><span class="p">[(</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">?visited-at</span><span class="w"> </span><span class="n">?fromDate</span><span class="p">)]</span><span class="w">
+   </span><span class="p">[(</span><span class="nb">&lt;</span><span class="w"> </span><span class="n">?visited-at</span><span class="w"> </span><span class="n">?toDate</span><span class="p">)]</span><span class="w">
+   </span><span class="p">[</span><span class="n">?v</span><span class="w"> </span><span class="no">:user</span><span class="w"> </span><span class="n">?user</span><span class="p">]</span><span class="w">
+   </span><span class="p">[</span><span class="n">?user</span><span class="w"> </span><span class="no">:birth_date</span><span class="w"> </span><span class="n">?birth-date</span><span class="p">]</span><span class="w">
+   </span><span class="p">[(</span><span class="nb">&lt;</span><span class="w"> </span><span class="n">?birth-date</span><span class="w"> </span><span class="n">?fromAge</span><span class="p">)]</span><span class="w">
+   </span><span class="p">[(</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">?birth-date</span><span class="w"> </span><span class="n">?toAge</span><span class="p">)]</span><span class="w">
+   </span><span class="p">[</span><span class="n">?user</span><span class="w"> </span><span class="no">:gender</span><span class="w"> </span><span class="n">?gender</span><span class="p">]]}</span><span class="n">,</span><span class="w">
+ </span><span class="no">:args</span><span class="w"> </span><span class="p">[</span><span class="n">&lt;db-object&gt;</span><span class="w"> </span><span class="p">[</span><span class="no">:location/id</span><span class="w"> </span><span class="mi">42</span><span class="p">]</span><span class="w"> </span><span class="mi">1504210734</span><span class="w"> </span><span class="mi">1504280734</span><span class="w"> </span><span class="mi">20</span><span class="w"> </span><span class="mi">30</span><span class="w"> </span><span class="s">"m"</span><span class="p">]}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now you pass it into <a href="http://docs.datomic.com/clojure/#datomic.api/query">datomic.api/query</a> function that accepts a map-like
+query. In my case, the result is something like: <code class="language-plaintext highlighter-rouge">4.18525</code>.</p>
+
+<p>As you have seen, composing complicated queries with Datomic might a bit tricky
+due do immutability and differences between string templates and data
+structures. But still, Clojure provides rich set of tools for processing
+collections. In my case, the standard <code class="language-plaintext highlighter-rouge">cond-&gt;</code> has made all the
+pipeline. Neither atoms nor other tricks to track the state were required. There
+is a common rule: once you’ve got stuck with a data structure, keep yourself
+from inventing “smart” ways to deal with it. There is probably a built-in macro
+in <code class="language-plaintext highlighter-rouge">clojure.core</code> for that.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/facebook/">Фейсбук прекрасен</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-09-01T00:00:00+00:00">
+        Sep 1, 2017
+    </time>
+
+    <a href="/tag/idiots/" rel="tag">idiots</a>, <a href="/tag/facebook/" rel="tag">facebook</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Каждый месяц повторяется печальное событие: мне нужно зайти в ФБ и сделать анонс
+митапа. Я тяну время, но часа X не избежать.</p>
+
+<p><img src="/assets/static/facebook.png" alt="facebook" /></p>
+
+<p>Даже не знаю, что может быть хуже Фейсбука: столь тормозной и неорганизованный
+сайт еще поискать. При том что денег у них до жопы.</p>
+
+<p>Погрязли в жадности и бюрократизме.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/en/clj-sqlite/">In-Memory SQLite Database In Clojure</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2017-08-22T00:00:00+00:00">
+        Aug 22, 2017
+    </time>
+
+    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/sqlite/" rel="tag">sqlite</a>, <a href="/tag/jdbc/" rel="tag">jdbc</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Recently, I’ve been working with a SQLite database using Clojure. In this post,
+I’d like to share my experience that I’ve got from that challenge.</p>
+
+<p>SQLite is a great tool used almost everywhere. Browsers and mobile devices use
+it a lot. A SQLite database is represented by a single file that makes it quite
+easy to share, backup and distribute. It supports most of the production-level
+databases’ features like triggers, recursive queries and so on.</p>
+
+<p>In addition, SQLite has a killer feature to be run completely in memory. So,
+instead of keeping an atom of nested maps, why not to store some temporary data
+into well organized tables?</p>
+
+<p>JDBC has SQLite support as well, you only need to install a driver, the
+documentation says. But then, I’ve got a problem dealing with in-memory
+database:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">spec</span><span class="w">
+  </span><span class="p">{</span><span class="no">:classname</span><span class="w">   </span><span class="s">"org.sqlite.JDBC"</span><span class="w">
+   </span><span class="no">:subprotocol</span><span class="w"> </span><span class="s">"sqlite"</span><span class="w">
+   </span><span class="no">:subname</span><span class="w">     </span><span class="s">":memory:"</span><span class="p">})</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="s">"create table users (id integer)"</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">jdbc/query</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="s">"select * from users"</span><span class="p">)</span><span class="w">
+
+</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">SQLiteException</span><span class="w"> </span><span class="p">[</span><span class="n">SQLITE_ERROR</span><span class="p">]</span><span class="w"> </span><span class="n">SQL</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="nb">or</span><span class="w"> </span><span class="n">missing</span><span class="w"> </span><span class="n">database</span><span class="w">
+</span><span class="nb">&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">no</span><span class="w"> </span><span class="n">such</span><span class="w"> </span><span class="n">table</span><span class="err">:</span><span class="w"> </span><span class="n">users</span><span class="p">)</span><span class="w">  </span><span class="n">org.sqlite.core.DB.newSQLException</span><span class="w"> </span><span class="p">(</span><span class="nf">DB.java</span><span class="no">:909</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>What the… I’ve just created a table, why cannot you find it? An interesting
+note, if I set a proper file name for the <code class="language-plaintext highlighter-rouge">:subname</code> field, everything works
+fine. But I needed a in-memory database, not a file.</p>
+
+<p>After some hours of googling and reading the code I’ve found the solution.</p>
+
+<p>The thing is, JDBC does not track DB connections by default. Every time you call
+for <code class="language-plaintext highlighter-rouge">(jdbc/*)</code> function, you create a new connection, perform an operation and
+close it. For such persistent data storages like Postgres or MySQL that’ fine
+although not effective (in our project, we use HikariCP to have a pool of open
+connections).</p>
+
+<p>But for in-memory SQLite database, closing a connection to it leads to wiping
+the data completely out form the RAM. So you need to track the connection in
+more precision way. You will create a connection by yourself and close it when
+the work is done.</p>
+
+<p>First, let’s setup your project:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="no">:dependencies</span><span class="w"> </span><span class="p">[</span><span class="n">...</span><span class="w">
+               </span><span class="p">[</span><span class="n">org.xerial/sqlite-jdbc</span><span class="w"> </span><span class="s">"3.20.0"</span><span class="p">]</span><span class="w">
+               </span><span class="p">[</span><span class="n">org.clojure/java.jdbc</span><span class="w"> </span><span class="s">"0.7.0"</span><span class="p">]</span><span class="w">
+               </span><span class="p">[</span><span class="n">com.layerware/hugsql</span><span class="w"> </span><span class="s">"0.4.7"</span><span class="p">]</span><span class="w">
+               </span><span class="p">[</span><span class="n">mount</span><span class="w"> </span><span class="s">"0.1.11"</span><span class="p">]</span><span class="w">
+               </span><span class="n">...</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>and the database module:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">project.db</span><span class="w">
+  </span><span class="p">(</span><span class="no">:require</span><span class="w"> </span><span class="p">[</span><span class="n">mount.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">mount</span><span class="p">]</span><span class="w">
+            </span><span class="p">[</span><span class="n">hugsql.core</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">hugsql</span><span class="p">]</span><span class="w">
+            </span><span class="p">[</span><span class="n">clojure.java.jdbc</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">jdbc</span><span class="p">]))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Declare a database URI as follows:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">db-uri</span><span class="w"> </span><span class="s">"jdbc:sqlite::memory:"</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Our database shares two states: when it’s been set up and ready to work and when
+it has not. To keep the state, let’s use <code class="language-plaintext highlighter-rouge">mount</code> library:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">declare</span><span class="w"> </span><span class="n">db</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">on-start</span><span class="w"> </span><span class="p">[]</span><span class="w">
+  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">spec</span><span class="w"> </span><span class="p">{</span><span class="no">:connection-uri</span><span class="w"> </span><span class="n">db-uri</span><span class="p">}</span><span class="w">
+        </span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">spec</span><span class="p">)]</span><span class="w">
+    </span><span class="p">(</span><span class="nb">assoc</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="no">:connection</span><span class="w"> </span><span class="n">conn</span><span class="p">)))</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">on-stop</span><span class="w"> </span><span class="p">[]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:connection</span><span class="w"> </span><span class="n">.close</span><span class="p">)</span><span class="w">
+  </span><span class="n">nil</span><span class="p">)</span><span class="w">
+
+</span><span class="p">(</span><span class="nf">mount/defstate</span><span class="w">
+  </span><span class="o">^</span><span class="p">{</span><span class="no">:on-reload</span><span class="w"> </span><span class="no">:noop</span><span class="p">}</span><span class="w">
+  </span><span class="n">db</span><span class="w">
+  </span><span class="no">:start</span><span class="w"> </span><span class="p">(</span><span class="nf">on-start</span><span class="p">)</span><span class="w">
+  </span><span class="no">:stop</span><span class="w"> </span><span class="p">(</span><span class="nf">on-stop</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Once you call <code class="language-plaintext highlighter-rouge">(mount/start #'db)</code>, it becomes a map with the following fields:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:connection-uri</span><span class="w"> </span><span class="s">"jdbc:sqlite::memory:"</span><span class="w">
+ </span><span class="no">:connection</span><span class="w"> </span><span class="n">&lt;SomeJavaConnectionObject</span><span class="w"> </span><span class="n">at</span><span class="w"> </span><span class="mi">0</span><span class="n">x0...&gt;</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>When any JDBC function or a method accepts that map, it checks for the
+<code class="language-plaintext highlighter-rouge">:connection</code> field. If it’s filled, JDBC uses that connection as well. If it’s
+not, a new connection is issued. In my case, every execute/query call created a
+new in-memory database and stopped it right after the call ends. That’s why the
+second query could not to find <code class="language-plaintext highlighter-rouge">users</code> table: because it was performed within
+another database.</p>
+
+<p>Now with the <code class="language-plaintext highlighter-rouge">db</code> started, you are welcome to perform all the standard <code class="language-plaintext highlighter-rouge">jdbc</code>
+operations:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="s">"create table users (id integer, name text)"</span><span class="p">)</span><span class="w">
+</span><span class="p">(</span><span class="nf">jdbc/insert!</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">})</span><span class="w">
+</span><span class="p">(</span><span class="nf">jdbc/get-by-id</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="c1">;; {:id 1 :name "Ivan"}</span><span class="w">
+</span><span class="p">(</span><span class="nf">jdbc/find-by-keys</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="no">:users</span><span class="w"> </span><span class="p">{</span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="p">})</span><span class="w"> </span><span class="c1">;; ({:id 1 :name "Ivan"})</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Finally, you stop the db calling <code class="language-plaintext highlighter-rouge">(mount/stop #'db)</code>. The connection stops, the
+data disappears completely.</p>
+
+<p>For more complicated queries with joins, HugSQL library would be a good
+choice. Create a file <code class="language-plaintext highlighter-rouge">queries.sql</code> in your <code class="language-plaintext highlighter-rouge">resources</code> folder. Say, you want to
+write a complex query that filters a result by some values that probably are not
+set. Here is an example of what you should put into <code class="language-plaintext highlighter-rouge">queries.sql</code> file:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- :name get-user-visits :?</span>
+<span class="k">select</span>
+    <span class="n">v</span><span class="p">.</span><span class="n">mark</span><span class="p">,</span>
+    <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span><span class="p">,</span>
+    <span class="n">l</span><span class="p">.</span><span class="n">place</span>
+<span class="k">from</span> <span class="n">visits</span> <span class="n">v</span>
+<span class="k">join</span> <span class="n">locations</span> <span class="n">l</span> <span class="k">on</span> <span class="n">v</span><span class="p">.</span><span class="k">location</span> <span class="o">=</span> <span class="n">l</span><span class="p">.</span><span class="n">id</span>
+<span class="k">where</span>
+    <span class="n">v</span><span class="p">.</span><span class="k">user</span> <span class="o">=</span> <span class="p">:</span><span class="n">user_id</span>
+    <span class="cm">/*~ (when (:fromDate params) */</span>
+    <span class="k">and</span> <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span> <span class="o">&gt;</span> <span class="p">:</span><span class="n">fromDate</span>
+    <span class="cm">/*~ ) ~*/</span>
+    <span class="cm">/*~ (when (:toDate params) */</span>
+    <span class="k">and</span> <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span> <span class="o">&lt;</span> <span class="p">:</span><span class="n">toDate</span>
+    <span class="cm">/*~ ) ~*/</span>
+    <span class="cm">/*~ (when (:toDistance params) */</span>
+    <span class="k">and</span> <span class="n">l</span><span class="p">.</span><span class="n">distance</span> <span class="o">&lt;</span> <span class="p">:</span><span class="n">toDistance</span>
+    <span class="cm">/*~ ) ~*/</span>
+    <span class="cm">/*~ (when (:country params) */</span>
+    <span class="k">and</span> <span class="n">l</span><span class="p">.</span><span class="n">country</span> <span class="o">=</span> <span class="p">:</span><span class="n">country</span>
+    <span class="cm">/*~ ) ~*/</span>
+<span class="k">order</span> <span class="k">by</span>
+    <span class="n">v</span><span class="p">.</span><span class="n">visited_at</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>In your database module, put the following on the top level:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">hugsql/def-db-fns</span><span class="w"> </span><span class="s">"queries.sql"</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now, every SQL template has become a plain Clojure function that takes a
+database and a map of additional parameters. To get all the visits in our
+application, we do:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">get-user-visits</span><span class="w"> </span><span class="n">db</span><span class="w"> </span><span class="p">{</span><span class="no">:user_id</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="no">:fromDate</span><span class="w"> </span><span class="mi">123456789</span><span class="w"> </span><span class="no">:country</span><span class="w"> </span><span class="s">"SomePlace"</span><span class="p">})</span><span class="w">
+</span><span class="nb">&gt;</span><span class="w"> </span><span class="n">...gives</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="nb">seq</span><span class="w"> </span><span class="n">of</span><span class="w"> </span><span class="n">maps...</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Hope this article will help those who’ve got stuck with SQLite.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/5years/">Пять лет блогу</a>
             </h2>
 
@@ -769,1181 +1330,13 @@ my <a href="/en/pg-to-datomic">previous post</a>.</p>
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/pg-to-datomic/">Migration from Postgres to Datomic</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-07-04T00:00:00+00:00">
-        Jul 4, 2017
-    </time>
-
-    <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/migration/" rel="tag">migration</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/datomic/" rel="tag">datomic</a>, <a href="/tag/database/" rel="tag">database</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>Recently, I migrated my Clojure-driven pet project from PostgreSQL to
-Datomic. This is <a href="https://queryfeed.net/">Queryfeed</a>, a web application to fetch data from
-social networks. I’ve been running it for several years considering it as a
-playground for some experiments. Long ago, it was written in Python, then I
-ported it to Clojure.</p>
-
-<p>It was a great experience when I just finished
-reading <a href="http://www.braveclojure.com/">“Clojure for True and Brave”</a> book and was full of
-desire to apply new knowledge to something practical rather than
-solving <a href="https://projecteuler.net/">Euler problems</a> in vain.</p>
-
-<p>This time, I’ve made another effort to switch the database backend to
-Datomic. Datomic is a modern, fact-driven database developed
-in <a href="https://cognitect.com">Cognitect</a> to be used in conjunction with Clojure. It really
-differs for classical RDBS such as MySQL or PostgreSQL. For a long time, I’ve
-been thinking whether I should try it. Meanwhile, more and more Clojure/conj
-talks have been publishing on <a href="https://www.youtube.com/user/ClojureTV">YouTube</a>. At my work, we use vast
-PostgreSQL database and the code base is tied to close to it. There is no an
-option to perform a switch on weekends. So I decided to port my pet project to
-Datomic in my spare time.</p>
-
-<p>Surely, before doing this, I googled for a while and was really wondered about
-how few information I found on the Internet. There were just three posts that
-did not cover the subject in details. So I decided to share my experience
-here. Maybe it would help somebody with their migration duties.</p>
-
-<p>Of cause, I cannot guarantee the steps described below will meet your
-requirements as well. Each database is different, so it’s impossible to develop
-a final tool that could handle all the cases. But at least you may borrow some
-of those.</p>
-
-<h2>
-
-    Table of Contents
-
-</h2>
-
-<ul id="toc-item-pg-to-datomic">
-  <li><a href="#introduction" id="toc-item-pg-to-datomic-introduction">Introduction</a></li>
-  <li><a href="#dump-postgres-database" id="toc-item-pg-to-datomic-dump-postgres-database">Dump Postgres database</a></li>
-  <li><a href="#adding-datomic-into-your-project" id="toc-item-pg-to-datomic-adding-datomic-into-your-project">Adding Datomic into your project</a></li>
-  <li><a href="#loading-the-data-into-datomic" id="toc-item-pg-to-datomic-loading-the-data-into-datomic">Loading the data into Datomic</a>    <ul>
-      <li><a href="#avoid-nils" id="toc-item-pg-to-datomic-avoid-nils">Avoid nils</a></li>
-      <li><a href="#shrink-your-tables" id="toc-item-pg-to-datomic-shrink-your-tables">Shrink your tables</a></li>
-      <li><a href="#use-enums" id="toc-item-pg-to-datomic-use-enums">Use enums</a></li>
-      <li><a href="#json-data" id="toc-item-pg-to-datomic-json-data">JSON data</a></li>
-      <li><a href="#foreign-keys" id="toc-item-pg-to-datomic-foreign-keys">Foreign keys</a></li>
-    </ul>
-  </li>
-  <li><a href="#update-the-code" id="toc-item-pg-to-datomic-update-the-code">Update the code</a></li>
-  <li><a href="#html-templates" id="toc-item-pg-to-datomic-html-templates">HTML templates</a></li>
-  <li><a href="#remove-jdbcpostgres" id="toc-item-pg-to-datomic-remove-jdbcpostgres">Remove JDBC/Postgres</a></li>
-  <li><a href="#update-unit-test" id="toc-item-pg-to-datomic-update-unit-test">Update unit test</a></li>
-  <li><a href="#infrastructure-final-touches" id="toc-item-pg-to-datomic-infrastructure-final-touches">Infrastructure (final touches)</a>    <ul>
-      <li><a href="#setting-up-production-postgres-driven-backend" id="toc-item-pg-to-datomic-setting-up-production-postgres-driven-backend">Setting up production Postgres-driven backend</a></li>
-      <li><a href="#running-the-transactor" id="toc-item-pg-to-datomic-running-the-transactor">Running the transactor</a></li>
-      <li><a href="#console" id="toc-item-pg-to-datomic-console">Console</a></li>
-      <li><a href="#backups" id="toc-item-pg-to-datomic-backups">Backups</a></li>
-      <li><a href="#backups-as-a-way-to-deploy-the-data" id="toc-item-pg-to-datomic-backups-as-a-way-to-deploy-the-data">Backups as a way to deploy the data</a></li>
-    </ul>
-  </li>
-  <li><a href="#conclusion" id="toc-item-pg-to-datomic-conclusion">Conclusion</a></li>
-</ul>
-
-<h2 id="introduction">Introduction</h2>
-
-<p>Before we begin, let’s talk about what is the reason to switch to Datomic. That
-question cannot be answered just in one or two points. Before Datomic, I’ve been
-working with PostgreSQL for several years and reckon it as a great
-software. There is no such a task that Postgres cannot deal with. Here are just
-some of them:</p>
-
-<ul>
-  <li>streaming replication, smart sharding;</li>
-  <li>geo-spatial data, PostGIS;</li>
-  <li>full-text search, trigrams;</li>
-  <li>JSON(b) data structures;</li>
-  <li>typed arrays;</li>
-  <li>recursive queries;</li>
-  <li>and tons of other benefits.</li>
-</ul>
-
-<p>So if Postgres is really so great, why switching then? In my point of view, it
-brings the following benefits into a project:</p>
-
-<ol>
-  <li>Datomic is simple. In fact, it has only two operations: read (querying) and
-write (transaction).</li>
-  <li>It supports joins as well. Once you have a reference, it can be resolved into
-a nested map. References may be recursive. In PostgreSQL or any other RDBS,
-you always have a plain result with possibly duplicated rows. The ORM logic
-that may deal with parsing raw SQL response might be too complicated to
-understand.</li>
-  <li>Datomic was developed in the same terms as Clojure was. These are simplicity,
-immutability and declarative style. Datomic shares Clojure’s values.</li>
-  <li>It accumulates changes through time like Git or any other control version
-system. With Datomic, you may always roll-back in time to get a history of an
-order or collect audit logs.</li>
-</ol>
-
-<p>Let’s highlight some general steps we should pass through to complete the
-migration. These are:</p>
-
-<ul>
-  <li>dump you Postgres data;</li>
-  <li>add Datomic into your project;</li>
-  <li>load the data into Datomic;</li>
-  <li>rewrite the code that operates on data;</li>
-  <li>rewrite your HTML templates;</li>
-  <li>update or add unit tests;</li>
-  <li>remote JDBC/Postgres from your project;</li>
-  <li>setup infrastructure (backups, console, etc)</li>
-</ul>
-
-<p>As you see, it is not as simple as it could be thought even for a small
-project. In my case, migrating Queryfeed took about a week working by nights. It
-includes:</p>
-
-<ul>
-  <li>two days to read the whole <a href="http://docs.datomic.com/">Datomic documentation</a>;</li>
-  <li>one day to migrate the data;</li>
-  <li>two days to fix the business logic code and templates;</li>
-  <li>two days to deploy everything to the server.</li>
-</ul>
-
-<p>Regarding to the documentation, I highly recommend you to read it first before
-doing anything. Please do not rely on random Stack Overflow snippets. Datomic is
-completely different than classical SQL databases, so your long-term Postgres or
-MySQL experience won’t work.</p>
-
-<p>Quick tip here, since it could be difficult to read lots of text from a screen,
-I just download any page I wish to read into my Kindle using the official
-Amazon <a href="https://chrome.google.com/webstore/detail/send-to-kindle-for-google/cgdjpilhipecahhcilnafpblkieebhea?hl=en">extension for Chrome</a>. The paper appears on my Kindle in a
-minute and I read it.</p>
-
-<p>Once you’ve finished with the docs, feel free to the next step: dumping your
-PostgreSQL data.</p>
-
-<h2 id="dump-postgres-database">Dump Postgres database</h2>
-
-<p>Exporting you data into a set of files won’t be so difficult I believe. I may
-guess your project has <code class="language-plaintext highlighter-rouge">projectname.db</code> module that handles the most of database
-stuff. It should have <code class="language-plaintext highlighter-rouge">clojure.java.jdbc</code> module imported and <code class="language-plaintext highlighter-rouge">*db*</code> or
-<code class="language-plaintext highlighter-rouge">db-spec</code> variables declared. Your goal is for every table you have in the
-database, run a query something like <code class="language-plaintext highlighter-rouge">select * from &lt;table_name&gt;</code> against it and
-save the result into a file.</p>
-
-<p>What file format to use depends on your own preferences, but I highly recommend
-the standard <code class="language-plaintext highlighter-rouge">EDN</code> files rather than JSON, CSV or whatever. The main point in
-favor of <code class="language-plaintext highlighter-rouge">EDN</code> is it handles extended data types such as dates and UUIDs. In my
-case, every table has at least one date field, for example <code class="language-plaintext highlighter-rouge">created_at</code> that is
-not null and is set with the current time automatically. When using JSON or
-YAML, the dates will be just strings so you need to write extra code to restore
-a native <code class="language-plaintext highlighter-rouge">java.util.Date</code> class from a string. So are unique identifiers, UUIDs.</p>
-
-<p>In addition, since <code class="language-plaintext highlighter-rouge">EDN</code> files represent native Clojure data structures, you
-don’t need to add <code class="language-plaintext highlighter-rouge">org.clojure/data.json</code> dependency into your
-project. Everything can be made with out-from-the-box functions. The next
-snippet dumps all the users from your Postgres database into a <code class="language-plaintext highlighter-rouge">users.edn</code> file:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">
-</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">*db*</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="w"> </span><span class="n">your</span><span class="w"> </span><span class="n">JDBC</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="n">map...</span><span class="p">})</span><span class="w">
-
-</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="n">jdbc/query</span><span class="w"> </span><span class="n">db-spec</span><span class="p">))</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">spit</span><span class="w"> </span><span class="s">"users.edn"</span><span class="w"> </span><span class="p">(</span><span class="nb">with-out-str</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"select * from users"</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="nb">prn</span><span class="p">)))</span><span class="w">
-
-</span></code></pre></div></div>
-
-<p>And that is! With only one line of code, you’ve just dumped the whole table into
-a file. Repeat it several times substituting a name of an <code class="language-plaintext highlighter-rouge">*.edn</code> file and a
-table. If you have many tables, wrap it with a function:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">dump</span><span class="w"> </span><span class="p">[</span><span class="n">table</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">spit</span><span class="w"> </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"%s.edn"</span><span class="w"> </span><span class="n">table</span><span class="p">)</span><span class="w">
-    </span><span class="p">(</span><span class="nb">with-out-str</span><span class="w"> </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">format</span><span class="w"> </span><span class="s">"select * from %s"</span><span class="w"> </span><span class="n">table</span><span class="p">)</span><span class="w">
-                      </span><span class="n">query</span><span class="w">
-                      </span><span class="nb">prn</span><span class="p">))))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Then run it against a vector of table names but not a set since an order is
-important. For example, if you have a user has a foreign key to <code class="language-plaintext highlighter-rouge">orders</code> table,
-it should be loaded first.</p>
-
-<p>To check whether your dump is correct, try to restore it from a file as follows:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="s">"users.edn"</span><span class="w"> </span><span class="nb">slurp</span><span class="w"> </span><span class="n">read-string</span><span class="w"> </span><span class="nb">first</span><span class="p">)</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Again, it is so simple to perform such things in Clojure. Within one line of
-code, you have just read the file, restored the Clojure data from it and took
-the first map from a list. In REPL, you should see something like:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="w">
- </span><span class="no">:name</span><span class="w"> </span><span class="s">"Ivan"</span><span class="w">
- </span><span class="no">:email</span><span class="w"> </span><span class="s">"test@test.com"</span><span class="w">
- </span><span class="n">...</span><span class="w"> </span><span class="n">other</span><span class="w"> </span><span class="n">fields</span><span class="w">
- </span><span class="p">}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>That means the dump step was done as well.</p>
-
-<h2 id="adding-datomic-into-your-project">Adding Datomic into your project</h2>
-
-<p>Here, I won’t discuss on that step so long since it is highlighted as well in
-the official documentation. Briefly, you need to:</p>
-
-<ol>
-  <li><a href="https://my.datomic.com/">register</a> on Datomic site, it is free;</li>
-  <li>set up your <a href="https://github.com/technomancy/leiningen/blob/master/doc/GPG.md">GPG credentials</a>;</li>
-  <li>add Datomic repository and <a href="http://docs.datomic.com/integrating-peer-lib.html">the library</a> into your project;</li>
-  <li>(optional) if you use Postgres-driven backend for
-Datomic, <a href="http://docs.datomic.com/storage.html#sql-database">create a new Postgres</a> database using SQL scripts from
-<code class="language-plaintext highlighter-rouge">sql</code> folder. Then <a href="http://docs.datomic.com/run-transactor.html">run a transactor</a>.</li>
-</ol>
-
-<p>Below, here is a brief example of my setup:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; project.clj</span><span class="w">
-</span><span class="p">(</span><span class="nf">defproject</span><span class="w"> </span><span class="n">my-project</span><span class="w"> </span><span class="s">"0.x.x"</span><span class="w">
-  </span><span class="n">...</span><span class="w">
-  </span><span class="no">:repositories</span><span class="w"> </span><span class="p">{</span><span class="s">"my.datomic.com"</span><span class="w"> </span><span class="p">{</span><span class="no">:url</span><span class="w"> </span><span class="s">"https://my.datomic.com/repo"</span><span class="w">
-                                   </span><span class="no">:creds</span><span class="w"> </span><span class="no">:gpg</span><span class="p">}}</span><span class="w">
-
-  </span><span class="no">:dependencies</span><span class="w"> </span><span class="p">[</span><span class="n">...</span><span class="w">
-                 </span><span class="p">[</span><span class="n">com.datomic/datomic-pro</span><span class="w"> </span><span class="s">"0.9.5561.50"</span><span class="p">]</span><span class="w">
-                 </span><span class="n">...</span><span class="p">]</span><span class="w">
-  </span><span class="n">...</span><span class="p">)</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Run <code class="language-plaintext highlighter-rouge">lein deps</code> to download the library. You will be probably prompted to input
-your GPG key.</p>
-
-<p>A quick try in REPL:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">datomic.api</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">d</span><span class="p">])</span><span class="w">
-</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="p">(</span><span class="nf">d/connect</span><span class="w"> </span><span class="s">"datomic:mem://test-db"</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<h2 id="loading-the-data-into-datomic">Loading the data into Datomic</h2>
-
-<p>In this step, we will load the previously dumped data into your Datomic
-installation.</p>
-
-<p>First, we need to prepare the schema before loading the data. A schema is a
-collection of attributes. Each attribute by itself is a small piece of
-information, for example a <code class="language-plaintext highlighter-rouge">:user/name</code> attribute keeps a string value and
-indicates a user’s name.</p>
-
-<p>An entity is a set of attributes linked together by system identifier. Thinking
-in RDBS terms, an attribute is a DB column whereas an entity is a row of a
-table. That really differs Datomic from such schema-less databases as MongoDB for
-example. In Mongo, every entity may have any structure you wish even across the
-same collection. In Datomic, you cannot write a string value into a number or a
-boolean into a date. One note, an entity may own an arbitrary number of
-attributes.</p>
-
-<p>For example, in Postgres if you did not set default values for a column and it
-is not null, you just cannot skip it when inserting a row. In Datomic, you may
-submit as many attributes as you want when performing a transaction. Imagine we
-have a user model with ten attributes: a name, email, etc. When creating a user,
-I may pass only a name and there won’t be an error. So pay attention you submit
-all the required attributes.</p>
-
-<p>Datomic schema is represented by native Clojure data structures: maps, keywords
-and vectors. That’s why they are stored in EDN files as well. A typical initial
-schema for fresh Datomic installation may look as follows:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="w">
- </span><span class="c1">;; Enums</span><span class="w">
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.gender/male</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.gender/female</span><span class="p">}</span><span class="w">
-
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.source/twitter</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.source/facebook</span><span class="p">}</span><span class="w">
-
- </span><span class="c1">;; Users</span><span class="w">
-
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:user/pg-id</span><span class="w">
-  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/long</span><span class="w">
-  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/one</span><span class="w">
-  </span><span class="no">:db/unique</span><span class="w">      </span><span class="no">:db.unique/identity</span><span class="p">}</span><span class="w">
-
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:user/source</span><span class="w">
-  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/ref</span><span class="w">
-  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/one</span><span class="w">
-  </span><span class="no">:db/isComponent</span><span class="w"> </span><span class="n">true</span><span class="p">}</span><span class="w">
-
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:user/source-id</span><span class="w">
-  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/string</span><span class="w">
-  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/one</span><span class="p">}</span><span class="w">
- </span><span class="n">...</span><span class="w">
-</span><span class="p">]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The first four ones are special attributes that are proposed as enum values. I
-will discuss more on them later.</p>
-
-<p>Again, check for the official documentation that
-describes <a href="http://docs.datomic.com/schema.html">schema usage</a>.</p>
-
-<p>Now that we prepared a schema, let add some boilerate code in our <code class="language-plaintext highlighter-rouge">db</code>
-namespace:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">project.db</span><span class="w">
-  </span><span class="p">(</span><span class="no">:require</span><span class="w"> </span><span class="p">[</span><span class="n">clojure.java.io</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">io</span><span class="p">]</span><span class="w">
-            </span><span class="p">[</span><span class="n">datomic.api</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">d</span><span class="p">]))</span><span class="w">
-
-</span><span class="c1">;; in-memory database for test purposes</span><span class="w">
-</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">db-uri</span><span class="w"> </span><span class="s">"datomic:mem://test-db"</span><span class="p">)</span><span class="w">
-
-</span><span class="c1">;; global Datomic connection wrapped in atom</span><span class="w">
-</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">*conn</span><span class="w"> </span><span class="p">(</span><span class="nf">atom</span><span class="w"> </span><span class="n">nil</span><span class="p">))</span><span class="w">
-
-</span><span class="c1">;; A function to initiate the global state</span><span class="w">
-</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">init-db</span><span class="w"> </span><span class="p">[]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">d/create-database</span><span class="w"> </span><span class="n">db-uri</span><span class="p">)</span><span class="w">
-  </span><span class="p">(</span><span class="nf">reset!</span><span class="w"> </span><span class="n">*conn</span><span class="w"> </span><span class="p">(</span><span class="nf">d/connect</span><span class="w"> </span><span class="n">db-uri</span><span class="p">)))</span><span class="w">
-
-</span><span class="c1">;; reads an EDN file located in `resources` folder</span><span class="w">
-</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">read-edn</span><span class="w">
-  </span><span class="p">[</span><span class="n">filename</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">filename</span><span class="w">
-      </span><span class="n">io/resource</span><span class="w">
-      </span><span class="nb">slurp</span><span class="w">
-      </span><span class="n">read-string</span><span class="p">))</span><span class="w">
-
-</span><span class="c1">;; reads and loads a schema from EDN file</span><span class="w">
-</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">load-schema</span><span class="w">
-  </span><span class="p">[</span><span class="n">filename</span><span class="p">]</span><span class="w">
-  </span><span class="o">@</span><span class="p">(</span><span class="nf">d/transact</span><span class="w"> </span><span class="o">@</span><span class="n">*conn</span><span class="w"> </span><span class="p">(</span><span class="nf">read-edn</span><span class="w"> </span><span class="n">filename</span><span class="p">)))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>I hope the comments highlight the meaning of the code as well. I just declared a
-database URL, a global connection, a function to connect to the DB and two
-helper functions.</p>
-
-<p>The first function just reads a <code class="language-plaintext highlighter-rouge">EDN</code> file and returns a data structure. Since
-our files a stored in resources folder, there is a <code class="language-plaintext highlighter-rouge">io/resource</code> wrapper here in
-the threading chain.</p>
-
-<p>The second function also read a file but also performs a Datomic transaction
-passing data as a schema.</p>
-
-<p>The <code class="language-plaintext highlighter-rouge">db-uri</code> variable is represented with URL-like string. Currently, we use
-in-memory storage for test purposes. I really doubt you can load the data
-directly to SQL-driven storage without errors so let’s just practice for a
-while. Later, when the import step will be ready, we will just switch <code class="language-plaintext highlighter-rouge">db-uri</code>
-variable to production-ready URL.</p>
-
-<p>With the code above, we are ready to load the schema. I put my initial schema
-into a file <code class="language-plaintext highlighter-rouge">resources/schema/0001-init.edn</code> so I may load it as follows:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">init-db</span><span class="p">)</span><span class="w">
-</span><span class="p">(</span><span class="nf">load-schema</span><span class="w"> </span><span class="s">"schema/0001-init.edn"</span><span class="p">)</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Now that we have a schema, let’s load the previously saved Postgres data. We
-need to add more boilerate code. Unfortunately, there cannot be a common
-function that may map your Postgres fields into Datomic attributes. The
-functions to convert your data might look a bit ugly, but they are
-one-time-purpose only so please don’t mind.</p>
-
-<p>For each EDN file that contains data of a specific table, we should:</p>
-
-<ol>
-  <li>read a proper file, get a list of maps;</li>
-  <li>convert each PostgreSQL map into Datomic map;</li>
-  <li>perform Datomic transaction passing a vector of Datomic maps.</li>
-</ol>
-
-<p>Below, here is an example of my <code class="language-plaintext highlighter-rouge">pg-user-to-datomic</code> function that accepts a
-Postgres-driven map and turns it into a set of Datomic attributes:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">pg-user-to-datomic</span><span class="w">
-  </span><span class="p">[{</span><span class="no">:keys</span><span class="w"> </span><span class="p">[</span><span class="n">email</span><span class="w">
-           </span><span class="n">first_name</span><span class="w">
-           </span><span class="n">timezone</span><span class="w">
-           </span><span class="n">source_url</span><span class="w">
-           </span><span class="n">locale</span><span class="w">
-           </span><span class="nb">name</span><span class="w">
-           </span><span class="n">access_token</span><span class="w">
-           </span><span class="n">access_secret</span><span class="w">
-           </span><span class="n">source</span><span class="w">
-           </span><span class="n">token</span><span class="w">
-           </span><span class="n">status</span><span class="w">
-           </span><span class="n">id</span><span class="w">
-           </span><span class="n">access_expires</span><span class="w">
-           </span><span class="n">last_name</span><span class="w">
-           </span><span class="n">gender</span><span class="w">
-           </span><span class="n">source_id</span><span class="w">
-           </span><span class="n">is_subscribed</span><span class="w">
-           </span><span class="n">created_at</span><span class="p">]}]</span><span class="w">
-
-  </span><span class="p">{</span><span class="no">:user/pg-id</span><span class="w"> </span><span class="n">id</span><span class="w">
-   </span><span class="no">:user/email</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">email</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
-   </span><span class="no">:user/first-name</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">first_name</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
-   </span><span class="no">:user/timezone</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">timezone</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
-   </span><span class="no">:user/source-url</span><span class="w"> </span><span class="p">(</span><span class="nf">URI.</span><span class="w"> </span><span class="n">source_url</span><span class="p">)</span><span class="w">
-   </span><span class="no">:user/locale</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">locale</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
-   </span><span class="no">:user/name</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="nb">name</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
-   </span><span class="no">:user/access-token</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">access_token</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
-   </span><span class="no">:user/access-secret</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">access_secret</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
-
-   </span><span class="no">:user/source</span><span class="w"> </span><span class="p">(</span><span class="nf">case</span><span class="w"> </span><span class="n">source</span><span class="w">
-                       </span><span class="s">"facebook"</span><span class="w"> </span><span class="no">:user.source/facebook</span><span class="w">
-                       </span><span class="s">"twitter"</span><span class="w"> </span><span class="no">:user.source/twitter</span><span class="p">)</span><span class="w">
-
-   </span><span class="no">:user/source-id</span><span class="w"> </span><span class="n">source_id</span><span class="w">
-
-   </span><span class="no">:user/token</span><span class="w"> </span><span class="p">(</span><span class="nf">UUID/fromString</span><span class="w"> </span><span class="n">token</span><span class="p">)</span><span class="w">
-   </span><span class="no">:user/status</span><span class="w"> </span><span class="p">(</span><span class="nf">case</span><span class="w"> </span><span class="n">status</span><span class="w">
-                  </span><span class="s">"normal"</span><span class="w"> </span><span class="no">:user.status/normal</span><span class="w">
-                  </span><span class="s">"pro"</span><span class="w"> </span><span class="no">:user.status/pro</span><span class="p">)</span><span class="w">
-
-   </span><span class="no">:user/access-expires</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">access_expires</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w">
-   </span><span class="no">:user/last-name</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">last_name</span><span class="w"> </span><span class="s">""</span><span class="p">)</span><span class="w">
-   </span><span class="no">:user/gender</span><span class="w"> </span><span class="p">(</span><span class="nf">case</span><span class="w"> </span><span class="n">gender</span><span class="w">
-                  </span><span class="s">"male"</span><span class="w"> </span><span class="no">:user.gender/male</span><span class="w">
-                  </span><span class="s">"female"</span><span class="w"> </span><span class="no">:user.gender/female</span><span class="p">)</span><span class="w">
-
-   </span><span class="no">:user/is-subscribed</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">is_subscribed</span><span class="w"> </span><span class="n">false</span><span class="p">)</span><span class="w">
-   </span><span class="no">:user/created-at</span><span class="w"> </span><span class="p">(</span><span class="nb">or</span><span class="w"> </span><span class="n">created_at</span><span class="w"> </span><span class="p">(</span><span class="nf">Date.</span><span class="p">))})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Yes, it looks ugly a bit annoying, but you have to write something like this for
-every table your have.</p>
-
-<p>Here is the code to load a table into Datomic:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">-&gt;&gt;</span><span class="w"> </span><span class="s">"users.edn"</span><span class="w"> </span><span class="nb">slurp</span><span class="w"> </span><span class="n">read-string</span><span class="w"> </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="n">pg-user-to-datomic</span><span class="p">)</span><span class="w"> </span><span class="n">transact!</span><span class="p">)</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Before we go further, let’s discuss some important notes on importing the data.</p>
-
-<h3 id="avoid-nils">Avoid nils</h3>
-
-<p>Datomic does not support nil values for attributes. When you do not have a value
-for an attribute, you should either skip it or pass an empty value: a zero, an
-empty string, etc. That’s why the most of expressions have <code class="language-plaintext highlighter-rouge">(or "")</code> at the end
-of threading macro.</p>
-
-<h3 id="shrink-your-tables">Shrink your tables</h3>
-
-<p>Migrating to the new datastore backend is a good chance to refactor your
-schema. For those who has spent years working with relational database it is not
-a secret that typical SQL applications suffer from lots of tables. In SQL, it is
-not enough to keep just “entities” tables: users, orders, etc. Often, you need
-to associate a product with colors, a blog post with tags or a user with
-permissions. That leads to <code class="language-plaintext highlighter-rouge">product_colors</code>, <code class="language-plaintext highlighter-rouge">post_tags</code> and other bridge
-tables. You join them in a query to “go through” from a user to their orders,
-for example.</p>
-
-<p>Datomic is free from bridge tables. It supports reference attributes that are
-linked to any other entity. In addition, each attribute may carry multiple
-values. For example, if we want to link a blog post with a set of tags, we’d
-rather declare the following schema:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="w">
- </span><span class="c1">;; Tag</span><span class="w">
-
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:tag/name</span><span class="w">
-  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/string</span><span class="w">
-  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/one</span><span class="w">
-  </span><span class="no">:db/unique</span><span class="w">      </span><span class="no">:db.unique/identity</span><span class="p">}</span><span class="w">
-
- </span><span class="c1">;; Post</span><span class="w">
-
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:post/title</span><span class="w">
-  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/string</span><span class="w">
-  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/one</span><span class="p">}</span><span class="w">
-
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:post/text</span><span class="w">
-  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/string</span><span class="w">
-  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/one</span><span class="p">}</span><span class="w">
-
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w">       </span><span class="no">:post/tags</span><span class="w">
-  </span><span class="no">:db/valueType</span><span class="w">   </span><span class="no">:db.type/ref</span><span class="w">
-  </span><span class="no">:db/cardinality</span><span class="w"> </span><span class="no">:db.cardinality/many</span><span class="p">}</span><span class="w">
-</span><span class="p">]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>In Postgres, you will need <code class="language-plaintext highlighter-rouge">post_tags</code> bridge table with <code class="language-plaintext highlighter-rouge">post_id</code> and <code class="language-plaintext highlighter-rouge">tag_id</code>
-foreign keys. In datomic, you simply pass a vector of IDs in <code class="language-plaintext highlighter-rouge">:post/tags</code> field
-when creating a post.</p>
-
-<p>Migrating to Datomic is a great chance to get rid of those tables.</p>
-
-<h3 id="use-enums">Use enums</h3>
-
-<p>Both Postgres and Datomic provide support of enum types. A enum type is a set of
-values. An instance of enum type may have only one of those values.</p>
-
-<p>In Postgres, I use enum types a lot. They are fast, reliable and provide strong
-consistency of you data. For example, if you have an order with possible “new”,
-“pending” and “paid” states, please don’t use <code class="language-plaintext highlighter-rouge">varchar</code> type for that. Somehow
-you may write something wrong there, for example mix up the register or make a
-misprint. So you’d better to declare the schema as follows:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">type</span> <span class="n">order_state</span> <span class="k">as</span> <span class="nb">enum</span> <span class="p">(</span>
-  <span class="s1">'order_state/new'</span><span class="p">,</span>
-  <span class="s1">'order_state/pending'</span><span class="p">,</span>
-  <span class="s1">'order_state/paid'</span>
-<span class="p">);</span>
-
-<span class="k">create</span> <span class="k">table</span> <span class="n">orders</span> <span class="p">(</span>
-  <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-  <span class="k">state</span> <span class="n">order_state</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="s1">'order_state/new'</span><span class="p">::</span><span class="n">order_state</span><span class="p">,</span>
-  <span class="p">...</span>
-<span class="p">);</span>
-</code></pre></div></div>
-
-<p>Now you cannot submit an unknown state for an order.</p>
-
-<p>Although Postgres enums are great, JDBC library makes our life a bit more
-difficult by forcing us to wrap enum values into <code class="language-plaintext highlighter-rouge">PGObject</code> when querying or
-inserting data. For example, to submit a new state for an order, you cannot just
-pass a string <code class="language-plaintext highlighter-rouge">"order_state/paid"</code>. You’ll get an error saying you are trying to
-submit a string for <code class="language-plaintext highlighter-rouge">order_state</code> type column. So you have to wrap your string
-into a special object:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">get-pg-obj</span><span class="w"> </span><span class="p">[</span><span class="n">type</span><span class="w"> </span><span class="n">value</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="nb">doto</span><span class="w"> </span><span class="p">(</span><span class="nf">PGobject.</span><span class="p">)</span><span class="w">
-    </span><span class="p">(</span><span class="nf">.setType</span><span class="w"> </span><span class="n">type</span><span class="p">)</span><span class="w">
-    </span><span class="p">(</span><span class="nf">.setValue</span><span class="w"> </span><span class="n">value</span><span class="p">)))</span><span class="w">
-
-</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">get-order-state</span><span class="w">
-  </span><span class="p">(</span><span class="nb">partial</span><span class="w"> </span><span class="n">get-pg-obj</span><span class="w"> </span><span class="s">"order_state"</span><span class="p">))</span><span class="w">
-
-</span><span class="c1">;; now, composing parameters for a query</span><span class="w">
-</span><span class="p">{</span><span class="no">:order_id</span><span class="w"> </span><span class="mi">42</span><span class="w">
- </span><span class="no">:state</span><span class="w"> </span><span class="p">(</span><span class="nf">get-order-state</span><span class="w"> </span><span class="s">"order_state/paid"</span><span class="p">)}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Another disadvantage here is inconsistency between select and insert
-queries. When you just read the data, you get the enum value as a string. But
-when you pass a enum as a parameter, you still need to wrap it with
-PGObject. That is a bit annoying.</p>
-
-<p>Datomic also has nice support of enums. There is no a special syntax for
-them. Enums are special attributes that do not have values but only
-names. Above, I have already highlighted them:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="w">
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.gender/male</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.gender/female</span><span class="p">}</span><span class="w">
-
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.source/twitter</span><span class="p">}</span><span class="w">
- </span><span class="p">{</span><span class="no">:db/ident</span><span class="w"> </span><span class="no">:user.source/facebook</span><span class="p">}</span><span class="w">
-</span><span class="p">]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Later, you may reference a enum value passing just a keyword
-<code class="language-plaintext highlighter-rouge">:user.source/twitter</code>. It’s quite simple, fast and keeps your database
-consistent.</p>
-
-<h3 id="json-data">JSON data</h3>
-
-<p>Personally, I try to avoid using JSON in Postgres as long as it is
-possible. Adding JSON fields everywhere turns your Postgres installation into
-MongoDB. It becomes quite easy to make a mistake or corrupt the data and fall
-into a situation when one half or your JSON data has a particular key and the
-rest half does not.</p>
-
-<p>Sometimes you really need to keep JSON in your DB. A good example might
-be <a href="https://developer.paypal.com/docs/classic/products/instant-payment-notification/">Paypal Instant Notifications</a>. These are HTTP requests that Paypal
-sends to your server when a customer buys something. IPN’s body keeps about 30
-fields and its structure may vary depending on transaction type. Splitting that
-data into separate fields and storing all of them across separate columns will
-be a mess. A solution will be to fetch only the most sensible ones (date, email,
-sum, order number) and write the rest data into a <code class="language-plaintext highlighter-rouge">jsonb</code> column. Then, once you
-need to fetch any additional information from an IPN, for example a tax sum, you
-may query it as well:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
-  <span class="k">data</span><span class="o">-&gt;</span><span class="s1">'tax_sum'</span><span class="p">::</span><span class="nb">numeric</span> <span class="k">as</span> <span class="n">tax</span>
-<span class="k">from</span>
-  <span class="n">ipn</span>
-<span class="k">where</span>
-  <span class="n">order_number</span> <span class="o">=</span> <span class="s1">'123456'</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>In Datomic, there is no JSON type for attributes. I’m not sure I made a proper
-decision, but I just put those JSON data into a text attribute. Sure, where is
-no a way to access separate fields in a datalog query or apply roles to
-them. But at least I can restore the data when selecting a single entity:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; local handler to parse JSON with keywords in keys</span><span class="w">
-</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">parse-json</span><span class="w"> </span><span class="p">[</span><span class="n">value</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">json/parse-string</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="n">true</span><span class="p">))</span><span class="w">
-
-</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">get-last-ipn</span><span class="w"> </span><span class="p">[</span><span class="n">user-id</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">query</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="no">:find</span><span class="w"> </span><span class="p">[(</span><span class="nf">pull</span><span class="w"> </span><span class="n">?ipn</span><span class="w"> </span><span class="p">[</span><span class="nb">*</span><span class="p">])</span><span class="w"> </span><span class="n">...</span><span class="p">]</span><span class="w">
-                </span><span class="no">:in</span><span class="w"> </span><span class="n">$</span><span class="w"> </span><span class="n">?user</span><span class="w">
-                </span><span class="no">:where</span><span class="w">
-                </span><span class="p">[</span><span class="n">?ipn</span><span class="w"> </span><span class="no">:ipn/user</span><span class="w"> </span><span class="n">?user</span><span class="p">]]</span><span class="w">
-
-        </span><span class="n">result</span><span class="w"> </span><span class="p">(</span><span class="nf">d/q</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="p">(</span><span class="nf">d/db</span><span class="w"> </span><span class="o">@</span><span class="n">*conn</span><span class="p">)</span><span class="w"> </span><span class="n">user-id</span><span class="p">)]</span><span class="w">
-
-    </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="p">(</span><span class="nf">not-empty</span><span class="w"> </span><span class="n">result</span><span class="p">)</span><span class="w">
-      </span><span class="p">(</span><span class="k">let</span><span class="w"> </span><span class="p">[</span><span class="n">item</span><span class="w"> </span><span class="p">(</span><span class="nb">last</span><span class="w"> </span><span class="p">(</span><span class="nb">sort-by</span><span class="w"> </span><span class="no">:ipn/emitted-at</span><span class="w"> </span><span class="n">result</span><span class="p">))]</span><span class="w">
-        </span><span class="p">(</span><span class="nf">update</span><span class="w"> </span><span class="n">item</span><span class="w"> </span><span class="no">:ipn/data</span><span class="w"> </span><span class="n">parse-json</span><span class="p">)))))</span><span class="w">
-</span></code></pre></div></div>
-
-<h3 id="foreign-keys">Foreign keys</h3>
-
-<p>In RDBS, a typical table has auto-incremental <code class="language-plaintext highlighter-rouge">id</code> field that marks a unique
-number of that row. When you need to refer to another table, an order or a
-user’s profile, you declare a foreign key that just keeps a value for those
-id. Since they are auto-generated, you should never bother on their real values,
-but only consistency.</p>
-
-<p>In Datomic, you do not have possibility to have auto-incremented values. When
-you import your data, it’s important to handle foreign keys (or references in
-terms of Datomic) properly. During the import, we populate <code class="language-plaintext highlighter-rouge">:&lt;entity&gt;/pg-id</code>
-field that holds the legacy Postgres value. Once you import a table with foreign
-keys, you may resolve a reference as follows:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="n">...</span><span class="w"> </span><span class="c1">;; other order fields</span><span class="w">
- </span><span class="no">:order/user</span><span class="w"> </span><span class="p">[</span><span class="no">:user/pg-id</span><span class="w"> </span><span class="n">user_id</span><span class="p">]}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>A reference attribute may be represented as vector of two where the first value
-is an attribute name and the second is its value.</p>
-
-<p>For new entities created in production after migration to Datomic, you do not
-need to submit <code class="language-plaintext highlighter-rouge">.../pg-id</code> value. You may either delete it (retract) once the
-migration process has been finished or just keep it in the database as an
-indicator that marks legacy data.</p>
-
-<h2 id="update-the-code">Update the code</h2>
-
-<p>This step would be the most boring, I believe. You need to scan the whole
-project and fix those fragments where you access the data from the database.</p>
-
-<p>Since it is a good practice to prepend attributes with a namespace, the most
-common change would be attribute renaming I believe:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; before</span><span class="w">
-</span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="p">(</span><span class="no">:name</span><span class="w"> </span><span class="n">user</span><span class="p">))</span><span class="w">
-
-</span><span class="c1">;; after</span><span class="w">
-</span><span class="p">(</span><span class="nb">println</span><span class="w"> </span><span class="p">(</span><span class="no">:user/name</span><span class="w"> </span><span class="n">user</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>You will face less problems by organizing special functions that wraps the
-underlying logic. A good example might be to add <code class="language-plaintext highlighter-rouge">get-user-by-id</code>,
-<code class="language-plaintext highlighter-rouge">get-orders-by-user-id</code> and so on.</p>
-
-<p>If you use <a href="https://github.com/layerware/hugsql">HugSQL</a> or <a href="https://github.com/krisajenkins/yesql">YeSQL</a> Clojure libraries than you already
-have such functions created dynamically from <code class="language-plaintext highlighter-rouge">*.sql</code> files. That is quite better
-than having naked SQL everywhere. Porting such a project to Datomic will be much
-easier.</p>
-
-<h2 id="html-templates">HTML templates</h2>
-
-<p>Another dull step that cannot be automated is to scan your Selmer templates (if
-you have them in your project, of course) and to update those fragments where
-you touch entities’ attributes. For example:</p>
-
-<pre><code class="language-HTML">
-;; before
-&lt;p&gt;{{ user.first_name}} {{ user.last_name}}&lt;/p&gt;
-
-;; after
-&lt;p&gt;{{ user.user/first-name}} {{ user.user/last-name}}&lt;/p&gt;
-
-</code></pre>
-
-<p>You may access nested entities as well. Imagine a user has a reference to their
-social profile:</p>
-
-<div class="language-html highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
-<span class="nt">&lt;p&gt;</span>{{ user.user/profile.profile/name }}<span class="nt">&lt;/p&gt;</span> ;; "twitter", "facebook" etc
-
-</code></pre></div></div>
-
-<p>Datomic encourages us to use enums which values are just keywords. Sometimes,
-you need to implement <code class="language-plaintext highlighter-rouge">case...then</code> pattern in your Selmer template and render
-any content depending on enum value. This may be a bit tricky since Selmer does
-not support keyword literals. In the example above, a user has <code class="language-plaintext highlighter-rouge">:user/source</code>
-attribute that references a enum with possible values <code class="language-plaintext highlighter-rouge">:user.source/twitter</code> or
-<code class="language-plaintext highlighter-rouge">:user.source/facebook</code>. Here is how I figured out switching on them:</p>
-
-<div class="language-html highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
-{% ifequal request.user.user/source.db/ident|str ":user.source/twitter" %}
-  <span class="nt">&lt;a</span> <span class="na">href=</span><span class="s">"https://twitter.com/{{ user.user/username }}"</span><span class="nt">&gt;</span>Twitter page<span class="nt">&lt;/a&gt;</span>
-{% endifequal %}
-{% ifequal request.user.user/source.db/ident|str ":user.source/facebook" %}
-  <span class="nt">&lt;a</span> <span class="na">href=</span><span class="s">"{{ user.user/profile-url }}"</span><span class="nt">&gt;</span>Facebook page<span class="nt">&lt;/a&gt;</span>
-{% endifequal %}
-
-</code></pre></div></div>
-
-<p>In the example above, we have to turn a keyword into a string using <code class="language-plaintext highlighter-rouge">|str</code>
-filter to compare both values as strings.</p>
-
-<p>To find all the Selmer variables or operators in Selmer, just grep your
-templates folder by <code class="language-plaintext highlighter-rouge">{{</code> or <code class="language-plaintext highlighter-rouge">{%</code>
-literals.</p>
-
-<h2 id="remove-jdbcpostgres">Remove JDBC/Postgres</h2>
-
-<p>Now that your project is Datomic-powered and does not need JDBC drivers anymore,
-you may either remove them from the project or at least decrease them to the
-<code class="language-plaintext highlighter-rouge">dev</code> dependencies needed only for development purposes.</p>
-
-<p>Scan you project grepping it with <code class="language-plaintext highlighter-rouge">jdbc</code>, <code class="language-plaintext highlighter-rouge">postgres</code> terms to find those
-namespaces that still use legacy DB backend. Remove any that still present. Open
-your root <code class="language-plaintext highlighter-rouge">project.clj</code> file, remove <code class="language-plaintext highlighter-rouge">jdbc</code> and <code class="language-plaintext highlighter-rouge">postgresql</code> packages from
-<code class="language-plaintext highlighter-rouge">:dependencies</code> vector. Ensure you may run and build the application and unit
-tests as well.</p>
-
-<h2 id="update-unit-test">Update unit test</h2>
-
-<p>Datomic is a great tool in those aspect you may use in-memory backend when
-running tests. That makes them pass quite faster and without needing setting up
-Postgres installation on you machine.</p>
-
-<p>I believe your project is able to detect whether it is in <code class="language-plaintext highlighter-rouge">dev</code>, <code class="language-plaintext highlighter-rouge">test</code> or <code class="language-plaintext highlighter-rouge">prod</code>
-mode. If it’s not, take a look at <a href="http://www.luminusweb.net/">Luminus framework</a>. It’s done quite
-well in that meaning. For each type of environment, you specify its own database
-URL. For test, it will be in-memory storage.</p>
-
-<p>Using the standard <code class="language-plaintext highlighter-rouge">clojure.test</code> namespace, you wrap each test with a fixture
-that does the following steps:</p>
-
-<ol>
-  <li>creates a new database in memory and connects to it;</li>
-  <li>runs all the schemas against it (migrations);</li>
-  <li>populates it with predefined test data (users, orders etc; also know as
-“fixtures”);</li>
-  <li>runs the test itself</li>
-  <li>drops the database and closes and disconnects from it.</li>
-</ol>
-
-<p>These steps should be run for each test. In that case, we can guarantee what
-every test has its own environment and does not depend on other tests. It’s a
-good practice when a test accepts a fresh installation not being touched by
-previous tests.</p>
-
-<p>Some preparation steps are:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">ns</span><span class="w"> </span><span class="n">your-project.test.users</span><span class="w">
-  </span><span class="p">(</span><span class="no">:require</span><span class="w"> </span><span class="p">[</span><span class="n">clojure.test</span><span class="w"> </span><span class="no">:refer</span><span class="w"> </span><span class="no">:all</span><span class="p">]</span><span class="w">
-            </span><span class="p">[</span><span class="n">your-project.db</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">db</span><span class="p">]))</span><span class="w">
-
-</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">migrate</span><span class="w"> </span><span class="p">[]</span><span class="w">
-  </span><span class="s">"Loads all the migrations"</span><span class="w">
-  </span><span class="p">(</span><span class="nb">doseq</span><span class="w"> </span><span class="p">[</span><span class="n">file</span><span class="w"> </span><span class="p">[</span><span class="s">"schema/0001-init.edn"</span><span class="w">
-                </span><span class="s">"schema/0002-user-updated.edn"</span><span class="p">]]</span><span class="w">
-    </span><span class="p">(</span><span class="nf">db/load-schema</span><span class="w"> </span><span class="n">file</span><span class="p">))</span><span class="w">
-
-</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">load-fixtures</span><span class="w"> </span><span class="p">[]</span><span class="w">
-  </span><span class="s">"Loads all the fixtures"</span><span class="w">
-  </span><span class="p">(</span><span class="nf">db/load-schema</span><span class="w"> </span><span class="s">"fixtures/test-data.edn"</span><span class="p">))</span><span class="w">
-
-</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">test-fixture</span><span class="w"> </span><span class="p">[</span><span class="n">f</span><span class="p">]</span><span class="w">
-  </span><span class="p">(</span><span class="nf">db/init</span><span class="p">)</span><span class="w"> </span><span class="c1">;; this function reads the config,</span><span class="w">
-            </span><span class="c1">;; creates the DB and populates</span><span class="w">
-            </span><span class="c1">;; the global Datomic connection</span><span class="w">
-
-  </span><span class="p">(</span><span class="nf">migrate</span><span class="p">)</span><span class="w">
-  </span><span class="p">(</span><span class="nf">load-fixtures</span><span class="p">)</span><span class="w">
-  </span><span class="p">(</span><span class="nf">f</span><span class="p">)</span><span class="w">         </span><span class="c1">;; the test is run here</span><span class="w">
-  </span><span class="p">(</span><span class="nf">db/delete</span><span class="p">)</span><span class="w"> </span><span class="c1">;; deletes a database</span><span class="w">
-  </span><span class="p">(</span><span class="nf">db/stop</span><span class="p">))</span><span class="w">  </span><span class="c1">;; stops the connection</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">use-fixtures</span><span class="w">
-  </span><span class="no">:each</span><span class="w">
-  </span><span class="n">test-fixture</span><span class="p">)</span><span class="w">
-
-</span></code></pre></div></div>
-
-<p>Now you may write your tests as well:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="w">
-</span><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">user-may-login</span><span class="w">
-  </span><span class="n">...</span><span class="p">)</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">deftest</span><span class="w"> </span><span class="n">user-proceed-checkout</span><span class="w">
-  </span><span class="n">...</span><span class="p">)</span><span class="w">
-</span></code></pre></div></div>
-
-<p>For every test, you will have a database running with all the migrations and
-test data loaded.</p>
-
-<p>If you still do not have any tests in your project, I urge you to add them
-soon. Without tests, you cannot be sure you do not break anything when changing
-the code.</p>
-
-<h2 id="infrastructure-final-touches">Infrastructure (final touches)</h2>
-
-<p>In the final section, I will highlight several important points that relate to
-the server management.</p>
-
-<h3 id="setting-up-production-postgres-driven-backend">Setting up production Postgres-driven backend</h3>
-
-<p>Running in-memory Datomic database is fun since it really costs nothing. In
-production, you would better set up more reliable backend. Datomic supports
-Postgres storage system out from the box. To prepare the database, run the
-following SQL scripts:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>su postgres <span class="c"># switch to postgres user</span>
-<span class="nb">cd</span> /path/to/datomic/bin/sql
-psql &lt; postgres-user.sql
-psql &lt; postgres-db.sql
-psql datomic &lt; postgres-table.sql
-</code></pre></div></div>
-
-<p>The scripts above create a user <code class="language-plaintext highlighter-rouge">datomic</code> with the password <code class="language-plaintext highlighter-rouge">datomic</code>, then the
-database <code class="language-plaintext highlighter-rouge">datomic</code> with the owner <code class="language-plaintext highlighter-rouge">datomic</code>. The last script creates a special
-table to keep Datomic blocks.</p>
-
-<p>Please do not forget to change the standard <code class="language-plaintext highlighter-rouge">datomic</code> password to something more
-complicated.</p>
-
-<h3 id="running-the-transactor">Running the transactor</h3>
-
-<p>The following page describes how to <a href="http://docs.datomic.com/run-transactor.html">run a transactor</a> needed by
-peer library when you use non-memory data storage. I’m not going to retell it
-here. Instead, I will share a bit of config to run it automatically using the
-standard <code class="language-plaintext highlighter-rouge">init.d</code> Linux daemon.</p>
-
-<p>Create a file named <code class="language-plaintext highlighter-rouge">datomic.conf</code> in your <code class="language-plaintext highlighter-rouge">my-project/conf</code> directory. Put a
-symlink to <code class="language-plaintext highlighter-rouge">/etc/init.d/</code> folder that references that file. Add the following
-lines into it:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>description "Datomic transactor"
-
-start on runlevel startup
-stop on runlevel shutdown
-
-respawn
-
-setuid &lt;your user here&gt;
-setgid &lt;your group here&gt;
-
-chdir /path/to/datomic
-
-script
-    exec bin/transactor sql-project.properties
-end script
-</code></pre></div></div>
-
-<p>There, <code class="language-plaintext highlighter-rouge">/path/to/datomic</code> is a directory where unzipped Datomic installation is
-located. <code class="language-plaintext highlighter-rouge">sql-project.properties</code> is a transactor configuration file where you
-should specify your Datomic key sent to your email.</p>
-
-<p>Now that you have put a symlink, try the following commands:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>start datomic
-
-status datomic
-<span class="c"># datomic start/running, process 5281</span>
-
-<span class="nb">sudo </span>stop datomic
-</code></pre></div></div>
-
-<h3 id="console">Console</h3>
-
-<p>Most of RDBS have UI applications to manage the data. Datomic comes with
-built-in console that is run as web application. Within those console, you can
-examine the schema, perform queries and transactions.</p>
-
-<p>The following template runs a console:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/path/to/datomic/bin/console <span class="nt">-p</span> 8088 &lt;some-alias&gt; &lt;datomic-url-without-db&gt;
-</code></pre></div></div>
-
-<p>In my example, the command is:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
-<span class="si">$(</span>DATOMIC_HOME<span class="si">)</span>/bin/console <span class="nt">-p</span> 8888 datomic <span class="se">\</span>
-<span class="s2">"datomic:sql://?jdbc:postgresql://localhost:5432/datomic?user=xxxxx&amp;password=xxxxx"</span>
-</code></pre></div></div>
-
-<p>Opening a browser at <code class="language-plaintext highlighter-rouge">http://your-domain:8888/browser</code> will show you a
-dashboard.</p>
-
-<p>Some security issues may be mentioned here. The console does not support any
-login/password authentication, so it is quite unsafe to run the console on
-production server as-is. Implement at least some of the following steps:</p>
-
-<ol>
-  <li>Proxy the console with Nginx. It must not be reachable by itself.</li>
-  <li>Limit access by a list of IPs. These may be your office or your home only.</li>
-  <li>There should be only secure SSL connection allowed, no plain HTTP. Let’s
-encrypt would be a great choice (see my <a href="/en/letsencrypt">recent post</a>).</li>
-  <li>Add basic/digest authentication to your Nginx config.</li>
-</ol>
-
-<p>To run a console as a service, create another <code class="language-plaintext highlighter-rouge">console.conf</code> file in
-<code class="language-plaintext highlighter-rouge">/etc/init.d/</code> directory. Use the <code class="language-plaintext highlighter-rouge">datomic.conf</code> file as template. Substitute
-the primary command with those one shown above. Now you can run the console only
-when you really need it:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>start console
-</code></pre></div></div>
-
-<h3 id="backups">Backups</h3>
-
-<p>Making backups regularly is highly important. Datomic installation carries a
-special utility to take care of it. You won’t need to make your backups manually
-by running <code class="language-plaintext highlighter-rouge">pgdump</code> against Postgres backend. Datomic provides a high-level
-backing up algorithm that performs in several threads. In addition, it
-supports <a href="https://aws.amazon.com/s3">AWS S3</a> service as a destination point.</p>
-
-<p>A typical backup command looks as follows:</p>
-
-<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/path/to/datomic/bin/datomic <span class="nt">-Xmx4g</span> <span class="nt">-Xms4g</span> backup-db &lt;datomic-url&gt; &lt;destination&gt;
-</code></pre></div></div>
-
-<p>To access AWS servers, you need to export both <code class="language-plaintext highlighter-rouge">AWS_ACCESS_KEY_ID</code> and
-<code class="language-plaintext highlighter-rouge">AWS_SECRET_KEY</code> variables first or prepend a command with them. In my case, the
-full command looks something like:</p>
-
-<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">AWS_ACCESS_KEY_ID</span><span class="o">=</span>xxxxxx <span class="nv">AWS_SECRET_KEY</span><span class="o">=</span>xxxxxxx <span class="se">\</span>
-/path/to/datomic/bin/datomic <span class="nt">-Xmx4g</span> <span class="nt">-Xms4g</span> backup-db <span class="se">\</span>
-datomic:sql://xxxxxxxx?jdbc:postgresql://localhost:5432/datomic?user<span class="o">=</span>xxxxxx&amp;password<span class="o">=</span>xxxxxxx<span class="s2">" </span><span class="se">\</span><span class="s2">
-s3://secret-bucket/datomic/2017/07/04
-</span></code></pre></div></div>
-
-<p>The date part in the end is substituted automatically using <code class="language-plaintext highlighter-rouge">$(shell date
-+\%Y/\%m/\%d)</code> expression in Makefile or the following in bash:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">date_path</span><span class="o">=</span><span class="sb">`</span><span class="nb">date</span> +<span class="se">\%</span>Y/<span class="se">\%</span>m/<span class="se">\%</span>d<span class="sb">`</span> <span class="c"># 2017/07/04</span>
-</code></pre></div></div>
-
-<p>Add that command into your crontab file to make backups regularly.</p>
-
-<h3 id="backups-as-a-way-to-deploy-the-data">Backups as a way to deploy the data</h3>
-
-<p>The good news are backup’s structure does not depend on the backend type. No
-matter you dump in-memory storage or Postgres cluster, the backup can be
-restored everywhere as well. It gives us possibility to migrate the data on our
-local machine, make a backup and then restore it into production database.</p>
-
-<p>Once you finished migrating you data, launch the backup command described
-above. The backup should go to S3. On the server, run the <code class="language-plaintext highlighter-rouge">restore</code> command:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">AWS_ACCESS_KEY_ID</span><span class="o">=</span>xxxxx <span class="nv">AWS_SECRET_KEY</span><span class="o">=</span>xxxxx
-/path/to/datomic/bin/datomic <span class="nt">-Xmx4g</span> <span class="nt">-Xms4g</span> restore-db <span class="se">\</span>
-s3://secret-bucket/datomic/2017/07/04 <span class="se">\</span>
-<span class="s2">"datomic:sql://xxxxxxx?jdbc:postgresql://localhost:5432/datomic?user=xxxx&amp;password=xxxxx"</span>
-</code></pre></div></div>
-
-<p>When everything is done without mistakes, the server will catch the new data.</p>
-
-<h2 id="conclusion">Conclusion</h2>
-
-<p>After spending about a week on moving from Postgres to Datomic I can say it
-really worths it. Although Datomic does not support most of the Postgres smart
-features like geo-spatial data or JSON structures, it is much closer to Clojue
-after all. Since it was made by the same authors, Datomic looks like as a
-continuation of Clojure. And that is a huge benefit that may overweight
-disadvantages mentioned above.</p>
-
-<p>Surfing the Internet, I found the next links that may also be helpful:</p>
-
-<ul>
-  <li><a href="http://jkk.github.io/minor-victory-datomic">A Minor Victory with Datomic</a></li>
-  <li><a href="http://mcramm.com/post/datomic-setup/">Datomic Setup</a></li>
-  <li><a href="https://blog.clubhouse.io/using-datomic-heres-how-to-move-from-postgresql-to-dynamodb-local-79ad32dae97f">Using Datomic? Here’s How to Move from PostgreSQL to DynamoDB Local</a></li>
-</ul>
-
-<p>I hope you enjoyed reading this material. You are welcome to share your thoughts
-in the commentary section.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/letsencrypt/">Let's encrypt</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-06-29T00:00:00+00:00">
-        Jun 29, 2017
-    </time>
-
-    <a href="/tag/ssl/" rel="tag">ssl</a>, <a href="/tag/letsencrypt/" rel="tag">letsencrypt</a>, <a href="/tag/security/" rel="tag">security</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p>I’ve just tried <a href="https://letsencrypt.org/">Let’s encrypt</a> service and may say it works like a
-charm! I am really impressed by it’s simplicity and robustness. It really works
-as it’s promised within several lines in shell. That’s how a good software
-should be made.</p>
-
-<p>Let’s encrypt is an <a href="https://en.wikipedia.org/wiki/Certificate_authority">SSL authority service</a> that issues short-term SSL
-certificates for you. A typical certificate expires in 90 days and then you
-request for a new one.</p>
-
-<p>What’s the point to use exactly Let’s encrypt? There are some other SSL
-providers who also offer free certificates, just google for “free SSL cert”. The
-main reason is Let’s encrypt is totally automated. You don’t even need to open
-their site. The whole setup might be done in bash session in 5 minutes.</p>
-
-<p>Here is a quick example of setting up a SSL certificate on outdated Ubuntu 12.04
-LTS:</p>
-
-<ol>
-  <li>
-    <p>Download <code class="language-plaintext highlighter-rouge">certbot</code> script. <a href="https://certbot.eff.org/">Certbot</a> is an open source software to
-communicate with Let’s encrypt service via secure ACME protocol:</p>
-
-    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wget https://dl.eff.org/certbot-auto
-<span class="nb">chmod </span>a+x certbot-auto
-</code></pre></div>    </div>
-  </li>
-  <li>
-    <p>Backup your Nginx config by copying your <code class="language-plaintext highlighter-rouge">*.conf</code> files from
-<code class="language-plaintext highlighter-rouge">/etc/nginx/conf.d/</code> somewhere. Then run:</p>
-
-    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo</span> /path/to/certbot-auto <span class="nt">--nginx</span>
-</code></pre></div>    </div>
-
-    <p>This command will ask you several questions. In most cases, the default
-choice would be enough. It scans your current Nginx config and makes required
-changes. Finally, you will be prompted for submitting your email. Please
-enter an existing one since it requires confirmation. In a minute, check your
-inbox and follow the secret link to submit your account.</p>
-  </li>
-  <li>
-    <p>Reload Nginx service with something like</p>
-
-    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>service nginx restart
-</code></pre></div>    </div>
-
-    <p>Open your site in Chrome, go to Developer console, “Security” tab, “View
-certificate” below the green label:</p>
-
-    <p><img src="/assets/static/ssl-green.png" alt="SSL green label" /></p>
-
-    <p>First, all the labels should be green but not red or orange. Second, “Let’s
-encrypt” authority should be noticed in the certificate’s details:</p>
-
-    <p><img src="/assets/static/ssl-issued.png" alt="SSL issued by" /></p>
-  </li>
-  <li>
-    <p>You have gone through the main steps so far, although it would be great to
-setup automatic update for your certificate. Add the following into <code class="language-plaintext highlighter-rouge">crontab</code>
-config:</p>
-
-    <pre><code class="language-crontab">0 */12 * * * /path/to/certbot-auto renew --no-self-upgrade
-</code></pre>
-
-    <p>This job tries to update the certificate twice a day as the official guide
-recommends.</p>
-  </li>
-</ol>
-
-<p>To find out more, please examine the <a href="https://certbot.eff.org/docs/">Certbot documentation</a>. It has nice
-setup wizard with step-by-step algorithms for all the operation systems. You may
-also automate Let’s encrypt not with bash script but within your favorite
-language. See the <a href="https://letsencrypt.org/docs/client-options/">“Client options”</a> page to observe existing
-libraries.</p>
-
-<p>Finally, I urge you to enable SSL for your project right now if you haven’t done
-this yet. Nowadays, there cannot be an excuse for sending your client’s data
-as-is without encryption. Please respect your visitors. Setting up SSL has never
-been so easy as it is with Let’s encrypt nowadays.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/read-25/">Weekly links #25</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2017-06-25T00:00:00+00:00">
-        Jun 25, 2017
-    </time>
-
-    <a href="/tag/read/" rel="tag">read</a>, <a href="/tag/life/" rel="tag">life</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Пишу вам из Турции. Держитесь, всего одно платье осталось!</p>
-
-<ul>
-  <li>
-    <p><a href="http://www.yegor256.com/2017/06/22/object-oriented-input-output-in-cactoos.html">Object-Oriented Declarative Input/Output in Cactoos</a></p>
-
-    <blockquote>
-      <p>Instead of calling static procedures we want to use objects, the way they
-are supposed to be used.</p>
-    </blockquote>
-  </li>
-  <li>
-    <p><a href="http://tonsky.livejournal.com/312123.html">Принципиальный недостаток Git CLI</a></p>
-
-    <p>Эмоциональный обзор недостатоков Гита.</p>
-  </li>
-  <li>
-    <p><a href="https://snob.ru/profile/9723/blog/126187">Мода на медленный секс</a></p>
-
-    <blockquote>
-      <p>«Медленный» секс — это как бы не горячо. Поэтому большинство людей и
-пытается оторвать своим любовникам пенис или клитор — им кажется, что это
-очень страстно, даже если их партнерам это не слишком приятно.</p>
-    </blockquote>
-  </li>
-  <li>
-    <p><a href="https://snob.ru/profile/9723/blog/125888">Ренессанс содержанки</a></p>
-
-    <blockquote>
-      <p>…ты будешь бедной лет до тридцати самое меньшее. Гарвард? Никого не
-волнует. Работы нет.</p>
-    </blockquote>
-  </li>
-  <li>
-    <p><a href="https://journal.tinkoff.ru/investing/">Инвестиции на бирже: популярные заблуждения</a></p>
-
-    <p>Азы инвестирования. Горячо рекомендую к прочтению.</p>
-  </li>
-</ul>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page68" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 69 из 100</span>
+        <span class="page_number ">Страница 69 из 101</span>
         
         <a href="/page70" class="next">&rarr;</a>
         
