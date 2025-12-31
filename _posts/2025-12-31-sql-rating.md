@@ -576,4 +576,6 @@ limit
 
 Любите Постгрес! Учите Пострес! Всем любви и добра.
 
-Код: https://gist.github.com/igrishaev/7d171d6c4882e922d81469c2e556345c
+[source]: https://gist.github.com/igrishaev/7d171d6c4882e922d81469c2e556345c
+
+[Весь исходный код][source]
