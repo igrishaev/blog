@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Рейтинг пользователей на чистом SQL</title>
+  <meta name="description" content="Решил написать небольшой мануальчик по SQL. В нем рассматривается задача,которую я подсмотрел у Кирилла Мокевнина. Возможно, кому-то из вас ее дадут насобесе...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/sql-rating/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Рейтинг пользователей на чистом SQL</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-12-31T00:00:00+00:00">
+        Dec 31, 2025
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/rating/" rel="tag">rating</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Решил написать небольшой мануальчик по SQL. В нем рассматривается задача,
+которую я подсмотрел у Кирилла Мокевнина. Возможно, кому-то из вас ее дадут на
+собеседовании.</p>
+
+<p>Задача следующая: сделать на сайте систему рейтинга. Пользователям начисляют
+баллы за разные достижения, и нужно вывести топ-100 пользователей. Позиция в
+рейтинге должна изменяться мгновенно. Например, кто-то получил 200 баллов и
+сразу оказался на вершине таблицы. Предполагается, что имеется только
+реляционная база данных, все остальное – по желанию.</p>
+
+<p>Эта задача мне очень понравилась. Она лаконичная, но ее можно наращивать очень
+долго. Удивился тому, в комментариях – а у Кирилла довольно большая аудитория –
+почти никто не решил ее силами SQL. Большинство предлагали какие-то кэши,
+редисы-кафки, Firebase и прочую ахинею. Дело не в том, что это плохие
+инструменты. Наоборот, в нужных местах Редис и Кафка изумительны. Просто в
+данном случае их выбор ничем не обоснован.</p>
+
+<p>Итак, давайте решим задачу силами ванильного Postgres. Чтобы разогреться,
+сначала сделаем небольшое послабление – предположим, что рейтинг нужно обновлять
+не мгновенно, а раз в час. Позже мы сделаем все как надо.</p>
+
+<p>Подготовим таблицу пользователей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span><span class="p">(</span>
+    <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">name</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Вставим в нее 100 тысяч случайных людей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">users</span>
+<span class="k">select</span> <span class="n">n</span><span class="p">,</span> <span class="n">format</span><span class="p">(</span><span class="s1">'User %s'</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="k">from</span> <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">100000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">n</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Создадим таблицу для начислений баллов. Она хранит код пользователя, баллы и
+поле reason – опциональный комментарий за что эти баллы.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">user_points</span><span class="p">(</span>
+    <span class="n">user_id</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+    <span class="n">points</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="n">d</span><span class="err">е</span><span class="n">fault</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="n">reason</span> <span class="nb">text</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Начислим каждому пользователю десять раз случайное число баллов:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">user_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">,</span> <span class="n">reason</span><span class="p">)</span>
+<span class="k">select</span>
+    <span class="n">n</span> <span class="o">/</span> <span class="mi">10</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="p">(</span><span class="n">random</span><span class="p">()</span> <span class="o">*</span> <span class="n">n</span><span class="p">)::</span><span class="nb">int</span> <span class="o">%</span> <span class="mi">100</span><span class="p">,</span>
+    <span class="n">format</span><span class="p">(</span><span class="s1">'iteration %s'</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="k">from</span>
+    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1000000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">n</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Объявим материализованную вьюху. Ее запрос выбирает сумму баллов с группировкой
+по коду пользователя:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="n">materialized</span> <span class="k">view</span> <span class="n">mv_user_rating</span> <span class="k">as</span>
+<span class="k">select</span>
+    <span class="n">user_id</span><span class="p">,</span> <span class="k">sum</span><span class="p">(</span><span class="n">points</span><span class="p">)</span> <span class="k">as</span> <span class="n">total_points</span>
+<span class="k">from</span> <span class="n">user_points</span>
+<span class="k">group</span> <span class="k">by</span> <span class="n">user_id</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Обновим ее:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">refresh</span> <span class="n">materialized</span> <span class="k">view</span> <span class="n">mv_user_rating</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Добавим индекс по убыванию общего числа баллов и обновим его:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">idx_mv_total_points</span> <span class="k">on</span> <span class="n">mv_user_rating</span>
+    <span class="k">using</span> <span class="n">btree</span> <span class="p">(</span><span class="n">total_points</span> <span class="k">desc</span><span class="p">);</span>
+
+<span class="k">analyze</span> <span class="n">mv_user_rating</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Теперь к сути: выберем топ-100 записей из вьюхи по убыванию суммы
+баллов. Подцепим джоином пользователей, выберем их имена. Запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
+    <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="k">as</span> <span class="n">user_id</span><span class="p">,</span>
+    <span class="n">u</span><span class="p">.</span><span class="n">name</span> <span class="k">as</span> <span class="n">user_name</span><span class="p">,</span>
+    <span class="n">mv</span><span class="p">.</span><span class="n">total_points</span> <span class="k">as</span> <span class="n">total_points</span>
+<span class="k">from</span>
+    <span class="n">mv_user_rating</span> <span class="n">mv</span><span class="p">,</span>
+    <span class="n">users</span> <span class="n">u</span>
+<span class="k">where</span>
+    <span class="n">mv</span><span class="p">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span>
+<span class="k">order</span> <span class="k">by</span>
+    <span class="n">mv</span><span class="p">.</span><span class="n">total_points</span> <span class="k">desc</span>
+<span class="k">limit</span>
+    <span class="mi">100</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Частичный результат:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─────────┬────────────┬────────┐
+│ user_id │ user_name  │ points │
+├─────────┼────────────┼────────┤
+│      96 │ User 96    │   1225 │
+│      45 │ User 45    │   1185 │
+│      85 │ User 85    │   1169 │
+│      10 │ User 10    │   1140 │
+│      33 │ User 33    │   1138 │
+│      80 │ User 80    │   1135 │
+│      48 │ User 48    │   1133 │
+│      53 │ User 53    │   1121 │
+│      11 │ User 11    │   1119 │
+│      91 │ User 91    │   1099 │
+│      79 │ User 79    │   1096 │
+│      56 │ User 56    │   1090 │
+│      72 │ User 72    │   1089 │
+│      31 │ User 31    │   1088 │
+│      40 │ User 40    │   1072 │
+│      97 │ User 97    │   1070 │
+│      65 │ User 65    │   1068 │
+│      42 │ User 42    │   1058 │
+│      43 │ User 43    │   1057 │
+│      78 │ User 78    │   1054 │
+│      63 │ User 63    │   1053 │
+│      54 │ User 54    │   1049 │
+│      93 │ User 93    │   1031 │
+│      29 │ User 29    │   1029 │
+│      51 │ User 51    │   1028 │
+│     100 │ User 100   │   1027 │
+│      98 │ User 98    │   1021 │
+│      69 │ User 69    │   1014 │
+│      28 │ User 28    │   1003 │
+│      67 │ User 67    │    994 │
+│      60 │ User 60    │    990 │
+│      21 │ User 21    │    987 │
+│      58 │ User 58    │    986 │
+│      26 │ User 26    │    984 │
+</code></pre></div></div>
+
+<p>Будет ли он тормозить? Посмотрим план:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>explain analyze
+select
+    u.id as user_id,
+    u.name as user_name,
+    mv.total_points as total_points
+from
+    mv_user_rating mv,
+    users u
+where
+    mv.user_id = u.id
+order by
+    mv.total_points desc
+limit
+    100;
+
+├────────────────────────────────────────
+│ Limit  (cost=0.58..38.88 rows=100 width
+│   -&gt;  Nested Loop  (cost=0.58..38292.36
+│         -&gt;  Index Scan using idx_mv_tot
+│         -&gt;  Index Scan using users_pkey
+│               Index Cond: (id = mv.user
+│ Planning Time: 0.286 ms
+│ Execution Time: 0.368 ms
+└────────────────────────────────────────
+</code></pre></div></div>
+
+<p>Обе таблицы попадают в индексы, стоимость – копейки. Поэтому ответ – не будет.</p>
+
+<p>Теперь дело за тем, как обновлять вьюху. У материализованных вьюх особенность:
+во время обновления она недоступна. Можно обновлять их параллельно при помощи
+<code class="language-plaintext highlighter-rouge">refresh materialized view concurrently</code>. Это медленней, зато не блокирует
+чтение. Попытаемся:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">refresh</span> <span class="n">materialized</span> <span class="k">view</span> <span class="n">concurrently</span> <span class="n">mv_user_rating</span><span class="p">;</span>
+
+<span class="n">ERROR</span><span class="p">:</span>  <span class="n">cannot</span> <span class="n">refresh</span> <span class="n">materialized</span> <span class="k">view</span> <span class="nv">"public.mv_user_rating"</span> <span class="n">concurrently</span>
+<span class="n">HINT</span><span class="p">:</span>  <span class="k">Create</span> <span class="n">a</span> <span class="k">unique</span> <span class="k">index</span> <span class="k">with</span> <span class="k">no</span> <span class="k">WHERE</span> <span class="n">clause</span>
+       <span class="k">on</span> <span class="n">one</span> <span class="k">or</span> <span class="k">more</span> <span class="n">columns</span> <span class="k">of</span> <span class="n">the</span> <span class="n">materialized</span> <span class="k">view</span><span class="p">.</span>
+</code></pre></div></div>
+
+<p>Что такое? Дело в том, что для concurrently нужен хотя бы один уникальный
+индекс. По нему обновление вьюхи отслеживает свой прогресс. Добавим такой
+индекс:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">unique</span> <span class="k">index</span> <span class="n">idx_uq_mv_user_rating_user_id</span>
+    <span class="k">on</span> <span class="n">mv_user_rating</span><span class="p">(</span><span class="n">user_id</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Теперь параллельное обновление работает:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">refresh</span> <span class="n">materialized</span> <span class="k">view</span> <span class="n">concurrently</span> <span class="n">mv_user_rating</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Как сделать обновление регулярным? Поможет стороннее расширение <code class="language-plaintext highlighter-rouge">pg_cron</code>. Из
+коробки его нет, но оно доступно во всех пакетах и установлено почти у всех
+облачных провайдеров. После установки включите его:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="n">extension</span> <span class="n">pg_cron</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Добавьте задачу на расписание:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span> <span class="n">cron</span><span class="p">.</span><span class="n">schedule</span><span class="p">(</span>
+    <span class="s1">'cron_job_refresh_user_rating'</span><span class="p">,</span>
+    <span class="s1">'refresh materialized view concurrently mv_user_rating;'</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>В результате каждый час вьюха будет обновляться параллельно. Для проверки
+регулярных задач и их истории служат специальные таблицы.</p>
+
+<p>Это был прогрев. Напомню, что мы сделали послабление: обновляем рейтинг каждый
+час, а не мгновенно. Пора это исправить.</p>
+
+<p>Вьюха становится не нужна, ее можно удалить. Вместо нее создайте таблицу
+аналогичной структуры:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">user_total_points</span><span class="p">(</span>
+    <span class="n">user_id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">total_points</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="n">d</span><span class="err">е</span><span class="n">fault</span> <span class="mi">0</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Чтобы начислить пользователю баллы и одновременно изменить его рейтинг, нужно
+сделать два действия. Первое – записать баллы в таблицу <code class="language-plaintext highlighter-rouge">user_points</code> как мы
+делали это раньше. Второе – если в итоговой таблице есть пользователь, прибавить
+баллы к тем, что есть. Если нет – вписать туда пользователя и начальные баллы.</p>
+
+<p>На этом месте говорят “триггеры”, и зря. Триггеры – слишком сложный
+инструмент. Они слишком строгие, и порой это неудобно, например в разработке, в
+тестах, в моделировании ситуаций. Ниже мы решим задачу без триггеров.</p>
+
+<p>Предположим, пользователю 999 начислено 100 баллов. Первый запрос будет таким:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">user_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
+<span class="k">values</span> <span class="p">(</span><span class="mi">999</span><span class="p">,</span> <span class="mi">100</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Второй – посложнее. Это UPSERT в таблицу рейтинга, который либо вставляет
+данные, либо обновляет их:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">user_total_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">total_points</span><span class="p">)</span>
+  <span class="k">values</span> <span class="p">(</span><span class="mi">999</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+  <span class="k">on</span> <span class="n">conflict</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
+  <span class="k">do</span> <span class="k">update</span>
+  <span class="k">set</span> <span class="n">total_points</span> <span class="o">=</span> <span class="n">user_total_points</span><span class="p">.</span><span class="n">total_points</span>
+    <span class="o">+</span> <span class="n">excluded</span><span class="p">.</span><span class="n">total_points</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Все это делается в транзакции, чтобы не допустить частичных изменений.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">begin</span><span class="p">;</span>
+<span class="c1">-- query 1;</span>
+<span class="c1">-- query 2;</span>
+<span class="k">commit</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Выполним транзакцию два раза. В истории баллов будет две записи по 100, а в
+таблице рейтинга – их сумма 200.</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select * from user_points;
+┌─────────┬────────┬────────┐
+│ user_id │ points │ reason │
+├─────────┼────────┼────────┤
+│     999 │    100 │ &lt;null&gt; │
+│     999 │    100 │ &lt;null&gt; │
+└─────────┴────────┴────────┘
+
+select * from user_total_points;
+┌─────────┬──────────────┐
+│ user_id │ total_points │
+├─────────┼──────────────┤
+│     999 │          200 │
+└─────────┴──────────────┘
+</code></pre></div></div>
+
+<p>Транзакцию можно опустить, если переписать запрос на CTE. У таких запросов
+особенность – все они видят один снимок данных и выполняются атомарно. Это
+удобно, потому что транзакцию begin/end легко потерять, а в случае CTE это
+невозможно.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span>
+<span class="n">step_1</span> <span class="k">as</span> <span class="p">(</span>
+    <span class="k">insert</span> <span class="k">into</span> <span class="n">user_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
+    <span class="k">values</span> <span class="p">(</span><span class="mi">999</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">user_total_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">total_points</span><span class="p">)</span>
+    <span class="k">values</span> <span class="p">(</span><span class="mi">999</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+<span class="k">on</span> <span class="n">conflict</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
+    <span class="k">do</span> <span class="k">update</span>
+    <span class="k">set</span> <span class="n">total_points</span> <span class="o">=</span> <span class="n">user_total_points</span><span class="p">.</span><span class="n">total_points</span>
+        <span class="o">+</span> <span class="n">excluded</span><span class="p">.</span><span class="n">total_points</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Выполним его три раза, и в таблице рейтинга окажется значение 500:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─────────┬────────┬────────┐
+│ user_id │ points │ reason │
+├─────────┼────────┼────────┤
+│     999 │    100 │ &lt;null&gt; │
+│     999 │    100 │ &lt;null&gt; │
+│     999 │    100 │ &lt;null&gt; │
+│     999 │    100 │ &lt;null&gt; │
+│     999 │    100 │ &lt;null&gt; │
+└─────────┴────────┴────────┘
+
+select * from user_total_points;
+
+┌─────────┬──────────────┐
+│ user_id │ total_points │
+├─────────┼──────────────┤
+│     999 │          500 │
+└─────────┴──────────────┘
+</code></pre></div></div>
+
+<p>Если в базу пишут клиенты из разных систем, им будет неудобно таскать за собой
+этот запрос. Сделаем так: напишем функцию, которая принимает код пользователя и
+сколько баллов добавить. Функция возвращает суммарные баллы после всех
+изменений. Вот она:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">or</span> <span class="k">replace</span> <span class="k">function</span> <span class="n">func_add_points</span>
+    <span class="p">(</span><span class="n">user_id</span> <span class="nb">integer</span><span class="p">,</span> <span class="n">points</span> <span class="nb">integer</span><span class="p">)</span>
+<span class="k">returns</span> <span class="nb">integer</span>
+<span class="k">as</span> <span class="err">$$</span>
+<span class="k">with</span> <span class="n">step_1</span> <span class="k">as</span> <span class="p">(</span>
+    <span class="k">insert</span> <span class="k">into</span> <span class="n">user_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
+    <span class="k">values</span> <span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">user_total_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">total_points</span><span class="p">)</span>
+    <span class="k">values</span> <span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
+<span class="k">on</span> <span class="n">conflict</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span> <span class="k">do</span> <span class="k">update</span>
+    <span class="k">set</span> <span class="n">total_points</span> <span class="o">=</span> <span class="n">user_total_points</span><span class="p">.</span><span class="n">total_points</span>
+        <span class="o">+</span> <span class="n">excluded</span><span class="p">.</span><span class="n">total_points</span>
+<span class="n">returning</span>
+    <span class="n">total_points</span>
+<span class="err">$$</span>
+<span class="k">language</span> <span class="k">sql</span> <span class="k">strict</span> <span class="n">parallel</span> <span class="n">safe</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Теперь клиенты вызывают функцию select <code class="language-plaintext highlighter-rouge">func_add_points(1234, 500)</code>, а что
+внутри – их не касается. Функцию удобно вызывать из psql, если это баш-скрипт.</p>
+
+<p>Вот как накинуть баллы – и одновременно изменить рейтинг – некоторым
+пользователям из диапазона:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select
+    n as user_id,
+    func_add_points(n, n * 5)
+    as total
+from
+    generate_series(25, 50) seq(n);
+
+┌─────────┬───────┐
+│ user_id │ total │
+├─────────┼───────┤
+│      25 │   125 │
+│      26 │   130 │
+│      27 │   135 │
+│      28 │   140 │
+│      29 │   145 │
+│      30 │   150 │
+│      31 │   155 │
+│      32 │   160 │
+│      33 │   165 │
+│      34 │   170 │
+│      35 │   175 │
+│      36 │   180 │
+│      37 │   185 │
+│      38 │   190 │
+│      39 │   195 │
+│      40 │   200 │
+│      41 │   205 │
+│      42 │   210 │
+│      43 │   215 │
+│      44 │   220 │
+│      45 │   225 │
+│      46 │   230 │
+│      47 │   235 │
+│      48 │   240 │
+│      49 │   245 │
+│      50 │   250 │
+└─────────┴───────┘
+</code></pre></div></div>
+
+<p>Функцию можно вызывать параллельно. Давайте накинем баллов пользователю 1003 и
+посмотрим на результат:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select
+    user_id,
+    points,
+    func_add_points(user_id, points)
+    as total
+from (values
+    (1003, 3),
+    (1003, 2),
+    (1003, 1),
+    (1003, 5),
+    (1003, 7))
+    as vals(user_id, points);
+
+┌─────────┬────────┬────────┐
+│ user_id │ points │ total  │
+├─────────┼────────┼────────┤
+│    1003 │      3 │      3 │
+│    1003 │      2 │      5 │
+│    1003 │      1 │      6 │
+│    1003 │      5 │     11 │
+│    1003 │      7 │     18 │
+└─────────┴────────┴────────┘
+</code></pre></div></div>
+
+<p>Видим, что итоговая сумма приращивалась каждый раз правильно.</p>
+
+<p>Теперь делаем то же самое, что и со вьюхой. Добавим индекс по убыванию баллов:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">idx_total_points</span> <span class="k">on</span> <span class="n">user_total_points</span>
+    <span class="k">using</span> <span class="n">btree</span> <span class="p">(</span><span class="n">total_points</span> <span class="k">desc</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Выберем из таблицы рейтинга топ-100 записей, приклеим пользователей и готово:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select
+    u.id as user_id,
+    u.name as user_name,
+    total.total_points as total_points
+from
+    user_total_points total,
+    users u
+where
+    total.user_id = u.id
+order by
+    total.total_points desc
+limit
+    100;
+
+┌─────────┬───────────┬───────┐
+│ user_id │ user_name │ total │
+├─────────┼───────────┼───────┤
+│     999 │ User 999  │  1500 │
+│      50 │ User 50   │   250 │
+│      49 │ User 49   │   245 │
+│      48 │ User 48   │   240 │
+│      47 │ User 47   │   235 │
+│      46 │ User 46   │   230 │
+│      45 │ User 45   │   225 │
+│      44 │ User 44   │   220 │
+│      43 │ User 43   │   215 │
+│      42 │ User 42   │   210 │
+│      41 │ User 41   │   205 │
+│      40 │ User 40   │   200 │
+│      39 │ User 39   │   195 │
+│      38 │ User 38   │   190 │
+│      37 │ User 37   │   185 │
+│      36 │ User 36   │   180 │
+│      35 │ User 35   │   175 │
+│      34 │ User 34   │   170 │
+│      33 │ User 33   │   165 │
+│      32 │ User 32   │   160 │
+│      31 │ User 31   │   155 │
+│      30 │ User 30   │   150 │
+│      29 │ User 29   │   145 │
+│      28 │ User 28   │   140 │
+│      27 │ User 27   │   135 │
+│      26 │ User 26   │   130 │
+│      25 │ User 25   │   125 │
+└─────────┴───────────┴───────┘
+</code></pre></div></div>
+
+<p>Одно из улучшений вот в чем. Выше у каждого пользователя разное число баллов, и
+нет случаев, когда двое участников делят одно место. Давайте добавим
+пользователю 49 пять баллов, чтобы уравнять его с пользователем 50:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select func_add_points(49, 5);
+
+┌─────────────────┐
+│ func_add_points │
+├─────────────────┤
+│             250 │
+└─────────────────┘
+</code></pre></div></div>
+
+<p>Их место будет неоднозначно: мы сортируем по убыванию суммы баллов, но если
+значения равны, порядок записей не гарантируется. Чтобы участники не спорили,
+кто на втором, а кто на третьем месте, вычислим плотный ранг. Это оконная
+функция, которая учитывает поля с одинаковым значением. Обычный ранг нумерует
+записи подряд, а плотный – с учетом повторов. Запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
+    <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="k">as</span> <span class="n">user_id</span><span class="p">,</span>
+    <span class="n">u</span><span class="p">.</span><span class="n">name</span> <span class="k">as</span> <span class="n">user_name</span><span class="p">,</span>
+    <span class="n">total</span><span class="p">.</span><span class="n">total_points</span> <span class="k">as</span> <span class="n">total_points</span><span class="p">,</span>
+    <span class="n">dense_rank</span><span class="p">()</span> <span class="n">over</span> <span class="n">w</span> <span class="k">as</span> <span class="n">rank</span>
+<span class="k">from</span>
+    <span class="n">user_total_points</span> <span class="n">total</span><span class="p">,</span>
+    <span class="n">users</span> <span class="n">u</span>
+<span class="k">where</span>
+    <span class="n">total</span><span class="p">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span>
+<span class="n">window</span>
+    <span class="n">w</span> <span class="k">as</span> <span class="p">(</span><span class="k">order</span> <span class="k">by</span> <span class="n">total_points</span> <span class="k">desc</span><span class="p">)</span>
+<span class="k">order</span> <span class="k">by</span>
+    <span class="n">total_points</span> <span class="k">desc</span>
+<span class="k">limit</span>
+    <span class="mi">100</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Результат:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─────────┬───────────┬───────┬──────┐
+│ user_id │ user_name │ total │ rank │
+├─────────┼───────────┼───────┼──────┤
+│     999 │ User 999  │  1500 │    1 │
+│      50 │ User 50   │   250 │    2 │
+│      49 │ User 49   │   250 │    2 │
+│      48 │ User 48   │   240 │    3 │
+│      47 │ User 47   │   235 │    4 │
+│      46 │ User 46   │   230 │    5 │
+│      45 │ User 45   │   225 │    6 │
+│      44 │ User 44   │   220 │    7 │
+│      43 │ User 43   │   215 │    8 │
+│      42 │ User 42   │   210 │    9 │
+│      41 │ User 41   │   205 │   10 │
+│      40 │ User 40   │   200 │   11 │
+│      39 │ User 39   │   195 │   12 │
+│      38 │ User 38   │   190 │   13 │
+│      37 │ User 37   │   185 │   14 │
+│      36 │ User 36   │   180 │   15 │
+│      35 │ User 35   │   175 │   16 │
+│      34 │ User 34   │   170 │   17 │
+</code></pre></div></div>
+
+<p>Теперь участники 49 и 50 делят второе место, и неоднозначность ушла.</p>
+
+<p>Собственно, вот как решить эту задачу силами SQL. Не понадобились кафки,
+распределенные кэши и все остальное. Схема простая и быстрая, ее легко
+объяснить.</p>
+
+<p>Любите Постгрес! Учите Пострес! Всем любви и добра.</p>
+
+<p>Код: https://gist.github.com/igrishaev/7d171d6c4882e922d81469c2e556345c</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/specific-lang/">&larr; На чем писать</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/ui-gap/">Щели в интерфейсе &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/989">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/sql-rating/">
+    <input required name="captcha" type="hidden" value="9 &#215; 6">
+
+    <div class="block">
+        <span class="comment-form-label"><small>9 &#215; 6 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
