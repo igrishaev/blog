@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Совет дня №15</title>
+  <meta name="description" content="Пагинация, продолжение.">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/tip-015-pg/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Совет дня №15</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-23T00:00:00+00:00">
+        Jan 23, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Пагинация, продолжение.</p>
+
+<p>Вернемся к случаю, когда нужна пагинация по убыванию времени <code class="language-plaintext highlighter-rouge">(created_at,
+updated_at)</code> и так далее. Этот критерий встречается так часто, что для него есть
+лазейка.</p>
+
+<p>В прошлый раз мы использовали кортеж <code class="language-plaintext highlighter-rouge">(created_at, id)</code>. Идея в том, что
+поскольку <code class="language-plaintext highlighter-rouge">created_at</code> не уникален, он не дает точного положения в таблице. Но
+так как id уникален, их комбинация – тоже уникальна.</p>
+
+<p>От кортежа можно избавиться, если в качестве ID используется UUID v7. Дело в
+том, что v7 совмещает в себе эти два свойства: время и уникальность. Существуют
+разные подвиды UUID v7, но не зависимо от них пагинация будет:</p>
+
+<ul>
+  <li>точно попадать в границы;</li>
+  <li>использовать btree индекс.</li>
+</ul>
+
+<p>Итак, если у вас API и нужна пагинация, ваши варианты:</p>
+
+<ul>
+  <li>
+    <p>limit и offset; убедитесь, что offset не превышает какого-то разумного числа,
+например тысячи. Иначе вас будут парсить.</p>
+  </li>
+  <li>
+    <p>keyset: комбинация полей <code class="language-plaintext highlighter-rouge">(some_field + id)</code> для уникальности. Требует
+отдельного индекса.</p>
+  </li>
+  <li>
+    <p>UUIDv7 – если требуется пагинация по <code class="language-plaintext highlighter-rouge">created_at</code>. Это частый случай, поэтому
+рассмотрите его.</p>
+  </li>
+</ul>
+
+<p>Перейдем к пагинации, которая используется не в API, а для служебных
+нужд. Например, в миграциях, переносе данных и так далее. Нужно обойти огромную
+таблицу, при этом выгрузить ее в память нельзя – слишком большая (например, 100
+миллионов записей).</p>
+
+<p>Один из способов – использовать курсор и FETCH API. Апишка у него довольно
+простая:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">BEGIN</span><span class="p">;</span>
+
+<span class="k">DECLARE</span> <span class="n">cur_foo</span> <span class="k">CURSOR</span> <span class="k">FOR</span> <span class="k">SELECT</span> <span class="o">*</span> <span class="k">FROM</span> <span class="n">items</span><span class="p">;</span>
+
+<span class="k">FETCH</span> <span class="k">FORWARD</span> <span class="mi">100</span> <span class="k">FROM</span> <span class="n">cur_foo</span><span class="p">;</span>
+<span class="k">FETCH</span> <span class="k">FORWARD</span> <span class="mi">100</span> <span class="k">FROM</span> <span class="n">cur_foo</span><span class="p">;</span>
+<span class="k">FETCH</span> <span class="k">FORWARD</span> <span class="mi">100</span> <span class="k">FROM</span> <span class="n">cur_foo</span><span class="p">;</span>
+<span class="p">...</span>
+<span class="k">CLOSE</span> <span class="n">cur_foo</span><span class="p">;</span>
+<span class="k">COMMIT</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Объявляем курсор, затем в цикле вытягиваем по 100 записей, пока результат не
+пустой. В конце закрываем курсор.</p>
+
+<p>Казалось бы, вот он – святой Грааль. Но беда в том, что курсор требует
+транзакции. В момент открытия он запоминает текущий снимок (номер транзакции) и
+просматривает записи, версия которых не превышает его. Чтобы пользоваться
+курсором, нужно держать транзакцию в течение всего цикла. Для больших таблиц это
+дорого, поэтому подходит только для всяких ночных скриптов.</p>
+
+<p>Кроме того, курсор привязан к конкретному соединению с БД. Использовать их в
+HTTP API невозможно.</p>
+
+<p>Другой способ обойти большую таблицу – сдампить ее в файл при помощи COPY
+(см. <a href="/tip-006-pg/">прошлый совет</a>). Чтобы таблица не заняла весь диск, ее
+сжимают в gzip. В результате у вас оказывается файл <code class="language-plaintext highlighter-rouge">my_table.gzip</code>, вы
+отрываете его и спокойно парсите. Идея в том, чтобы забрать данные из базы как
+можно скорее и потом не мучить ее пагинацией. Если скрипт упадет, не придется
+насиловать базу снова – у вас уже есть файл.</p>
+
+<p>Третий способ – использовать драйвер, который позволяет обрабатывать записи в
+полете. Например, мой <a href="https://github.com/igrishaev/pg2">pg2</a>. Функция <code class="language-plaintext highlighter-rouge">execute</code> принимает запрос и всякие
+опции. Среди прочих можно передать редьюсер – функцию трех тел:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(fn
+  ([]
+   (make-acc ...))
+  ([acc row]
+   (conj acc row))
+  ([acc]
+   (finalize acc)))
+</code></pre></div></div>
+
+<p>Тело без аргументов – инициатор аккумулятора (может быть мутабельным), тело с
+одним аргументом – финализатор аккумулятора, с двумя – приращение записи к
+аккумулятору. Из коробки доступны разные редьюсеры (см документацию). Легко
+написать свой, который будет отправлять каждую строку в сеть, в асинхронный
+канал и так далее. И все это – в полете, то есть по мере получения сообщений от
+Postgres, без исчерпания всей памяти.</p>
+
+<p>Полагаю, это все, что можно сказать про пагинацию.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/tip-014-pg/">&larr; Совет дня №14</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/1011">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/tip-015-pg/">
+    <input required name="captcha" type="hidden" value="8 &#215; 8">
+
+    <div class="block">
+        <span class="comment-form-label"><small>8 &#215; 8 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
