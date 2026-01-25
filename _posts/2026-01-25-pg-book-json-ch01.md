@@ -2,7 +2,7 @@
 layout: post
 title: "Глава 1. Введение в документы"
 permalink: /pg-book-json-ch01/
-tags: postgres json book
+tags: postgres json book sql
 telegram_id:
 ---
 
