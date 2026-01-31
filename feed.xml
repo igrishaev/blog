@@ -6,9 +6,409 @@
 </description>
     <link>https://grishaev.me/</link>
     <atom:link href="https://grishaev.me/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Mon, 26 Jan 2026 16:34:50 +0000</pubDate>
-    <lastBuildDate>Mon, 26 Jan 2026 16:34:50 +0000</lastBuildDate>
+    <pubDate>Sat, 31 Jan 2026 17:18:20 +0000</pubDate>
+    <lastBuildDate>Sat, 31 Jan 2026 17:18:20 +0000</lastBuildDate>
     <generator>Jekyll v4.2.0</generator>
+    
+      <item>
+        <title>Совет дня №20</title>
+        <description>&lt;p&gt;В прошлый раз мы говорили вот о чем. Когда мы изучаем план запроса, то смотрим,
+было ли попадание в индекс. Однако бывает подвох: индекс был, да не тот.&lt;/p&gt;
+
+&lt;p&gt;Скажем, есть запрос: показать топ-100 активных заказов по убыванию
+даты. Пожалуйста:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;orders&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;status&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'active'&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;order&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;by&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;created_at&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;desc&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;limit&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;100&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Для поля status создан индекс &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;idx_orders_status&lt;/code&gt;, для &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;created_at&lt;/code&gt; —
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;idx_orders_created_at&lt;/code&gt; (по убыванию).&lt;/p&gt;
+
+&lt;p&gt;Смотрим &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;EXPLAIN&lt;/code&gt;, а там примерно такое:&lt;/p&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;limit: 100
+  filter scan condition: status = 'active'
+    index scan idx_orders_created_at: desc
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Разработчик смотрит: index scan был? Был. Вот и ладушки.&lt;/p&gt;
+
+&lt;p&gt;На самом деле произошло вот что. Вместо того, чтобы взять только активные заказы
+и отсортировать их, Postgres сделал обратное. Он пошел по всей таблице (full
+scan), просто не в случайном порядке (как записи лежат на диске), а согласно
+индексу. При этом записи были отобраны вручную: для каждой из них выполнялась
+проверка status = ‘active’. Фактически это был full scan, только в другом
+порядке.&lt;/p&gt;
+
+&lt;p&gt;В идеале нам нужен другой план:&lt;/p&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;limit: 100
+  in-memory sort, key: created_at (desc)
+    index scan idx_orders_status condition: status = 'active'
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Этот план читают так. Сначала Postgres выбирает активные заказы по
+индексу. Ожидается, что в таблице много завершенных заказов, поэтому у активных
+будет высокая селективность. Далее эти заказы сортируются в памяти по created_at
+(уже без всякого индекса) и берутся первые сто.&lt;/p&gt;
+
+&lt;p&gt;Почему был первый план, а не второй? Во-первых, индекса на &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;status&lt;/code&gt; может не
+быть. Если он есть, у значения active низкая селективность: доля активных
+заказов высокая. Может быть, настало время обновить статистику командой
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;analyze&lt;/code&gt;, и значение &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;active&lt;/code&gt; уйдет из массива частых значений, которые нельзя
+брать в индекс. Наконец, можно признать, что тут ничего не поделаешь и мы
+согласы жить с первым планом, а не вторым. Возможны и другие варианты, их
+смотрят по ситуации.&lt;/p&gt;
+
+&lt;p&gt;Общий принцип такой. Часто фильтры и сортировка тянут одеяло на себя. Postgres
+должен решить, что выгоднее: отсортировать по индексу и пройтись вручную или
+наоборот: сначала отсечь по индексу и отсортировать в памяти. Второй вариант
+предпочтительней: когда выборка мала, любая операция над ней дешева: сортировка,
+группировка и так далее. Стремитесь к тому, чтобы &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;WHERE&lt;/code&gt; отсекал как можно
+больше записей, и только потом вступали в действие другие операции.&lt;/p&gt;
+</description>
+        <pubDate>Sat, 31 Jan 2026 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/tip-020-pg/</link>
+        <guid isPermaLink="true">https://grishaev.me/tip-020-pg/</guid>
+        
+        <category>postgres</category>
+        
+        <category>sql</category>
+        
+        
+      </item>
+    
+      <item>
+        <title>Совет дня №19</title>
+        <description>&lt;p&gt;Чтобы узнать план запроса, предварите его командой &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;EXPLAIN&lt;/code&gt;:&lt;/p&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;explain select * from applications;
+
+Seq Scan on applications
+  (cost=0.00..359524.33 rows=965633 width=1745)
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Эта команда НЕ выполнит запрос, а только вернет его план и приблизительные
+оценки.&lt;/p&gt;
+
+&lt;p&gt;План представляет дерево узлов; вложенность определяется пробелами слева. План
+читают от вложенных узлов к корню. Графические программы вроде PGAdmin
+показывают его в виде графа. У каждого узла как минимум три характеристики:
+стоимость (cost), число записей (rows) и средняя длина строки (width).&lt;/p&gt;
+
+&lt;p&gt;Стоимость (cost) – это условные попугаи, в которых измеряется каждая операция. С
+помощью глобальных настроек можно задать свою стоимость некоторым операциям, но
+обычно это ни к чему. Кроме того, стоимость можно задать функциям при их
+объявлении.&lt;/p&gt;
+
+&lt;p&gt;Число записей (rows) – ожидаемое число записей, которые произведет узел. Для них
+рассчитана средняя длина в байтах. Эти числа берутся из статистики и могут быть
+неточны.&lt;/p&gt;
+
+&lt;p&gt;Стоимость выражается двумя цифрами: X..Y. Первая цифра – столько усилий уйдет на
+то, чтобы произвести первую запись. Вторая – последнюю, то есть все остальное.&lt;/p&gt;
+
+&lt;p&gt;Зачем две цифры? Дело в том, что даже когда запрос производит много записей,
+важно знать, сколько усилий требует предварительная работа. Например, у обхода
+большой таблицы первый кост маленький, а второй – большой. Это нормально, потому
+что записи передаются следующему узлу без задержки. Если же добавить
+группировку, то следующий узел не получит данные, пока не выполнится
+группировка. Из-за этого первый кост будет большим. В идеале нужно держать его
+маленьким, чтобы клиент сразу начал получать строки.&lt;/p&gt;
+
+&lt;p&gt;У команды explain много параметров, чтобы собрать дополнительные метрики
+узлов. Например, время в секундах, число прочитанных страниц, попадание в
+буферный кэш. Самый важный параметр называется &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ANALYZE&lt;/code&gt;. С ним запрос будет
+выполнен, и метрики будут реальными, а не оценочными.&lt;/p&gt;
+
+&lt;p&gt;Модуль &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;auto_explain&lt;/code&gt; автоматически логирует план запросов, которые выполнялись
+дольше порога, например одной секунды. Иногда его включают на проде.&lt;/p&gt;
+
+&lt;p&gt;Читать план тяжело, этот навык приходит с годами. Вы должны точно понимать,
+какую информацию ищете и почему ее там нет. В простом случае вас интересует,
+использовался ли индекс. Вы запускаете explain analyze и смотрите, был ли узел с
+типом “index scan”.&lt;/p&gt;
+
+&lt;p&gt;Узел “index only scan” означает, что данные получены из индекса без обращения к
+таблице. Это самый жир, лучше которого ничего не бывает. Узел “bitmap index
+scan” означает построение битовой карты, где каждый бит — номер блока. Такой
+обход используется для совмещения нескольких индексов, и он тоже хорош.&lt;/p&gt;
+
+&lt;p&gt;Узел “full seq scan” означает полный обход таблицы. Это нормально, если таблица
+мала или нужна ее большая часть. Если вы рассчитывали на индекс, это повод
+пересмотреть его.&lt;/p&gt;
+</description>
+        <pubDate>Sat, 31 Jan 2026 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/tip-019-pg/</link>
+        <guid isPermaLink="true">https://grishaev.me/tip-019-pg/</guid>
+        
+        <category>postgres</category>
+        
+        <category>sql</category>
+        
+        
+      </item>
+    
+      <item>
+        <title>Совет дня №18</title>
+        <description>&lt;p&gt;Когда Postgres выполняет запрос, он строит план. Это сложная задача: сперва
+нужно распрасить запрос, построить дерево, проверить синтаксис. Затем строится
+логический план: здесь некоторые шаги разбиваются на подшаги, а другие,
+наоборот, группируются в один. На последнем этапе выводится физический план: в
+какую таблицу пойти, брать индекс или нет, в каком порядке выполнить джоины.&lt;/p&gt;
+
+&lt;p&gt;Парсинг запроса протекает достаточно быстро, потому что это чистая
+функция. Физический план, наоборот, дорогой. Вспомним: для того, чтобы
+определить, использовать индекс или нет, Postgres должен проверить, сколько в
+среднем строк в таблице; если она маленькая, проще сделать full scan. Далее
+нужно проверить, не является ли значение частым (с низкой селективностью). При
+анализе джоинов число комбинаций растет факториалом, поэтому Postgres применяет
+разные эвристики.&lt;/p&gt;
+
+&lt;p&gt;Подготовленное выражение – это запрос, который прошел этапы выше, и для него
+построен план. Далее его можно выполнить с разными параметрами, и (в идеале)
+план будет переиспользоваться. В идеале – потому что даже когда подготовленное
+выражение готово, оно не гарантирует применения плана. Если параметров нет,
+Postgres использует план. Если выражение вызывается с разными параметрами,
+Postgres ведет хеш-таблицу: параметры -&amp;gt; план -&amp;gt; время. Для одинаковых
+параметров план будет один и тот же. Накопив пять вызовов с разными параметрами,
+Postgres наконец-то определится с планом (с минимальным временем), и далее он
+используется всегда.&lt;/p&gt;
+
+&lt;p&gt;Некоторые клиенты к Postgres ведут свой кэш вида SQL -&amp;gt;
+preparedStatement. Каждый раз когда выполняется запрос, клиент ищет айди
+подготовленного выражения во внутреннем кэше. Если он есть, вызывается команда
+“выполни выражение foobar с такими-то параметрами” (аналог execute). Если
+Postgres ругнулся, что такого выражения нет, эта ошибка перехватывается, и
+посылается команда “тогда подготовь этот SQL и назначь ему имя foobar”. Далее
+все повторяется.&lt;/p&gt;
+
+&lt;p&gt;Подготовленные выражения живут в рамках одного соединения с БД. Это особенно
+важно для пула соединений: когда мы выполняем запросы, то заимствуем подключение
+из пула, и они могут быть разными. Клиент учитывает это: кэш подготовленных
+выражений ведется в разрезе подключения. По мере ротации подключений
+подготовленные выражения распространяются по ним.&lt;/p&gt;
+
+&lt;p&gt;Пожалуй, в этом совете нечего взять на заметку, разве что подумать, сколько
+работы делают клиентские библиотеки помимо основных обязанностей. Заодно это
+плавный переход к теме планов и их анализа.&lt;/p&gt;
+</description>
+        <pubDate>Sat, 31 Jan 2026 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/tip-018-pg/</link>
+        <guid isPermaLink="true">https://grishaev.me/tip-018-pg/</guid>
+        
+        <category>postgres</category>
+        
+        <category>sql</category>
+        
+        
+      </item>
+    
+      <item>
+        <title>Совет дня №17</title>
+        <description>&lt;p&gt;Наверное, вы много слышали про UUID версии 7. Дело в том, что недавно его
+утвердили окончательно, и он появился в Postgres 18. До этого люди писали свой
+UUID на коленке, но теперь все официально.&lt;/p&gt;
+
+&lt;p&gt;В целом UUID – это контейнер из 128 бит. Первые несколько содержат информацию о
+версии, остальное заполняется в зависимости от нее. Самый популярный стандарт
+сегодня – UUID 4, который полностью случаен. Есть и другие алгоритмы: например,
+1 и 2 использовали MAC-адрес машины, на которой генерировались, и таким образом
+раскрывали системную инфу.&lt;/p&gt;
+
+&lt;p&gt;Чем хороша версия 7? Ее первые 48 битов содержат время Unix в миллисекундах. Это
+значит, такие ключи сохраняют порядок в разрезе тысячной секунды. Кроме того, из
+него можно извлечь дату и время, а также получить UUID из времени, зная, как
+заполнить хвост. Уникальность плюс время, два в одном.&lt;/p&gt;
+
+&lt;p&gt;Существует три подмножества UUID v7. Они различаются тем, как заполняется
+хвост. Версия a) хвост заполняется рандомом. Версия b) используется возрастающий
+счетчик из 12 бит, остальное – рандом. Версия c) используется два счетчика: 12 и
+10 бит (могу быть неточным, читал спеку давно).&lt;/p&gt;
+
+&lt;p&gt;Счетчики в хвосте важны для супер-точных систем, например трейдинга. Лично я не
+сталкивался с ситуацией, когда порядка в рамках тысячной секунды недостаточно.&lt;/p&gt;
+
+&lt;p&gt;Как я уже рассказывал, UUID v7 отлично подходит на роль первичного
+ключа. Во-первых, если у вас числовые айдишки, вы становитесь заложником
+базы. Только она назначает айдишки сущностям. Это становится проблемой в
+распределенных системах, очередях задач. Пока сущность не вставилась в базу,
+можно наначить ей временный айди, но это лишнее усложнение.&lt;/p&gt;
+
+&lt;p&gt;Наоборот, в случае UUID можно присвоить сущности ключ до вставки в базу,
+например:&lt;/p&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;# python
+user_id = generate_uuid()
+profile_id = generate_uuid()
+
+# sql
+insert into users (id) values (user_id)
+
+insert into profiles (id, user_id)
+values (profile_id, user_id)
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Оба запроса можно выполнить, не обращаясь к полю &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;generated_id&lt;/code&gt; результата.&lt;/p&gt;
+
+&lt;p&gt;Говорят: UUID длиней числовой айдишки, это раздувание таблицы. Вспомним, что
+UUIDv7 = id + created_at. Так или иначе нужно хранить время создания
+сущности. Типы timestamp(tz) занимают 8 байт, тип biginteger/bigserial – тоже 8
+байт. В сумме 16, а это столько же, сколько занимает UUID. Все сходится.&lt;/p&gt;
+
+&lt;p&gt;Главное: UUIDv4 (полностью случайный) не очень подходит для индексов btree. Если
+добавлять в него значения возрастанию, они будут наполнять бакеты
+последовательно. Примерно как фигурки в Тетрисе, когда профессиональные игроки
+укладывают их слева направо. Если данные случайны, фигурки падают в разные
+бакеты. Из-за этого выше фрагментация, а кроме того, часто срабатывает
+перераспределение узлов.&lt;/p&gt;
+
+&lt;p&gt;Похожая беда с обходом индекса. Когда мы обходим btree-индекс с числами, то
+порядок блоков почти совпадает с порядком ключей, например:&lt;/p&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;id   block
+1 -&amp;gt; 1001
+2 -&amp;gt; 1001
+3 -&amp;gt; 1002
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Если у нас уиды, маппинг будет такой:&lt;/p&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;id                           block
+b7b0547b-...-148889ec0602 -&amp;gt; 51451
+d1897a03-...-520566c5c9a7 -&amp;gt; 13
+ef0093d3-...-26e923a66fe4 -&amp;gt; 7232
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Будет много случайного доступа к файлу, и обход такого индекса медленней, чем с
+числовыми айдишками.&lt;/p&gt;
+
+&lt;p&gt;К счастью, седьмой уид сводит проблему на нет, так что пользуйтесь!&lt;/p&gt;
+</description>
+        <pubDate>Sat, 31 Jan 2026 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/tip-017-pg/</link>
+        <guid isPermaLink="true">https://grishaev.me/tip-017-pg/</guid>
+        
+        <category>postgres</category>
+        
+        <category>sql</category>
+        
+        <category>uuid</category>
+        
+        
+      </item>
+    
+      <item>
+        <title>Совет дня №16</title>
+        <description>&lt;p&gt;Разберем ситуацию, когда индекс есть, но не используется.&lt;/p&gt;
+
+&lt;p&gt;Предположим, в системе есть пользователи, и каждый указывает город:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;users&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;uuid&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;primary&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;key&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;n&quot;&gt;name&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;text&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;n&quot;&gt;city&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;text&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;В реальности поле &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;city&lt;/code&gt; ссылается на таблицу городов, но сейчас это не важно –
+оставим текст. Разработчик создал индекс на город:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;index&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;idx_user_city&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;using&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;btree&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;users&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;city&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Выполняет запрос, чтобы найти пользователей из Москвы:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;users&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;city&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'Moscow'&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Смотрит план, а там full scan. Почему?&lt;/p&gt;
+
+&lt;p&gt;Самое важное: Postgres никогда не использует индекс просто потому, что он
+есть. Индекс берется в работу, только если а) по нему собрана статистика и б)
+она показывает, что индекс дешевле full scan.&lt;/p&gt;
+
+&lt;p&gt;Разберем оба условия. Статистика по каждой таблице, ее колонке и индексу
+хранится в каталоге &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pg_statistics&lt;/code&gt;. Это очень низкоуровневые данные. В них
+записаны наиболее частые значения колонок, их гистограмма, приблизительные
+диапазоны значений. Поверх &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pg_statistics&lt;/code&gt; создана вьюха &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pg_stats&lt;/code&gt;, которая
+удобнее в работе и проверяет права на таблицы.&lt;/p&gt;
+
+&lt;p&gt;Статистику собирает специальный процесс по расписанию. Если вы только что
+создали индекс, статистики для него нет. Обновите ее командой:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;analyze&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;users&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;В идеале &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;analyze&lt;/code&gt; нужно добавлять в миграции, которые создают или меняют
+индексы, чтобы сразу после их применения индекс подхватился.&lt;/p&gt;
+
+&lt;p&gt;Итак, статистика есть, но индекс “мигает” – то используется, то нет. Например,
+ищем пользователей из Читы, попадаем в индекс:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;explain&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;users&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;city&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'Chita'&lt;/span&gt;
+&lt;span class=&quot;cm&quot;&gt;/* index scan on idx_user_city ... */&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;А если из Москвы, будет full scan:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;explain&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;users&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;city&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'Moscow'&lt;/span&gt;
+&lt;span class=&quot;cm&quot;&gt;/* full seq scan on users ... */&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;В чем дело? Ответ – селективность, она же избирательность. Так называют долю
+найденных записей относительно их общего числа. С селективностью есть путаница:
+разные учебники по-разному трактуют этот показатель. Одни говорят: если процент
+малый (1-5%), то селективность высокая, а если большой (30 и выше) – то
+низкая. Другие наоборот: малый процент – низкая селективность, высокий —
+большая. Я предпочитаю первый (обратный) вариант: чем меньше записей охватывает
+условие, тем точнее (выше) селективность.&lt;/p&gt;
+
+&lt;p&gt;Если проверить, сколько в базе пользователей из какого города, то окажется
+следующее. Из Читы – три человека (высокая селективность), а из Москвы – триста
+тысяч (крайне низкая). Москва окажется в каталоге &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pg_statistics&lt;/code&gt; в колонке
+“частые значения” – сигнал к тому, чтобы не брать индекс в работу. При анализе
+запроса Postgres это проверит и возьмет full scan. Москвичи пролетают!&lt;/p&gt;
+
+&lt;p&gt;Какова должна быть селективность значения? Реальность такова, что Postgres берет
+в работу индекс, если селективность условия не превышает 5-10 процентов. Это
+довольно мало! Именно поэтому нет смысла создавать индексы на логические флаги
+(true/false), статусы (&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;active&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pending&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;done&lt;/code&gt;) и другие значения с малым
+разбросом. Их селективность слишком низкая (высокая доля выборки).&lt;/p&gt;
+
+&lt;p&gt;Для таких значений используйте частичные индексы &lt;a href=&quot;/tip-005-pg/&quot;&gt;(см. прошлый
+совет)&lt;/a&gt;. Например, только активные заказы, только москвичи и так далее. И
+потом ищите уже внутри этого подмножества.&lt;/p&gt;
+
+&lt;p&gt;Почему Postgres предпочитает full scan для условия, которое покрывает 30%
+таблицы? Ведь прочитать треть таблицы быстрее, чем всю? Дело в том, что обход
+индекса возвращает не сами строки, а номера блоков, где они находятся. Блоки
+идут не один за другим, а разбросаны по всему файлу. Даже если отсортировать
+номера по возрастанию, между ними могут быть большие промежутки. В результате
+будет много дисковых операций. На крутящихся жестких дисках это приводило к
+частому переносу головки.&lt;/p&gt;
+
+&lt;p&gt;Напротив, чтение всех блоков подряд относительно дешево. При таком методе
+Postgres читает сразу много блоков, а не по одному.&lt;/p&gt;
+
+&lt;p&gt;Итого: выполняйте &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;analyze&lt;/code&gt;, проверяйте селективность условия.&lt;/p&gt;
+</description>
+        <pubDate>Sat, 31 Jan 2026 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/tip-016-pg/</link>
+        <guid isPermaLink="true">https://grishaev.me/tip-016-pg/</guid>
+        
+        <category>postgres</category>
+        
+        <category>sql</category>
+        
+        
+      </item>
     
       <item>
         <title>Глава 1. Введение в документы</title>
@@ -2301,411 +2701,6 @@ Django, если тестовый класс унаследован от &lt;cod
         <pubDate>Fri, 23 Jan 2026 00:00:00 +0000</pubDate>
         <link>https://grishaev.me/tip-012-pg/</link>
         <guid isPermaLink="true">https://grishaev.me/tip-012-pg/</guid>
-        
-        <category>postgres</category>
-        
-        <category>sql</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Совет дня №11</title>
-        <description>&lt;p&gt;Если вы работаете с базой, то должны видеть все запросы, которые в нее идут. Это
-абсолютно обязательное условие. В особой степени оно касается ORM. Когда я делаю
-ревью, и в коде используются абстракции над базой, то всегда спрашиваю: какие
-запросы производит этот код? При этом ожидаю не гадание, а лог терминала,
-приложенный PR.&lt;/p&gt;
-
-&lt;p&gt;Увидеть запросы можно следующим образом. Если Postgres запущен в Докере,
-передайте в &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;command&lt;/code&gt; ключ &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;-E&lt;/code&gt;:&lt;/p&gt;
-
-&lt;div class=&quot;language-yaml highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;na&quot;&gt;services&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt;
-  &lt;span class=&quot;na&quot;&gt;postgres&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt;
-&lt;span class=&quot;err&quot;&gt; &lt;/span&gt;&lt;span class=&quot;na&quot;&gt;image&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;postgres:17&lt;/span&gt;
- &lt;span class=&quot;na&quot;&gt;command&lt;/span&gt;&lt;span class=&quot;pi&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;-E&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Если это ванильный Postgres, включите логирование всех запросов опцией:&lt;/p&gt;
-
-&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;log_statement = 'all'
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;После этого лог отслеживают командой &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;tail&lt;/code&gt;:&lt;/p&gt;
-
-&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nb&quot;&gt;tail&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-f&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'/var/log/postgresql.log'&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Расположение лога зависит от операционной системы и менеджера пакетов.&lt;/p&gt;
-
-&lt;p&gt;Третий способ — настроить логирование в приложении. Скажем, в Джанго все
-операции с базой идут в логгер &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;django.db.backends&lt;/code&gt;. Нужно выставить ему уровень
-&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;INFO&lt;/code&gt; и направить в консоль.&lt;/p&gt;
-
-&lt;p&gt;Минус такого логирования в том, что оно учитывает только свои запросы. Если
-кто-то ходит в базу минуя ORM, этих запросов вы не увидите.&lt;/p&gt;
-
-&lt;p&gt;С другой стороны, мы перекладываем бремя логирования с базы на приложение. База
-одна, и если логировать каждый запрос, это замедлит ее. А поскольку узлов
-приложения много, на них это не скажется.&lt;/p&gt;
-
-&lt;p&gt;Вместе с запросами полезно логировать время их выполнения. Заведите дашбоард,
-который находит топ-100 медленных запросов. Раз в месяц заводите задачу на
-оптимизацию.&lt;/p&gt;
-
-&lt;p&gt;Расширение &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pg_stat_statements&lt;/code&gt; (доступно из коробки) ведет статистику запросов:
-число вызовов, среднее, минимальное и максимальное времена, размер переданных
-строк и так далее. Очень помогает на проде.&lt;/p&gt;
-
-&lt;p&gt;Если вы не видите, какие запросы идут в базу, разработка подобна блужданию в
-темноте.&lt;/p&gt;
-</description>
-        <pubDate>Fri, 23 Jan 2026 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/tip-011-pg/</link>
-        <guid isPermaLink="true">https://grishaev.me/tip-011-pg/</guid>
-        
-        <category>postgres</category>
-        
-        <category>sql</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Совет дня №10</title>
-        <description>&lt;p&gt;Прелесть рекурсивных запросов в том, что их источником может быть что угодно –
-не обязательно таблица. В примере ниже мы рассмотрим, как обойти вложенный
-JSON-документ.&lt;/p&gt;
-
-&lt;p&gt;Проблема в следующем. В базе лежит огромный JSON с каталогом услуг. Его схема
-примерно такая:&lt;/p&gt;
-
-&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;DOC = {
- &quot;id&quot;: ID,
- &quot;code&quot;: CODE,
- &quot;children&quot;: [DOC]
-}
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Головной элемент содержит некоторые поля и &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;children&lt;/code&gt;, в которых список
-элементов. У каждого элемента свои &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;children&lt;/code&gt; и так далее. Вложенность
-значительна: иная ветка достигает 30 элементов.&lt;/p&gt;
-
-&lt;p&gt;Уж не знаю, почему документ хранят в таком виде. Подозреваю, что это дамп
-какого-то виджета для редактирования дерева. Разработчик поленился разложить его
-на плоские записи и собрать обратно, поэтому он хранится как есть. Разумеется,
-услуги часто нужны в плоском виде. Разработчики вынимают JSON из базы и обходят
-в приложении.&lt;/p&gt;
-
-&lt;p&gt;Есть, однако, простой способ привести JSON к плоскому виду – рекурсивный запрос:&lt;/p&gt;
-
-&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;prepare&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;flatten&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;recursive&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;step&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;select&lt;/span&gt;
-        &lt;span class=&quot;n&quot;&gt;jt&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
-        &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;level&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt;
-        &lt;span class=&quot;n&quot;&gt;json_table&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;$&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;jsonb&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'$'&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;columns&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
-            &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;int4&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;path&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'$.id'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
-            &lt;span class=&quot;n&quot;&gt;code&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;text&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;path&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'$.code'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
-            &lt;span class=&quot;n&quot;&gt;children&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;jsonb&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;path&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'$.children'&lt;/span&gt;
-    &lt;span class=&quot;p&quot;&gt;))&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;jt&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;UNION&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;ALL&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;select&lt;/span&gt;
-        &lt;span class=&quot;n&quot;&gt;jt&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
-        &lt;span class=&quot;n&quot;&gt;step&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;level&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;level&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt;
-        &lt;span class=&quot;n&quot;&gt;step&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
-        &lt;span class=&quot;n&quot;&gt;json_table&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;step&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;children&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'$[*]'&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;columns&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
-            &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;int4&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;path&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'$.id'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
-            &lt;span class=&quot;n&quot;&gt;code&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;text&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;path&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'$.code'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
-            &lt;span class=&quot;n&quot;&gt;children&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;jsonb&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;path&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'$.children'&lt;/span&gt;
-    &lt;span class=&quot;p&quot;&gt;))&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;jt&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;code&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;level&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;step&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;order&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;by&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;level&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Первая часть производит строку с полями &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;id&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;code&lt;/code&gt; и &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;children&lt;/code&gt;. В нем –
-JSON-массив вложенных элементов. Рекурсивная часть берет каждый элемент и делает
-то же самое: расщепляет его на &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;id&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;code&lt;/code&gt; и другие элементы. Все это
-колбасится, пока вложенные элементы не исчерпаются. А теперь – пример:&lt;/p&gt;
-
-&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;execute&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;flatten&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;$${&lt;/span&gt;
-    &lt;span class=&quot;nv&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
-    &lt;span class=&quot;nv&quot;&gt;&quot;code&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;Product A&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
-    &lt;span class=&quot;nv&quot;&gt;&quot;children&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;
-        &lt;span class=&quot;err&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;code&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;Product B&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;children&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;
-            &lt;span class=&quot;err&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;code&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;Product E&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;children&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;
-                &lt;span class=&quot;err&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;code&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;Product F&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;children&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;}&lt;/span&gt;
-            &lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;}&lt;/span&gt;
-        &lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
-        &lt;span class=&quot;err&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;code&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;Product C&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;children&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;
-            &lt;span class=&quot;err&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;7&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;code&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;Product F&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;children&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;
-                &lt;span class=&quot;err&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;8&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;code&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;Product G&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;children&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;}&lt;/span&gt;
-            &lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;}&lt;/span&gt;
-
-        &lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
-        &lt;span class=&quot;err&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;code&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;Product D&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;children&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;
-            &lt;span class=&quot;err&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;code&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;Product E&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;children&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;
-                &lt;span class=&quot;err&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;9&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;code&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;Product H&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;children&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;}&lt;/span&gt;
-            &lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;}&lt;/span&gt;
-        &lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;}&lt;/span&gt;
-&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;}$$&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Результат:&lt;/p&gt;
-
-&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;┌────┬───────────┬───────┐
-│ id │   code    │ level │
-├────┼───────────┼───────┤
-│  1 │ Product A │     0 │
-│  2 │ Product B │     1 │
-│  3 │ Product C │     1 │
-│  4 │ Product D │     1 │
-│  5 │ Product E │     2 │
-│  7 │ Product F │     2 │
-│  5 │ Product E │     2 │
-│  6 │ Product F │     3 │
-│  8 │ Product G │     3 │
-│  9 │ Product H │     3 │
-└────┴───────────┴───────┘
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Такой обход очень полезен. Быстро выяснилось, что плоские продукты нужны
-аналитикам, которые не владеют Кложей или другим ЯП, чтобы их распутать. Я
-написал им запрос, и они чуть не заплакали от счастья. Во-вторых, продукты
-изменяются редко, поэтому из запроса легко сделать материализованную вьюху и
-обновлять ее каждый день. Для аналитиков это обычная таблица, которую можно
-джойнить в запросах.&lt;/p&gt;
-
-&lt;p&gt;Еще одно уточнение — код выше является чистым с точки зрения ФП. В нем нет
-побочных эффектов, например обращения к диску. Такая функция может быть вызвана
-параллельно для многих документов.&lt;/p&gt;
-</description>
-        <pubDate>Fri, 16 Jan 2026 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/tip-010-pg/</link>
-        <guid isPermaLink="true">https://grishaev.me/tip-010-pg/</guid>
-        
-        <category>postgres</category>
-        
-        <category>sql</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Совет дня №9</title>
-        <description>&lt;p&gt;В комментарии к прошлой заметке прислали ссылку на Кирилла Макевнина. &lt;a href=&quot;https://t.me/orgprog/74&quot;&gt;Он
-пишет&lt;/a&gt; о хранении деревьев в базе, и первый абзац
-такой:&lt;/p&gt;
-
-&lt;blockquote&gt;
-  &lt;p&gt;Обычно, для хранения деревьев в базе в таблицу добавляется поле parent_id. Это
-дубовое решение, которое работает хорошо в небольшом количестве
-ситуаций. Кому-то даже может хватить, но есть запросы, на которых такая схема
-не работает. Например если нам понадобится извлечь ветку этого дерева. В таком
-случае понадобится рекурсивно выполнять запрос с parent_id где для каждого
-нового запроса parent_id становится id записи из предыдущего запроса. Кто-то
-пытается решать эту задачу прямо в коде, создавая очень не эффективное
-решение, кто-то с помощью возможностей базы данных, что сильно привязывает к
-ней, плюс, страдает интеграция с ORM.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;На мой взгляд, это неверно. Подход с &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;parent_id&lt;/code&gt; – не дубовое решение, а вполне
-даже рабочее. Просто мне кажется, на момент написания заметки Кирилл не знал о
-рекурсивных запросах в Postgres (под рекурсивными запросами он имеет в виду
-запросы в цикле из приложения, и это конечно же плохо).&lt;/p&gt;
-
-&lt;p&gt;Приведу минимальный пример с деревом в базе. Предположим, мы храним вот такое
-дерево:&lt;/p&gt;
-
-&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;┌─────────────────────────────┐
-│            ┌───┐            │
-│       ┌────│ A │────┐       │
-│       ▼    └───┘    ▼       │
-│     ┌───┐         ┌───┐     │
-│   ┌─│ B │─┐     ┌─│ C │─┐   │
-│   ▼ └───┘ ▼     ▼ └───┘ ▼   │
-│ ┌───┐   ┌───┐ ┌───┐   ┌───┐ │
-│ │ D │   │ E │ │ F │   │ G │ │
-│ └───┘   └───┘ └───┘   └───┘ │
-└─────────────────────────────┘
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Запишем его в базу:&lt;/p&gt;
-
-&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tree&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
-    &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;text&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;primary&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;key&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
-    &lt;span class=&quot;n&quot;&gt;parent_id&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;text&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt;
-&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
-
-&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tree&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt;
-    &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'a'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
-    &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'b'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'a'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
-    &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'c'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'a'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
-    &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'d'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'b'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
-    &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'e'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'b'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
-    &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'f'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'c'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
-    &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'g'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'c'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Напишем запрос, чтобы выгрести поддерево, зная вершину:&lt;/p&gt;
-
-&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;prepare&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;get_branch&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;recursive&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sub&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tree&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;level&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tree&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;err&quot;&gt;$&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;UNION&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;ALL&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tree&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sub&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;level&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
-        &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tree&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sub&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tree&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;parent_id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sub&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;
-&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sub&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;order&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;by&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;level&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Проверка:&lt;/p&gt;
-
-&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;execute get_branch('b');
-┌────┬───────────┬───────┐
-│ id │ parent_id │ level │
-├────┼───────────┼───────┤
-│ b  │ a         │     0 │
-│ d  │ b         │     1 │
-│ e  │ b         │     1 │
-└────┴───────────┴───────┘
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Второй запрос, чтобы найти путь к вершине:&lt;/p&gt;
-
-&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;prepare&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;get_path&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;recursive&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sub&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tree&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;level&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tree&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;err&quot;&gt;$&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;union&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;all&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tree&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sub&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;level&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
-        &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tree&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sub&lt;/span&gt;
-    &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tree&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sub&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;parent_id&lt;/span&gt;
-&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sub&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;order&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;by&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;level&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Проверка:&lt;/p&gt;
-
-&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;execute get_path('f');
-┌────┬───────────┬───────┐
-│ id │ parent_id │ level │
-├────┼───────────┼───────┤
-│ a  │ &amp;lt;null&amp;gt;    │    -2 │
-│ c  │ a         │    -1 │
-│ f  │ c         │     0 │
-└────┴───────────┴───────┘
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Как видим, в обоих случаях был один запрос, циклы не понадобились, база все
-сделала сама. Напоминаю, что with recursive позволяет собрать вершины вглубь и
-вширь, находить циклы и многое другое.&lt;/p&gt;
-
-&lt;p&gt;Материализованные пути, о которых пишет Кирилл, тоже бывают полезны. Скажем,
-если у вас система файлов и папок (виртуальное файловое хранилище), то иной раз
-это даже лучше, чем &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;parent_id&lt;/code&gt;, потому что позволяет эффективно искать по
-префиксу. Но есть и недостатки: если каждый узел – UUID, путь становится
-огромным. Кроме того, если нужно переместить поддерево, то в случае с
-&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;parent_id&lt;/code&gt; достаточно переключить ссылку, а materialized path требует пересчета
-всех путей поддерева.&lt;/p&gt;
-
-&lt;p&gt;Ну а отказывать себе в мощных средствах только потому, что с ними не дружит
-ORM… это примерно как рушить свою жизнь из-за непутевого друга.&lt;/p&gt;
-</description>
-        <pubDate>Fri, 16 Jan 2026 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/tip-009-pg/</link>
-        <guid isPermaLink="true">https://grishaev.me/tip-009-pg/</guid>
-        
-        <category>postgres</category>
-        
-        <category>sql</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Совет дня №8</title>
-        <description>&lt;p&gt;Если в базе есть хоть какой-то намек на иерархию – &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;parent_id&lt;/code&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;children_ids&lt;/code&gt; и
-так далее – вам не избежать рекурсивных запросов. Если точнее, избежать их
-можно: выбрать данные и обойти в приложении. Но зачем, если это может сделать
-база?&lt;/p&gt;
-
-&lt;p&gt;Рекурсивный запрос на самом деле не имеет отношение к рекурсии. Это цикл или
-свертка. В целом он выглядит так:&lt;/p&gt;
-
-&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;recursive&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;NAME&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
-  &lt;span class=&quot;n&quot;&gt;init&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;part&lt;/span&gt;
-  &lt;span class=&quot;k&quot;&gt;UNION&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;ALL&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
-  &lt;span class=&quot;n&quot;&gt;continuous&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;part&lt;/span&gt;
-&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;NAME&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Часть &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;init-part&lt;/code&gt; выполняется однажды. Часть &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;continuous-part&lt;/code&gt; выполняется много
-раз, при этом псевдоним NAME ссылается на результат прошлой выборки. Например,
-когда &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;continuous-part&lt;/code&gt; сработает в первый раз, в NAME будет то, что вернула
-&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;init-part&lt;/code&gt;. Когда &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;continuous-part&lt;/code&gt; сработает второй раз, в NAME будет то, что
-вернула &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;continuous-part&lt;/code&gt; до этого и так далее.&lt;/p&gt;
-
-&lt;p&gt;Цикл заканчивается, когда в очередной раз &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;continuous-part&lt;/code&gt; вернула пустой
-результат. Должно быть ясное условие остановки, иначе запрос уйдет в бесконечный
-цикл. В итоговом SELECT алиас NAME содержит результат всех операций.&lt;/p&gt;
-
-&lt;p&gt;При помощи рекурсивного запроса легко обойти дерево потомков, графы, отношения,
-различные связи. Более того – внутри рекурсивного запроса доступны формы SEARCH
-DEPTH FIRST и SEARCH BREADTH FIRST, выявление циклов по массиву вершин и другие
-приятные вещи. Так что когда на собеседовании скажут обойти граф, расчехляйте
-psql!&lt;/p&gt;
-
-&lt;p&gt;Последнее, кстати, не такая уж и шутка. Скажем, дали вам файл с вершинами. А
-откуда взялся файл? Скорее всего, из базы. “Вот где графы храните, там и
-обходите.” (с) Поэтому связные структуры я обхожу в SQL без выгрузки в
-приложение. Это и быстрее, и результат виден сразу, и удобно
-коллегам-аналитикам, которые не знают Кложу/Питон.&lt;/p&gt;
-</description>
-        <pubDate>Fri, 16 Jan 2026 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/tip-008-pg/</link>
-        <guid isPermaLink="true">https://grishaev.me/tip-008-pg/</guid>
-        
-        <category>postgres</category>
-        
-        <category>sql</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Совет дня №7</title>
-        <description>&lt;p&gt;Коль скоро COPY – &lt;a href=&quot;/tip-006-pg/&quot;&gt;ваш лучший друг&lt;/a&gt;, присмотритесь к бинарному
-формату. В среднем он на 30% меньше, чем текстовый и CSV. Числа хранятся
-компактно, а не по принципу “байт на разряд”. Строки не экранируются. Это очень
-удобно: не нужно бежать по строке и проверять, есть ли обратный слэш и что-то за
-ним. Прочитал байтовый массив, обернул в &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;(new String)&lt;/code&gt; и готово.&lt;/p&gt;
-
-&lt;p&gt;Бинарный формат COPY в целом прост. Первые 19 байтов можно пропустить – это
-заголовок и резерв под флаги, которые в данный момент не используются. Далее
-идет набор строк. Каждая строка – это пара &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;(int2, content)&lt;/code&gt;, где int2 – число
-колонок. Оно одинаково для всех строк, но дублируется. Последняя строка содержит
--1, а за ней ничего нет.&lt;/p&gt;
-
-&lt;p&gt;С свою очередь content – это набор пар &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;(int4, field)&lt;/code&gt; – длина поля и его
-содержимого. Если длина -1, то значение null, а содержимого нет. В зависимости
-от типа поле читают по-разному. Перечислять все типы и их особенности я не буду:
-для этого есть библиотеки. Радует, что библиотек для бинарного формата Postgres
-все больше: в Гугле находятся версии для Python, Node.js, Go и так далее. Среди
-прочих есть и мои реализации: &lt;a href=&quot;https://github.com/igrishaev/pg-bin&quot;&gt;pg-bin&lt;/a&gt; на
-Кложе и модуль &lt;a href=&quot;https://github.com/igrishaev/pg2/tree/master/pg-core/src/java/org/pg/codec&quot;&gt;org.pg.codec&lt;/a&gt;
-на Джаве в составе pg2.&lt;/p&gt;
-
-&lt;p&gt;Возня с бинарным форматом помогла мне понять, как лучше хранить данные,
-передавать по сети, как ускорить их обработку. В целом, поковыряться с байтами –
-хорошее дело: развивает кодерские навыки, поддерживает форму.&lt;/p&gt;
-</description>
-        <pubDate>Fri, 16 Jan 2026 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/tip-007-pg/</link>
-        <guid isPermaLink="true">https://grishaev.me/tip-007-pg/</guid>
         
         <category>postgres</category>
         

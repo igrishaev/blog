@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Совет дня №16</title>
+  <meta name="description" content="Разберем ситуацию, когда индекс есть, но не используется.">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/tip-016-pg/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Совет дня №16</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-31T00:00:00+00:00">
+        Jan 31, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Разберем ситуацию, когда индекс есть, но не используется.</p>
+
+<p>Предположим, в системе есть пользователи, и каждый указывает город:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
+  <span class="n">id</span> <span class="n">uuid</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+  <span class="n">name</span> <span class="nb">text</span><span class="p">,</span>
+  <span class="n">city</span> <span class="nb">text</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>В реальности поле <code class="language-plaintext highlighter-rouge">city</code> ссылается на таблицу городов, но сейчас это не важно –
+оставим текст. Разработчик создал индекс на город:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">idx_user_city</span>
+<span class="k">using</span> <span class="n">btree</span> <span class="k">on</span> <span class="n">users</span><span class="p">(</span><span class="n">city</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Выполняет запрос, чтобы найти пользователей из Москвы:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">city</span> <span class="o">=</span> <span class="s1">'Moscow'</span>
+</code></pre></div></div>
+
+<p>Смотрит план, а там full scan. Почему?</p>
+
+<p>Самое важное: Postgres никогда не использует индекс просто потому, что он
+есть. Индекс берется в работу, только если а) по нему собрана статистика и б)
+она показывает, что индекс дешевле full scan.</p>
+
+<p>Разберем оба условия. Статистика по каждой таблице, ее колонке и индексу
+хранится в каталоге <code class="language-plaintext highlighter-rouge">pg_statistics</code>. Это очень низкоуровневые данные. В них
+записаны наиболее частые значения колонок, их гистограмма, приблизительные
+диапазоны значений. Поверх <code class="language-plaintext highlighter-rouge">pg_statistics</code> создана вьюха <code class="language-plaintext highlighter-rouge">pg_stats</code>, которая
+удобнее в работе и проверяет права на таблицы.</p>
+
+<p>Статистику собирает специальный процесс по расписанию. Если вы только что
+создали индекс, статистики для него нет. Обновите ее командой:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">analyze</span> <span class="n">users</span>
+</code></pre></div></div>
+
+<p>В идеале <code class="language-plaintext highlighter-rouge">analyze</code> нужно добавлять в миграции, которые создают или меняют
+индексы, чтобы сразу после их применения индекс подхватился.</p>
+
+<p>Итак, статистика есть, но индекс “мигает” – то используется, то нет. Например,
+ищем пользователей из Читы, попадаем в индекс:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">city</span> <span class="o">=</span> <span class="s1">'Chita'</span>
+<span class="cm">/* index scan on idx_user_city ... */</span>
+</code></pre></div></div>
+
+<p>А если из Москвы, будет full scan:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">city</span> <span class="o">=</span> <span class="s1">'Moscow'</span>
+<span class="cm">/* full seq scan on users ... */</span>
+</code></pre></div></div>
+
+<p>В чем дело? Ответ – селективность, она же избирательность. Так называют долю
+найденных записей относительно их общего числа. С селективностью есть путаница:
+разные учебники по-разному трактуют этот показатель. Одни говорят: если процент
+малый (1-5%), то селективность высокая, а если большой (30 и выше) – то
+низкая. Другие наоборот: малый процент – низкая селективность, высокий —
+большая. Я предпочитаю первый (обратный) вариант: чем меньше записей охватывает
+условие, тем точнее (выше) селективность.</p>
+
+<p>Если проверить, сколько в базе пользователей из какого города, то окажется
+следующее. Из Читы – три человека (высокая селективность), а из Москвы – триста
+тысяч (крайне низкая). Москва окажется в каталоге <code class="language-plaintext highlighter-rouge">pg_statistics</code> в колонке
+“частые значения” – сигнал к тому, чтобы не брать индекс в работу. При анализе
+запроса Postgres это проверит и возьмет full scan. Москвичи пролетают!</p>
+
+<p>Какова должна быть селективность значения? Реальность такова, что Postgres берет
+в работу индекс, если селективность условия не превышает 5-10 процентов. Это
+довольно мало! Именно поэтому нет смысла создавать индексы на логические флаги
+(true/false), статусы (<code class="language-plaintext highlighter-rouge">active</code>, <code class="language-plaintext highlighter-rouge">pending</code>, <code class="language-plaintext highlighter-rouge">done</code>) и другие значения с малым
+разбросом. Их селективность слишком низкая (высокая доля выборки).</p>
+
+<p>Для таких значений используйте частичные индексы <a href="/tip-005-pg/">(см. прошлый
+совет)</a>. Например, только активные заказы, только москвичи и так далее. И
+потом ищите уже внутри этого подмножества.</p>
+
+<p>Почему Postgres предпочитает full scan для условия, которое покрывает 30%
+таблицы? Ведь прочитать треть таблицы быстрее, чем всю? Дело в том, что обход
+индекса возвращает не сами строки, а номера блоков, где они находятся. Блоки
+идут не один за другим, а разбросаны по всему файлу. Даже если отсортировать
+номера по возрастанию, между ними могут быть большие промежутки. В результате
+будет много дисковых операций. На крутящихся жестких дисках это приводило к
+частому переносу головки.</p>
+
+<p>Напротив, чтение всех блоков подряд относительно дешево. При таком методе
+Postgres читает сразу много блоков, а не по одному.</p>
+
+<p>Итого: выполняйте <code class="language-plaintext highlighter-rouge">analyze</code>, проверяйте селективность условия.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/pg-book-json-ch01/">&larr; Глава 1. Введение в документы</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/tip-017-pg/">Совет дня №17 &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/1012">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/tip-016-pg/">
+    <input required name="captcha" type="hidden" value="7 &#215; 1">
+
+    <div class="block">
+        <span class="comment-form-label"><small>7 &#215; 1 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
