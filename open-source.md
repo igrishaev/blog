@@ -81,8 +81,8 @@ functions for better search and iteration, e.g. breadth-first algorithm,
 specific zippers and so on.
 
 -- [User Agent](https://github.com/igrishaev/user-agent) is a helper to parse
-HTTP User-Agent header (based on the UADetector Java library). It has got
-650.000 of downloads on Clojars (don't know why).
+HTTP User-Agent header (based on the UADetector Java library). It has got 1M of
+downloads on Clojars (don't know why).
 
 -- [Farseer](https://github.com/igrishaev/farseer) is my attempt to build a JSON
 RPS client and server. It's split on sub-projects with core functionality, a
@@ -114,3 +114,6 @@ showcases processing prefix and infix notations.
 -- [PG.bin](https://github.com/igrishaev/pg-bin) is library to parse Postgres
 COPY dumps made in binary format. Zero deps, various strategies to handle
 json(b) types. The API is easy to use and extend.
+
+-- [Any](https://github.com/igrishaev/any) is a number of smart objects that
+equal to anything you want. Quite useful for test.
