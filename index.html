@@ -105,6 +105,180 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-022-pg/">Совет дня №22</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-09T00:00:00+00:00">
+        Mar 9, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В прошлый раз мы говорили о холодном и горячем запусках, и тем самым вышли на
+тему прогрева. Прогрев – это насильный загон блоков в кэш, чтобы следующий
+запрос читал строки из кэша, а не собирал их с диска. В комментариях привели
+случай: перед сложным запросом данные читают SELECT-ом, чтобы прогреть кэш.</p>
+
+<p>К счастью, есть более простой способ прогрева. Расширение <code class="language-plaintext highlighter-rouge">pg_prewarm</code> делает
+буквально это: принимает имя таблицы или индекса и насильно загоняет в буферный
+кэш. Для особых случаев можно указать диапазон блоков, но маловероятно, что это
+вам пригодится.</p>
+
+<p>В целом прогрев выглядит так:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">pg_prewarm</span><span class="p">(</span><span class="s1">'some_schema.users'</span><span class="p">)</span>
+<span class="cm">/* for table*/</span>
+
+<span class="n">pg_prewarm</span><span class="p">(</span><span class="s1">'some_schema.idx_users_created_at)
+/* for index */
+</span></code></pre></div></div>
+
+<p>Функция возвращает число прочитанных блоков. Поскольку блок в Postgres равен 8
+килобайтам, умножьте результат на 8192, чтобы узнать размер таблицы или индекса
+в байтах (разумеется, есть и другие способы посчитать размер, но это чтобы убить
+двух зайцев).</p>
+
+<p>Postgres не гарантирует, что все блоки окажутся в памяти. Первые могут быть
+вытеснены последними, да и вообще – любой запрос может вмешаться и загрузить
+свои блоки, а ваши выкинуть.</p>
+
+<p>Техника с прогревом спорная, и нужно использвать ее по месту. На мой взгляд,
+полезно прогревать:</p>
+
+<ul>
+  <li>
+    <p>небольшие справочные таблицы, которые часто читают.  Если таблица небольшая,
+индексы на нее не действуют, и будет full scan. Если вы часто читаете таблицу,
+поставьте ее на прогрев. Сюда относятся разные классификаторы, каталоги услуг,
+категории и так далее.</p>
+  </li>
+  <li>
+    <p>индексы, по которым вы часто ищете. Возможно, среди прочих сущностей есть та,
+которую ищут особенно часто. Если это так, наиболее нужный индекс ставят на
+прогрев.</p>
+  </li>
+</ul>
+
+<p>Как прогревать таблицу или индекс по расписанию? Можно задать крон-джоб, который
+выполняет скрипт <code class="language-plaintext highlighter-rouge">pg_prewarm(...)</code> каждый час. Другой вариант – подключить
+расширение <code class="language-plaintext highlighter-rouge">pg_cron</code>. Его нет в поставке Postgres, но оно установлено у всех
+облачных провайдеров. На линуксе оно ставится из пакета <code class="language-plaintext highlighter-rouge">postgresql-16-cron</code>
+(замените 16 на вашу версию PG).</p>
+
+<p>Примеры:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span> <span class="n">cron</span><span class="p">.</span><span class="n">schedule</span><span class="p">(</span>
+  <span class="s1">'prewarm categories table'</span><span class="p">,</span>
+  <span class="s1">'0 */1 * * *'</span><span class="p">,</span>
+  <span class="err">$</span><span class="k">sql</span><span class="err">$</span><span class="n">pg_prewarm</span><span class="p">(</span><span class="s1">'prod.categories'</span><span class="p">)</span><span class="err">$</span><span class="k">sql</span><span class="err">$</span>
+<span class="p">);</span>
+
+<span class="k">SELECT</span> <span class="n">cron</span><span class="p">.</span><span class="n">schedule</span><span class="p">(</span>
+  <span class="s1">'prewarm users.created_at index'</span><span class="p">,</span>
+  <span class="s1">'5 */1 * * *'</span><span class="p">,</span>
+  <span class="err">$</span><span class="k">sql</span><span class="err">$</span><span class="n">pg_prewarm</span><span class="p">(</span><span class="s1">'prod.idx_users_created_at'</span><span class="p">)</span><span class="err">$</span><span class="k">sql</span><span class="err">$</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Также рассмотрите опцию <code class="language-plaintext highlighter-rouge">shared_buffers</code> – размер буферного кэша. По умолчанию
+он равен 32 мегабайта, что довольно мало. В боевом режиме его оптимальная
+величина – 25% от всей памяти сервера. Например, если у вас 8 гигабайт памяти,
+то размер кэша можно выставить 2 гигабайта. При этом не рекомендуется превышать
+40% всей памяти.</p>
+
+<p><a href="https://postgrespro.ru/docs/postgresql/current/pgprewarm">Ссылка на документацию</a>.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-021-pg/">Совет дня №21</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-09T00:00:00+00:00">
+        Mar 9, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><a href="/tip-020-pg/">В прошлом совете</a> упоминалось: команда <code class="language-plaintext highlighter-rouge">EXPLAIN</code> возвращает
+оценочный план запроса, при этом запрос не выполняется. Можно написать <code class="language-plaintext highlighter-rouge">EXPLAIN
+drop table students</code>, и данные не пропадут.</p>
+
+<p>Вариант <code class="language-plaintext highlighter-rouge">EXPLAIN ANALYZE</code> выполняет запрос и возвращает фактический план. Цифры
+из него будут реальными, а не оценочными. Вместе с тем Postgres покажет
+отдельное время планирования (planning) и выполнения (execute).</p>
+
+<p>Когда запросы тестируют, часто предпочитают <code class="language-plaintext highlighter-rouge">EXPLAIN ANALYZE</code>. При этом есть
+одна особенность, о которой пишут редко.</p>
+
+<p>Если выполнить один и тот же запрос дважды, то второй запуск будет гораздо
+быстрее. Разница существенна — один-два порядка! Например, первый запуск занял
+900 миллисекунд, второй — 50. Во-первых, почему так? Во-вторых, все-таки 900 или
+50? Нужно оптимизировать или так прокатит?</p>
+
+<p>Дело в том, как устроена работа с буферами. В Postgres любая работа с таблицами и индексами сводится к буферному кэшу. Это область памяти, доступная всем процессам на чтение и запись. Своего рода рабочий стол. Данные не читаются напрямую из таблицы: сперва они выгружаются в кэш и оттуда читаются строки. Запись работает в обратном порядке: страницы кэша обновляются в памяти, а затем сбрасываются на диск.</p>
+
+<p>Скорее всего, первый запуск не нашел нужных буферов в кэше и спровоцировал их
+чтение. Такой запуск называют холодным. Если выполнить запрос еще раз, данные
+окажутся в кэше, и результат получится на порядки быстрее. Это горячий
+запуск. Примерно как в Redis — прочитали из памяти без обращения к диску.</p>
+
+<p>На какой запуск ориентироваться? Иногда разработчик чувствует, что запрос не
+оптимален: первый вызов занял секунду. Долго. Он запускает еще раз и такой: а
+теперь 200 миллисекунд! Сойдет.</p>
+
+<p>Лично я ориентируюсь на первый (холодный) вариант. Рассчитывать, что каждый раз
+данные окажутся к кэше — слишком оптимистично. База выполняет много запросов
+параллельно и постоянно жонглирует страницами и кэшами. Полагайте, что чаще
+всего ваш запрос будет холодным.</p>
+
+<p>Поэтому: когда вы выполнили <code class="language-plaintext highlighter-rouge">EXPLAIN ANALYZE</code>, сделайте скриншот плана или
+скопируйте его, чтобы было с чем сравнивать. В противном случае вы не вспомните,
+каким был холодный запуск, хотя именно он отражает реальность.</p>
+
+<p>И еще одна неоднозначность. Предположим, вы тестируете запрос и часто его
+вызываете. В результате все буферы прогреты, и не ясно, как поведет себя запрос
+в холодном случае. Увы, нормального решения проблемы нет. Postgres не предлагает
+функции очистки кэша. Если это локальный Postgres, перезагрузите его, и первый
+запуск снова станет холодным. Разумеется, перезагружать удаленный сервер —
+моветон, поэтому сделайте следующее: заставьте Postgres заполнить буферный кэш
+чем-то другим. Запустите полное сканирование большой таблицы, погоняйте сложные
+запросы, и вскоре это сработает: запрос, что вы тестируете, станет холодным
+(метрика execute возрастет).</p>
+
+<p>Согласен: все это напоминает шаманство, но иногда приходится так делать.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-020-pg/">Совет дня №20</a>
             </h2>
 
@@ -861,187 +1035,6 @@ keyset, потому что “набор ключей”.</p>
 
 <p>Каждая сотрировка (возраст, имя, зарплата) требует своей пары, поэтому
 договоритесь о них заранее.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-013-pg/">Совет дня №13</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-23T00:00:00+00:00">
-        Jan 23, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Работая с ORM, избегайте проблемы 1 + N. Это когда вы обращаетесь к ссылочным
-полям, и база подтягивает сущности штучно, а не разом.</p>
-
-<p>Пример: магазин товаров, сущность <code class="language-plaintext highlighter-rouge">Order</code> ссылается на <code class="language-plaintext highlighter-rouge">User</code> (кто заказал) и
-<code class="language-plaintext highlighter-rouge">Item</code> (что заказали). Модель выглядит так:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Order</span><span class="p">(</span><span class="n">model</span><span class="p">.</span><span class="n">Model</span><span class="p">):</span>
-  <span class="n">status</span> <span class="o">=</span> <span class="n">EnunField</span><span class="p">(</span><span class="n">active</span><span class="p">,</span> <span class="n">cancelled</span><span class="p">,</span> <span class="n">pending</span><span class="p">...)</span>
-  <span class="n">created_at</span> <span class="o">=</span> <span class="n">DateTimeFiled</span><span class="p">(</span><span class="n">now</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
-  <span class="n">user</span> <span class="o">=</span> <span class="n">ForeignField</span><span class="p">(</span><span class="n">class</span><span class="o">=</span><span class="n">User</span><span class="p">)</span>
-  <span class="n">item</span> <span class="o">=</span> <span class="n">ForeignField</span><span class="p">(</span><span class="n">class</span><span class="o">=</span><span class="n">Item</span><span class="p">)</span>
-</code></pre></div></div>
-
-<p>Типичная задача — вывести активные заказы с информацией о клиенте и
-товаре. Разработчик делает так:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">orders</span> <span class="o">=</span> <span class="n">Orders</span><span class="p">.</span><span class="nb">filter</span><span class="p">(</span><span class="n">status</span><span class="o">=</span><span class="n">active</span><span class="p">)</span> \
-  <span class="p">.</span><span class="n">order_by</span><span class="p">(</span><span class="n">created_at</span><span class="p">,</span> <span class="n">desc</span><span class="p">).</span><span class="nb">all</span><span class="p">()</span>
-</code></pre></div></div>
-
-<p>Затем он строит таблицу:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">for</span> <span class="n">order</span> <span class="ow">in</span> <span class="n">orders</span><span class="p">:</span>
-  <span class="k">print</span> <span class="n">order</span><span class="p">.</span><span class="nb">id</span><span class="p">,</span> <span class="n">order</span><span class="p">.</span><span class="n">user</span><span class="p">.</span><span class="n">name</span><span class="p">,</span> <span class="n">order</span><span class="p">.</span><span class="n">item</span><span class="p">.</span><span class="n">title</span>
-</code></pre></div></div>
-
-<p>Что произойдет под капотом? Сначала выполнится запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span> <span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Тут все в порядке. Однако в цикле, когда происходит обращение к полям <code class="language-plaintext highlighter-rouge">user</code> и
-<code class="language-plaintext highlighter-rouge">item</code>, выполняются запросы <code class="language-plaintext highlighter-rouge">get-by-id</code>:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">1</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">2</span>
-<span class="p">...</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">100</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">200</span>
-<span class="p">...</span>
-</code></pre></div></div>
-
-<p>В среднем запросов будет 1 + 2N. На практике в одном заказе может быть много
-товаров, а кроме того, возможны подгрузки других сущностей. Скажем, товар хранит
-ссылку на продавца. Если в таблице должен быть продавец, это будет еще +N
-запросов.</p>
-
-<p>Именно для таких случаев нужны прошлые советы. Во-первых, запросы должны быть
-видны в консоли, и разработчик обязан смотреть, что идет в базу. Во-вторых, на
-эту логику должен быть тест, который считает запросы.</p>
-
-<p>Проблема 1 + N лечится разными способами. Первый — ORM может джойнить сущности,
-то есть выполнить запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span>
-<span class="k">left</span> <span class="k">join</span> <span class="n">users</span> <span class="k">on</span> <span class="n">orders</span><span class="p">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="k">user</span><span class="p">.</span><span class="n">id</span>
-<span class="k">left</span> <span class="k">join</span> <span class="n">items</span> <span class="k">on</span> <span class="k">order</span><span class="p">.</span><span class="n">item_id</span> <span class="o">=</span> <span class="n">item</span><span class="p">.</span><span class="n">id</span>
-<span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Такой джоин может нарушить пагинацию по limit/offset, но это страшно. Можно либо
-не использовать ее вообще, либо взять пагинацию по keyset, либо заменить limit
-выражением fetch.</p>
-
-<p>Другой способ — вытянуть записи по слоям на уровне приложения. Первый слой — это
-orders. Как только происходит обращение к user, ORM собирает все user_id и
-выполнят запрос</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="k">in</span> <span class="p">(</span><span class="o">?</span><span class="p">,</span> <span class="o">?</span><span class="p">,</span> <span class="o">?</span> <span class="p">...)</span>
-</code></pre></div></div>
-
-<p>То же самое с <code class="language-plaintext highlighter-rouge">items</code> — выгребаются уникальные <code class="language-plaintext highlighter-rouge">item_id</code>, и по ним делается
-запрос с IN.</p>
-
-<p>Некоторые ORM действуют тоньше. Если айдишников много, они выгребают смежные
-сущности кусками по 10-30. Таким образом, если нужно пройти 100 заказов, мы
-совершим 4-10 запросов, что не так страшно.</p>
-
-<p>Проблема 1 + N — настоящий бич ORM. Сколько подобных ошибок я исправил —
-затрудняюсь припомнить (и конечно, совершил сам).</p>
-
-<p>На мой взгляд, в ORM должна быть опция: кидать исключение, если смежные записи
-читаются штучно. Опция должна быть глобальной, чтобы раз и навсегда запретить
-подобные вещи. Глядишь, новички стали бы лучше понимать, что вообще происходит.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-012-pg/">Совет дня №12</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-23T00:00:00+00:00">
-        Jan 23, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Дополнение <a href="/tip-011-pg/">вчерашней заметки</a> насчет запросов в базу. Смотреть
-запросы, которые выполняются во время тестов – это хорошо, можно поймать много
-кривых вещей. Но есть еще одна техника: считать запросы и проверять их
-количество. Этим вы защищаете код от ситуации, когда небольшое изменение
-накинуло +20 запросов. В ORM подобные вещи случаются часто. В основном они
-вызваны проблемой 1 + N, о которой будет следующий совет.</p>
-
-<p>Фреймворки-гиганты предлагают встроенный метод подсчета запросов. Например, в
-Django, если тестовый класс унаследован от <code class="language-plaintext highlighter-rouge">TransactionTestCase</code>, доступен метод
-<code class="language-plaintext highlighter-rouge">assertNumQueries</code>. В целом подобный тест выглядит так:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">TestSomeFunc</span><span class="p">(</span><span class="n">TestCase</span><span class="p">):</span>
-    <span class="n">dеf</span> <span class="n">test_func</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">with</span> <span class="bp">self</span><span class="p">.</span><span class="n">assertNumQueries</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="n">using</span><span class="o">=</span><span class="s">"db1"</span><span class="p">):</span>
-            <span class="n">some_func</span><span class="p">()</span>
-</code></pre></div></div>
-
-<p>Если кто-то поправит логику, число запросов изменится, и тест не пройдет.</p>
-
-<p>Если запросов много (10 и больше), посмотрите лог и добавьте комментарий с
-распределением запросов. Так логика будет понятна хотя бы в общих чертах:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># 1 auth
-# 2 permission check
-# 4 fetch data
-# 2 update data
-# 2 send notifications
-</span></code></pre></div></div>
-
-<p>В одном проекте выяснилось: удаление сущности порождало 400 с лишним
-запросов. Разумеется, почти все они удалялись поштучно, потому что разработчики
-не дружили с БД.</p>
-
-<p>Для Django написаны в том числе сторонние сборщики запросов, их легко
-нагуглить. Полагаю, то же самое есть в Руби, Spring Boot и прочих
-комбайнах. Подсчет легко сделать в Кложе: достаточно динамической переменной и
-макроса.</p>
-
-<p>Не обязательно считать запросы во всех апишках: скажем, для <code class="language-plaintext highlighter-rouge">get-by-id</code> подсчет
-избыточен. Но удаление сущностей, сложные перемещения из одной таблицы в другую
-– очень желательно. Все для этого есть, просто воспользуйтесь.</p>
 
                 
             </div>

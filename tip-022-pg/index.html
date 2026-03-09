@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Совет дня №22</title>
+  <meta name="description" content="В прошлый раз мы говорили о холодном и горячем запусках, и тем самым вышли натему прогрева. Прогрев – это насильный загон блоков в кэш, чтобы следующийзапрос...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/tip-022-pg/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Совет дня №22</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-09T00:00:00+00:00">
+        Mar 9, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>В прошлый раз мы говорили о холодном и горячем запусках, и тем самым вышли на
+тему прогрева. Прогрев – это насильный загон блоков в кэш, чтобы следующий
+запрос читал строки из кэша, а не собирал их с диска. В комментариях привели
+случай: перед сложным запросом данные читают SELECT-ом, чтобы прогреть кэш.</p>
+
+<p>К счастью, есть более простой способ прогрева. Расширение <code class="language-plaintext highlighter-rouge">pg_prewarm</code> делает
+буквально это: принимает имя таблицы или индекса и насильно загоняет в буферный
+кэш. Для особых случаев можно указать диапазон блоков, но маловероятно, что это
+вам пригодится.</p>
+
+<p>В целом прогрев выглядит так:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">pg_prewarm</span><span class="p">(</span><span class="s1">'some_schema.users'</span><span class="p">)</span>
+<span class="cm">/* for table*/</span>
+
+<span class="n">pg_prewarm</span><span class="p">(</span><span class="s1">'some_schema.idx_users_created_at)
+/* for index */
+</span></code></pre></div></div>
+
+<p>Функция возвращает число прочитанных блоков. Поскольку блок в Postgres равен 8
+килобайтам, умножьте результат на 8192, чтобы узнать размер таблицы или индекса
+в байтах (разумеется, есть и другие способы посчитать размер, но это чтобы убить
+двух зайцев).</p>
+
+<p>Postgres не гарантирует, что все блоки окажутся в памяти. Первые могут быть
+вытеснены последними, да и вообще – любой запрос может вмешаться и загрузить
+свои блоки, а ваши выкинуть.</p>
+
+<p>Техника с прогревом спорная, и нужно использвать ее по месту. На мой взгляд,
+полезно прогревать:</p>
+
+<ul>
+  <li>
+    <p>небольшие справочные таблицы, которые часто читают.  Если таблица небольшая,
+индексы на нее не действуют, и будет full scan. Если вы часто читаете таблицу,
+поставьте ее на прогрев. Сюда относятся разные классификаторы, каталоги услуг,
+категории и так далее.</p>
+  </li>
+  <li>
+    <p>индексы, по которым вы часто ищете. Возможно, среди прочих сущностей есть та,
+которую ищут особенно часто. Если это так, наиболее нужный индекс ставят на
+прогрев.</p>
+  </li>
+</ul>
+
+<p>Как прогревать таблицу или индекс по расписанию? Можно задать крон-джоб, который
+выполняет скрипт <code class="language-plaintext highlighter-rouge">pg_prewarm(...)</code> каждый час. Другой вариант – подключить
+расширение <code class="language-plaintext highlighter-rouge">pg_cron</code>. Его нет в поставке Postgres, но оно установлено у всех
+облачных провайдеров. На линуксе оно ставится из пакета <code class="language-plaintext highlighter-rouge">postgresql-16-cron</code>
+(замените 16 на вашу версию PG).</p>
+
+<p>Примеры:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span> <span class="n">cron</span><span class="p">.</span><span class="n">schedule</span><span class="p">(</span>
+  <span class="s1">'prewarm categories table'</span><span class="p">,</span>
+  <span class="s1">'0 */1 * * *'</span><span class="p">,</span>
+  <span class="err">$</span><span class="k">sql</span><span class="err">$</span><span class="n">pg_prewarm</span><span class="p">(</span><span class="s1">'prod.categories'</span><span class="p">)</span><span class="err">$</span><span class="k">sql</span><span class="err">$</span>
+<span class="p">);</span>
+
+<span class="k">SELECT</span> <span class="n">cron</span><span class="p">.</span><span class="n">schedule</span><span class="p">(</span>
+  <span class="s1">'prewarm users.created_at index'</span><span class="p">,</span>
+  <span class="s1">'5 */1 * * *'</span><span class="p">,</span>
+  <span class="err">$</span><span class="k">sql</span><span class="err">$</span><span class="n">pg_prewarm</span><span class="p">(</span><span class="s1">'prod.idx_users_created_at'</span><span class="p">)</span><span class="err">$</span><span class="k">sql</span><span class="err">$</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Также рассмотрите опцию <code class="language-plaintext highlighter-rouge">shared_buffers</code> – размер буферного кэша. По умолчанию
+он равен 32 мегабайта, что довольно мало. В боевом режиме его оптимальная
+величина – 25% от всей памяти сервера. Например, если у вас 8 гигабайт памяти,
+то размер кэша можно выставить 2 гигабайта. При этом не рекомендуется превышать
+40% всей памяти.</p>
+
+<p><a href="https://postgrespro.ru/docs/postgresql/current/pgprewarm">Ссылка на документацию</a>.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/tip-021-pg/">&larr; Совет дня №21</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/1019">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/tip-022-pg/">
+    <input required name="captcha" type="hidden" value="6 &#215; 8">
+
+    <div class="block">
+        <span class="comment-form-label"><small>6 &#215; 8 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

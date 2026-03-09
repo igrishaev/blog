@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Совет дня №21</title>
+  <meta name="description" content="В прошлом совете упоминалось: команда EXPLAIN возвращаетоценочный план запроса, при этом запрос не выполняется. Можно написать EXPLAINdrop table students, и ...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/tip-021-pg/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Совет дня №21</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-09T00:00:00+00:00">
+        Mar 9, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p><a href="/tip-020-pg/">В прошлом совете</a> упоминалось: команда <code class="language-plaintext highlighter-rouge">EXPLAIN</code> возвращает
+оценочный план запроса, при этом запрос не выполняется. Можно написать <code class="language-plaintext highlighter-rouge">EXPLAIN
+drop table students</code>, и данные не пропадут.</p>
+
+<p>Вариант <code class="language-plaintext highlighter-rouge">EXPLAIN ANALYZE</code> выполняет запрос и возвращает фактический план. Цифры
+из него будут реальными, а не оценочными. Вместе с тем Postgres покажет
+отдельное время планирования (planning) и выполнения (execute).</p>
+
+<p>Когда запросы тестируют, часто предпочитают <code class="language-plaintext highlighter-rouge">EXPLAIN ANALYZE</code>. При этом есть
+одна особенность, о которой пишут редко.</p>
+
+<p>Если выполнить один и тот же запрос дважды, то второй запуск будет гораздо
+быстрее. Разница существенна — один-два порядка! Например, первый запуск занял
+900 миллисекунд, второй — 50. Во-первых, почему так? Во-вторых, все-таки 900 или
+50? Нужно оптимизировать или так прокатит?</p>
+
+<p>Дело в том, как устроена работа с буферами. В Postgres любая работа с таблицами и индексами сводится к буферному кэшу. Это область памяти, доступная всем процессам на чтение и запись. Своего рода рабочий стол. Данные не читаются напрямую из таблицы: сперва они выгружаются в кэш и оттуда читаются строки. Запись работает в обратном порядке: страницы кэша обновляются в памяти, а затем сбрасываются на диск.</p>
+
+<p>Скорее всего, первый запуск не нашел нужных буферов в кэше и спровоцировал их
+чтение. Такой запуск называют холодным. Если выполнить запрос еще раз, данные
+окажутся в кэше, и результат получится на порядки быстрее. Это горячий
+запуск. Примерно как в Redis — прочитали из памяти без обращения к диску.</p>
+
+<p>На какой запуск ориентироваться? Иногда разработчик чувствует, что запрос не
+оптимален: первый вызов занял секунду. Долго. Он запускает еще раз и такой: а
+теперь 200 миллисекунд! Сойдет.</p>
+
+<p>Лично я ориентируюсь на первый (холодный) вариант. Рассчитывать, что каждый раз
+данные окажутся к кэше — слишком оптимистично. База выполняет много запросов
+параллельно и постоянно жонглирует страницами и кэшами. Полагайте, что чаще
+всего ваш запрос будет холодным.</p>
+
+<p>Поэтому: когда вы выполнили <code class="language-plaintext highlighter-rouge">EXPLAIN ANALYZE</code>, сделайте скриншот плана или
+скопируйте его, чтобы было с чем сравнивать. В противном случае вы не вспомните,
+каким был холодный запуск, хотя именно он отражает реальность.</p>
+
+<p>И еще одна неоднозначность. Предположим, вы тестируете запрос и часто его
+вызываете. В результате все буферы прогреты, и не ясно, как поведет себя запрос
+в холодном случае. Увы, нормального решения проблемы нет. Postgres не предлагает
+функции очистки кэша. Если это локальный Postgres, перезагрузите его, и первый
+запуск снова станет холодным. Разумеется, перезагружать удаленный сервер —
+моветон, поэтому сделайте следующее: заставьте Postgres заполнить буферный кэш
+чем-то другим. Запустите полное сканирование большой таблицы, погоняйте сложные
+запросы, и вскоре это сработает: запрос, что вы тестируете, станет холодным
+(метрика execute возрастет).</p>
+
+<p>Согласен: все это напоминает шаманство, но иногда приходится так делать.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/tip-020-pg/">&larr; Совет дня №20</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/tip-022-pg/">Совет дня №22 &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/1018">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/tip-021-pg/">
+    <input required name="captcha" type="hidden" value="3 &#215; 9">
+
+    <div class="block">
+        <span class="comment-form-label"><small>3 &#215; 9 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

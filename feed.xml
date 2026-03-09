@@ -6,9 +6,157 @@
 </description>
     <link>https://grishaev.me/</link>
     <atom:link href="https://grishaev.me/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Fri, 27 Feb 2026 12:51:39 +0000</pubDate>
-    <lastBuildDate>Fri, 27 Feb 2026 12:51:39 +0000</lastBuildDate>
+    <pubDate>Mon, 09 Mar 2026 15:12:29 +0000</pubDate>
+    <lastBuildDate>Mon, 09 Mar 2026 15:12:29 +0000</lastBuildDate>
     <generator>Jekyll v4.2.0</generator>
+    
+      <item>
+        <title>Совет дня №22</title>
+        <description>&lt;p&gt;В прошлый раз мы говорили о холодном и горячем запусках, и тем самым вышли на
+тему прогрева. Прогрев – это насильный загон блоков в кэш, чтобы следующий
+запрос читал строки из кэша, а не собирал их с диска. В комментариях привели
+случай: перед сложным запросом данные читают SELECT-ом, чтобы прогреть кэш.&lt;/p&gt;
+
+&lt;p&gt;К счастью, есть более простой способ прогрева. Расширение &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pg_prewarm&lt;/code&gt; делает
+буквально это: принимает имя таблицы или индекса и насильно загоняет в буферный
+кэш. Для особых случаев можно указать диапазон блоков, но маловероятно, что это
+вам пригодится.&lt;/p&gt;
+
+&lt;p&gt;В целом прогрев выглядит так:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;n&quot;&gt;pg_prewarm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'some_schema.users'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;cm&quot;&gt;/* for table*/&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;pg_prewarm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'some_schema.idx_users_created_at)
+/* for index */
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Функция возвращает число прочитанных блоков. Поскольку блок в Postgres равен 8
+килобайтам, умножьте результат на 8192, чтобы узнать размер таблицы или индекса
+в байтах (разумеется, есть и другие способы посчитать размер, но это чтобы убить
+двух зайцев).&lt;/p&gt;
+
+&lt;p&gt;Postgres не гарантирует, что все блоки окажутся в памяти. Первые могут быть
+вытеснены последними, да и вообще – любой запрос может вмешаться и загрузить
+свои блоки, а ваши выкинуть.&lt;/p&gt;
+
+&lt;p&gt;Техника с прогревом спорная, и нужно использвать ее по месту. На мой взгляд,
+полезно прогревать:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;
+    &lt;p&gt;небольшие справочные таблицы, которые часто читают.  Если таблица небольшая,
+индексы на нее не действуют, и будет full scan. Если вы часто читаете таблицу,
+поставьте ее на прогрев. Сюда относятся разные классификаторы, каталоги услуг,
+категории и так далее.&lt;/p&gt;
+  &lt;/li&gt;
+  &lt;li&gt;
+    &lt;p&gt;индексы, по которым вы часто ищете. Возможно, среди прочих сущностей есть та,
+которую ищут особенно часто. Если это так, наиболее нужный индекс ставят на
+прогрев.&lt;/p&gt;
+  &lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Как прогревать таблицу или индекс по расписанию? Можно задать крон-джоб, который
+выполняет скрипт &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pg_prewarm(...)&lt;/code&gt; каждый час. Другой вариант – подключить
+расширение &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;pg_cron&lt;/code&gt;. Его нет в поставке Postgres, но оно установлено у всех
+облачных провайдеров. На линуксе оно ставится из пакета &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;postgresql-16-cron&lt;/code&gt;
+(замените 16 на вашу версию PG).&lt;/p&gt;
+
+&lt;p&gt;Примеры:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;SELECT&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;cron&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;schedule&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'prewarm categories table'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'0 */1 * * *'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;err&quot;&gt;$&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;sql&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;$&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pg_prewarm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'prod.categories'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;$&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;sql&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;$&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;SELECT&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;cron&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;schedule&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'prewarm users.created_at index'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'5 */1 * * *'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;err&quot;&gt;$&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;sql&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;$&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pg_prewarm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'prod.idx_users_created_at'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;$&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;sql&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;$&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Также рассмотрите опцию &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;shared_buffers&lt;/code&gt; – размер буферного кэша. По умолчанию
+он равен 32 мегабайта, что довольно мало. В боевом режиме его оптимальная
+величина – 25% от всей памяти сервера. Например, если у вас 8 гигабайт памяти,
+то размер кэша можно выставить 2 гигабайта. При этом не рекомендуется превышать
+40% всей памяти.&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&quot;https://postgrespro.ru/docs/postgresql/current/pgprewarm&quot;&gt;Ссылка на документацию&lt;/a&gt;.&lt;/p&gt;
+</description>
+        <pubDate>Mon, 09 Mar 2026 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/tip-022-pg/</link>
+        <guid isPermaLink="true">https://grishaev.me/tip-022-pg/</guid>
+        
+        <category>postgres</category>
+        
+        <category>sql</category>
+        
+        
+      </item>
+    
+      <item>
+        <title>Совет дня №21</title>
+        <description>&lt;p&gt;&lt;a href=&quot;/tip-020-pg/&quot;&gt;В прошлом совете&lt;/a&gt; упоминалось: команда &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;EXPLAIN&lt;/code&gt; возвращает
+оценочный план запроса, при этом запрос не выполняется. Можно написать &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;EXPLAIN
+drop table students&lt;/code&gt;, и данные не пропадут.&lt;/p&gt;
+
+&lt;p&gt;Вариант &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;EXPLAIN ANALYZE&lt;/code&gt; выполняет запрос и возвращает фактический план. Цифры
+из него будут реальными, а не оценочными. Вместе с тем Postgres покажет
+отдельное время планирования (planning) и выполнения (execute).&lt;/p&gt;
+
+&lt;p&gt;Когда запросы тестируют, часто предпочитают &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;EXPLAIN ANALYZE&lt;/code&gt;. При этом есть
+одна особенность, о которой пишут редко.&lt;/p&gt;
+
+&lt;p&gt;Если выполнить один и тот же запрос дважды, то второй запуск будет гораздо
+быстрее. Разница существенна — один-два порядка! Например, первый запуск занял
+900 миллисекунд, второй — 50. Во-первых, почему так? Во-вторых, все-таки 900 или
+50? Нужно оптимизировать или так прокатит?&lt;/p&gt;
+
+&lt;p&gt;Дело в том, как устроена работа с буферами. В Postgres любая работа с таблицами и индексами сводится к буферному кэшу. Это область памяти, доступная всем процессам на чтение и запись. Своего рода рабочий стол. Данные не читаются напрямую из таблицы: сперва они выгружаются в кэш и оттуда читаются строки. Запись работает в обратном порядке: страницы кэша обновляются в памяти, а затем сбрасываются на диск.&lt;/p&gt;
+
+&lt;p&gt;Скорее всего, первый запуск не нашел нужных буферов в кэше и спровоцировал их
+чтение. Такой запуск называют холодным. Если выполнить запрос еще раз, данные
+окажутся в кэше, и результат получится на порядки быстрее. Это горячий
+запуск. Примерно как в Redis — прочитали из памяти без обращения к диску.&lt;/p&gt;
+
+&lt;p&gt;На какой запуск ориентироваться? Иногда разработчик чувствует, что запрос не
+оптимален: первый вызов занял секунду. Долго. Он запускает еще раз и такой: а
+теперь 200 миллисекунд! Сойдет.&lt;/p&gt;
+
+&lt;p&gt;Лично я ориентируюсь на первый (холодный) вариант. Рассчитывать, что каждый раз
+данные окажутся к кэше — слишком оптимистично. База выполняет много запросов
+параллельно и постоянно жонглирует страницами и кэшами. Полагайте, что чаще
+всего ваш запрос будет холодным.&lt;/p&gt;
+
+&lt;p&gt;Поэтому: когда вы выполнили &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;EXPLAIN ANALYZE&lt;/code&gt;, сделайте скриншот плана или
+скопируйте его, чтобы было с чем сравнивать. В противном случае вы не вспомните,
+каким был холодный запуск, хотя именно он отражает реальность.&lt;/p&gt;
+
+&lt;p&gt;И еще одна неоднозначность. Предположим, вы тестируете запрос и часто его
+вызываете. В результате все буферы прогреты, и не ясно, как поведет себя запрос
+в холодном случае. Увы, нормального решения проблемы нет. Postgres не предлагает
+функции очистки кэша. Если это локальный Postgres, перезагрузите его, и первый
+запуск снова станет холодным. Разумеется, перезагружать удаленный сервер —
+моветон, поэтому сделайте следующее: заставьте Postgres заполнить буферный кэш
+чем-то другим. Запустите полное сканирование большой таблицы, погоняйте сложные
+запросы, и вскоре это сработает: запрос, что вы тестируете, станет холодным
+(метрика execute возрастет).&lt;/p&gt;
+
+&lt;p&gt;Согласен: все это напоминает шаманство, но иногда приходится так делать.&lt;/p&gt;
+</description>
+        <pubDate>Mon, 09 Mar 2026 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/tip-021-pg/</link>
+        <guid isPermaLink="true">https://grishaev.me/tip-021-pg/</guid>
+        
+        <category>postgres</category>
+        
+        <category>sql</category>
+        
+        
+      </item>
     
       <item>
         <title>Совет дня №20</title>
@@ -2546,161 +2694,6 @@ keyset, потому что “набор ключей”.&lt;/p&gt;
         <pubDate>Fri, 23 Jan 2026 00:00:00 +0000</pubDate>
         <link>https://grishaev.me/tip-014-pg/</link>
         <guid isPermaLink="true">https://grishaev.me/tip-014-pg/</guid>
-        
-        <category>postgres</category>
-        
-        <category>sql</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Совет дня №13</title>
-        <description>&lt;p&gt;Работая с ORM, избегайте проблемы 1 + N. Это когда вы обращаетесь к ссылочным
-полям, и база подтягивает сущности штучно, а не разом.&lt;/p&gt;
-
-&lt;p&gt;Пример: магазин товаров, сущность &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;Order&lt;/code&gt; ссылается на &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;User&lt;/code&gt; (кто заказал) и
-&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;Item&lt;/code&gt; (что заказали). Модель выглядит так:&lt;/p&gt;
-
-&lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Order&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;model&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Model&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
-  &lt;span class=&quot;n&quot;&gt;status&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;EnunField&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;active&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;cancelled&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;pending&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;...)&lt;/span&gt;
-  &lt;span class=&quot;n&quot;&gt;created_at&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;DateTimeFiled&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;now&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;True&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
-  &lt;span class=&quot;n&quot;&gt;user&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ForeignField&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;class&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;User&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
-  &lt;span class=&quot;n&quot;&gt;item&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ForeignField&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;class&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Item&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Типичная задача — вывести активные заказы с информацией о клиенте и
-товаре. Разработчик делает так:&lt;/p&gt;
-
-&lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;n&quot;&gt;orders&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Orders&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;filter&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;status&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;active&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; \
-  &lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;order_by&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;created_at&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;desc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;all&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Затем он строит таблицу:&lt;/p&gt;
-
-&lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;order&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;orders&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
-  &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;order&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;order&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;user&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;order&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;title&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Что произойдет под капотом? Сначала выполнится запрос:&lt;/p&gt;
-
-&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;orders&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;status&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'active'&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;order&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;by&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;created_at&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;desc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Тут все в порядке. Однако в цикле, когда происходит обращение к полям &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;user&lt;/code&gt; и
-&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;item&lt;/code&gt;, выполняются запросы &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;get-by-id&lt;/code&gt;:&lt;/p&gt;
-
-&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;users&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;users&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;
-&lt;span class=&quot;p&quot;&gt;...&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;items&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;100&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;items&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;200&lt;/span&gt;
-&lt;span class=&quot;p&quot;&gt;...&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;В среднем запросов будет 1 + 2N. На практике в одном заказе может быть много
-товаров, а кроме того, возможны подгрузки других сущностей. Скажем, товар хранит
-ссылку на продавца. Если в таблице должен быть продавец, это будет еще +N
-запросов.&lt;/p&gt;
-
-&lt;p&gt;Именно для таких случаев нужны прошлые советы. Во-первых, запросы должны быть
-видны в консоли, и разработчик обязан смотреть, что идет в базу. Во-вторых, на
-эту логику должен быть тест, который считает запросы.&lt;/p&gt;
-
-&lt;p&gt;Проблема 1 + N лечится разными способами. Первый — ORM может джойнить сущности,
-то есть выполнить запрос:&lt;/p&gt;
-
-&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;orders&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;left&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;join&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;users&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;orders&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;user_id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;user&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;left&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;join&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;items&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;order&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;item_id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;item&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;status&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'active'&lt;/span&gt;
-&lt;span class=&quot;k&quot;&gt;order&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;by&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;created_at&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;desc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Такой джоин может нарушить пагинацию по limit/offset, но это страшно. Можно либо
-не использовать ее вообще, либо взять пагинацию по keyset, либо заменить limit
-выражением fetch.&lt;/p&gt;
-
-&lt;p&gt;Другой способ — вытянуть записи по слоям на уровне приложения. Первый слой — это
-orders. Как только происходит обращение к user, ORM собирает все user_id и
-выполнят запрос&lt;/p&gt;
-
-&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;users&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;?&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;?&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;?&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;...)&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;То же самое с &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;items&lt;/code&gt; — выгребаются уникальные &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;item_id&lt;/code&gt;, и по ним делается
-запрос с IN.&lt;/p&gt;
-
-&lt;p&gt;Некоторые ORM действуют тоньше. Если айдишников много, они выгребают смежные
-сущности кусками по 10-30. Таким образом, если нужно пройти 100 заказов, мы
-совершим 4-10 запросов, что не так страшно.&lt;/p&gt;
-
-&lt;p&gt;Проблема 1 + N — настоящий бич ORM. Сколько подобных ошибок я исправил —
-затрудняюсь припомнить (и конечно, совершил сам).&lt;/p&gt;
-
-&lt;p&gt;На мой взгляд, в ORM должна быть опция: кидать исключение, если смежные записи
-читаются штучно. Опция должна быть глобальной, чтобы раз и навсегда запретить
-подобные вещи. Глядишь, новички стали бы лучше понимать, что вообще происходит.&lt;/p&gt;
-</description>
-        <pubDate>Fri, 23 Jan 2026 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/tip-013-pg/</link>
-        <guid isPermaLink="true">https://grishaev.me/tip-013-pg/</guid>
-        
-        <category>postgres</category>
-        
-        <category>sql</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Совет дня №12</title>
-        <description>&lt;p&gt;Дополнение &lt;a href=&quot;/tip-011-pg/&quot;&gt;вчерашней заметки&lt;/a&gt; насчет запросов в базу. Смотреть
-запросы, которые выполняются во время тестов – это хорошо, можно поймать много
-кривых вещей. Но есть еще одна техника: считать запросы и проверять их
-количество. Этим вы защищаете код от ситуации, когда небольшое изменение
-накинуло +20 запросов. В ORM подобные вещи случаются часто. В основном они
-вызваны проблемой 1 + N, о которой будет следующий совет.&lt;/p&gt;
-
-&lt;p&gt;Фреймворки-гиганты предлагают встроенный метод подсчета запросов. Например, в
-Django, если тестовый класс унаследован от &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;TransactionTestCase&lt;/code&gt;, доступен метод
-&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;assertNumQueries&lt;/code&gt;. В целом подобный тест выглядит так:&lt;/p&gt;
-
-&lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;TestSomeFunc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;TestCase&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
-    &lt;span class=&quot;n&quot;&gt;dеf&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;test_func&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
-        &lt;span class=&quot;k&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;bp&quot;&gt;self&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;assertNumQueries&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;using&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;db1&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
-            &lt;span class=&quot;n&quot;&gt;some_func&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
-&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;Если кто-то поправит логику, число запросов изменится, и тест не пройдет.&lt;/p&gt;
-
-&lt;p&gt;Если запросов много (10 и больше), посмотрите лог и добавьте комментарий с
-распределением запросов. Так логика будет понятна хотя бы в общих чертах:&lt;/p&gt;
-
-&lt;div class=&quot;language-python highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;c1&quot;&gt;# 1 auth
-# 2 permission check
-# 4 fetch data
-# 2 update data
-# 2 send notifications
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-
-&lt;p&gt;В одном проекте выяснилось: удаление сущности порождало 400 с лишним
-запросов. Разумеется, почти все они удалялись поштучно, потому что разработчики
-не дружили с БД.&lt;/p&gt;
-
-&lt;p&gt;Для Django написаны в том числе сторонние сборщики запросов, их легко
-нагуглить. Полагаю, то же самое есть в Руби, Spring Boot и прочих
-комбайнах. Подсчет легко сделать в Кложе: достаточно динамической переменной и
-макроса.&lt;/p&gt;
-
-&lt;p&gt;Не обязательно считать запросы во всех апишках: скажем, для &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;get-by-id&lt;/code&gt; подсчет
-избыточен. Но удаление сущностей, сложные перемещения из одной таблицы в другую
-– очень желательно. Все для этого есть, просто воспользуйтесь.&lt;/p&gt;
-</description>
-        <pubDate>Fri, 23 Jan 2026 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/tip-012-pg/</link>
-        <guid isPermaLink="true">https://grishaev.me/tip-012-pg/</guid>
         
         <category>postgres</category>
         
