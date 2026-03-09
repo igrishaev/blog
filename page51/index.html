@@ -106,6 +106,159 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/files/">Возня с файлами</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2022-03-20T00:00:00+00:00">
+        Mar 20, 2022
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/files/" rel="tag">files</a>, <a href="/tag/s3/" rel="tag">s3</a>, <a href="/tag/yandex/" rel="tag">yandex</a>, <a href="/tag/amazon/" rel="tag">amazon</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    
+<p>В одной из прошлых заметок <a href="/cron-mail/">я рассказал</a>, как настроить cron с отправкой почты на свой ящик. В завершении обещал уточнить, для каких конкретно целей я использую крон, но не сделал этого. Исправляюсь.</p>
+
+<p>Если коротко, с помощью крона я бекаплю файловый архив. До недавнего времени пользовался S3, но из-за последних событий вынужден переезжать. Ниже — мои изыскания на тему хранения файлов.</p>
+
+<p>Полагаю, у каждого из нас есть архив личных файлов. Как правило, это фотографии с первой мыльницы, код с прошлых проектов или просто файлы, которые приятно иной раз посмотреть. Например, сделанный своими руками ролик про университет, первые работы в рекламе или в типографии.</p>
+
+<p>Кроме фоток, крайне важны сканы документов. Паспорт, загран, снилс, ИНН и так далее. Все то же самое для жены и троих детей, плюс свидетельства о рождении. Полноценный скан документа (именно скан, а не фотка) неистово полезен. Распечатать его на принтере занимает минуту, а поход в ближайший копицентр — двадцать минут. Когда после рождения третьей дочки бегал по инстанциям, идею со сканами я просто боготворил: в каждую дверь нужно сдать пачку копий, а таких дверей десятки.</p>
+
+<p>Из-за уникальности файлов возникает вопрос, где их хранить. Техника недолговечна: нельзя доверять даже жестким дискам, не то что флешкам. Если архив лежит в нескольких местах, должна быть синхронизация, иначе убьешся синхронизировать вручную.</p>
+
+<p>До недавнего времени вопрос не стоял остро: бери любое облачное хранилище и вперед: дропбокс, яндекс-драйв, гугло-драйв, айклауд. Но даже до “спецоперации” и отвала русских пользователей ни один из этих сервисов мне не подошел. Все они намертво завязаны на конкретный бренд и любят выкручивать мозг. О деградации того же дропбокса я писал неоднократно (<a href="/dropbox-ui/">раз</a>, <a href="/design-dropbox/">два</a>), и аналоги ничуть не лучше.</p>
+
+<p>Основная претензия с синхронизаторам файлов — интерфейс, точнее желание его не видеть. Хочется, чтобы ни при каких условиях не вылазил попап или окошко на электроне. Чтобы в углу не маячили уведомления, которые забыл выключить. Чтобы не оценивать сервис по десятибалльной шкале. Словом — настроил и забыл.</p>
+
+<p>Я попробовал AWS S3, и неожиданно понравилось: все происходит молча, разве что в раз в месяц получаю счет. Настроить просто: ставим <a href="https://aws.amazon.com/cli/">питонячий AWS CLI</a>. Далее прописываем креды и настройки в файлах:</p>
+
+<div class="language-ini highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># ~/.aws/config
+</span>
+<span class="nn">[default]</span>
+<span class="py">region</span> <span class="p">=</span> <span class="s">us-east-1</span>
+<span class="py">output</span> <span class="p">=</span> <span class="s">json</span>
+
+<span class="c"># ~/.aws/credentials
+</span>
+<span class="nn">[default]</span>
+<span class="py">aws_access_key_id</span> <span class="p">=</span> <span class="s">...</span>
+<span class="py">aws_secret_access_key</span> <span class="p">=</span> <span class="s">...</span>
+</code></pre></div></div>
+
+<p>Если теперь выполнить команду <code class="language-plaintext highlighter-rouge">s3 sync</code>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws s3 <span class="nb">sync </span>my-bucket s3://my-bucket <span class="nt">--delete</span>
+</code></pre></div></div>
+
+<p>, то произойдет синхронизация файлов из первого источника (папки) во второй (бакет). Флаг <code class="language-plaintext highlighter-rouge">--delete</code> означает, что файлы, которых нет в источнике, будут удалены в удаленном хранилище. Другими словами, если удалили локальный файл, то при синхронизации он будет удален и в S3. Без флага происходит простое слияние файлов.</p>
+
+<p>Вот как оформить все это дело в кронтаб:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">BUCKET</span><span class="o">=</span>my-bucket
+
+0 <span class="k">*</span>/3 <span class="k">*</span> <span class="k">*</span> <span class="k">*</span> <span class="nb">cd</span> /Users/ivan/s3 <span class="o">&amp;&amp;</span> aws s3 <span class="nb">sync</span> <span class="k">${</span><span class="nv">BUCKET</span><span class="k">}</span> s3://<span class="k">${</span><span class="nv">BUCKET</span><span class="k">}</span> <span class="nt">--exclude</span> <span class="s1">'*.DS_Store'</span> <span class="nt">--delete</span> <span class="o">&amp;&amp;</span> <span class="nb">echo </span>OK
+</code></pre></div></div>
+
+<p>Для удобства я назвал локальную папку так же, что и бакет, чтобы ссылаться на переменную.</p>
+
+<p>Вопрос в том, насколько часто запускать синхронизацию. Раньше я делал это каждые три часа (<code class="language-plaintext highlighter-rouge">0 */3 ...</code>), но со временем понял, что это слишком часто. На практике хватает двух раз в день: в обед и вечером (<code class="language-plaintext highlighter-rouge">0 12,22 ...</code>).</p>
+
+<p>О результатах синхронизации я узнаю по письму следующего содержания:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Subject: Cron &lt;ivan@ivan&gt; cd /Users/ivan/s3 &amp;&amp; aws s3 sync ...
+
+Completed 60.5 KiB/~60.5 KiB (34.3 KiB/s) with ~1 file(s) remaining (calculating...)
+upload: my-bucket/docs/text/links.md to s3://my-bucket/docs/text/links.md
+Completed 60.5 KiB/~60.5 KiB (34.3 KiB/s) with ~0 file(s) remaining (calculating...)
+
+OK
+</code></pre></div></div>
+
+<p>Про деньги: хранение 130 гигабайт с синхронизацией каждые 3 часа стоит 4.6 доллара в месяц. Это дешевле дропбокса и и аналогов с интерфейсом. Важное преимущество в том, что платишь в точности за те ресурсы, что потребляешь. Никаких обрыдлых подписок.</p>
+
+<p>С началом “не-войны” Амазон начал вести себя странно. Файлы по-прежнему доступны, но теперь я не могу войти в консоль управления. Амазон требует ввести код, отправленный на телефон, но сообщения не приходят. Не работают и другие способы его получить, например голосовым звонком робота. Запросил восстановление двухфакторной авторизации, но что-то Амазон не спешит.</p>
+
+<p>Написали бы прямо: не работаем с проклятыми фашистами и агрессорами, и я бы все понял. Не дожидаясь отвала файлов, решил мигрировать, тем более что все равно нельзя оплатить российской картой.</p>
+
+<p>Приятная вещь: S3 уже давно не монополист в области хранения файлов, и многие фирмы выкатили свои решения. Которые, кстати, работают по протоколу S3. Файловые хранилища предлагают DigitalOcean, Exoscale, Яндекс.Облако. Будучи в Exoscale, я, хоть и немного, но работал над хранилищем.</p>
+
+<p>Миграция сводится к тому, чтобы перенацелить клиент AWS на другой сервис. По понятным причинам выбрал Яндекс — западные партнеры сейчас не подходят. Регистрируемся на <code class="language-plaintext highlighter-rouge">cloud.yandex.ru</code>, переходим в Object Storage. Создаем бакет. Советую холодный тип хранения, потому что читать файлы вы будете редко, а синхронизация работает по методу HEAD — через метаданные.</p>
+
+<p>Когда бакет создан, понадобится пара открытый-закрытый ключ. Как слепой щенок, долго я мыкался по интерфейсу, пока не нашел “сервисные аккаунты”. Создайте новую пару и сохраните ключи. Добавьте в настройки клиента AWS секции:</p>
+
+<div class="language-ini highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># ~/.aws/config
+</span>
+<span class="nn">[ya]</span>
+<span class="py">region</span> <span class="p">=</span> <span class="s">ru-central1</span>
+<span class="py">output</span> <span class="p">=</span> <span class="s">json</span>
+
+<span class="c"># ~/.aws/credentials
+</span>
+<span class="nn">[ya]</span>
+<span class="py">aws_access_key_id</span> <span class="p">=</span> <span class="s">...</span>
+<span class="py">aws_secret_access_key</span> <span class="p">=</span> <span class="s">...</span>
+</code></pre></div></div>
+
+<p>Теперь выполните:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws <span class="nt">--profile</span> ya <span class="nt">--endpoint-url</span><span class="o">=</span>https://storage.yandexcloud.net s3 <span class="nb">sync</span> ...
+</code></pre></div></div>
+
+<p>, и файлы польются в Яндекс. К сожалению, в настройких нельзя задать свой <code class="language-plaintext highlighter-rouge">endpoint-url</code>, поэтому приходится таскать его за собой в командной строке. Народные умельцы сделали <a href="https://github.com/wbingli/awscli-plugin-endpoint">плагин</a>, который это фиксит, но я не проверял.</p>
+
+<p>Как закончится синхронизация, удалите старые файлы из Амазона:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>aws s3 <span class="nb">rm </span>s3://my-bucket <span class="nt">--recursive</span>
+</code></pre></div></div>
+
+<p>Поздравляю, вы переехали. Осталось только исправить <code class="language-plaintext highlighter-rouge">crontab</code>, чтобы синхронизация стала регулярной.</p>
+
+<p>У питонячьего AWS-клиента есть недочет: при синхронизации он оставляет на сервере пустые папки. Предположим, вы удалили папку “photos”, и AWS CLI честно выполнит DELETE для каждого файла:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DELETE photos/IMG_001.jpeg
+DELETE photos/IMG_002.jpeg
+DELETE photos/IMG_003.jpeg
+...
+</code></pre></div></div>
+
+<p>Что касается пути “photos/”, то он благополучно останется на сервере. Ясное дело, что со временем накопится масса таких пустышек, и скачав файлы с S3, вы обнаружите папки, удаленные давным давно. На эту тему <em>пять лет назад</em> создан <a href="https://github.com/aws/aws-cli/issues/2685">issue</a>, в котором отметился и ваш покорный слуга. Каждый месяц я получаю письма с комментариями +1 и пальчиком кверху, но исправлять его никто не спешит.</p>
+
+<p>Впрочем, удалить пустые папки можно командой</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>find <span class="nb">.</span> <span class="nt">-type</span> d <span class="nt">-empty</span> <span class="nt">-delete</span>
+</code></pre></div></div>
+
+<p>, что не такая уж и проблема.</p>
+
+<p>Согласно <a href="https://cloud.yandex.ru/prices">калькулятору Яндекса</a>, хранение 150 гигов обойдется в 215 рублей в месяц, что, прямо скажем, по-божески. По текущему курсу это два доллара, дешевле даже представить нельзя.</p>
+
+<p>Во время изысканий я в том числе пробовал программу <a href="https://syncthing.net/">SyncThing</a>. Кто не знает, это программа для анонимной синхронизации файлов. Никаких регистраций: поставил у себя и на удаленной машине, обменялся QR-кодами, и процесс пошел. Работает как часы. Висит в трее, настройки через браузер на локальном хосте.</p>
+
+<p>На мой взгляд, SyncThing подходит в тех случаях, когда файлы постоянно меняются, и изменений ждут на обоих концах. Например, обмен документами между группой лиц или торрент-трекер, ожидающий файлы в нужной папке. Перекинуть файл с макбука на игровой комп — тот еще челендж, если настраивать сеть по правилам. А со SyncThing работает прекрасно. Словом, замена старому доброму Дропбоксу.</p>
+
+<p>А вот делать бекапы через SyncThing как-то не зашло. Для этого нужно поднимать VPS и ставить там SyncThing. Виртуалки с большим диском нынче от 700 рублей в месяц. Не катастрофа, но выбор между 200 и 700 рублями в месяц очевиден. Да и заморачиваться не охота.</p>
+
+<p>В общем, вот как я синхронизирую файлы. Слово читателям: расскажите, как делаете это вы.</p>
+
+<p><strong>UPD:</strong> <a href="/files2/">продолжение</a>.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/en/bogus/">Bogus: a simple GUI debugger for Clojure</a>
             </h2>
 
@@ -1013,137 +1166,6 @@ only exceptions. Quick demo:</p>
 <p>Все, выговорился. Отпустило. Полегчало.</p>
 
 <p>С наступившим!</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/youtube-desktop/">Ютуб в настольном приложении</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2021-12-17T00:00:00+00:00">
-        Dec 17, 2021
-    </time>
-
-    <a href="/tag/youtube/" rel="tag">youtube</a>, <a href="/tag/vlc/" rel="tag">vlc</a>, <a href="/tag/video/" rel="tag">video</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Открывая очередной видос на Ютубе, подумал — так жить нельзя. Мне ведь нужно
-только видео, а Ютуб в довесок льет рекламу, трекинг, похожее видео,
-комментарии. Браузер Brave и сторонние блокировщики помогают, но все
-тормозит. Плюс Гугл постоянно меняет что-то в интерфейсе, и чувствуешь себя
-животным, чью миску с едой передвинули в другой угол.</p>
-
-<p>Наверняка же есть настольная прога, которой даешь урл — и она показывает. Слегка
-погуглил, и выяснилось, что так и есть.</p>
-
-<p>Знаменитый плеер VLC умеет играть ютубные урлы. И не только ютубные, но и Вимео,
-BBC и другие (Порнохаба, увы, нет). Реализовано это скриптом на Lua, который по
-урлу вычисляет прямую ссылку на гугловый стрим.</p>
-
-<p>Однако выяснилось, что то ли скрипт поломали, то ли Гугл обновился, и теперь
-просмотр Ютуба не работает. Вот что надо сделать, чтобы его починить.</p>
-
-<p>Скачайте скрипт <code class="language-plaintext highlighter-rouge">youtube.lua</code> с Гитхаба <a href="https://raw.githubusercontent.com/videolan/vlc/master/share/lua/playlist/youtube.lua">по этой ссылке</a>. Далее
-зайдите в папку</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/Applications/VLC.app/Contents/MacOS/share/lua/playlist
-</code></pre></div></div>
-
-<p>На винде и линуксе, понятно, путь будет другим. Удалите файл <code class="language-plaintext highlighter-rouge">youtube.luac</code> — это
-скомпилированный модуль, который сейчас не работает. Скопируйте сюда
-<code class="language-plaintext highlighter-rouge">youtube.lua</code>, что вы скачали. Перезапустите плеер.</p>
-
-<p>Чтобы открыть ютубный видос в VLC, пройдите по пунктам <code class="language-plaintext highlighter-rouge">File</code> → <code class="language-plaintext highlighter-rouge">Open
-Network</code> или нажмите <code class="language-plaintext highlighter-rouge">Command+N</code>. В окошке введите урл.</p>
-
-<p><img src="/assets/static/aws/vlc/url.png" /></p>
-
-<p>Плеер немного потупит, и появится видео:</p>
-
-<p><img src="/assets/static/aws/vlc/video.png" /></p>
-
-<p>Что радует:</p>
-
-<ul>
-  <li>нет рекламы и трекинга;</li>
-  <li>нет тормозных скриптов;</li>
-  <li>нет оверлеев, по клику на которые улетаешь невесть куда;</li>
-  <li>нет комментариев, рекомендуемых видосов и прочего.</li>
-</ul>
-
-<p>Такой просмотр анонимный: он не осядет в истории, не будет преследовать годами
-на главной. Если видео длинное, плеер можно запаузить и свернуть как обычное
-окно. Не будет лишней вкладке в Хроме.</p>
-
-<p>Работает перемотка стрелочками, при этом вы сами настраиваете, на сколько
-секунд. Аналогично с ускорением видео: в выпадающем меню Playback открывается
-бегунок.</p>
-
-<p><img src="/assets/static/aws/vlc/playback.png" /></p>
-
-<p>С качеством видео все сложно. Его можно менять, но настройка спрятана так
-глубоко, что дойдет только сильнейший. Сначал <code class="language-plaintext highlighter-rouge">VLC</code> → <code class="language-plaintext highlighter-rouge">Preferences</code> → <code class="language-plaintext highlighter-rouge">Input /
-Codecs</code>, кнопка <code class="language-plaintext highlighter-rouge">Show All</code>.</p>
-
-<p><img src="/assets/static/aws/vlc/codecs.png" /></p>
-
-<p>Затем прокрутить до Preferred video resolution. По умолчанию там Best available,
-что слишком жирно. 1080 или 720 хватит за глаза.</p>
-
-<p><img src="/assets/static/aws/vlc/resolution.png" /></p>
-
-<h2 id="автоматизация">Автоматизация</h2>
-
-<p>Чтобы быстро открыть видос, напишем функцию на bash. Добавьте в ваш <code class="language-plaintext highlighter-rouge">~./bashrc</code>
-или <code class="language-plaintext highlighter-rouge">~./zshrc</code> следующее:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">function </span>play<span class="o">(){</span>
-    /Applications/VLC.app/Contents/MacOS/VLC <span class="nt">-v</span> <span class="nv">$1</span> &amp;
-<span class="o">}</span>
-</code></pre></div></div>
-
-<p>Амперсанд на конце запустит процесс в фоне, чтобы можно было закрыть терминал,
-не прибив плеер. Теперь достаточно вызвать в консоли</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>play https://www.youtube.com/watch?v=88UDgKLL7bE
-</code></pre></div></div>
-
-<p>— и появится плеер с видосом:</p>
-
-<p><img src="/assets/static/aws/vlc/eat.png" /></p>
-
-<p>Минус — VLC не сохраняет прогресс просмотра. На длинных видосах, которые
-смотришь урывками по нескольку дней, можно случайно потерять прогресс.</p>
-
-<p>Схема не работает с плейлистами: при попытке его открыть запускается только
-первый видос. Однако VLC поддерживает свои плейлисты. С его точки зрения ютубное
-видео — один из элементов плейлиста. Откройте по очереди несколько видосов и
-сохраните в файл m3u. Получается локальный плейлист, не привязанный к учетке
-гугла. Положите его в Дропбокс или где вы храните файлы.</p>
-
-<p>Можно вести несколько плейлистов: избранное, посмотреть позже, музыка и так
-далее.</p>
-
-<p>В итоге получается полностью анонимный просмотр Ютуба, без рекламы и с
-поддержкой плейлистов. Пока что я тестирую такой подход, и в целом ощущения
-приятные — как будто глоток свежего воздуха. Конечно, ощущения другие: здесь
-программа реагирует медленнее, а здесь быстрее. Неизвестно, к чему приду, но
-попробовать стоит.</p>
-
-<p>Если вы знаете аналоги, расскажите в комментах.</p>
 
                 
             </div>

@@ -106,6 +106,109 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-014-pg/">Совет дня №14</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-23T00:00:00+00:00">
+        Jan 23, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Итак, пагинация. Прежде всего, совет такой: если можете избежать пагинации,
+сделайте это. Пагинация — это состояние и его проброс. Лишние заморочки,
+пространство для багов.</p>
+
+<p>Пример, когда пагинации можно избежать — поиск. Как правило, релевантность
+поиска резко снижается с продвижением по выдаче. Условно, первые 10 позиций
+точные, еще десять — более-менее, остальное — просто чтобы заполнить
+выдачу. Вспомните, как давно вы были на пятой странице Гугла? Если нужной
+информации нет, лучше отправить другой запрос, чем скроллить страницы. Поэтому
+договоритесь: в поиске выдаем 50-100 позиций и никаких пагинаций. Живые люди не
+будут ей пользоваться, а вы только откроете ворота различным ботам и парсерам.</p>
+
+<p>Конечно, иногда пагинация необходима. Простой способ ее добавить — это выражения
+LIMIT и OFFSET. Дешево и сердито, но с недостатками. Во-первых, на больших
+смещениях выборка линейно замедляется. Это все равно что перематывать
+аудиокассету каждый раз с начала. В моей таблице миллион документов, и выражение</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="k">table</span> <span class="k">limit</span> <span class="mi">1</span> <span class="k">offset</span> <span class="mi">500000</span>
+</code></pre></div></div>
+
+<p>занимает 7 секунд. Целая вечность!</p>
+
+<p>Второй минус — LIMIT-OFFSET неконсистентны. В перерывах между запросами может
+добавиться новая запись, и произойдет наслоение. Я видел такое много раз:
+листаешь первую страницу, переходишь на вторую и видишь наверху заголовок,
+который был внизу первой страницы.</p>
+
+<p>Дело в том, что пока я мотал первую страницу, добавили новую статью, и окно
+сместилось. Для новостного сайта это не страшно, но представьте, что у нас
+аналог Твиттера. Пока мы читали первые 20 твитов, кто-то наспамил еще
+двадцать. В результате вторая страница может полностью состоять из твитов,
+которые мы только что видели на первой! Это никуда не годится.</p>
+
+<p>Чтобы этого избежать, используют пагинацию по уникальному btree-индексу. Такой
+индекс однозначно определяет позицию в таблице: новые записи не сместят окно. У
+каждой таблицы есть такой индекс — это первичный ключ (id). Если логика
+позволяет листать по id, этим нужно воспользоваться. Пример:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">id</span> <span class="o">&lt;</span> <span class="o">?</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">id</span> <span class="p">(</span><span class="k">desc</span><span class="p">)</span>
+<span class="k">limit</span> <span class="mi">100</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">Id</code> последней записи запоминается и передается в следующий запрос. Продолжаем
+до тех пор, пока выборка не пустая.</p>
+
+<p>Как быть, если id случаен, и требуется сортировка по дате создания? Задача
+усложняется, потому что дата не уникальна. Записи могут быть вставлены импортом
+и поэтому иметь одну дату. Граница окна пагинации может попасть на серию записей
+с одинаковой датой. Если запомнить дату последней записи и выполнить запрос</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span>
+<span class="k">where</span> <span class="n">created_at</span> <span class="o">&lt;</span> <span class="o">?</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span>
+</code></pre></div></div>
+
+<p>, мы пропустим записи, которые не показали.</p>
+
+<p>Решение в следующем: уникальный атрибут + неуникальный дают уникальное комбо. В
+самом деле: если поле <code class="language-plaintext highlighter-rouge">created_at</code> не уникальное, то пара <code class="language-plaintext highlighter-rouge">(created_at, id)</code> —
+уникальная. Поэтому заводим составной индекс на пару <code class="language-plaintext highlighter-rouge">(created_at desc, id
+desc)</code> и листаем по нему:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span>
+<span class="k">where</span> <span class="p">(</span><span class="n">created_at</span><span class="p">,</span> <span class="n">id</span><span class="p">)</span> <span class="o">&lt;</span> <span class="p">(</span><span class="o">?</span><span class="p">,</span> <span class="o">?</span><span class="p">)</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span><span class="p">,</span> <span class="n">id</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span>
+</code></pre></div></div>
+
+<p>Обратите внимание, мы сравниваем кортежи (они сравниваются поэлементно). Общий
+принцип такой, что создается уникальный индекс на пару (поле, id). Он называется
+keyset, потому что “набор ключей”.</p>
+
+<p>Каждая сотрировка (возраст, имя, зарплата) требует своей пары, поэтому
+договоритесь о них заранее.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-013-pg/">Совет дня №13</a>
             </h2>
 
@@ -891,60 +994,6 @@ COPY. Разница в том, что \copy связывает удаленны
 задается константой – кандидаты на выделенный индекс. Если каждый раз выбираются
 только активные пользователи, только текущие заказы, только не удаленные заявки
 – подумайте об условном индексе.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-004-pg/">Совет дня №4</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-15T00:00:00+00:00">
-        Jan 15, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Предположим, в запросе условие по двум полям:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">foo</span> <span class="o">=</span> <span class="mi">1</span> <span class="k">and</span> <span class="n">bar</span> <span class="o">=</span> <span class="mi">2</span>
-</code></pre></div></div>
-
-<p>Разработчик знает про индексы и добавляет их два: один на <code class="language-plaintext highlighter-rouge">foo</code>, второй на
-<code class="language-plaintext highlighter-rouge">bar</code>. Логика такая: с одним индексом быстро, с двумя – еще быстрее.</p>
-
-<p>Ан нет: не все так просто. Как правило, Postgres использует только один индекс
-при обходе, потому что так быстрее. В этом легко убедиться, посмотрев план: там
-будет индекс либо на <code class="language-plaintext highlighter-rouge">foo</code>, либо на <code class="language-plaintext highlighter-rouge">bar</code>, но не оба одновременно.</p>
-
-<p>Конечно, бывает, что используются оба индекса. Это возможно, если условия
-связаны через <code class="language-plaintext highlighter-rouge">OR</code> и Postgres выбрал bitmap index scan, используются подзапросы,
-джоины. Но конкретно в нашем случае индекс будет один.</p>
-
-<p>Если условия соединяются через AND, задайте составной индекс на пару <code class="language-plaintext highlighter-rouge">(foo,
-bar)</code>. Он будет быстрее, чем то и другое поле по отдельности.</p>
-
-<p>Порядок полей в составном индексе важен. Желательно располагать их по нарастанию
-множественности, а кроме того, иметь в виду следующее. Составной индекс может
-быть использован, если известны его лидирующие компоненты. Например, <code class="language-plaintext highlighter-rouge">(foo,
-bar)</code> сработает, если условие только на <code class="language-plaintext highlighter-rouge">foo</code>. По аналогии, индекс <code class="language-plaintext highlighter-rouge">(foo, bar,
-baz)</code> сработает, если заданы <code class="language-plaintext highlighter-rouge">foo</code> и <code class="language-plaintext highlighter-rouge">bar</code>. Однако для <code class="language-plaintext highlighter-rouge">bar</code> и <code class="language-plaintext highlighter-rouge">baz</code> он не
-подхватится.</p>
-
-<p>Планируйте составной индекс так, чтобы охватить как можно больше случаев.</p>
 
                 
             </div>
