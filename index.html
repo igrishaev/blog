@@ -106,6 +106,244 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-025-pg/">Совет дня №25</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-10T00:00:00+00:00">
+        Mar 10, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Иногда мы хотим удалить что-то из базы, но нельзя. Причины разные:</p>
+
+<ul>
+  <li>
+    <p>высокая связность сущностей. Если это пользователь, на него завязаны
+публикации, комментарии, фотографии, упоминания, заказы, обращение в поддержку
+и так далее. Каскадный DELETE по всей базе – так себе решение.</p>
+  </li>
+  <li>
+    <p>В финансах и телекомах есть требования регулятора. Данные не должны удаляться
+бесследно.</p>
+  </li>
+  <li>
+    <p>Пользователь может передумать. Скажем, удалил письмо по ошибке, нажал Undo и
+оно вернулось в ящик.</p>
+  </li>
+  <li>
+    <p>При удалении данных не должна страдать статистика. Например, даже если
+пользователь удалился из маркетплейса, в отчете продаж должны быть его
+покупки.</p>
+  </li>
+</ul>
+
+<p>Словом, есть много случаев, когда DELETE вам не поможет.</p>
+
+<p>Часто поступают так: раз удалять нельзя, добавим флажок <code class="language-plaintext highlighter-rouge">is_deleted</code> и поставим
+ему истину. То есть вместо</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">delete</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span>
+</code></pre></div></div>
+
+<p>выполним</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">users</span> <span class="k">set</span> <span class="n">is_deleted</span> <span class="o">=</span> <span class="k">true</span>
+<span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span>
+</code></pre></div></div>
+
+<p>Когда-то давно я тоже выступал за такой подход, у меня даже есть заметка в
+блоге. Что ж, я заблуждался. Мне довелось поработать в проекте, где в каждой
+таблице был флаг <code class="language-plaintext highlighter-rouge">is_deleted</code>, и это был ад.</p>
+
+<p>Если коротко – база, из которой ничего не удаляют, становится квартирой, из
+которой ничего не выбрасывают. Поживите неделю, складывая мусор в шкафы, и вы
+поймете.</p>
+
+<p>Во-первых, обращаясь к любой таблице, нужно не забыть условие <code class="language-plaintext highlighter-rouge">where not
+is_deleted</code>. Редко, но разработчики его теряли, и удаленные строки шли на
+фронт. Вы, конечно, скажете: в моей ORM можно задать фильтры по умолчанию. Знаю,
+я так делал в Django: при обращении к модели условие добавится само. Но не все
+работают с ORM.</p>
+
+<p>Можно создать вьюху <code class="language-plaintext highlighter-rouge">users_active</code>, которая выбирает всех не удаленных
+пользователей. Но это новая сущность, плюс понадобится много таких вьюх.</p>
+
+<p>Во-вторых, удаленные записи болтаются в таблице, участвуют в сканировании,
+обходе по индексу и так далее. Они банально замедляют операции с записями: пусть
+ненамного, но все же. Возможно, вам понадобится строить частичные индексы с
+выражением <code class="language-plaintext highlighter-rouge">where not is_deleted</code>, чтобы отсечь удаленные записи.</p>
+
+<p>В-третьих, если встречаемся уникальность, удаленная запись не позволит вставить
+новую. Скажем, если пользователь с почтой <code class="language-plaintext highlighter-rouge">test@foobar.com</code> отмечен удаленным и
+почта уникальна, вы не вставите другого пользователя с такой почтой. Кроме
+почты, уникальными могут быть другие поля, например номер транзакции или чека.</p>
+
+<p>Технически это можно исправить: создать уникальный индекс с условием:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">unique</span> <span class="k">index</span> <span class="n">idx_user_email</span> <span class="k">on</span> <span class="n">users</span>
+<span class="k">using</span> <span class="n">btree</span> <span class="p">(</span><span class="n">email</span><span class="p">)</span> <span class="k">where</span> <span class="k">not</span> <span class="n">is_deleted</span>
+</code></pre></div></div>
+
+<p>В этом случае уникальность проверяется только для не удаленных
+пользователей. Вроде бы всё хорошо? Тогда вопрос: что вы будете делать с
+удаленным пользователем? При попытке снять флаг вас ждет конфликт, потому что
+почта уже занята.</p>
+
+<p>В-четвертых, флага <code class="language-plaintext highlighter-rouge">is_deleted</code> недостаточно, чтобы понять: почему данные
+удалены. В идеале мы бы хотели знать время события, пользователя, кто это сделал
+и минимальный комментарий. Выходит, к каждой таблице нужно добавить еще два-три
+поля?</p>
+
+<p>И наконец: таблица, где ничего не удаляется, становится помойкой. Нельзя понять,
+почему удалили данные и что с ними делать. Пользователь удалился сам? Его
+забанили? За что? Он на модерации? Кто кого ждет?</p>
+
+<p>Данные о платежах не были обработаны? Почему? Когда планируется снова их
+обработать? Что делать, если опять не получится? Десятки вопросов, и никто
+ничего не знает.</p>
+
+<p>Решение будет изложено в следующем совете.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-024-pg/">Совет дня №24</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-10T00:00:00+00:00">
+        Mar 10, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Когда мы попадаем в индекс, желательно понимать, что при этом происходит. В
+Postgres btree-индекс – это дерево распределительных узлов, и на последнем
+уровне хранятся пары: значение -&gt; номер страницы (блока). Поэтому даже если вы
+попали в индекс, предстоит некоторая работа: проверить, есть ли такой блок в
+буферном кэше, если нет – подгрузить его с диска. Затем пройтись по всем строкам
+блока (линейным перебором) и найти ту, что подходит условию.</p>
+
+<p>В редких случаях можно срезать угол: взять данные только из индекса, не обращаясь к диску.</p>
+
+<p>Если выполнить такой запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">id</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">123456</span>
+</code></pre></div></div>
+
+<p>, то значение <code class="language-plaintext highlighter-rouge">id</code> будет взято из индекса – нет смысла обращаться в
+таблицу. Конечно, это наивный пример: мы и так знаем айдишку. Но он полезен для
+диапазонов: скажем, выбрать айдишки между 100 и 200 или &lt;= 10000. В этом случае
+они будут взяты из индекса.</p>
+
+<p>Более реалистичный пример: предположим, есть таблица пользователей. Из прошлого
+совета про ключи мы помним, что у людей должен быть суррогатный ключ, а почта
+используется для уникальности. Поэтому таблица объявлена так:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">email</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Уникальность гарантирует специальный индекс:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">unique</span> <span class="k">index</span> <span class="n">idx_users_email</span>
+<span class="k">on</span> <span class="n">users</span> <span class="p">(</span><span class="n">email</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>На практике индекс строят по выражению <code class="language-plaintext highlighter-rouge">trim(lower(email))</code>, но сейчас это не
+важно.</p>
+
+<p>Вставим миллион пользователей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">users</span>
+<span class="k">select</span> <span class="n">x</span><span class="p">,</span> <span class="n">format</span><span class="p">(</span><span class="s1">'email_%s@test.com'</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+<span class="k">from</span> <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1000000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Задача в следующем: нужно часто получать айди пользователя по его почте
+(обратный резолв). Нам передают почту, по ней мы находим айди, и все запросы
+пляшут от этого айдишника. Напишем следующий запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">id</span> <span class="k">from</span> <span class="n">users</span>
+<span class="k">where</span> <span class="n">email</span> <span class="o">=</span> <span class="s1">'email_500000@test.com'</span><span class="p">;</span>
+<span class="c1">-- 500000</span>
+</code></pre></div></div>
+
+<p>Он довольно шустрый:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌──────────────────────────────────────────
+│ Index Scan using idx_users_email on users
+│   Index Cond: (email = 'email_500000@test
+│ Planning Time: 0.155 ms
+│ Execution Time: 0.896 ms
+└──────────────────────────────────────────
+</code></pre></div></div>
+
+<p>Теперь удалим этот индекс и построим немного другой:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">drop</span> <span class="k">index</span> <span class="n">idx_users_email</span><span class="p">;</span>
+
+<span class="k">create</span> <span class="k">unique</span> <span class="k">index</span> <span class="n">idx_users_email</span>
+<span class="k">on</span> <span class="n">users</span> <span class="p">(</span><span class="n">email</span><span class="p">)</span> <span class="n">include</span> <span class="p">(</span><span class="n">id</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Такой индекс называется покрывающим из-за выражения <code class="language-plaintext highlighter-rouge">include (id)</code>. Смысл в том,
+что значение <code class="language-plaintext highlighter-rouge">id</code> хранится в дереве <code class="language-plaintext highlighter-rouge">btree</code> как метаданные. Это увеличивает
+размер индекса, зато позволяет взять указанное поле без обращения к диску. Вот
+что показывает новый план:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌───────────────────────────────────────────────
+│ Index Only Scan using idx_users_email on users
+│   Index Cond: (email = 'email_500000@test.com'
+│   Heap Fetches: 0
+│ Planning Time: 0.830 ms
+│ Execution Time: 0.141 ms
+└───────────────────────────────────────────────
+</code></pre></div></div>
+
+<p>Обратите внимание на “Index Only Scan” – только индекс без обращения к
+диску. Время выполнения ниже, стоимость тоже.</p>
+
+<p>Если прогреть индекс <code class="language-plaintext highlighter-rouge">idx_users_email</code> (см. прошлый совет), он будет находиться
+в памяти. В этом случае резолв айдишки по почте не отличается от Redis: все
+происходит в памяти без обращения к диску.</p>
+
+<p>Прием тем эффективней, чем больше столбцов и записей в таблице. Не обязательно
+пихать его тут и там, но в нужный момент он очень полезен.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-023-pg/">Совет дня №23</a>
             </h2>
 
@@ -816,205 +1054,6 @@ ef0093d3-...-26e923a66fe4 -&gt; 7232
 Postgres читает сразу много блоков, а не по одному.</p>
 
 <p>Итого: выполняйте <code class="language-plaintext highlighter-rouge">analyze</code>, проверяйте селективность условия.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/pg-book-json-ch01/">Глава 1. Введение в документы</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-25T00:00:00+00:00">
-        Jan 25, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/json/" rel="tag">json</a>, <a href="/tag/book/" rel="tag">book</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<h2>
-
-    Содержание
-
-</h2>
-
-<ul id="toc-item-pg-book-json-ch01">
-  <li><a href="#табличное-мышление" id="toc-item-pg-book-json-ch01-табличное-мышление">Табличное мышление</a></li>
-  <li><a href="#подход-nosql" id="toc-item-pg-book-json-ch01-подход-nosql">Подход NoSQL</a></li>
-  <li><a href="#знакомство-с-документами" id="toc-item-pg-book-json-ch01-знакомство-с-документами">Знакомство с документами</a></li>
-  <li><a href="#доводы-в-пользу-документов" id="toc-item-pg-book-json-ch01-доводы-в-пользу-документов">Доводы в пользу документов</a></li>
-  <li><a href="#задачи-которые-решают-документы" id="toc-item-pg-book-json-ch01-задачи-которые-решают-документы">Задачи, которые решают документы</a></li>
-  <li><a href="#слабые-стороны-документов" id="toc-item-pg-book-json-ch01-слабые-стороны-документов">Слабые стороны документов</a></li>
-  <li><a href="#замечание-о-переоценке" id="toc-item-pg-book-json-ch01-замечание-о-переоценке">Замечание о переоценке</a></li>
-  <li><a href="#почему-postgres" id="toc-item-pg-book-json-ch01-почему-postgres">Почему Postgres</a></li>
-  <li><a href="#тайное-преимущество-sql" id="toc-item-pg-book-json-ch01-тайное-преимущество-sql">Тайное преимущество SQL</a></li>
-</ul>
-
-<p><em>В первой главе мы рассмотрим реляционные и документо-ориентированные базы
-данных. Мы обсудим их сильные и слабые стороны, сценарии, когда одному виду
-предпочитают другой и наоборот. Здесь же мы коснемся понятия документа:
-структуры данных, которая ввиду сложности плохо ложится на реляционные
-таблицы. Мы узнаем, для каких задач выбирают документы и чем может быть полезен
-Postgres.</em></p>
-
-<h2 id="табличное-мышление">Табличное мышление</h2>
-
-<p>Если вы бэкенд-разработчик, то скорее всего работали с реляционными базами
-данных. Наиболее известные их представители — это MySQL, ее форк MariaDB,
-PostgreSQL, Microsoft SQL Server, Oracle DB. Реляционные базы называются так
-из-за лежащей в их основе <a href="https://ru.wikipedia.org/wiki/%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D0%B0%D1%8F_%D0%B0%D0%BB%D0%B3%D0%B5%D0%B1%D1%80%D0%B0">реляционной алгебры</a> (она же алгебра
-отношений). Это математический аппарат, который строится на отношениях
-(множествах кортежей) и операций над ними (проекция, объединение, пересечение и
-другие).</p>
-
-<p>Чтобы работать с базой на прикладном уровне, реляционная алгебра не
-требуется. Гораздо важнее следствия математической модели:</p>
-
-<ul>
-  <li>любой массив данных является таблицей;</li>
-  <li>любая операция над таблицей порождает таблицу.</li>
-</ul>
-
-<p>В каждой базе найдется техника, которая не подходит под эти правила. Однако
-общую картину это не меняет: в основе реляционных баз лежат таблицы и операции
-над ними.</p>
-
-
-                    <p><a href="/pg-book-json-ch01/">Read more &rarr;</a></p>
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-015-pg/">Совет дня №15</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-23T00:00:00+00:00">
-        Jan 23, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Пагинация, продолжение.</p>
-
-<p>Вернемся к случаю, когда нужна пагинация по убыванию времени <code class="language-plaintext highlighter-rouge">(created_at,
-updated_at)</code> и так далее. Этот критерий встречается так часто, что для него есть
-лазейка.</p>
-
-<p>В прошлый раз мы использовали кортеж <code class="language-plaintext highlighter-rouge">(created_at, id)</code>. Идея в том, что
-поскольку <code class="language-plaintext highlighter-rouge">created_at</code> не уникален, он не дает точного положения в таблице. Но
-так как id уникален, их комбинация – тоже уникальна.</p>
-
-<p>От кортежа можно избавиться, если в качестве ID используется UUID v7. Дело в
-том, что v7 совмещает в себе эти два свойства: время и уникальность. Существуют
-разные подвиды UUID v7, но не зависимо от них пагинация будет:</p>
-
-<ul>
-  <li>точно попадать в границы;</li>
-  <li>использовать btree индекс.</li>
-</ul>
-
-<p>Итак, если у вас API и нужна пагинация, ваши варианты:</p>
-
-<ul>
-  <li>
-    <p>limit и offset; убедитесь, что offset не превышает какого-то разумного числа,
-например тысячи. Иначе вас будут парсить.</p>
-  </li>
-  <li>
-    <p>keyset: комбинация полей <code class="language-plaintext highlighter-rouge">(some_field + id)</code> для уникальности. Требует
-отдельного индекса.</p>
-  </li>
-  <li>
-    <p>UUIDv7 – если требуется пагинация по <code class="language-plaintext highlighter-rouge">created_at</code>. Это частый случай, поэтому
-рассмотрите его.</p>
-  </li>
-</ul>
-
-<p>Перейдем к пагинации, которая используется не в API, а для служебных
-нужд. Например, в миграциях, переносе данных и так далее. Нужно обойти огромную
-таблицу, при этом выгрузить ее в память нельзя – слишком большая (например, 100
-миллионов записей).</p>
-
-<p>Один из способов – использовать курсор и FETCH API. Апишка у него довольно
-простая:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">BEGIN</span><span class="p">;</span>
-
-<span class="k">DECLARE</span> <span class="n">cur_foo</span> <span class="k">CURSOR</span> <span class="k">FOR</span> <span class="k">SELECT</span> <span class="o">*</span> <span class="k">FROM</span> <span class="n">items</span><span class="p">;</span>
-
-<span class="k">FETCH</span> <span class="k">FORWARD</span> <span class="mi">100</span> <span class="k">FROM</span> <span class="n">cur_foo</span><span class="p">;</span>
-<span class="k">FETCH</span> <span class="k">FORWARD</span> <span class="mi">100</span> <span class="k">FROM</span> <span class="n">cur_foo</span><span class="p">;</span>
-<span class="k">FETCH</span> <span class="k">FORWARD</span> <span class="mi">100</span> <span class="k">FROM</span> <span class="n">cur_foo</span><span class="p">;</span>
-<span class="p">...</span>
-<span class="k">CLOSE</span> <span class="n">cur_foo</span><span class="p">;</span>
-<span class="k">COMMIT</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Объявляем курсор, затем в цикле вытягиваем по 100 записей, пока результат не
-пустой. В конце закрываем курсор.</p>
-
-<p>Казалось бы, вот он – святой Грааль. Но беда в том, что курсор требует
-транзакции. В момент открытия он запоминает текущий снимок (номер транзакции) и
-просматривает записи, версия которых не превышает его. Чтобы пользоваться
-курсором, нужно держать транзакцию в течение всего цикла. Для больших таблиц это
-дорого, поэтому подходит только для всяких ночных скриптов.</p>
-
-<p>Кроме того, курсор привязан к конкретному соединению с БД. Использовать их в
-HTTP API невозможно.</p>
-
-<p>Другой способ обойти большую таблицу – сдампить ее в файл при помощи COPY
-(см. <a href="/tip-006-pg/">прошлый совет</a>). Чтобы таблица не заняла весь диск, ее
-сжимают в gzip. В результате у вас оказывается файл <code class="language-plaintext highlighter-rouge">my_table.gzip</code>, вы
-отрываете его и спокойно парсите. Идея в том, чтобы забрать данные из базы как
-можно скорее и потом не мучить ее пагинацией. Если скрипт упадет, не придется
-насиловать базу снова – у вас уже есть файл.</p>
-
-<p>Третий способ – использовать драйвер, который позволяет обрабатывать записи в
-полете. Например, мой <a href="https://github.com/igrishaev/pg2">pg2</a>. Функция <code class="language-plaintext highlighter-rouge">execute</code> принимает запрос и всякие
-опции. Среди прочих можно передать редьюсер – функцию трех тел:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(fn
-  ([]
-   (make-acc ...))
-  ([acc row]
-   (conj acc row))
-  ([acc]
-   (finalize acc)))
-</code></pre></div></div>
-
-<p>Тело без аргументов – инициатор аккумулятора (может быть мутабельным), тело с
-одним аргументом – финализатор аккумулятора, с двумя – приращение записи к
-аккумулятору. Из коробки доступны разные редьюсеры (см документацию). Легко
-написать свой, который будет отправлять каждую строку в сеть, в асинхронный
-канал и так далее. И все это – в полете, то есть по мере получения сообщений от
-Postgres, без исчерпания всей памяти.</p>
-
-<p>Полагаю, это все, что можно сказать про пагинацию.</p>
 
                 
             </div>
