@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Совет дня №28</title>
+  <meta name="description" content="Продолжение прошлого поста. Тезис: выбирайте данные, только еслинужно передать их третьей стороне, например фронтенду. Для промежуточныхвычислений это чаще в...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/tip-028-pg/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/postgres/">Postgres</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Совет дня №28</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-21T00:00:00+00:00">
+        Mar 21, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Продолжение <a href="/tip-027-pg/">прошлого поста</a>. Тезис: выбирайте данные, только если
+нужно передать их третьей стороне, например фронтенду. Для промежуточных
+вычислений это чаще всего не требуется. Достаточно сказать базе: обнови такие-то
+поля согласно такой-то логике, и она все сделает сама.</p>
+
+<p>Обновление силами SQL особенно хорошо на больших данных. Не нужно гонять тысячи
+строк по сети. По компьютерным меркам сеть медленная, потому что это череда
+системных вызовов на обеих сторонах. Сеть требует сериализации данных. Даже в
+надежных сетях пакеты теряются, требуется повторная отправка и подтверждение.</p>
+
+<p>Не нужно писать код на языке приложения. Код на условном Питоне или Джаве всегда
+длиннее и многословнее, чем на SQL. Нет кода – нет проблем.</p>
+
+<p>Покажу, как управлять данными в базе без приложения. Для начала сделаем две
+таблицы: пользователи и профили:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">name</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+    <span class="n">points</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="mi">0</span>
+<span class="p">);</span>
+
+<span class="k">create</span> <span class="k">table</span> <span class="n">profiles</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">user_id</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+    <span class="n">avatar</span> <span class="nb">text</span> <span class="k">null</span><span class="p">,</span>
+    <span class="n">del_requested</span> <span class="nb">boolean</span> <span class="k">null</span> <span class="k">default</span> <span class="k">false</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Кроме имени, в пользователе записано число баллов. Профиль ссылается на
+пользователя, и в нем два поля: аватарка (может быть пустой) и запрос на
+удаление (по умолчанию ложь). Вставим много записей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">users</span>
+<span class="k">select</span>
+    <span class="n">x</span><span class="p">,</span>
+    <span class="n">format</span><span class="p">(</span><span class="s1">'user_%s'</span><span class="p">,</span> <span class="n">x</span><span class="p">),</span>
+    <span class="n">round</span><span class="p">(</span><span class="n">random</span><span class="p">()</span> <span class="o">*</span> <span class="mi">100000</span><span class="p">)</span>
+<span class="k">from</span>
+    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+
+<span class="k">insert</span> <span class="k">into</span> <span class="n">profiles</span>
+<span class="k">select</span>
+    <span class="n">x</span><span class="p">,</span>
+    <span class="n">x</span><span class="p">,</span>
+    <span class="k">null</span>
+    <span class="k">false</span>
+<span class="k">from</span>
+    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Оператор INSERT принимает SELECT, который порождает данные. Не нужно генерить их
+на Питоне и передавать по сети, все происходит внутри базы.</p>
+
+<p>Первая задача – поместить в отдельную таблицу топ-100 пользователей. Это
+делается запросом:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">drop</span> <span class="k">table</span> <span class="n">if</span> <span class="k">exists</span> <span class="n">users_top_100</span><span class="p">;</span>
+
+<span class="k">create</span> <span class="k">table</span> <span class="n">users_top_100</span> <span class="k">as</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">points</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
+
+<span class="k">table</span> <span class="n">users_top_100</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌──────┬───────────┬────────┐
+│  id  │   name    │ points │
+├──────┼───────────┼────────┤
+│ 6637 │ user_6637 │  99996 │
+│ 8909 │ user_8909 │  99994 │
+│ 9040 │ user_9040 │  99979 │
+│ 2631 │ user_2631 │  99978 │
+│ 7240 │ user_7240 │  99961 │
+│  972 │ user_972  │  99958 │
+│ 8698 │ user_8698 │  99924 │
+│ 3850 │ user_3850 │  99914 │
+│  382 │ user_382  │  99892 │
+│ 2841 │ user_2841 │  99877 │
+│ 2607 │ user_2607 │  99870 │
+│ 5207 │ user_5207 │  99858 │
+</code></pre></div></div>
+
+<p>В приложении мы бы сначала прочитали данные, создали таблицу и записали данные в
+нее. Все это можно поручить базе. Таблица может быть временной для каких-то
+расчетов. Конечно, не следует создавать их в апишках, которые должны работать
+быстро. Но для других задач временные таблицы очень даже полезны.</p>
+
+<p>Другой пример. Фирма проводит акцию: загрузи аватар и получи тысячу
+баллов. Предположим, некоторые пользователи добавили аватарку:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">profiles</span>
+<span class="k">set</span> <span class="n">avatar</span> <span class="o">=</span> <span class="n">format</span><span class="p">(</span><span class="s1">'htts://path/to/file_%s'</span><span class="p">,</span> <span class="n">id</span><span class="p">)</span>
+<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">500</span> <span class="k">and</span> <span class="mi">600</span><span class="p">;</span>
+<span class="c1">-- UPDATE 101</span>
+</code></pre></div></div>
+
+<p>Вот как накинуть баллы тем, у кого она есть:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">users</span> <span class="n">u</span>
+<span class="k">set</span> <span class="n">points</span> <span class="o">=</span> <span class="n">points</span> <span class="o">+</span> <span class="mi">1000</span>
+<span class="k">from</span> <span class="n">profiles</span> <span class="n">p</span>
+<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span>
+<span class="k">and</span> <span class="n">p</span><span class="p">.</span><span class="n">avatar</span> <span class="k">is</span> <span class="k">not</span> <span class="k">null</span><span class="p">;</span>
+<span class="c1">-- UPDATE 101</span>
+</code></pre></div></div>
+
+<p>Оператор UPDATE поддерживает FROM с произвольным запросом, таблицей и так
+далее. В условии проверяют совпадение строк по ключам. Обновятся только те
+пользователи, профили которых с аватаркой.</p>
+
+<p>Третья задача: некоторые пользователи отметили в профиле значок “удалите меня”:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">profiles</span>
+<span class="k">set</span> <span class="n">del_requested</span> <span class="o">=</span> <span class="k">true</span>
+<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">666</span> <span class="k">and</span> <span class="mi">999</span><span class="p">;</span>
+<span class="c1">-- UPDATE 334</span>
+</code></pre></div></div>
+
+<p>Вот как удалить такие профили и их пользователей одним запросом:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">del_profiles</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span>
+    <span class="k">delete</span> <span class="k">from</span> <span class="n">profiles</span>
+    <span class="k">where</span> <span class="n">del_requested</span>
+    <span class="n">returning</span> <span class="n">user_id</span>
+<span class="p">)</span>
+<span class="k">delete</span> <span class="k">from</span> <span class="n">users</span> <span class="n">u</span>
+<span class="k">using</span> <span class="n">del_profiles</span> <span class="n">del</span>
+<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">del</span><span class="p">.</span><span class="n">user_id</span><span class="p">;</span>
+<span class="c1">-- DELETE 334</span>
+</code></pre></div></div>
+
+<p>Во всех случаях мы ничего не передавали клиенту.</p>
+
+<p>Вставки могут быть с реакцией на конфликт (выражение <code class="language-plaintext highlighter-rouge">ON CONFLICT</code>). Есть
+команда MERGE, которая делит два набора данных на категории: только слева,
+пересечение, только справа. Для каждой категории можно задать реакцию:
+пропустить, удалить, записать куда-то и так далее.</p>
+
+<p>Управлять данными при помощи SQL – это настоящий праздник. Нет зависимости от
+приложения и рантайма. База делает все сама: работает производительный код на
+Си, многократно проверенный и отлаженный. Не отбирайте у базы ее работу. Она
+сделает все лучше вас, достаточно базовых навыков SQL.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/tip-027-pg/">&larr; Совет дня №27</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/tip-029-pg/">Совет дня №29 &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/1028">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/tip-028-pg/">
+    <input required name="captcha" type="hidden" value="2 &#215; 5">
+
+    <div class="block">
+        <span class="comment-form-label"><small>2 &#215; 5 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Совет дня №26</title>
+  <meta name="description" content="Продолжение прошлой заметки про удаление.">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/tip-026-pg/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/postgres/">Postgres</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Совет дня №26</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-21T00:00:00+00:00">
+        Mar 21, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Продолжение <a href="/tip-025-pg/">прошлой заметки</a> про удаление.</p>
+
+<p>Решение – перенос! Данные нужно не помечать на удаление, а переносить между
+таблицами. В этом случае главная таблица не захламляется, а удаленные строки не
+висят грузом. Для начала решим задачу в лоб. Представим, есть таблица товаров:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">goods</span> <span class="p">(</span>
+ <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+ <span class="n">title</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+ <span class="n">created_at</span> <span class="n">timestamptz</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="k">current_timestamp</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Вставим в нее много записей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">goods</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+<span class="k">select</span>
+ <span class="n">format</span><span class="p">(</span><span class="s1">'good_%s'</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+<span class="k">from</span>
+ <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Подготовим таблицу удаленных записей. Ее структура такая же, поэтому используем
+выражение like <code class="language-plaintext highlighter-rouge">&lt;table&gt;</code>. Индексы и ограничения скопированы не будут.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">goods_deleted</span> <span class="p">(</span><span class="k">like</span> <span class="n">goods</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Далее мы решили, что товары с кодами с 555 по 666 почему-то плохие, и нужно их
+удалить. Разработчики делают так: сперва читают данные в приложение:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">goods</span>
+<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Удаляют их:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">delete</span> <span class="k">from</span> <span class="n">goods</span>
+<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Вставляют в таблицу <code class="language-plaintext highlighter-rouge">goods_deleted</code> строки, которые висят в приложении:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">goods_deleted</span> <span class="p">...;</span>
+</code></pre></div></div>
+
+<p>В обратную сторону — то же самое: прочитали, удалили, вставили. Решение
+нормальное и встречается часто — и в нем все плохо.</p>
+
+<p>Во-первых, по какой-то причине мы гоняем строки в приложение и обратно, хотя
+нужды в этом никакой. Postgres прекрасно перенесет их между таблицами, не
+отправляя клиенту. Для этого выполним запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span>
+ <span class="k">delete</span> <span class="k">from</span> <span class="n">goods</span>
+ <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
+ <span class="n">returning</span> <span class="o">*</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">goods_deleted</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">deleted</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Если <code class="language-plaintext highlighter-rouge">DELETE</code> имеет на конце <code class="language-plaintext highlighter-rouge">returning</code>, он не отличается от <code class="language-plaintext highlighter-rouge">SELECT</code> (разве
+что с побочным эффектом). В выборке <code class="language-plaintext highlighter-rouge">deleted</code> окажутся удаленные строки. Далее
+мы вставляем их в <code class="language-plaintext highlighter-rouge">goods_deleted</code>. Оба запроса протекают в неявной транзакции,
+снимок данных один и тот же.</p>
+
+<p>Теперь в <code class="language-plaintext highlighter-rouge">goods</code> не окажется товаров с айдишками 555…666, зато они будут в
+<code class="language-plaintext highlighter-rouge">goods_deleted</code>.</p>
+
+<p>Теперь в обратную сторону: удалить из <code class="language-plaintext highlighter-rouge">goods_deleted</code> и вставить в <code class="language-plaintext highlighter-rouge">goods</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">restored</span> <span class="k">as</span> <span class="p">(</span>
+ <span class="k">delete</span> <span class="k">from</span> <span class="n">goods_deleted</span>
+ <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
+ <span class="n">returning</span> <span class="o">*</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">goods</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">restored</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Один запрос, атомарность, нулевая передача клиенту.</p>
+
+<p>Теперь таблицы. Выше мы клонировали таблицу goods и назвали ее
+<code class="language-plaintext highlighter-rouge">goods_deleted</code>. И что, делать это для каждой таблицы? <code class="language-plaintext highlighter-rouge">users_deleted</code>,
+<code class="language-plaintext highlighter-rouge">orders_deleted</code>, <code class="language-plaintext highlighter-rouge">photos_deleted</code>, <code class="language-plaintext highlighter-rouge">profile_deleleted</code>…?</p>
+
+<p>А во-вторых, миграции. Если таблица <code class="language-plaintext highlighter-rouge">goods</code> изменится, перенос отвалится, потому
+что состав колонок будет другим. Придётся явно прописывать, что на что маппить.</p>
+
+<p>Поэтому вместо <code class="language-plaintext highlighter-rouge">goods_deleted</code>, <code class="language-plaintext highlighter-rouge">users_deleted</code> и так далее заведем таблицу
+<code class="language-plaintext highlighter-rouge">any_deleted</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">any_deleted</span> <span class="p">(</span>
+ <span class="n">entity</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+ <span class="n">pk</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+ <span class="k">data</span> <span class="n">jsonb</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+ <span class="n">created_at</span> <span class="n">timestamptz</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="k">current_timestamp</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Поле <code class="language-plaintext highlighter-rouge">entity</code> означает сущность (<code class="language-plaintext highlighter-rouge">user</code>, <code class="language-plaintext highlighter-rouge">profile</code> и другие), <code class="language-plaintext highlighter-rouge">pk</code> — ее
+первичный ключ. В идеале это UUID, чтобы быть уникальным в разрезе всех
+сущностей. В поле data хранится строка в формате JSON. Вот как выполнить
+перенос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span>
+ <span class="k">delete</span> <span class="k">from</span> <span class="n">goods</span>
+ <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
+ <span class="n">returning</span> <span class="o">*</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">any_deleted</span>
+<span class="k">select</span>
+ <span class="s1">'goods'</span><span class="p">,</span>
+ <span class="n">deleted</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
+ <span class="n">to_jsonb</span><span class="p">(</span><span class="n">deleted</span><span class="p">)</span>
+<span class="k">from</span> <span class="n">deleted</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Посмотрим, что оказалось в удаленной таблице:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">┌─</span><span class="p">[</span><span class="w"> </span><span class="n">RECORD</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">]</span><span class="err">─────────────────────────────────</span><span class="w">
+</span><span class="err">│</span><span class="w"> </span><span class="n">entity</span><span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="n">goods</span><span class="w">
+</span><span class="err">│</span><span class="w"> </span><span class="n">pk</span><span class="w">      </span><span class="err">│</span><span class="w"> </span><span class="mi">555</span><span class="w">
+</span><span class="err">│</span><span class="w"> </span><span class="n">data</span><span class="w">    </span><span class="err">│</span><span class="w"> </span><span class="p">{</span><span class="s">"id"</span><span class="err">:</span><span class="w"> </span><span class="mi">555</span><span class="n">,</span><span class="w"> </span><span class="s">"title"</span><span class="err">:</span><span class="w"> </span><span class="s">"good_555"</span><span class="n">,</span><span class="w">
+</span><span class="err">│</span><span class="w"> </span><span class="n">created_at</span><span class="w"> </span><span class="err">│</span><span class="w"> </span><span class="mi">2026-01-24</span><span class="w"> </span><span class="mi">14</span><span class="no">:57:32.595317+03</span><span class="w">
+</span><span class="err">├─</span><span class="p">[</span><span class="w"> </span><span class="n">RECORD</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">]</span><span class="err">─────────────────────────────────</span><span class="w">
+</span><span class="err">│</span><span class="w"> </span><span class="n">entity</span><span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="n">goods</span><span class="w">
+</span><span class="err">│</span><span class="w"> </span><span class="n">pk</span><span class="w">      </span><span class="err">│</span><span class="w"> </span><span class="mi">556</span><span class="w">
+</span><span class="err">│</span><span class="w"> </span><span class="n">data</span><span class="w">    </span><span class="err">│</span><span class="w"> </span><span class="p">{</span><span class="s">"id"</span><span class="err">:</span><span class="w"> </span><span class="mi">556</span><span class="n">,</span><span class="w"> </span><span class="s">"title"</span><span class="err">:</span><span class="w"> </span><span class="s">"good_556"</span><span class="n">,</span><span class="w">
+</span><span class="err">│</span><span class="w"> </span><span class="n">created_at</span><span class="w"> </span><span class="err">│</span><span class="w"> </span><span class="mi">2026-01-24</span><span class="w"> </span><span class="mi">14</span><span class="no">:57:32.595317+03</span><span class="w">
+</span><span class="err">├─</span><span class="p">[</span><span class="w"> </span><span class="n">RECORD</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="p">]</span><span class="err">─────────────────────────────────</span><span class="w">
+</span><span class="err">│</span><span class="w"> </span><span class="n">entity</span><span class="w">  </span><span class="err">│</span><span class="w"> </span><span class="n">goods</span><span class="w">
+</span><span class="err">│</span><span class="w"> </span><span class="n">pk</span><span class="w">      </span><span class="err">│</span><span class="w"> </span><span class="mi">557</span><span class="w">
+</span><span class="err">│</span><span class="w"> </span><span class="n">data</span><span class="w">    </span><span class="err">│</span><span class="w"> </span><span class="p">{</span><span class="s">"id"</span><span class="err">:</span><span class="w"> </span><span class="mi">557</span><span class="n">,</span><span class="w"> </span><span class="s">"title"</span><span class="err">:</span><span class="w"> </span><span class="s">"good_557"</span><span class="n">,</span><span class="w">
+</span><span class="err">│</span><span class="w"> </span><span class="n">created_at</span><span class="w"> </span><span class="err">│</span><span class="w"> </span><span class="mi">2026-01-24</span><span class="w"> </span><span class="mi">14</span><span class="no">:57:32.595317+03</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Видим, что все однородно: можно удалять разные сущности, конфликтов не будет.</p>
+
+<p>Чтобы перенести обратно, выполним такой запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span>
+ <span class="k">delete</span> <span class="k">from</span> <span class="n">any_deleted</span>
+ <span class="k">where</span>
+         <span class="n">entity</span> <span class="o">=</span> <span class="s1">'goods'</span>
+     <span class="k">and</span> <span class="n">pk</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
+ <span class="n">returning</span> <span class="o">*</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">goods</span>
+<span class="k">select</span>
+ <span class="n">rec</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
+ <span class="n">rec</span><span class="p">.</span><span class="n">title</span><span class="p">,</span>
+ <span class="n">rec</span><span class="p">.</span><span class="n">created_at</span>
+<span class="k">from</span>
+ <span class="n">deleted</span><span class="p">,</span>
+ <span class="n">jsonb_to_record</span><span class="p">(</span><span class="n">deleted</span><span class="p">.</span><span class="k">data</span><span class="p">)</span> <span class="k">as</span> <span class="n">rec</span><span class="p">(</span>
+     <span class="n">id</span> <span class="nb">integer</span><span class="p">,</span>
+     <span class="n">title</span> <span class="nb">text</span><span class="p">,</span>
+     <span class="n">created_at</span> <span class="n">timestamptz</span>
+ <span class="p">);</span>
+</code></pre></div></div>
+
+<p>Функция <code class="language-plaintext highlighter-rouge">jsonb_to_record</code> приводит JSON-объект к записи. Даже если в исходной
+таблице добавились колонки, после распаковки они будут <code class="language-plaintext highlighter-rouge">null</code>.</p>
+
+<p>В итоге у нас одна таблица удаленных сущностей. Она бесконечно растет вниз,
+устойчива к миграциям. Активные таблицы не захламляются. Чудо!</p>
+
+<p>Что бы еще добавить? Пожалуй, у таблицы <code class="language-plaintext highlighter-rouge">any_deleted</code> могут быть поля <code class="language-plaintext highlighter-rouge">done_by</code>
+(кто удалил), reason (причина: <code class="language-plaintext highlighter-rouge">ban</code>, <code class="language-plaintext highlighter-rouge">conflict</code>, <code class="language-plaintext highlighter-rouge">legacy</code>), комментарий (бывает
+нужен), срок хранения (для регулятора).</p>
+
+<p>Минус переноса в том, что нужно ослабить внешние ключи. Обычно против этого
+возражают, но с ростом базы это неминуемо. Если сущность удаляется (подлежит
+переносу), отключите <code class="language-plaintext highlighter-rouge">foreign key constraint</code> в тех таблицах, которые на нее
+ссылаются. Для джоинов используйте <code class="language-plaintext highlighter-rouge">inner join</code>, чтобы отсекать пустые
+ссылки. Записи, которые ссылаются вникуда, можно найти анти-соединением и либо
+удалить физически, либо тоже перенести. Часть этой работы можно поставить на
+крон (см. <code class="language-plaintext highlighter-rouge">pg_cron</code> в прошлых советах).</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/tip-025-pg/">&larr; Совет дня №25</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/tip-027-pg/">Совет дня №27 &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/1024">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/tip-026-pg/">
+    <input required name="captcha" type="hidden" value="6 &#215; 8">
+
+    <div class="block">
+        <span class="comment-form-label"><small>6 &#215; 8 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
