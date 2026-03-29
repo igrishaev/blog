@@ -106,6 +106,413 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-015-pg/">Совет дня №15</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-23T00:00:00+00:00">
+        Jan 23, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Пагинация, продолжение.</p>
+
+<p>Вернемся к случаю, когда нужна пагинация по убыванию времени <code class="language-plaintext highlighter-rouge">(created_at,
+updated_at)</code> и так далее. Этот критерий встречается так часто, что для него есть
+лазейка.</p>
+
+<p>В прошлый раз мы использовали кортеж <code class="language-plaintext highlighter-rouge">(created_at, id)</code>. Идея в том, что
+поскольку <code class="language-plaintext highlighter-rouge">created_at</code> не уникален, он не дает точного положения в таблице. Но
+так как id уникален, их комбинация – тоже уникальна.</p>
+
+<p>От кортежа можно избавиться, если в качестве ID используется UUID v7. Дело в
+том, что v7 совмещает в себе эти два свойства: время и уникальность. Существуют
+разные подвиды UUID v7, но не зависимо от них пагинация будет:</p>
+
+<ul>
+  <li>точно попадать в границы;</li>
+  <li>использовать btree индекс.</li>
+</ul>
+
+<p>Итак, если у вас API и нужна пагинация, ваши варианты:</p>
+
+<ul>
+  <li>
+    <p>limit и offset; убедитесь, что offset не превышает какого-то разумного числа,
+например тысячи. Иначе вас будут парсить.</p>
+  </li>
+  <li>
+    <p>keyset: комбинация полей <code class="language-plaintext highlighter-rouge">(some_field + id)</code> для уникальности. Требует
+отдельного индекса.</p>
+  </li>
+  <li>
+    <p>UUIDv7 – если требуется пагинация по <code class="language-plaintext highlighter-rouge">created_at</code>. Это частый случай, поэтому
+рассмотрите его.</p>
+  </li>
+</ul>
+
+<p>Перейдем к пагинации, которая используется не в API, а для служебных
+нужд. Например, в миграциях, переносе данных и так далее. Нужно обойти огромную
+таблицу, при этом выгрузить ее в память нельзя – слишком большая (например, 100
+миллионов записей).</p>
+
+<p>Один из способов – использовать курсор и FETCH API. Апишка у него довольно
+простая:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">BEGIN</span><span class="p">;</span>
+
+<span class="k">DECLARE</span> <span class="n">cur_foo</span> <span class="k">CURSOR</span> <span class="k">FOR</span> <span class="k">SELECT</span> <span class="o">*</span> <span class="k">FROM</span> <span class="n">items</span><span class="p">;</span>
+
+<span class="k">FETCH</span> <span class="k">FORWARD</span> <span class="mi">100</span> <span class="k">FROM</span> <span class="n">cur_foo</span><span class="p">;</span>
+<span class="k">FETCH</span> <span class="k">FORWARD</span> <span class="mi">100</span> <span class="k">FROM</span> <span class="n">cur_foo</span><span class="p">;</span>
+<span class="k">FETCH</span> <span class="k">FORWARD</span> <span class="mi">100</span> <span class="k">FROM</span> <span class="n">cur_foo</span><span class="p">;</span>
+<span class="p">...</span>
+<span class="k">CLOSE</span> <span class="n">cur_foo</span><span class="p">;</span>
+<span class="k">COMMIT</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Объявляем курсор, затем в цикле вытягиваем по 100 записей, пока результат не
+пустой. В конце закрываем курсор.</p>
+
+<p>Казалось бы, вот он – святой Грааль. Но беда в том, что курсор требует
+транзакции. В момент открытия он запоминает текущий снимок (номер транзакции) и
+просматривает записи, версия которых не превышает его. Чтобы пользоваться
+курсором, нужно держать транзакцию в течение всего цикла. Для больших таблиц это
+дорого, поэтому подходит только для всяких ночных скриптов.</p>
+
+<p>Кроме того, курсор привязан к конкретному соединению с БД. Использовать их в
+HTTP API невозможно.</p>
+
+<p>Другой способ обойти большую таблицу – сдампить ее в файл при помощи COPY
+(см. <a href="/tip-006-pg/">прошлый совет</a>). Чтобы таблица не заняла весь диск, ее
+сжимают в gzip. В результате у вас оказывается файл <code class="language-plaintext highlighter-rouge">my_table.gzip</code>, вы
+отрываете его и спокойно парсите. Идея в том, чтобы забрать данные из базы как
+можно скорее и потом не мучить ее пагинацией. Если скрипт упадет, не придется
+насиловать базу снова – у вас уже есть файл.</p>
+
+<p>Третий способ – использовать драйвер, который позволяет обрабатывать записи в
+полете. Например, мой <a href="https://github.com/igrishaev/pg2">pg2</a>. Функция <code class="language-plaintext highlighter-rouge">execute</code> принимает запрос и всякие
+опции. Среди прочих можно передать редьюсер – функцию трех тел:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(fn
+  ([]
+   (make-acc ...))
+  ([acc row]
+   (conj acc row))
+  ([acc]
+   (finalize acc)))
+</code></pre></div></div>
+
+<p>Тело без аргументов – инициатор аккумулятора (может быть мутабельным), тело с
+одним аргументом – финализатор аккумулятора, с двумя – приращение записи к
+аккумулятору. Из коробки доступны разные редьюсеры (см документацию). Легко
+написать свой, который будет отправлять каждую строку в сеть, в асинхронный
+канал и так далее. И все это – в полете, то есть по мере получения сообщений от
+Postgres, без исчерпания всей памяти.</p>
+
+<p>Полагаю, это все, что можно сказать про пагинацию.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-014-pg/">Совет дня №14</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-23T00:00:00+00:00">
+        Jan 23, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Итак, пагинация. Прежде всего, совет такой: если можете избежать пагинации,
+сделайте это. Пагинация — это состояние и его проброс. Лишние заморочки,
+пространство для багов.</p>
+
+<p>Пример, когда пагинации можно избежать — поиск. Как правило, релевантность
+поиска резко снижается с продвижением по выдаче. Условно, первые 10 позиций
+точные, еще десять — более-менее, остальное — просто чтобы заполнить
+выдачу. Вспомните, как давно вы были на пятой странице Гугла? Если нужной
+информации нет, лучше отправить другой запрос, чем скроллить страницы. Поэтому
+договоритесь: в поиске выдаем 50-100 позиций и никаких пагинаций. Живые люди не
+будут ей пользоваться, а вы только откроете ворота различным ботам и парсерам.</p>
+
+<p>Конечно, иногда пагинация необходима. Простой способ ее добавить — это выражения
+LIMIT и OFFSET. Дешево и сердито, но с недостатками. Во-первых, на больших
+смещениях выборка линейно замедляется. Это все равно что перематывать
+аудиокассету каждый раз с начала. В моей таблице миллион документов, и выражение</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="k">table</span> <span class="k">limit</span> <span class="mi">1</span> <span class="k">offset</span> <span class="mi">500000</span>
+</code></pre></div></div>
+
+<p>занимает 7 секунд. Целая вечность!</p>
+
+<p>Второй минус — LIMIT-OFFSET неконсистентны. В перерывах между запросами может
+добавиться новая запись, и произойдет наслоение. Я видел такое много раз:
+листаешь первую страницу, переходишь на вторую и видишь наверху заголовок,
+который был внизу первой страницы.</p>
+
+<p>Дело в том, что пока я мотал первую страницу, добавили новую статью, и окно
+сместилось. Для новостного сайта это не страшно, но представьте, что у нас
+аналог Твиттера. Пока мы читали первые 20 твитов, кто-то наспамил еще
+двадцать. В результате вторая страница может полностью состоять из твитов,
+которые мы только что видели на первой! Это никуда не годится.</p>
+
+<p>Чтобы этого избежать, используют пагинацию по уникальному btree-индексу. Такой
+индекс однозначно определяет позицию в таблице: новые записи не сместят окно. У
+каждой таблицы есть такой индекс — это первичный ключ (id). Если логика
+позволяет листать по id, этим нужно воспользоваться. Пример:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">id</span> <span class="o">&lt;</span> <span class="o">?</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">id</span> <span class="p">(</span><span class="k">desc</span><span class="p">)</span>
+<span class="k">limit</span> <span class="mi">100</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">Id</code> последней записи запоминается и передается в следующий запрос. Продолжаем
+до тех пор, пока выборка не пустая.</p>
+
+<p>Как быть, если id случаен, и требуется сортировка по дате создания? Задача
+усложняется, потому что дата не уникальна. Записи могут быть вставлены импортом
+и поэтому иметь одну дату. Граница окна пагинации может попасть на серию записей
+с одинаковой датой. Если запомнить дату последней записи и выполнить запрос</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span>
+<span class="k">where</span> <span class="n">created_at</span> <span class="o">&lt;</span> <span class="o">?</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span>
+</code></pre></div></div>
+
+<p>, мы пропустим записи, которые не показали.</p>
+
+<p>Решение в следующем: уникальный атрибут + неуникальный дают уникальное комбо. В
+самом деле: если поле <code class="language-plaintext highlighter-rouge">created_at</code> не уникальное, то пара <code class="language-plaintext highlighter-rouge">(created_at, id)</code> —
+уникальная. Поэтому заводим составной индекс на пару <code class="language-plaintext highlighter-rouge">(created_at desc, id
+desc)</code> и листаем по нему:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span>
+<span class="k">where</span> <span class="p">(</span><span class="n">created_at</span><span class="p">,</span> <span class="n">id</span><span class="p">)</span> <span class="o">&lt;</span> <span class="p">(</span><span class="o">?</span><span class="p">,</span> <span class="o">?</span><span class="p">)</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span><span class="p">,</span> <span class="n">id</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span>
+</code></pre></div></div>
+
+<p>Обратите внимание, мы сравниваем кортежи (они сравниваются поэлементно). Общий
+принцип такой, что создается уникальный индекс на пару (поле, id). Он называется
+keyset, потому что “набор ключей”.</p>
+
+<p>Каждая сотрировка (возраст, имя, зарплата) требует своей пары, поэтому
+договоритесь о них заранее.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-013-pg/">Совет дня №13</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-23T00:00:00+00:00">
+        Jan 23, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Работая с ORM, избегайте проблемы 1 + N. Это когда вы обращаетесь к ссылочным
+полям, и база подтягивает сущности штучно, а не разом.</p>
+
+<p>Пример: магазин товаров, сущность <code class="language-plaintext highlighter-rouge">Order</code> ссылается на <code class="language-plaintext highlighter-rouge">User</code> (кто заказал) и
+<code class="language-plaintext highlighter-rouge">Item</code> (что заказали). Модель выглядит так:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Order</span><span class="p">(</span><span class="n">model</span><span class="p">.</span><span class="n">Model</span><span class="p">):</span>
+  <span class="n">status</span> <span class="o">=</span> <span class="n">EnunField</span><span class="p">(</span><span class="n">active</span><span class="p">,</span> <span class="n">cancelled</span><span class="p">,</span> <span class="n">pending</span><span class="p">...)</span>
+  <span class="n">created_at</span> <span class="o">=</span> <span class="n">DateTimeFiled</span><span class="p">(</span><span class="n">now</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+  <span class="n">user</span> <span class="o">=</span> <span class="n">ForeignField</span><span class="p">(</span><span class="n">class</span><span class="o">=</span><span class="n">User</span><span class="p">)</span>
+  <span class="n">item</span> <span class="o">=</span> <span class="n">ForeignField</span><span class="p">(</span><span class="n">class</span><span class="o">=</span><span class="n">Item</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Типичная задача — вывести активные заказы с информацией о клиенте и
+товаре. Разработчик делает так:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">orders</span> <span class="o">=</span> <span class="n">Orders</span><span class="p">.</span><span class="nb">filter</span><span class="p">(</span><span class="n">status</span><span class="o">=</span><span class="n">active</span><span class="p">)</span> \
+  <span class="p">.</span><span class="n">order_by</span><span class="p">(</span><span class="n">created_at</span><span class="p">,</span> <span class="n">desc</span><span class="p">).</span><span class="nb">all</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Затем он строит таблицу:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">for</span> <span class="n">order</span> <span class="ow">in</span> <span class="n">orders</span><span class="p">:</span>
+  <span class="k">print</span> <span class="n">order</span><span class="p">.</span><span class="nb">id</span><span class="p">,</span> <span class="n">order</span><span class="p">.</span><span class="n">user</span><span class="p">.</span><span class="n">name</span><span class="p">,</span> <span class="n">order</span><span class="p">.</span><span class="n">item</span><span class="p">.</span><span class="n">title</span>
+</code></pre></div></div>
+
+<p>Что произойдет под капотом? Сначала выполнится запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span> <span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Тут все в порядке. Однако в цикле, когда происходит обращение к полям <code class="language-plaintext highlighter-rouge">user</code> и
+<code class="language-plaintext highlighter-rouge">item</code>, выполняются запросы <code class="language-plaintext highlighter-rouge">get-by-id</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="p">...</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">100</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">200</span>
+<span class="p">...</span>
+</code></pre></div></div>
+
+<p>В среднем запросов будет 1 + 2N. На практике в одном заказе может быть много
+товаров, а кроме того, возможны подгрузки других сущностей. Скажем, товар хранит
+ссылку на продавца. Если в таблице должен быть продавец, это будет еще +N
+запросов.</p>
+
+<p>Именно для таких случаев нужны прошлые советы. Во-первых, запросы должны быть
+видны в консоли, и разработчик обязан смотреть, что идет в базу. Во-вторых, на
+эту логику должен быть тест, который считает запросы.</p>
+
+<p>Проблема 1 + N лечится разными способами. Первый — ORM может джойнить сущности,
+то есть выполнить запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span>
+<span class="k">left</span> <span class="k">join</span> <span class="n">users</span> <span class="k">on</span> <span class="n">orders</span><span class="p">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="k">user</span><span class="p">.</span><span class="n">id</span>
+<span class="k">left</span> <span class="k">join</span> <span class="n">items</span> <span class="k">on</span> <span class="k">order</span><span class="p">.</span><span class="n">item_id</span> <span class="o">=</span> <span class="n">item</span><span class="p">.</span><span class="n">id</span>
+<span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Такой джоин может нарушить пагинацию по limit/offset, но это страшно. Можно либо
+не использовать ее вообще, либо взять пагинацию по keyset, либо заменить limit
+выражением fetch.</p>
+
+<p>Другой способ — вытянуть записи по слоям на уровне приложения. Первый слой — это
+orders. Как только происходит обращение к user, ORM собирает все user_id и
+выполнят запрос</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="k">in</span> <span class="p">(</span><span class="o">?</span><span class="p">,</span> <span class="o">?</span><span class="p">,</span> <span class="o">?</span> <span class="p">...)</span>
+</code></pre></div></div>
+
+<p>То же самое с <code class="language-plaintext highlighter-rouge">items</code> — выгребаются уникальные <code class="language-plaintext highlighter-rouge">item_id</code>, и по ним делается
+запрос с IN.</p>
+
+<p>Некоторые ORM действуют тоньше. Если айдишников много, они выгребают смежные
+сущности кусками по 10-30. Таким образом, если нужно пройти 100 заказов, мы
+совершим 4-10 запросов, что не так страшно.</p>
+
+<p>Проблема 1 + N — настоящий бич ORM. Сколько подобных ошибок я исправил —
+затрудняюсь припомнить (и конечно, совершил сам).</p>
+
+<p>На мой взгляд, в ORM должна быть опция: кидать исключение, если смежные записи
+читаются штучно. Опция должна быть глобальной, чтобы раз и навсегда запретить
+подобные вещи. Глядишь, новички стали бы лучше понимать, что вообще происходит.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-012-pg/">Совет дня №12</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-23T00:00:00+00:00">
+        Jan 23, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Дополнение <a href="/tip-011-pg/">вчерашней заметки</a> насчет запросов в базу. Смотреть
+запросы, которые выполняются во время тестов – это хорошо, можно поймать много
+кривых вещей. Но есть еще одна техника: считать запросы и проверять их
+количество. Этим вы защищаете код от ситуации, когда небольшое изменение
+накинуло +20 запросов. В ORM подобные вещи случаются часто. В основном они
+вызваны проблемой 1 + N, о которой будет следующий совет.</p>
+
+<p>Фреймворки-гиганты предлагают встроенный метод подсчета запросов. Например, в
+Django, если тестовый класс унаследован от <code class="language-plaintext highlighter-rouge">TransactionTestCase</code>, доступен метод
+<code class="language-plaintext highlighter-rouge">assertNumQueries</code>. В целом подобный тест выглядит так:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">TestSomeFunc</span><span class="p">(</span><span class="n">TestCase</span><span class="p">):</span>
+    <span class="n">dеf</span> <span class="n">test_func</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="p">.</span><span class="n">assertNumQueries</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="n">using</span><span class="o">=</span><span class="s">"db1"</span><span class="p">):</span>
+            <span class="n">some_func</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Если кто-то поправит логику, число запросов изменится, и тест не пройдет.</p>
+
+<p>Если запросов много (10 и больше), посмотрите лог и добавьте комментарий с
+распределением запросов. Так логика будет понятна хотя бы в общих чертах:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># 1 auth
+# 2 permission check
+# 4 fetch data
+# 2 update data
+# 2 send notifications
+</span></code></pre></div></div>
+
+<p>В одном проекте выяснилось: удаление сущности порождало 400 с лишним
+запросов. Разумеется, почти все они удалялись поштучно, потому что разработчики
+не дружили с БД.</p>
+
+<p>Для Django написаны в том числе сторонние сборщики запросов, их легко
+нагуглить. Полагаю, то же самое есть в Руби, Spring Boot и прочих
+комбайнах. Подсчет легко сделать в Кложе: достаточно динамической переменной и
+макроса.</p>
+
+<p>Не обязательно считать запросы во всех апишках: скажем, для <code class="language-plaintext highlighter-rouge">get-by-id</code> подсчет
+избыточен. Но удаление сущностей, сложные перемещения из одной таблицы в другую
+– очень желательно. Все для этого есть, просто воспользуйтесь.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-011-pg/">Совет дня №11</a>
             </h2>
 
@@ -644,229 +1051,6 @@ COPY. Разница в том, что \copy связывает удаленны
 и шлет поток сообщений.</p>
 
 <p>Надеюсь, я смог вас заинтересовать.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-005-pg/">Совет дня №5</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-15T00:00:00+00:00">
-        Jan 15, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Если в запросе одно из условий – константа, это хороший кандидат на оптимизацию.</p>
-
-<p>Предположим, у нас магазин, и нужно выбрать текущие заказы пользователя. Это
-примерно такой запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span>
-<span class="k">where</span> <span class="n">user_id</span> <span class="o">=</span> <span class="o">?</span> <span class="k">and</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
-</code></pre></div></div>
-
-<p>Из <a href="/tip-004-pg/">прошлого совета</a> мы знаем, что два индекса на <code class="language-plaintext highlighter-rouge">user_id</code> и
-<code class="language-plaintext highlighter-rouge">status</code> не работают. Будет использован только один, скорее всего для <code class="language-plaintext highlighter-rouge">user_id</code>,
-потому что у него высокая селективность (точность). Можно сделать составной
-индекс <code class="language-plaintext highlighter-rouge">(status, user_id)</code>, и он будет быстрее обычного <code class="language-plaintext highlighter-rouge">user_id</code>.</p>
-
-<p>Есть, однако, еще один вариант: условный индекс по <code class="language-plaintext highlighter-rouge">user_id</code> для активных
-заказов. У оператора <code class="language-plaintext highlighter-rouge">create index</code> на конце выражение <code class="language-plaintext highlighter-rouge">where</code>:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">idx_users_user_id_active</span>
-<span class="k">on</span> <span class="n">orders</span> <span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
-<span class="k">using</span> <span class="n">btree</span>
-<span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
-</code></pre></div></div>
-
-<p>В чем прелесть такого индекса? Он намного меньше аналогов, потому что охватывает
-не всю таблицу, а ее подмножество. Если магазин появился не вчера, то большая
-часть заказов находится в статусе “доставлено”, и лишь малая часть активны. Эту
-часть и охватит индекс.</p>
-
-<p>По условию <code class="language-plaintext highlighter-rouge">status = 'active'</code> Postgres определит, что нужно взять именно этот
-индекс. Фактически условие будет отброшено, потому что значения в индексе уже
-отфильтрованы по нему.</p>
-
-<p>Скорость такого индекса <strong>ошеломительна</strong>: запрос может стать быстрее в 10–100
-раз – без преувеличений.</p>
-
-<p>Общее правило такое: всякие статусы, категории, флаг удаления и все прочее, что
-задается константой – кандидаты на выделенный индекс. Если каждый раз выбираются
-только активные пользователи, только текущие заказы, только не удаленные заявки
-– подумайте об условном индексе.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-004-pg/">Совет дня №4</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-15T00:00:00+00:00">
-        Jan 15, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Предположим, в запросе условие по двум полям:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">foo</span> <span class="o">=</span> <span class="mi">1</span> <span class="k">and</span> <span class="n">bar</span> <span class="o">=</span> <span class="mi">2</span>
-</code></pre></div></div>
-
-<p>Разработчик знает про индексы и добавляет их два: один на <code class="language-plaintext highlighter-rouge">foo</code>, второй на
-<code class="language-plaintext highlighter-rouge">bar</code>. Логика такая: с одним индексом быстро, с двумя – еще быстрее.</p>
-
-<p>Ан нет: не все так просто. Как правило, Postgres использует только один индекс
-при обходе, потому что так быстрее. В этом легко убедиться, посмотрев план: там
-будет индекс либо на <code class="language-plaintext highlighter-rouge">foo</code>, либо на <code class="language-plaintext highlighter-rouge">bar</code>, но не оба одновременно.</p>
-
-<p>Конечно, бывает, что используются оба индекса. Это возможно, если условия
-связаны через <code class="language-plaintext highlighter-rouge">OR</code> и Postgres выбрал bitmap index scan, используются подзапросы,
-джоины. Но конкретно в нашем случае индекс будет один.</p>
-
-<p>Если условия соединяются через AND, задайте составной индекс на пару <code class="language-plaintext highlighter-rouge">(foo,
-bar)</code>. Он будет быстрее, чем то и другое поле по отдельности.</p>
-
-<p>Порядок полей в составном индексе важен. Желательно располагать их по нарастанию
-множественности, а кроме того, иметь в виду следующее. Составной индекс может
-быть использован, если известны его лидирующие компоненты. Например, <code class="language-plaintext highlighter-rouge">(foo,
-bar)</code> сработает, если условие только на <code class="language-plaintext highlighter-rouge">foo</code>. По аналогии, индекс <code class="language-plaintext highlighter-rouge">(foo, bar,
-baz)</code> сработает, если заданы <code class="language-plaintext highlighter-rouge">foo</code> и <code class="language-plaintext highlighter-rouge">bar</code>. Однако для <code class="language-plaintext highlighter-rouge">bar</code> и <code class="language-plaintext highlighter-rouge">baz</code> он не
-подхватится.</p>
-
-<p>Планируйте составной индекс так, чтобы охватить как можно больше случаев.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-003-pg/">Совет дня №3</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-15T00:00:00+00:00">
-        Jan 15, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/time/" rel="tag">time</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Будьте осторожны с функцией “получить номер недели”. Независимо от языка и
-платформы, с ней легко прострелить ногу. И когда это случается? Конечно, на
-стыке годов в предновогоднюю неделю. Лучшее время, чтобы чинить баг.</p>
-
-<p>Дело в том, что номер недели бывает разный. Есть обычный, когда день 2025-12-31
-– это неделя 53. А есть ISO-шный, когда 2025-12-31 – это неделя 1. Скажем, в
-Postgres все способы извлечь неделю являются ISO:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="k">extract</span><span class="p">(</span><span class="n">week</span> <span class="k">from</span> <span class="s1">'2025-12-31'</span><span class="p">::</span><span class="nb">date</span><span class="p">);</span>
-<span class="c1">-- 1</span>
-
-<span class="k">select</span> <span class="n">to_char</span><span class="p">(</span><span class="s1">'2025-12-31'</span><span class="p">::</span><span class="nb">date</span><span class="p">,</span> <span class="s1">'IW'</span><span class="p">);</span>
-<span class="c1">-- 01</span>
-</code></pre></div></div>
-
-<p>В Джаве больше контроля: есть поля <code class="language-plaintext highlighter-rouge">weekOfYear</code> и <code class="language-plaintext highlighter-rouge">weekOfWeekBasedYear</code>:</p>
-
-<div class="language-lisp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="o">.</span><span class="nb">get</span> <span class="p">(</span><span class="nv">java.time.LocalDate/parse</span> <span class="s">"2025-12-31"</span><span class="p">)</span>
-      <span class="p">(</span><span class="o">.</span><span class="nv">weekOfWeekBasedYear</span> <span class="nv">java.time.temporal.WeekFields/ISO</span><span class="p">))</span>
-<span class="c1">;; 1</span>
-
-<span class="p">(</span><span class="o">.</span><span class="nb">get</span> <span class="p">(</span><span class="nv">java.time.LocalDate/parse</span> <span class="s">"2025-12-31"</span><span class="p">)</span>
-      <span class="p">(</span><span class="o">.</span><span class="nv">weekOfYear</span> <span class="nv">java.time.temporal.WeekFields/ISO</span><span class="p">))</span>
-<span class="c1">;; 53</span>
-</code></pre></div></div>
-
-<p>Разумеется, их легко перепутать, и файлы уйдут не туда.</p>
-
-<p>Кстати, в корпоративной программе учета часов в декабре нет недели 53. Если
-работал 29 и 30 декабря, добавляй часы вручную к неделе 52. Подозреваю, что дело
-в ISO-шном номере 1.</p>
-
-<p>Поздравляю вас с еще одним поводом не расслаблять булки перед праздником.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-002-pg/">Совет дня №2</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-15T00:00:00+00:00">
-        Jan 15, 2026
-    </time>
-
-    <a href="/tag/yyyy/" rel="tag">yyyy</a>, <a href="/tag/time/" rel="tag">time</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Новый год, подарки, “запах мандарин”…, а это значит, пришла пора сделать вот
-что. Откройте свои проекты и убедитесь, что для форматирования дат используете
-<code class="language-plaintext highlighter-rouge">yyyy-MM-dd</code>, а не <code class="language-plaintext highlighter-rouge">YYYY-MM-dd</code>. Буквы года должны быть маленькими!</p>
-
-<p>YYYY возвращает week-based year, а yyyy – обычный календарный. Прелесть в том,
-стреляет на границе годов. Примеры:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(format-date (LocalDate/now) "YYYY-MM-dd")
-"2026-12-30"
-
-(format-date (LocalDate/now) "yyyy-MM-dd")
-"2025-12-30"
-</code></pre></div></div>
-
-<p>Если этого не учесть – мой случай – то за день до нового года файлы уедут в
-папку с 2026 годом. С чем вас и поздравляю.</p>
 
                 
             </div>

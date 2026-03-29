@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Совет дня №33</title>
+  <meta name="description" content="Разберем еще один случай, когда нужен срез строк – геохэш (geohash). Это быстрыйи дешевый способ кодировать положение объектов, а также искать их.">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/tip-033-pg/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/postgres/">Postgres</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Совет дня №33</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-29T00:00:00+00:00">
+        Mar 29, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Разберем еще один случай, когда нужен срез строк – геохэш (geohash). Это быстрый
+и дешевый способ кодировать положение объектов, а также искать их.</p>
+
+<p>Представим себе карту мира. Точки отсчета – Лондон и экватор. Это
+квадрат. Разделим его пополам по вертикали. Если человек живет западней Лондона,
+запишем 0, если восточнее – то 1. Теперь разделим область по горизонтали. Если
+человек находится северней, добавим 0, если южнее – 1. Продолжаем дробить
+область по горизонтали и вертикали и накапливать нули и единицы. В результате мы
+достигнем квадрата, достаточного малого, чтобы остановиться. Скажем, если речь о
+здании, квадрат может быть 25x25 метров. Если стадион, деревня или город, то еще
+больше.</p>
+
+<p>Нули и единицы образуют цепочку бит. Переводим их в байты и кодируем base53 или
+похожим алгоритмом. Получаем строку вида <code class="language-plaintext highlighter-rouge">hsGHrgga3ysg6</code>, которая указывает на
+квадрат определенной точности.</p>
+
+<p><img src="/assets/static/aws/tip-033-pg/1.jpeg" /></p>
+
+<p>Прелесть вот в чем: есть взять какой-то квадрат, то хэши всех точек в нем имеют
+общую часть. Например, есть квадрат <code class="language-plaintext highlighter-rouge">hsGHrgga</code>. В нем будут точки
+<code class="language-plaintext highlighter-rouge">hsGHrgga3ysg6</code>, <code class="language-plaintext highlighter-rouge">hsGHrgga3ysgS</code>, <code class="language-plaintext highlighter-rouge">hsGHrgga6sg</code> и так далее. Это значит, для их
+поиска нужно выбрать строки, которые начинаются с <code class="language-plaintext highlighter-rouge">hsGHrgga</code>. С индексом btree,
+что мы рассмотрели в прошлом совете, это крайне эффективно.</p>
+
+<p>Похоже устроен поиск ближних объектов. Скажем, точка <code class="language-plaintext highlighter-rouge">hsGHrgga3ysg6</code> указывает
+на кинотеатр и нужно показать ближайшие. Отломаем у хэша последний символ и
+таким образом поднимемся на квадрат выше: <code class="language-plaintext highlighter-rouge">hsGHrgga3ysg</code>. Найдем по нему все
+кинотеатры и покажем. Что-то лишнее можно почистить в приложении, так
+дешевле. Вопрос лишь в том, насколько “отъезжать” при поиске: на один символ,
+два и так далее.</p>
+
+<p>Недостаток геохеша в том, что один символ означает сразу восемь операций
+разбиения (потому что восемь битов). Если это критично, рассмотрите тип bit в
+Postgres. Это битовая маска заданной длины, при этом поддерживаются наложение
+другой маски, сравнение, вхождение и так далее.</p>
+
+<p>Геохэш работает не только для плоскости, но и кубов. Пространство – это куб,
+который делится на 8 под-кубов, те – еще на 8 и так далее. Чтобы продвинуться на
+шаг, нужны три бита – по числу измерений. Такая структура называется
+октодеревом. По аналогии можно работать с многомерным пространством.</p>
+
+<p><img src="/assets/static/aws/tip-033-pg/2.jpeg" /></p>
+
+<p>И не только многомерным – одномерным! Представим, на отрезке множество
+точек. Делим отрезок пополам: слева – 0, справа – 1. Переходим на нужный
+под-отрезок, делим пополам и так далее, пока не достигнем нужной
+точности. Накопленные нули и единицы кодируем в строку. Потом, чтобы получить
+точки в нужном отрезке, делаем срез по префиксу.</p>
+
+<p>Все эти алгоритмы есть в PostGis и других гео-системах. Но знать их полезно, и
+порой они оказываются очень в тему. Однажды я писал свое дерево квадрантов, и
+оно заменило тяжелое решение.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/tip-032-pg/">&larr; Совет дня №32</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/tip-034-pg/">Совет дня №34 &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/1037">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/tip-033-pg/">
+    <input required name="captcha" type="hidden" value="9 &#215; 8">
+
+    <div class="block">
+        <span class="comment-form-label"><small>9 &#215; 8 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
