@@ -6,6 +6,8 @@ tags: postgres json book sql
 telegram_id:
 ---
 
+{% include pg-json-book-chapters.md %}
+
 {% include toc.html id="pg-book-json-ch01" %}
 
 *В первой главе мы рассмотрим реляционные и документо-ориентированные базы
