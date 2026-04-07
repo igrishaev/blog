@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Совет дня №37</title>
+  <meta name="description" content="Совет №36 оканчивался фразой:">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/tip-037-pg/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/postgres/">Postgres</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Совет дня №37</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-07T00:00:00+00:00">
+        Apr 7, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p><a href="/tip-036-pg/">Совет №36</a> оканчивался фразой:</p>
+
+<blockquote>
+  <p>Мне известны для случая, когда от внешних ключей отказываются добровольно.</p>
+</blockquote>
+
+<p>О них и поговорим.</p>
+
+<p>Первый случай, когда ослабление ключей допустимо – это GDPR и схожие
+требования. Например, пользователь оставил заявку на удаление учетки и связанных
+данных. Удалять их в лоб долго и трудно: пользователь – это центральная
+сущность, на которую завязано все. Каскадный DELETE, во-первых, крайне
+медленный, а во-вторых, может задеть данные, которые нужно оставить.</p>
+
+<p>Кроме пользователя, бывают и другие сущности, которые нужно экстренно удалить,
+но мешают внешние связи. В этом случае сперва удаляют внешние ключи при помощи
+<code class="language-plaintext highlighter-rouge">drop constraint</code>. Например, ниже удаляется внешний ключ <code class="language-plaintext highlighter-rouge">user_id</code> в профилях:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">alter</span> <span class="k">table</span> <span class="n">profiles</span> <span class="k">drop</span> <span class="k">constraint</span> <span class="n">fk_user_id</span>
+</code></pre></div></div>
+
+<p>Далее удаляется целевая сущность — пользователь. В дальнейших запросах
+используется внутреннее соединение, чтобы отсечь записи, которые ссылаются в
+никуда. Например, если мы выбрали профили по особому критерию, то пользователи
+цепляются не LEFT, а обычным JOIN. Это гарантирует, что в выборке не будет
+“висюков”:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">profiles</span> <span class="n">p</span>
+<span class="k">where</span> <span class="n">p</span><span class="p">.</span><span class="n">open_to_work</span>
+<span class="k">join</span> <span class="n">users</span> <span class="n">u</span> <span class="k">on</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span>
+</code></pre></div></div>
+
+<p>Позже “висюки” подчищаются запросом по расписанию. Заметим, что внутренний JOIN
+в целом работает лучше, чем левый и правый аналоги. Он быстрее и отсекает больше
+данных. Как правило, LEFT JOIN означает, что в базе что-то не так.</p>
+
+<p>Сказанное выше звучит костыльно, но увы — это жизнь. Так было в одном стартапе:
+он выходил на очередной раунд инвестирования, и сказали: по такому-то закону
+нужно удалить учетку пользователя по запросу в короткое время. Таких
+пользователей было немного, буквально пять или шесть, но обилие внешних ссылок
+все усложняло. Получалось огромное дерево таблиц, которое нужно было очистить в
+особом порядке. Руководители стартапа не хотели тратить время и деньги на такую
+ерунду. Поэтому внешние ключи удалили и снесли записи обычным DELETE. Схема базы
+пострадала, зато с задачей справились быстро.</p>
+
+<p>Внешние ключи нужны – без них легко испортить данные. Но в редких случаях
+выгодно их ослабить – только никому об этом не говорить.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/tip-036-pg/">&larr; Совет дня №36</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/tip-038-pg/">Совет дня №38 &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/1045">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/tip-037-pg/">
+    <input required name="captcha" type="hidden" value="4 &#215; 5">
+
+    <div class="block">
+        <span class="comment-form-label"><small>4 &#215; 5 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
