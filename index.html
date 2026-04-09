@@ -106,6 +106,416 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-042-pg/">Совет дня №42</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-09T00:00:00+00:00">
+        Apr 9, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Как мы выяснили, открывать соединение на каждый запрос – медленно. Во-первых,
+новый сокет – это системный вызов и аллокация ресурсов в операционной
+системе. Во-вторых, после открытия сокета клиент и сервер обмениваются
+начальными сообщениями. Сервер сообщает, каким образом нужно пройти авторизацию,
+клиент проходит ее (а это еще несколько сообщений), после чего сервер высылает
+метаданные (локаль, формат дат, кодировки и так далее). Представьте, что все это
+происходит на каждый запрос – быстродействие падает на два порядка.</p>
+
+<p>Среди прочего рассмотрим авторизацию. До версии 15 алгоритм по умолчанию был
+md5. Он довольно прост: нужно сцепить пользователя и пароль, посчитать md5,
+приклеить соль, взять md5 еще раз, а затем привести к hex-строке:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>message = hex(md5(md5(user+password) + salt))
+</code></pre></div></div>
+
+<p>Эта авторизация занимает одно сообщение сервера и одно клиента. Вычисления
+клиента при этом простые: два md5-хэша.</p>
+
+<p>С версии 15 авторизация по умолчанию называется scram. Она происходит в
+несколько шагов, примерно так:</p>
+
+<ul>
+  <li>сервер говорит: начинаем авторизацию scram, доступны варианты sha-256 и
+sha-256-plus (о них позже);</li>
+  <li>клиент загадывает случайный массив байтов и отправляет серверу;</li>
+  <li>сервер возвращает особую крипту и число шагов (по умолчанию 4096);</li>
+  <li>клиент выполняет цикл из 4096 итераций, где на пароль накладывается XOR-ом
+байтовый массив и вычисляется отпечаток hmac sha265; эта крипта отправляется
+серверу;</li>
+  <li>сервер отправляет финальную сигнатуру. Клиент проверяет ее и если что не так,
+кидает исключение.</li>
+</ul>
+
+<p>Вся эта котовасия нужна вот зачем:</p>
+
+<ul>
+  <li>клиент считает не пару md5-хэшей, а множество XOR- и hmac-операций. Это крайне
+осложняет брутфорс;</li>
+  <li>сделать реверс 4096 операций — задача нереальная в отличие от md5;</li>
+  <li>scram допускает защиту от человека посередине (разберем чуть позже).</li>
+</ul>
+
+<p>Итого, чтобы авторизоваться, клиент вычисляет хэши в цикле. Это гораздо дольше
+обычного md5. Поэтому со scram новое соединение обходится еще дольше, чем
+раньше.</p>
+
+<p>Что касается защиты от MITM, то scram предлагает интересное решение. Клиенту
+сообщают, какие подвиды авторизации доступны (sha-256 и sha-256-plus), и он
+может выбирать. Метод sha-256-plus называется связыванием каналов. Он работает
+так: если мы соединяется по SSL с TLS, то первоначальная крипта, которую
+загадывает клиент, берется из т.н. peer-сертификата. Это первый сертификат в
+цепочке TLS, и его особенность в том, что он общий для сервера и клиента. Все
+вычисления отталкиваются от него, и это гарантирует, что между клиентом и
+сервером нет посредника.</p>
+
+<p>В самом деле: если такой посредник есть, у него открыты два соединения: с клиентом и сервером, и он перекладывает пакеты между ними. Однако peer-сертификаты у клиента и сервера будут разные. В результате вычисления не сойдутся, и авторизация не пройдет.</p>
+
+<p>Так что scram, хоть и замедляет авторизацию, делает ее безопасней и учитывает много нетривиальных штук.</p>
+
+<p>Посмотреть реализацию scram на Джаве <a href="https://github.com/igrishaev/pg2/blob/master/pg-core/src/java/org/pg/auth/ScramSha256.java">можно тут</a>.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-041-pg/">Совет дня №41</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-09T00:00:00+00:00">
+        Apr 9, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В прошлых заметках мы говорили про пулы соединений вроде HikariCP. Их еще
+называют пулами приложения. Это библиотека, которая открывает соединения,
+одалживает их тредам и закрывает. Аналогично устроен пул на Питоне из состава
+psycopg2.</p>
+
+<p>Есть, однако, другой подход – пулы на уровне сети. Запускается утилита, которая
+притворяется сервером Postgres (разговаривает по протоколу PG Wire). Она
+открывает несколько соединений к целевой базе. Как только к ней подсоединяются,
+она помечает одно из соединений как занятое. Далее она перекладывает сообщения
+от клиента серверу и обратно. Как только клиент уходит, занятое им соединение
+помечается свободным. Все это напоминает HTTP-прокси, только с другим
+протоколом. Наиболее известный PG Wire прокси – это pgbouncer; есть и другие
+аналоги.</p>
+
+<p>Pgbouncer отлично подходит для платформ, где по каким-то причинам нет пула
+приложения. Например, в PHP, многократно вызывая <code class="language-plaintext highlighter-rouge">postgres.connect()</code>, мы будет
+соединяться с сетевым пулом, который направит сообщения в одно из заранее
+открытых соединений.</p>
+
+<p>Кажется, что решение идеально: поставил перед базой <code class="language-plaintext highlighter-rouge">pgbouncer</code> и готово:
+превысить лимит подключений невозможно. Однако мне подход с pgbouncer не
+нравится, и вот почему.</p>
+
+<p>Во-первых, появляется бутылочное горлышко, за которым нужно следить. Если
+<code class="language-plaintext highlighter-rouge">pgbouncer</code> или аналог отвалится, доступ к базе пропадет у всех. Сюда же
+относится конфигурация: нельзя перезагрузить pgbouncer, потому что отвалятся все
+клиенты.</p>
+
+<p>Во-вторых, когда у каждого приложения свой пул, это дает гибкость. Скажем,
+одному сервису понадобилось больше соединений, второму – меньше. Это легко
+исправить, не затрагивая всю инфраструктуру. Потреблением базы таким образом
+можно управлять гранулярно.</p>
+
+<p>В-третьих, <code class="language-plaintext highlighter-rouge">pgbouncer</code> видится мне костылем для платформ, где нет своего пула
+соединений. Постоянные подключения к pgbouncer – это открытие сокета и системные
+вызовы, которых можно избежать, будь у вас нормальный пул.</p>
+
+<p>AWS предлагает <code class="language-plaintext highlighter-rouge">pgbouncer</code> за отдельную плату. Не хочешь возиться с пулами –
+будь добр плати.</p>
+
+<p>Итог последних трех заметок. Никогда не задирайте <code class="language-plaintext highlighter-rouge">max_connections</code> больше
+сотни. В идеале он не превышает нескольких десятков. Изучите, как приложение
+работает с базой, исправьте очевидные ошибки из прошлой заметки. Используйте пул
+даже для одного соединения. Занимайте его только чтобы прочитать данные из базы;
+обработка данных не должна удерживать соединение. Читайте логи пула, собирайте
+метрики.</p>
+
+<p>Если под вашу платформу нет пула, рассмотрите прокси вроде <code class="language-plaintext highlighter-rouge">pgbouncer</code>. Этот
+вариант ограничивает всех клиентов без исключения. Он сложнее, поскольку
+образует новый узел инфраструктуры, а значит – это потенциальная точка отказа и
+мониторинг.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-040-pg/">Совет дня №40</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-09T00:00:00+00:00">
+        Apr 9, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Продолжение про пулы и соединения.</p>
+
+<p>Если вы часто видите ошибку “too many connections”, это не значит, что нужно
+срочно повышать <code class="language-plaintext highlighter-rouge">max_connections</code>. Это то же самое, что дать деньги алкоголику в
+надежде, что он выйдет на работу. Если приложение плохо работает с соединениями,
+не сомневайтесь: оно угробит двойной лимит подключений, тройной и так
+далее. Надо искать причину.</p>
+
+<p>В прошлой заметке говорилось о том, что использование пула, пусть даже для
+одного соединения, снижает риск ошибки. Но что это за ошибки? Перечислим
+некоторые из них.</p>
+
+<p>Первая – открывать и закрывать соединение на каждый запрос. Например, в одном
+месте выбираем пользователей:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">conn</span> <span class="o">=</span> <span class="n">postgres</span><span class="p">.</span><span class="n">connect</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="n">localhost</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mf">5432.</span><span class="p">..)</span>
+<span class="n">conn</span><span class="p">.</span><span class="n">execute</span><span class="p">(</span><span class="s">"select * from users where..."</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>В другом — профили:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">conn</span> <span class="o">=</span> <span class="n">postgres</span><span class="p">.</span><span class="n">connect</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="n">localhost</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mf">5432.</span><span class="p">..)</span>
+<span class="n">conn</span><span class="p">.</span><span class="n">execute</span><span class="p">(</span><span class="s">"select * from profiles where..."</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>В третьем — что-то другое. На ровном месте три соединения вместо одного,
+вдобавок не закрытых.</p>
+
+<p>Бывают клиенты, которые принимают не соединение, а его конфигурацию. В этом
+случае они открывают соединение, выполняют запрос и закрывают его:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(dеf config {:host … :port …})
+(jdbc/execute! config "select * from table")
+</code></pre></div></div>
+
+<p>Этим страдает кложурный JDBC. Функция <code class="language-plaintext highlighter-rouge">execute!</code> и другие принимают не
+соединение, а экземпляр протокола <code class="language-plaintext highlighter-rouge">Connectable</code>. У протокола два метода:
+<code class="language-plaintext highlighter-rouge">borrow-connection</code> и <code class="language-plaintext highlighter-rouge">return-connection</code> – занять и вернуть соединение (пишу по
+памяти, но семантика такая). У обычного соединения <code class="language-plaintext highlighter-rouge">borrow-connection</code> вернет
+его же, а <code class="language-plaintext highlighter-rouge">return-connection</code> ничего не делает. Для пула <code class="language-plaintext highlighter-rouge">borrow-connection</code>
+займет одно из свободных соединений, <code class="language-plaintext highlighter-rouge">return-connection</code> – вернет в пул.</p>
+
+<p>Наконец, можно передать словарь с параметрами подключения. Для него
+<code class="language-plaintext highlighter-rouge">borrow-connection</code> откроет соединение, а <code class="language-plaintext highlighter-rouge">return-connection</code> – закроет. Из
+этого следует, что каждый запрос будет открывать и закрывать
+соединение. Производительность такого кода ниже на два порядка, вдобавок вы
+насилуете сервер частыми <code class="language-plaintext highlighter-rouge">fork</code>.</p>
+
+<p>Другая ошибка – не закрывать соединение при исключении:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">conn</span> <span class="o">=</span> <span class="n">postgres</span><span class="p">.</span><span class="n">connect</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="p">...,</span> <span class="n">port</span><span class="o">=</span><span class="p">...)</span>
+<span class="n">users</span> <span class="o">=</span> <span class="n">conn</span><span class="p">.</span><span class="n">execute</span><span class="p">(</span><span class="s">"select …"</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">user</span> <span class="ow">in</span> <span class="n">users</span><span class="p">:</span>
+  <span class="n">process_user</span><span class="p">(</span><span class="n">user</span><span class="p">)</span> <span class="c1"># exception!
+</span></code></pre></div></div>
+
+<p>Предположим, на очередном шаге process_user выбросил исключение. Начинается размотка стека, мы улетаем куда-то наверх. Но соединение осталось открытым – реакции на ошибку не было.</p>
+
+<p>Решение в том, чтобы использовать конструкции, которые гарантированно что-то сделают даже при ошибке. Самое банальное – try/catch. В Джаве есть try with resources, когда у каждого объекта вызывается метод .close. В Кложе для этого служит макрос with-open. В питоне есть контекстный менеджер with, где в точке выхода можно проверить, было ли исключение.</p>
+
+<p>Еще ошибка – держать соединение занятым, когда на самом деле оно
+свободно. Кложурный пример:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(with-open [conn (jdbc/get-connection ...)]
+  (let [users (jdbc/execute! conn "select ...")]
+    (doseq [user useres]
+      (process-user users))))
+</code></pre></div></div>
+
+<p>Соединение будет закрыто при выходе из <code class="language-plaintext highlighter-rouge">with-open</code>, что в данном случае
+неверно. Большая часть времени уходит на обработку результата, и соединением мог
+бы воспользоваться кто-то другой. Однако мы держим его, пока не обработаем всех
+пользователей. Будет правильно переписать его так:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(let [users
+      (with-open [conn (jdbc/get-connection ...)]
+        (jdbc/execute! conn "select ..."))]
+  (doseq [user users]
+    ...))
+</code></pre></div></div>
+
+<p>В этом коде макрос <code class="language-plaintext highlighter-rouge">with-open</code> содержит только запрос. Как только он выполнится,
+соединение закроется, а результат окажется в переменной users, для работы с
+которой соединение не нужно. Разумеется, если вы стримите из базы или
+пагинируетесь по ней, способ не подойдет — соединение должно быть открыто все
+время.</p>
+
+<p>Всех этих ошибок можно избежать, если использовать пул. Многие клиенты
+возвращают в него соединения автоматом. Даже если этого не случилось, пул
+определяет, что соединение взяли и не вернули, и пишет лог. По умолчанию у него
+нет права закрывать потерянные соединения – это слишком сурово. Однако такое
+полномочие можно дать, и пул будет закрывать соединения, которые, по его мнению,
+заняли безвозвратно.</p>
+
+<p>Главная мысль заметки: повышать <code class="language-plaintext highlighter-rouge">max_connections</code> следует только после того, как
+вы разобрались с кодом и метриками. Если нет понимания, кто и как расходует
+соединения, нет смысла в повышении лимита. Плохой код сожрет его и попросит еще.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-039-pg/">Совет дня №39</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-09T00:00:00+00:00">
+        Apr 9, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Поговорим про пулы и проблемы соединений.</p>
+
+<p>При всех достоинствах Постгреса нужно знать его недостатки. Один из них
+следующий: Постгрес плохо справляется с большим числом подключений. Это следует
+из того, как устроена его серверная часть.</p>
+
+<p>При запуске сервера запускается мастер-процесс. Когда к нему кто-то
+подключается, процесс клонирует себя системным вызовом <code class="language-plaintext highlighter-rouge">fork</code>. Получаются два
+процесса: мастер занимается общими задачами, а второй — слушает и отвечает на
+сообщения клиента. Когда подключается кто-то еще, мастер снова клонирует себя и
+так далее.</p>
+
+<p>Для обмена информацией служит общий участок памяти — shared memory. Такой
+участок можно создать в Unix-подобных системах. Если один процесс что-то изменит
+в этой памяти, друге получат изменения мгновенно.</p>
+
+<p>Разработчики давно обсуждают как уйти от модели “новый процесс на
+соединение”. Предлагаются нативные треды, но когда они будут — я не знаю.</p>
+
+<p>Нужно понимать, что системный вызов <code class="language-plaintext highlighter-rouge">fork</code> — очень дорогой. Он копирует всю
+информацию о процессе, а именно: регистры процессора, стек, номера потоков и
+открытых файлов. Поэтому каждое новое соединение — это вызов <code class="language-plaintext highlighter-rouge">fork</code> и ожидание,
+пока операционная система клонирует процесс.</p>
+
+<p>Даже если предположить, что вместо fork Постгрес использует треды, помните:
+запуск нового потока — это тоже системный вызов и конкуренция за время
+планировщика. А кроме того, частые сетевые подключения — это тоже системные
+вызовы.</p>
+
+<p>Настройка, которая определяет максимальное число соединений, называется
+<code class="language-plaintext highlighter-rouge">max_connections</code>. Увидеть ее можно командой <code class="language-plaintext highlighter-rouge">SHOW</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SHOW</span> <span class="n">max_connections</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>У себя я вижу число 100. Это весьма адекватная цифра: число соединений не должно
+превышать нескольких десятков и уж тем более — сотен. Ситуация, когда вам не
+хватает 300 соединений, говорит об одном из двух. Либо у вас биллинг
+федерального значения и супер-пупер хайлоад. Либо приложение неправильно
+работает с соединениями: не закрывает их, теряет, удерживает без всякой
+нужды. Гораздо вероятней второе, а не первое.</p>
+
+<p>Соединениями управляют на двух уровнях: сетевом (прокси) и в приложении. Во
+втором случае это пул соединений. Это объект, который имитирует обычное
+соединение, но на самом деле открывает их несколько. Когда мы выполняем запрос,
+пул помечает одно из них занятым и передает сообщения через него. Когда мы
+закрываем соединение, этого не происходит — оно помечается свободным и доступно
+другим потокам приложения.</p>
+
+<p>Самый известный пул в Джаве называется HikariCP (от слова “харакири”). Он очень
+быстрый: разработчики писали, что анализировали байт-код и путем экспериментов
+уменьшили его минимума. В пуле нет блокирующих операций вроде <code class="language-plaintext highlighter-rouge">synchronized</code>:
+все сделано через CAS-примитивы. Написаны свои версии классов <code class="language-plaintext highlighter-rouge">List</code> и подобных,
+которые не проверяют выход за границы — это гарантируется в коде.</p>
+
+<p>У HikariCP множество характеристик и шаблонов поведения. Например, сколько
+соединений открывать на старте; до какого предела расти; если предел достигнут,
+а кому-то нужно соединение, то сколько ждать; как долго клиент может удерживать
+соединение; как определять потерянное соединение, которое взяли и не вернули;
+как проверять, что соединение живое и так далее.</p>
+
+<p>Хорошая практика в том, чтобы использовать пул всегда независимо от типа
+приложения. Этим вы гарантируете минимальную гигиену в работе с базой. Даже если
+у вас одно соединение, пул все равно необходим: он откроет его и будет держать
+открытым. Приложение не будет без конца стучаться в сокет, проходить авторизацию
+и клонировать серверный процесс.</p>
+
+<p>Последнее — частая ошибка ребят, пришедших их PHP. В их мире не принято следить
+за ресурсами. Открыл файл, соединение, сокет и работай с ними, а закрывать на
+надо. Зачем, если скрипт отработает, и все закроется само? В системах, отличных
+от скриптовых, состояние не исчезает. Если открыли соединение, его нужно
+закрыть, но при этом следить, чтобы “открыл-закрыл” это не повторялось
+постоянно.</p>
+
+<p>Пул решает эту проблему — берет на себя заботу об открытии и закрытии. Если
+одного соединения перестанет хватать, это дело настройки: увеличьте предел с 1
+до 2. Стратегия может быть разной, например не открывать при запуске ничего, а
+делать это по требованию. Либо наоборот — открыть столько, сколько указано в
+лимите, чтобы каждый запрос выполнятся с уже открытым соединением.</p>
+
+<p>Сколько выделить соединений пулу — вопрос сложный и решается банальным
+подбором. Начните с адекватной цифры вроде четырех и посмотрите на результат:
+как быстро приложение отвечает на запросы в многопоточном режиме. Собирайте
+метрики пула через JMX или обычные логи. Особенна важна метрика ожидания: как
+долго очередной поток ждет, пока пул выдаст ему соединение.</p>
+
+<p>Другой важный показатель — сколько в пуле свободных соединений. Если их много,
+очевидно вы задрали лимит. Скорее всего, в этом соединении нуждается другой
+экземпляр приложения.</p>
+
+<p>Поэтому — гадать не нужно, все сводится к метрикам.</p>
+
+<p>Это была первая часть темы о пулах и соединениях. В следующих выпусках
+продолжим.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-038-pg/">Совет дня №38</a>
             </h2>
 
@@ -826,471 +1236,6 @@ dev-барахло.</p>
 <p>Если вы заметили, что коллега тормозит, возможно, ему поможет капелька
 свободы. Какое-то самостоятельное решение и ответственность за него. Если
 тормозите вы — самое время попросить свободы.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/pg-book-json-ch02/">Глава 2. Базовые возможности JSON</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-04-05T00:00:00+00:00">
-        Apr 5, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/json/" rel="tag">json</a>, <a href="/tag/book/" rel="tag">book</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <h2 id="главы">Главы</h2>
-
-<ol>
-  <li><a href="/pg-book-json-ch01/">Введение в документы</a></li>
-  <li><a href="/pg-book-json-ch02/">Базовые возможности JSON</a></li>
-  <li>JSON в таблицах</li>
-  <li>Индексирование JSON</li>
-  <li>Ссылки и ограничения в документах</li>
-  <li>Язык путей JSONPath</li>
-  <li>Отчеты и функции</li>
-  <li>Функции на языке Python</li>
-  <li>Версионирование и архивация документов</li>
-  <li>Релевантный поиск</li>
-</ol>
-
-<h2>
-
-    Содержание
-
-</h2>
-
-<ul id="toc-item-pg-book-json-ch02">
-  <li><a href="#главы" id="toc-item-pg-book-json-ch02-главы">Главы</a></li>
-  <li><a href="#установка-и-подключение" id="toc-item-pg-book-json-ch02-установка-и-подключение">Установка и подключение</a></li>
-  <li><a href="#знакомство-с-json-и-jsonb" id="toc-item-pg-book-json-ch02-знакомство-с-json-и-jsonb">Знакомство с json и jsonb</a></li>
-  <li><a href="#решения-до-json" id="toc-item-pg-book-json-ch02-решения-до-json">Решения до JSON</a></li>
-  <li><a href="#подробнее-о-jsonb" id="toc-item-pg-book-json-ch02-подробнее-о-jsonb">Подробнее о JSONb</a></li>
-  <li><a href="#операторы-доступа" id="toc-item-pg-book-json-ch02-операторы-доступа">Операторы доступа</a></li>
-  <li><a href="#квадратные-скобки" id="toc-item-pg-book-json-ch02-квадратные-скобки">Квадратные скобки</a></li>
-  <li><a href="#другие-операторы" id="toc-item-pg-book-json-ch02-другие-операторы">Другие операторы</a></li>
-  <li><a href="#функции-jsonb" id="toc-item-pg-book-json-ch02-функции-jsonb">Функции json(b)</a></li>
-  <li><a href="#json-как-таблица" id="toc-item-pg-book-json-ch02-json-как-таблица">JSON как таблица</a></li>
-</ul>
-
-<p><em>В этой главе мы перейдем к техническим вещам: познакомимся с типом JSON в
-Postgres. Мы рассмотрим основные операции над ним и ряд функций, которые
-облегчат работу. Покажем неочевидные трюки, когда JSON полезен: как прочитать
-его по частям, как передать с его помощью таблицу и многое другое.</em></p>
-
-<h2 id="установка-и-подключение">Установка и подключение</h2>
-
-<p>Прежде чем начать работу, убедитесь, что у вас установлен сервер Postgres. На
-момент написания книги его последняя версия – 18.1, но ранние тоже
-подойдут. Случаи, когда та или иная техника требуют особой версии, оговариваются
-особо.</p>
-
-<p>Если у вас нет Postgres, то вот как установить его в разных системах. Прежде
-всего это официальный сайт проекта. Посетите <a href="https://www.postgresql.org/download/">страницу
-загрузок</a> и укажите операционную
-систему. Вас направят на другую страницу с ссылкой на установщик.</p>
-
-<p>Компания PostgresPro предлагает <a href="https://postgrespro.ru/windows">графический
-инсталлятор</a> для Windows. Postgres Pro – это
-расширенная база данных со своими расширениями и функциями. Наша книга опирается
-на стандартный Postgres, поэтому Pro-версия тоже подойдет.</p>
-
-
-                    <p><a href="/pg-book-json-ch02/">Read more &rarr;</a></p>
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-034-pg/">Совет дня №34</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-03-29T00:00:00+00:00">
-        Mar 29, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Банально, но все же: если какой-то атрибут уникален, нужно повесить на него
-уникальное ограничение. С ним физически невозможно добавить в базу
-дубликат. Многие разработчики проверяют уникальность вручную: если нет, то
-вставить, если есть, то ругнуться. Однажды запрос приходит от потребителя,
-который не в курсе этих заморочек, и получается дубль. Со временем на него
-ссылаются другие сущности, он обрастает связями. Когда дубль вскрывается, и все
-чешут голову — как же так получилось?</p>
-
-<p>Удаление дубликата, обросшего связями — очень напряжная вещь. Нужно построить
-дерево ссылок, спланировать перенос, всех предупредить. Раздражает, что это
-тупая работа, которая не двигает вперед ни тебя, ни фирму. Просто слив времени
-из-за чужого косяка.</p>
-
-<p>Похожая история случилась недавно на работе. Есть таблица с важными сущностями
-на двести штук. Кроме ключей, у них уникальные коды, которые производит внешняя
-система. Какой-то скрипт не проверил код на уникальность и добавил такую
-же. Долгое время использовались обе, и как теперь быть — непонятно.</p>
-
-<p>Опытный разработчик знает, как исправить дубль; более опытный знает, как его не
-допустить.</p>
-
-<p>При создании таблицы поле можно пометить словом <code class="language-plaintext highlighter-rouge">unique</code>. При этом Postgres
-создаст уникальный btree-индекс на это поле. Заметим, что уникальность допускает
-значения NULL, потому что они не равны друг другу. Если нулы запрещены, добавьте
-в поле NOT NULL.</p>
-
-<p>Можно задать свой уникальный индекс, при этом использовать не колонку, а
-выражение. Например, уникальность кода или почты нужно проверять без учета
-регистра и отбрасывая пустые символы по краям. Индекс может быть таким:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">unique</span> <span class="k">index</span> <span class="n">idx_user_email_u_btree</span>
-<span class="k">on</span> <span class="n">users</span> <span class="k">using</span> <span class="n">btree</span>
-<span class="p">(</span><span class="k">trim</span><span class="p">(</span><span class="k">lower</span><span class="p">(</span><span class="n">email</span><span class="p">)))</span>
-</code></pre></div></div>
-
-<p>После этого в базе не может быть емейлов <code class="language-plaintext highlighter-rouge">"Ivan@test.com"</code> и <code class="language-plaintext highlighter-rouge">" iVan@TEST.com "</code>
-одновременно.</p>
-
-<p>Уникальность можно повесить на поле JSON-документа. Если код находится где-то в
-глубине, индекс выглядит так:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">unique</span> <span class="k">index</span> <span class="n">idx_item_code_u_btree</span>
-<span class="k">on</span> <span class="n">users</span> <span class="k">using</span> <span class="n">btree</span>
-<span class="p">(</span><span class="k">lower</span><span class="p">(</span><span class="k">data</span> <span class="o">#&gt;&gt;</span> <span class="s1">'{attrs,path,to,code}'</span><span class="p">))</span>
-</code></pre></div></div>
-
-<p>Следите за уникальностью. Добавить ее — дело пяти минут, исправлять последствия
-— пять дней.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-033-pg/">Совет дня №33</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-03-29T00:00:00+00:00">
-        Mar 29, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Разберем еще один случай, когда нужен срез строк – геохэш (geohash). Это быстрый
-и дешевый способ кодировать положение объектов, а также искать их.</p>
-
-<p>Представим себе карту мира. Точки отсчета – Лондон и экватор. Это
-квадрат. Разделим его пополам по вертикали. Если человек живет западней Лондона,
-запишем 0, если восточнее – то 1. Теперь разделим область по горизонтали. Если
-человек находится северней, добавим 0, если южнее – 1. Продолжаем дробить
-область по горизонтали и вертикали и накапливать нули и единицы. В результате мы
-достигнем квадрата, достаточного малого, чтобы остановиться. Скажем, если речь о
-здании, квадрат может быть 25x25 метров. Если стадион, деревня или город, то еще
-больше.</p>
-
-<p>Нули и единицы образуют цепочку бит. Переводим их в байты и кодируем base53 или
-похожим алгоритмом. Получаем строку вида <code class="language-plaintext highlighter-rouge">hsGHrgga3ysg6</code>, которая указывает на
-квадрат определенной точности.</p>
-
-<p><img src="/assets/static/aws/tip-033-pg/1.jpeg" /></p>
-
-<p>Прелесть вот в чем: есть взять какой-то квадрат, то хэши всех точек в нем имеют
-общую часть. Например, есть квадрат <code class="language-plaintext highlighter-rouge">hsGHrgga</code>. В нем будут точки
-<code class="language-plaintext highlighter-rouge">hsGHrgga3ysg6</code>, <code class="language-plaintext highlighter-rouge">hsGHrgga3ysgS</code>, <code class="language-plaintext highlighter-rouge">hsGHrgga6sg</code> и так далее. Это значит, для их
-поиска нужно выбрать строки, которые начинаются с <code class="language-plaintext highlighter-rouge">hsGHrgga</code>. С индексом btree,
-что мы рассмотрели в прошлом совете, это крайне эффективно.</p>
-
-<p>Похоже устроен поиск ближних объектов. Скажем, точка <code class="language-plaintext highlighter-rouge">hsGHrgga3ysg6</code> указывает
-на кинотеатр и нужно показать ближайшие. Отломаем у хэша последний символ и
-таким образом поднимемся на квадрат выше: <code class="language-plaintext highlighter-rouge">hsGHrgga3ysg</code>. Найдем по нему все
-кинотеатры и покажем. Что-то лишнее можно почистить в приложении, так
-дешевле. Вопрос лишь в том, насколько “отъезжать” при поиске: на один символ,
-два и так далее.</p>
-
-<p>Недостаток геохеша в том, что один символ означает сразу восемь операций
-разбиения (потому что восемь битов). Если это критично, рассмотрите тип bit в
-Postgres. Это битовая маска заданной длины, при этом поддерживаются наложение
-другой маски, сравнение, вхождение и так далее.</p>
-
-<p>Геохэш работает не только для плоскости, но и кубов. Пространство – это куб,
-который делится на 8 под-кубов, те – еще на 8 и так далее. Чтобы продвинуться на
-шаг, нужны три бита – по числу измерений. Такая структура называется
-октодеревом. По аналогии можно работать с многомерным пространством.</p>
-
-<p><img src="/assets/static/aws/tip-033-pg/2.jpeg" /></p>
-
-<p>И не только многомерным – одномерным! Представим, на отрезке множество
-точек. Делим отрезок пополам: слева – 0, справа – 1. Переходим на нужный
-под-отрезок, делим пополам и так далее, пока не достигнем нужной
-точности. Накопленные нули и единицы кодируем в строку. Потом, чтобы получить
-точки в нужном отрезке, делаем срез по префиксу.</p>
-
-<p>Все эти алгоритмы есть в PostGis и других гео-системах. Но знать их полезно, и
-порой они оказываются очень в тему. Однажды я писал свое дерево квадрантов, и
-оно заменило тяжелое решение.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-032-pg/">Совет дня №32</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-03-29T00:00:00+00:00">
-        Mar 29, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В Postgres индексы бывают разных типов. Самый базовый и нужный называется btree,
-который основан на одноименной структуре данных – дереве B-Tree. Оно состоит из
-распределительных узлов, и на последнем уровне находятся пары вида (значение,
-страница).</p>
-
-<p>Btree поддерживает равенство и сравнение. Это значит, в нем можно искать по
-точному значению и диапазонам, а еще он подходит для сортировки, потому что
-упорядочен.</p>
-
-<p>В случаях, когда нужно частичное сравнение, индекс btree не подходит. Вместо
-него используют Gin или Gist (отдавая предпочтение первому). Эти индексы сложнее
-и в целом медленнее btree. Поэтому пока возможно, используйте btree.</p>
-
-<p>Есть, однако, лазейка, чтобы использовать btree для частичного сравнения. Если
-применить его к строке с особой опцией, можно искать по началу строки оператором
-<code class="language-plaintext highlighter-rouge">(i)like</code> и регулярным выражением.</p>
-
-<p>Предположим, в таблице <code class="language-plaintext highlighter-rouge">demo</code> хранятся пути к файлам:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">demo</span><span class="p">(</span>
-    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-    <span class="n">path</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span>
-<span class="p">);</span>
-</code></pre></div></div>
-
-<p>Сгенерируем миллион файлов. Пути начинаются с года, месяца, дня и часа. Даты
-разнообразны в рамках десяти лет:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">demo</span>
-<span class="k">select</span>
-    <span class="n">x</span><span class="p">,</span>
-    <span class="n">format</span><span class="p">(</span><span class="s1">'%s/%s/picture.jpeg'</span><span class="p">,</span> <span class="n">to_char</span><span class="p">((</span><span class="n">now</span><span class="p">()</span> <span class="o">-</span> <span class="n">interval</span> <span class="s1">'10 years'</span> <span class="o">*</span>  <span class="n">random</span><span class="p">()),</span> <span class="s1">'yyyy/MM/DD/HH'</span><span class="p">),</span> <span class="n">gen_random_uuid</span><span class="p">())</span>
-<span class="k">from</span>
-    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">999999</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Навесим индекс на путь. Опция <code class="language-plaintext highlighter-rouge">text_pattern_ops</code> нужна, чтобы зафиксировать
-локаль. С ней сравнение строк не зависит от текущей локали:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">path_btree</span> <span class="k">on</span> <span class="n">demo</span>
-<span class="k">using</span> <span class="n">btree</span>
-<span class="p">(</span><span class="n">path</span> <span class="n">text_pattern_ops</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Выберем файлы за октябрь 2023 года:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">demo</span>
-<span class="k">where</span> <span class="n">path</span> <span class="k">like</span> <span class="s1">'2023/10/12%'</span>
-<span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Справа от like стоит шаблон, а не простой текст. Символ % означает любые
-символы. Вот что вернет запрос:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────────┬─────────────────────────────────────────┐
-│   id   │                path                     │
-├────────┼─────────────────────────────────────────┤
-│ 213875 │ 2023/10/12/01/00ec...af263/picture.jpeg │
-│ 670319 │ 2023/10/12/01/04e2...67afd/picture.jpeg │
-│  34516 │ 2023/10/12/01/063a...ebddc/picture.jpeg │
-│ 122843 │ 2023/10/12/01/3237...6ffd7/picture.jpeg │
-│ 227530 │ 2023/10/12/01/5a48...c4ec0/picture.jpeg │
-│ 141900 │ 2023/10/12/01/6a78...da021/picture.jpeg │
-│ 663626 │ 2023/10/12/01/9d6d...84da7/picture.jpeg │
-│ 154138 │ 2023/10/12/01/a02e...5570c/picture.jpeg │
-│  37955 │ 2023/10/12/01/a465...47a7a/picture.jpeg │
-│ 864446 │ 2023/10/12/01/ae47...943d9/picture.jpeg │
-│ 196849 │ 2023/10/12/01/cd15...25874/picture.jpeg │
-</code></pre></div></div>
-
-<p>Но гораздо интересней план:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>explain analyze
-select * from demo
-where path like '2023/10/12%'
-limit 100;
-
-│ Limit  (cost=0.55..8.57 rows=100 width=68)
-│ (actual time=0.054..0.364 rows=100 loops=1)
-│   -&gt;  Index Scan using path_btree on demo
-│       (cost=0.55..8.57 rows=100 width=68)
-│         Index Cond: ((path ~&gt;=~ '2023/10/12'::text)
-│                  AND (path ~&lt;~ '2023/10/13'::text))
-│         Filter: (path ~~ '2023/10/12%'::text)
-│ Planning Time: 0.375 ms
-│ Execution Time: 0.400 ms
-└────────────────────────────────────────────────────
-</code></pre></div></div>
-
-<p>Видим, что Postgres поступает хитро: заключает путь в диапазон 2023/10/12 и
-2023/10/13. Цифра 3 на конце получилась как следующий символ за 2.</p>
-
-<p>Попадаем в индекс, стоимость копеечная.</p>
-
-<p>Если поставить в начало шаблона <code class="language-plaintext highlighter-rouge">%</code>, индекс не сработает. Другими словами, с
-таким подходом нельзя искать пути по вхождению.</p>
-
-<p>Индекс и оператор <code class="language-plaintext highlighter-rouge">like</code> позволяют срезать пути по лидирующей строке. При этом
-не обязательно с точностью до папки. Например, шаблон может быть таким:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>2025/10/23/%cat%.jpeg
-</code></pre></div></div>
-
-<p>Так мы получим все фотографии в папке 2025/10/23/… со словом <code class="language-plaintext highlighter-rouge">cat</code> в названии
-и расширением <code class="language-plaintext highlighter-rouge">jpeg</code>. Кроме шаблонов <code class="language-plaintext highlighter-rouge">like</code>, индекс поддерживает регулярки, и с
-ними критерий поиска можно описать точнее.</p>
-
-<p>Чем больше лидирующих символов мы задали, тем быстрее будет поиск.</p>
-
-<p>Еще один трюк: что если нужно искать с конца строки? Например, имеется таблица
-товаров с серийными номерами:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">demo2</span><span class="p">(</span>
-    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-    <span class="n">serial_number</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span>
-<span class="p">);</span>
-</code></pre></div></div>
-
-<p>Вставим миллион серийных номеров:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>insert into demo2
-select
-    x,
-    to_char(random() * 1000000000000, '0000-0000-0000')
-from
-    generate_series(1, 999999) as seq(x);
-
-┌────────┬─────────────────┐
-│   id   │  serial_number  │
-├────────┼─────────────────┤
-│      1 │  7084-1644-4953 │
-│      2 │  2694-3476-5136 │
-│      3 │  3274-5880-3765 │
-│      4 │  9346-6945-3461 │
-│      5 │  3352-3981-1479 │
-│      6 │  7103-7860-4732 │
-│      7 │  2634-9208-2518 │
-│      8 │  1485-3601-0146 │
-│      9 │  8068-5128-1222 │
-│     10 │  5832-3252-5642 │
-</code></pre></div></div>
-
-<p>Сотрудники ищут продукцию по последним числам серийного номера. Чтобы сработал
-индекс btree, сделаем функциональный индекс на выражение
-<code class="language-plaintext highlighter-rouge">reverse(serial_number)</code>. В результате в индексе будут храниться перевернутые
-номера:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">path_btree_rev</span> <span class="k">on</span> <span class="n">demo2</span>
-<span class="k">using</span> <span class="n">btree</span>
-<span class="p">(</span><span class="n">reverse</span><span class="p">(</span><span class="n">serial_number</span><span class="p">)</span> <span class="n">text_pattern_ops</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Чтобы искать по ним, выражение поиска тоже нужно перевернуть. Давайте найдем все
-номера, которые заканчиваются на -0500:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">demo2</span>
-<span class="k">where</span> <span class="n">reverse</span><span class="p">(</span><span class="n">serial_number</span><span class="p">)</span> <span class="k">like</span> <span class="n">reverse</span><span class="p">(</span><span class="s1">'%-0500'</span><span class="p">)</span>
-<span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Результат:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────────┬─────────────────┐
-│   id   │  serial_number  │
-├────────┼─────────────────┤
-│ 237074 │  5088-3410-0500 │
-│ 231067 │  0411-7020-0500 │
-│ 728812 │  3489-6520-0500 │
-│ 618494 │  3972-6720-0500 │
-│ 486950 │  4871-5330-0500 │
-│ 634762 │  8038-7440-0500 │
-│ 733815 │  8856-2250-0500 │
-│ 451464 │  3640-0450-0500 │
-│ 868649 │  7289-2270-0500 │
-│ 485383 │  7016-0370-0500 │
-│ 782061 │  4076-8080-0500 │
-│ 234715 │  4279-2180-0500 │
-│  36948 │  9033-7280-0500 │
-│ 460010 │  5881-8090-0500 │
-</code></pre></div></div>
-
-<p>Самое интересное – план:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>│ Limit  (cost=0.42..8.45 rows=100 width=16) (actual
-│   -&gt;  Index Scan using path_btree_rev on demo2  (co
-│         Index Cond: ((reverse(serial_number) ~&gt;=~ '
-│         Filter: (reverse(serial_number) ~~ '0050-%'
-│ Planning Time: 0.286 ms
-│ Execution Time: 1.088 ms
-└────────────────────────────────────────────────────
-</code></pre></div></div>
-
-<p>Работает!</p>
-
-<p>Повторю, что <code class="language-plaintext highlighter-rouge">btree</code> и <code class="language-plaintext highlighter-rouge">text_pattern_ops</code> работают только для начала
-строки. Если нужен поиск посередине, обратитесь к расширению <code class="language-plaintext highlighter-rouge">pg_tgrm</code>
-(триграммы). Этот индекс, однако, требует Gin.</p>
-
-<p>У <code class="language-plaintext highlighter-rouge">text_pattern_ops</code> есть еще один полезный сценарий, но о нем – в следующий
-раз.</p>
 
                 
             </div>

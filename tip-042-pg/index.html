@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Совет дня №42</title>
+  <meta name="description" content="Как мы выяснили, открывать соединение на каждый запрос – медленно. Во-первых,новый сокет – это системный вызов и аллокация ресурсов в операционнойсистеме. Во...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/tip-042-pg/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/postgres/">Postgres</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Совет дня №42</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-09T00:00:00+00:00">
+        Apr 9, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Как мы выяснили, открывать соединение на каждый запрос – медленно. Во-первых,
+новый сокет – это системный вызов и аллокация ресурсов в операционной
+системе. Во-вторых, после открытия сокета клиент и сервер обмениваются
+начальными сообщениями. Сервер сообщает, каким образом нужно пройти авторизацию,
+клиент проходит ее (а это еще несколько сообщений), после чего сервер высылает
+метаданные (локаль, формат дат, кодировки и так далее). Представьте, что все это
+происходит на каждый запрос – быстродействие падает на два порядка.</p>
+
+<p>Среди прочего рассмотрим авторизацию. До версии 15 алгоритм по умолчанию был
+md5. Он довольно прост: нужно сцепить пользователя и пароль, посчитать md5,
+приклеить соль, взять md5 еще раз, а затем привести к hex-строке:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>message = hex(md5(md5(user+password) + salt))
+</code></pre></div></div>
+
+<p>Эта авторизация занимает одно сообщение сервера и одно клиента. Вычисления
+клиента при этом простые: два md5-хэша.</p>
+
+<p>С версии 15 авторизация по умолчанию называется scram. Она происходит в
+несколько шагов, примерно так:</p>
+
+<ul>
+  <li>сервер говорит: начинаем авторизацию scram, доступны варианты sha-256 и
+sha-256-plus (о них позже);</li>
+  <li>клиент загадывает случайный массив байтов и отправляет серверу;</li>
+  <li>сервер возвращает особую крипту и число шагов (по умолчанию 4096);</li>
+  <li>клиент выполняет цикл из 4096 итераций, где на пароль накладывается XOR-ом
+байтовый массив и вычисляется отпечаток hmac sha265; эта крипта отправляется
+серверу;</li>
+  <li>сервер отправляет финальную сигнатуру. Клиент проверяет ее и если что не так,
+кидает исключение.</li>
+</ul>
+
+<p>Вся эта котовасия нужна вот зачем:</p>
+
+<ul>
+  <li>клиент считает не пару md5-хэшей, а множество XOR- и hmac-операций. Это крайне
+осложняет брутфорс;</li>
+  <li>сделать реверс 4096 операций — задача нереальная в отличие от md5;</li>
+  <li>scram допускает защиту от человека посередине (разберем чуть позже).</li>
+</ul>
+
+<p>Итого, чтобы авторизоваться, клиент вычисляет хэши в цикле. Это гораздо дольше
+обычного md5. Поэтому со scram новое соединение обходится еще дольше, чем
+раньше.</p>
+
+<p>Что касается защиты от MITM, то scram предлагает интересное решение. Клиенту
+сообщают, какие подвиды авторизации доступны (sha-256 и sha-256-plus), и он
+может выбирать. Метод sha-256-plus называется связыванием каналов. Он работает
+так: если мы соединяется по SSL с TLS, то первоначальная крипта, которую
+загадывает клиент, берется из т.н. peer-сертификата. Это первый сертификат в
+цепочке TLS, и его особенность в том, что он общий для сервера и клиента. Все
+вычисления отталкиваются от него, и это гарантирует, что между клиентом и
+сервером нет посредника.</p>
+
+<p>В самом деле: если такой посредник есть, у него открыты два соединения: с клиентом и сервером, и он перекладывает пакеты между ними. Однако peer-сертификаты у клиента и сервера будут разные. В результате вычисления не сойдутся, и авторизация не пройдет.</p>
+
+<p>Так что scram, хоть и замедляет авторизацию, делает ее безопасней и учитывает много нетривиальных штук.</p>
+
+<p>Посмотреть реализацию scram на Джаве <a href="https://github.com/igrishaev/pg2/blob/master/pg-core/src/java/org/pg/auth/ScramSha256.java">можно тут</a>.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/tip-041-pg/">&larr; Совет дня №41</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/1054">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/tip-042-pg/">
+    <input required name="captcha" type="hidden" value="4 &#215; 2">
+
+    <div class="block">
+        <span class="comment-form-label"><small>4 &#215; 2 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

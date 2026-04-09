@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Совет дня №39</title>
+  <meta name="description" content="Поговорим про пулы и проблемы соединений.">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/tip-039-pg/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/postgres/">Postgres</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">Совет дня №39</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-09T00:00:00+00:00">
+        Apr 9, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Поговорим про пулы и проблемы соединений.</p>
+
+<p>При всех достоинствах Постгреса нужно знать его недостатки. Один из них
+следующий: Постгрес плохо справляется с большим числом подключений. Это следует
+из того, как устроена его серверная часть.</p>
+
+<p>При запуске сервера запускается мастер-процесс. Когда к нему кто-то
+подключается, процесс клонирует себя системным вызовом <code class="language-plaintext highlighter-rouge">fork</code>. Получаются два
+процесса: мастер занимается общими задачами, а второй — слушает и отвечает на
+сообщения клиента. Когда подключается кто-то еще, мастер снова клонирует себя и
+так далее.</p>
+
+<p>Для обмена информацией служит общий участок памяти — shared memory. Такой
+участок можно создать в Unix-подобных системах. Если один процесс что-то изменит
+в этой памяти, друге получат изменения мгновенно.</p>
+
+<p>Разработчики давно обсуждают как уйти от модели “новый процесс на
+соединение”. Предлагаются нативные треды, но когда они будут — я не знаю.</p>
+
+<p>Нужно понимать, что системный вызов <code class="language-plaintext highlighter-rouge">fork</code> — очень дорогой. Он копирует всю
+информацию о процессе, а именно: регистры процессора, стек, номера потоков и
+открытых файлов. Поэтому каждое новое соединение — это вызов <code class="language-plaintext highlighter-rouge">fork</code> и ожидание,
+пока операционная система клонирует процесс.</p>
+
+<p>Даже если предположить, что вместо fork Постгрес использует треды, помните:
+запуск нового потока — это тоже системный вызов и конкуренция за время
+планировщика. А кроме того, частые сетевые подключения — это тоже системные
+вызовы.</p>
+
+<p>Настройка, которая определяет максимальное число соединений, называется
+<code class="language-plaintext highlighter-rouge">max_connections</code>. Увидеть ее можно командой <code class="language-plaintext highlighter-rouge">SHOW</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SHOW</span> <span class="n">max_connections</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>У себя я вижу число 100. Это весьма адекватная цифра: число соединений не должно
+превышать нескольких десятков и уж тем более — сотен. Ситуация, когда вам не
+хватает 300 соединений, говорит об одном из двух. Либо у вас биллинг
+федерального значения и супер-пупер хайлоад. Либо приложение неправильно
+работает с соединениями: не закрывает их, теряет, удерживает без всякой
+нужды. Гораздо вероятней второе, а не первое.</p>
+
+<p>Соединениями управляют на двух уровнях: сетевом (прокси) и в приложении. Во
+втором случае это пул соединений. Это объект, который имитирует обычное
+соединение, но на самом деле открывает их несколько. Когда мы выполняем запрос,
+пул помечает одно из них занятым и передает сообщения через него. Когда мы
+закрываем соединение, этого не происходит — оно помечается свободным и доступно
+другим потокам приложения.</p>
+
+<p>Самый известный пул в Джаве называется HikariCP (от слова “харакири”). Он очень
+быстрый: разработчики писали, что анализировали байт-код и путем экспериментов
+уменьшили его минимума. В пуле нет блокирующих операций вроде <code class="language-plaintext highlighter-rouge">synchronized</code>:
+все сделано через CAS-примитивы. Написаны свои версии классов <code class="language-plaintext highlighter-rouge">List</code> и подобных,
+которые не проверяют выход за границы — это гарантируется в коде.</p>
+
+<p>У HikariCP множество характеристик и шаблонов поведения. Например, сколько
+соединений открывать на старте; до какого предела расти; если предел достигнут,
+а кому-то нужно соединение, то сколько ждать; как долго клиент может удерживать
+соединение; как определять потерянное соединение, которое взяли и не вернули;
+как проверять, что соединение живое и так далее.</p>
+
+<p>Хорошая практика в том, чтобы использовать пул всегда независимо от типа
+приложения. Этим вы гарантируете минимальную гигиену в работе с базой. Даже если
+у вас одно соединение, пул все равно необходим: он откроет его и будет держать
+открытым. Приложение не будет без конца стучаться в сокет, проходить авторизацию
+и клонировать серверный процесс.</p>
+
+<p>Последнее — частая ошибка ребят, пришедших их PHP. В их мире не принято следить
+за ресурсами. Открыл файл, соединение, сокет и работай с ними, а закрывать на
+надо. Зачем, если скрипт отработает, и все закроется само? В системах, отличных
+от скриптовых, состояние не исчезает. Если открыли соединение, его нужно
+закрыть, но при этом следить, чтобы “открыл-закрыл” это не повторялось
+постоянно.</p>
+
+<p>Пул решает эту проблему — берет на себя заботу об открытии и закрытии. Если
+одного соединения перестанет хватать, это дело настройки: увеличьте предел с 1
+до 2. Стратегия может быть разной, например не открывать при запуске ничего, а
+делать это по требованию. Либо наоборот — открыть столько, сколько указано в
+лимите, чтобы каждый запрос выполнятся с уже открытым соединением.</p>
+
+<p>Сколько выделить соединений пулу — вопрос сложный и решается банальным
+подбором. Начните с адекватной цифры вроде четырех и посмотрите на результат:
+как быстро приложение отвечает на запросы в многопоточном режиме. Собирайте
+метрики пула через JMX или обычные логи. Особенна важна метрика ожидания: как
+долго очередной поток ждет, пока пул выдаст ему соединение.</p>
+
+<p>Другой важный показатель — сколько в пуле свободных соединений. Если их много,
+очевидно вы задрали лимит. Скорее всего, в этом соединении нуждается другой
+экземпляр приложения.</p>
+
+<p>Поэтому — гадать не нужно, все сводится к метрикам.</p>
+
+<p>Это была первая часть темы о пулах и соединениях. В следующих выпусках
+продолжим.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/tip-038-pg/">&larr; Совет дня №38</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+        <p><small><a href="/tip-040-pg/">Совет дня №40 &rarr;</a></small></p>
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+    &emsp;<a href="https://t.me/igrishaev_blog/1049">Обсудить в Телеграме</a>
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/tip-039-pg/">
+    <input required name="captcha" type="hidden" value="6 &#215; 9">
+
+    <div class="block">
+        <span class="comment-form-label"><small>6 &#215; 9 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
