@@ -302,7 +302,7 @@ class JSONField(fields.TextFiled):
 
 Полная версия класса [доступна на GitHub][django-jsonfield] в проекте
 `django-jsonfield`. Подобных проектов было множество, каждый предлагал те или
-иные оптимизациями. Со временем Django обзавелся встроенным `JSONField`, и
+иные оптимизации. Со временем Django обзавелся встроенным `JSONField`, и
 потребность в них отпала.
 
 Рассмотрим пример с этим классом. Профиль содержит поле `extra_data` для
@@ -1453,12 +1453,14 @@ left join book on book.author_id = author.id;
 соединения (JOIN) группируется по главной сущности, а подчиненная агрегируется в
 массив JSON. Перепишем запрос:
 
+~~~sql
 select
     author.*,
     jsonb_agg(book) as books
 from author
 left join book on book.author_id = author.id
 group by author.id;
+~~~
 
 Новый результат:
 
