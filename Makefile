@@ -81,7 +81,7 @@ new-post:
 	echo 'telegram_id: ' >> ${new_file}
 	echo '---' >> ${new_file}
 	echo '' >> ${new_file}
-	echo "{% include static.html path=\"${slug}/1.png\" %}" >> ${new_file}
+	echo "{% include static.html path=\"${slug}/1.jpeg\" %}" >> ${new_file}
 	mkdir -p ${slug_dir}
 	open ${slug_dir}
 
