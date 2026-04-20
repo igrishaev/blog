@@ -106,6 +106,615 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-037-pg/">Postgres №37</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-07T00:00:00+00:00">
+        Apr 7, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><a href="/tip-036-pg/">Совет №36</a> оканчивался фразой:</p>
+
+<blockquote>
+  <p>Мне известны для случая, когда от внешних ключей отказываются добровольно.</p>
+</blockquote>
+
+<p>О них и поговорим.</p>
+
+<p>Первый случай, когда ослабление ключей допустимо – это GDPR и схожие
+требования. Например, пользователь оставил заявку на удаление учетки и связанных
+данных. Удалять их в лоб долго и трудно: пользователь – это центральная
+сущность, на которую завязано все. Каскадный DELETE, во-первых, крайне
+медленный, а во-вторых, может задеть данные, которые нужно оставить.</p>
+
+<p>Кроме пользователя, бывают и другие сущности, которые нужно экстренно удалить,
+но мешают внешние связи. В этом случае сперва удаляют внешние ключи при помощи
+<code class="language-plaintext highlighter-rouge">drop constraint</code>. Например, ниже удаляется внешний ключ <code class="language-plaintext highlighter-rouge">user_id</code> в профилях:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">alter</span> <span class="k">table</span> <span class="n">profiles</span> <span class="k">drop</span> <span class="k">constraint</span> <span class="n">fk_user_id</span>
+</code></pre></div></div>
+
+<p>Далее удаляется целевая сущность — пользователь. В дальнейших запросах
+используется внутреннее соединение, чтобы отсечь записи, которые ссылаются в
+никуда. Например, если мы выбрали профили по особому критерию, то пользователи
+цепляются не LEFT, а обычным JOIN. Это гарантирует, что в выборке не будет
+“висюков”:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">profiles</span> <span class="n">p</span>
+<span class="k">where</span> <span class="n">p</span><span class="p">.</span><span class="n">open_to_work</span>
+<span class="k">join</span> <span class="n">users</span> <span class="n">u</span> <span class="k">on</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span>
+</code></pre></div></div>
+
+<p>Позже “висюки” подчищаются запросом по расписанию. Заметим, что внутренний JOIN
+в целом работает лучше, чем левый и правый аналоги. Он быстрее и отсекает больше
+данных. Как правило, LEFT JOIN означает, что в базе что-то не так.</p>
+
+<p>Сказанное выше звучит костыльно, но увы — это жизнь. Так было в одном стартапе:
+он выходил на очередной раунд инвестирования, и сказали: по такому-то закону
+нужно удалить учетку пользователя по запросу в короткое время. Таких
+пользователей было немного, буквально пять или шесть, но обилие внешних ссылок
+все усложняло. Получалось огромное дерево таблиц, которое нужно было очистить в
+особом порядке. Руководители стартапа не хотели тратить время и деньги на такую
+ерунду. Поэтому внешние ключи удалили и снесли записи обычным DELETE. Схема базы
+пострадала, зато с задачей справились быстро.</p>
+
+<p>Внешние ключи нужны – без них легко испортить данные. Но в редких случаях
+выгодно их ослабить – только никому об этом не говорить.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-036-pg/">Postgres №36</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-07T00:00:00+00:00">
+        Apr 7, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Перечитав прошлый совет, я понял, что он нуждается в технической
+демке. Быстренько покажу, на что влияет индекс внешнего ключа.</p>
+
+<p>Уточнение: будет много планов. Поскольку они длинные, их трудно записать в
+Телеграме в понятном виде. Здесь только фрагменты, а в конце – ссылка на гист.</p>
+
+<p>Итак, делаем две таблицы, пользователей и профили:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span>
+<span class="p">);</span>
+
+<span class="k">create</span> <span class="k">table</span> <span class="n">profiles</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">user_id</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="k">references</span> <span class="n">users</span><span class="p">(</span><span class="n">id</span><span class="p">)</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Вставим миллион пользователей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">users</span>
+<span class="k">select</span> <span class="n">x</span>
+<span class="k">from</span> <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">999999</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Профилей тоже миллион, но есть нюанс. Я не хочу, чтобы n-ая строка профиля
+ссылалась на n-ую строку пользователя. Это слишком хорошо и не отражает
+действительности. Поэтому первый профиль ссылается на последнего пользователя,
+второй – на предпоследнего и так далее. Другими словами, максимально усложним
+базе жизнь в плане соединений:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">profiles</span>
+<span class="k">select</span> <span class="n">x</span><span class="p">,</span> <span class="mi">1000000</span> <span class="o">-</span> <span class="n">x</span>
+<span class="k">from</span> <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">999999</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Проверим, что в таблицах:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">table</span> <span class="n">users</span> <span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─────┐
+│ id  │
+├─────┤
+│   1 │
+│   2 │
+│   3 │
+│   4 │
+│   5 │
+│   6 │
+│   7 │
+│   8 │
+│   9 │
+│  10 │
+</code></pre></div></div>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">table</span> <span class="n">profiles</span> <span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─────┬─────────┐
+│ id  │ user_id │
+├─────┼─────────┤
+│   1 │  999999 │
+│   2 │  999998 │
+│   3 │  999997 │
+│   4 │  999996 │
+│   5 │  999995 │
+│   6 │  999994 │
+│   7 │  999993 │
+│   8 │  999992 │
+│   9 │  999991 │
+</code></pre></div></div>
+
+<p>Индекса на <code class="language-plaintext highlighter-rouge">user_id</code> пока что нет. Что будет, если выбрать профили ста
+определенных пользователей? Посмотрим план:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">profiles</span>
+<span class="k">where</span> <span class="n">user_id</span> <span class="k">between</span> <span class="mi">450000</span> <span class="k">and</span> <span class="mi">450100</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Gather  (cost=1000.00..11684.39 rows=94 width=8)
+Workers Planned: 2
+Parallel Seq Scan on profiles
+  (cost=0.00..10674.99 rows=39 width=8)
+Filter: ((user_id &gt;= 450000) AND (user_id &lt;= 450100))
+</code></pre></div></div>
+
+<p>Видим, что было полное сканирование профилей. При этом Postgres сделал это
+параллельно в два процесса (Parallel Seq Scan, Workers =2), а потом объединил
+результат (шаг Gather). Итоговая стоимость довольно высокая (11684).</p>
+
+<p>Предположим, я делаю отчет по всем пользователям и профилям: тупо соединяю две
+таблицы джоином:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
+<span class="k">select</span> <span class="o">*</span>
+<span class="k">from</span> <span class="n">users</span> <span class="n">u</span><span class="p">,</span> <span class="n">profiles</span> <span class="n">p</span>
+<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Hash Join  (cost=30831.98..59602.98 rows=999999 width=12)
+Hash Cond: (p.user_id = u.id)
+Seq Scan on profiles p
+  (cost=0.00..14424.99 rows=999999 width=8)
+Hash  (cost=14424.99..14424.99 rows=999999 width=4)
+Seq Scan on users u
+   (cost=0.00..14424.99 rows=999999 width=4)
+</code></pre></div></div>
+
+<p>То, что был seq scan по таблице users, это нормально – мы выбираем все
+записи. Однако по таблице profiles тоже был full scan, при этом стоимость
+хэширования огромна (cost=14424.99..14424.99). Финальный обход хэшей тоже
+дорогой: 59602.98</p>
+
+<p>Другой пример: предположим, мы выбрали малую часть пользователей и нужно
+присоединить им профили. Для этого рассмотрим запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
+<span class="k">with</span> <span class="n">some_users</span> <span class="k">as</span> <span class="p">(</span>
+    <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span>
+    <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">450000</span> <span class="k">and</span> <span class="mi">450100</span>
+<span class="p">)</span>
+<span class="k">select</span> <span class="o">*</span>
+<span class="k">from</span> <span class="n">some_users</span> <span class="n">sm</span>
+<span class="k">join</span> <span class="n">profiles</span> <span class="n">p</span> <span class="k">on</span> <span class="n">sm</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Считаем, что выборка <code class="language-plaintext highlighter-rouge">some_users</code> даст всего 100 пользователей. В реальности мы
+бы фильтровали по городу или другому признаку, но поскольку у нас только id,
+остается по нему.</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Gather  (cost=1007.61..10702.82 rows=98 width=12)
+Workers Planned: 2
+Hash Join  (cost=7.61..9693.02 rows=41 width=12)
+Hash Cond: (p.user_id = users.id)
+Parallel Seq Scan on profiles p
+  (cost=0.00..8591.66 rows=416666 width=8)
+Hash  (cost=6.39..6.39 rows=98 width=4)
+Index Only Scan using users_pkey on users
+  (cost=0.42..6.39 rows=98 width=4)
+Index Cond: ((id &gt;= 450000) AND (id &lt;= 450100))
+</code></pre></div></div>
+
+<p>Этот план говорит о следующем: выборка <code class="language-plaintext highlighter-rouge">some_users</code> сработала моментально, но
+дальше все плохо. Чтобы найти профили, Postgres опять зарядил два параллельных
+потока с объединением. Итоговая стоимость (10702.82) высокая.</p>
+
+<p>Добавим индекс на поле <code class="language-plaintext highlighter-rouge">user_id</code> и посмотрим, как все изменится:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">unique</span> <span class="k">index</span> <span class="n">idx_profiles_user_id_u</span>
+<span class="k">on</span> <span class="n">profiles</span> <span class="k">using</span> <span class="n">btree</span> <span class="p">(</span><span class="n">user_id</span><span class="p">);</span>
+
+<span class="k">analyze</span> <span class="n">profiles</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Простой пример: найти профили по диапазону пользователей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">profiles</span>
+<span class="k">where</span> <span class="n">user_id</span> <span class="k">between</span> <span class="mi">450000</span> <span class="k">and</span> <span class="mi">450100</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Index Scan using idx_profiles_user_id_u on profiles
+  (cost=0.42..10.37 rows=97 width=8)
+Index Cond: ((user_id &gt;= 450000) AND (user_id &lt;= 450100))
+</code></pre></div></div>
+
+<p>Очевидно, стоимость копеечная.</p>
+
+<p>Далее: имея узкую выборку пользователей (например, по городу), присоединить им
+профили:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
+<span class="k">with</span> <span class="n">some_users</span> <span class="k">as</span> <span class="p">(</span>
+    <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span>
+    <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">450000</span> <span class="k">and</span> <span class="mi">450100</span>
+<span class="p">)</span>
+<span class="k">select</span> <span class="o">*</span>
+<span class="k">from</span> <span class="n">some_users</span> <span class="n">sm</span>
+<span class="k">join</span> <span class="n">profiles</span> <span class="n">p</span> <span class="k">on</span> <span class="n">sm</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Nested Loop
+  (cost=0.85..825.75 rows=98 width=12)
+Index Only Scan using users_pkey on users
+  (cost=0.42..6.39 rows=98 width=4)
+Index Cond: ((id &gt;= 450000) AND (id &lt;= 450100))
+Index Scan using idx_profiles_user_id_u on profiles p  (cost=0.42..8.36 rows=1 width=8)
+Index Cond: (user_id = users.id)
+</code></pre></div></div>
+
+<p>Было два прохода по индексам, итоговые данные соединены вложенным циклом (Nested
+Loop). Сложность такого соединения квадратична, но на малых объемах
+выигрывает. Стоимость 825 – низкая.</p>
+
+<p>И наконец, узрите истинную мощь Merge Join – соединения слиянием. Повторим
+запрос, в котором мы соединяем две таблицы без каких-либо фильтров:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
+<span class="k">select</span> <span class="o">*</span>
+<span class="k">from</span> <span class="n">users</span> <span class="n">u</span><span class="p">,</span> <span class="n">profiles</span> <span class="n">p</span>
+<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Вы, наверное, думаете, что все полетит? Нет, план останется таким же, то есть
+очень медленным:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Hash Join
+  (cost=30831.98..59602.98 rows=999999 width=12)
+...
+</code></pre></div></div>
+
+<p>Будет два seq scan-а по обеим таблицам и ручное хеширование. Напомню, я
+специально создал худший сценарий, когда порядок профилей обратный: первый
+профиль ссылается на последнего пользователя и так далее. Это делает хэширование
+дорогим. Стоимость первой строки равна 30831 – это значит, что перед получением
+данных база будет тупить – считать хэши.</p>
+
+<p>Сделаем вот что: в запросе выше заменим <code class="language-plaintext highlighter-rouge">profiles</code> на подзапрос, отсортированный
+по <code class="language-plaintext highlighter-rouge">user_id</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
+<span class="k">select</span> <span class="o">*</span>
+<span class="k">from</span> <span class="n">users</span> <span class="n">u</span><span class="p">,</span> <span class="p">(</span><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">profiles</span> <span class="k">order</span> <span class="k">by</span> <span class="n">user_id</span><span class="p">)</span> <span class="n">p</span>
+<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>План:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Merge Join  (cost=5.14..81384.50 rows=999999 width=12)
+Merge Cond: (profiles.user_id = u.id)
+Index Scan using idx_profiles_user_id_u on profiles  (cost=0.42..30408.41 rows=999999 width=8)
+Index Only Scan using users_pkey on users u  (cost=0.42..25980.41 rows=999999 width=4)
+</code></pre></div></div>
+
+<p>Оба набора упорядочены по тем полям, по которым их соединяют, поэтому сработает
+соединение слиянием. Стоимость его гораздо ниже, чем у хеширования. Первая
+строка доступна уже через 5.14 единиц стоимости – а было 30831.98. Четыре
+порядка! Когда я вижу в плане Merge Join, все мои железы активируются и выделяют
+жидкости.</p>
+
+<p>Планы – полезная вещь. Читайте их, экспериментируйте, пытайтесь понять, почему
+план именно такой, а не другой.</p>
+
+<p><a href="https://gist.github.com/igrishaev/4e56409958ddca90ab865ce79d75b8a5">Ссылка на код</a>.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-035-pg/">Postgres №35</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-07T00:00:00+00:00">
+        Apr 7, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В прошлый раз мы говорили об уникальных ограничениях, а еще есть внешние. Это
+когда значение поля обязано быть первичным ключом другой таблицы. Например, в
+профиле колонка <code class="language-plaintext highlighter-rouge">user_id</code> ссылается на пользователя: таблицу <code class="language-plaintext highlighter-rouge">users</code> и ее
+первичный ключ <code class="language-plaintext highlighter-rouge">id</code>.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">...</span>
+<span class="p">);</span>
+
+<span class="k">create</span> <span class="k">table</span> <span class="n">profiles</span><span class="p">(</span>
+    <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">user_id</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="k">references</span> <span class="n">users</span><span class="p">(</span><span class="n">id</span><span class="p">)</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Ключевое слово <code class="language-plaintext highlighter-rouge">references</code> создает это ограничение автоматом. Можно задать его явно таким выражением:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">alter</span> <span class="k">table</span> <span class="n">profiles</span>
+<span class="k">add</span> <span class="k">constraint</span> <span class="n">fk_profile_user_id</span>
+<span class="k">foreign</span> <span class="k">key</span> <span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
+<span class="k">references</span> <span class="n">users</span> <span class="p">(</span><span class="n">id</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Первичные ключи бывают составными, и тогда внешний ключ тоже составной.</p>
+
+<p>Когда создано подобное ограничение, профиль не может ссылаться на пользователя,
+которого не существует. При этом значения NULL допускаются, потому что он не
+равен другим нуллам. Если поле не должно содержать нуллы, это задается свойством
+NOT NULL.</p>
+
+<p>Поскольку первичный ключ всегда индексирован, проверка внешнего ключа работает
+быстро. Например, мы добавляем профиль с полем user_id 100500. Проверка
+аналогична запросу ниже (обратите внимание, что из него ничего не выбирается):</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">100500</span>
+</code></pre></div></div>
+
+<p>Под капотом Postgres проверяет только индекс – нет смысла дергать таблицу —
+поэтому запроса в логах вы не увидите.</p>
+
+<p>Некоторое разработчики считают, что внешние ключи тоже индексируются. Например,
+зная пользователя, мы хотим взять его профиль (технику часто называют backref,
+обратной ссылкой):</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">profiles</span> <span class="k">where</span> <span class="n">user_id</span> <span class="o">=</span> <span class="mi">100500</span>
+</code></pre></div></div>
+
+<p>Увы, это не так. По умолчанию внешний ключ не индексируется, и запрос выше даст
+full scan. Повесьте на него btree:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">idx_profile_user_id</span>
+<span class="k">on</span> <span class="n">profiles</span> <span class="k">using</span> <span class="n">btree</span> <span class="p">(</span><span class="n">user_id</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Теперь обратная ссылка индексирована, и зная родительскую сущность, легко найти
+дочерние.</p>
+
+<p>Пример с профилем можно сделать еще строже: мы допускаем только один профиль на
+пользователя, поэтому повесим на <code class="language-plaintext highlighter-rouge">user_id</code> уникальный индекс:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">UNIQUE</span> <span class="k">index</span> <span class="p">...</span>
+</code></pre></div></div>
+
+<p>Индексы на внешние ключи обязательны, если используется join. Скажем, вы строите
+отчет по всем пользователям системы:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="n">u</span>
+<span class="k">left</span> <span class="k">join</span> <span class="n">profiles</span> <span class="n">p</span> <span class="k">on</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span>
+</code></pre></div></div>
+
+<p>Без индекса на <code class="language-plaintext highlighter-rouge">profiles.user_id</code> запрос будет очень тяжелым. Зато если поле
+индексировано и вдобавок обе таблицы отсортированы по коду пользователя,
+возможно, сработает Merge Join – соединение слиянием. Это самый быстрый алгоритм
+соединения. Принцип у него такой же, как и у сортировки слиянием.</p>
+
+<p>Внешние ключи вносят в базу ограничения, и желательно следовать им. В противном
+случае вы рискуете создать “висяки” – ссылки, ведущие в никуда. Как и в случае с
+дублями, их тяжело расследовать и удалять.</p>
+
+<p>Мне известны для случая, когда от внешних ключей отказываются добровольно. Я
+рассмотрю их в следующих советах.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/libpq-java/">Libpq и Java</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-07T00:00:00+00:00">
+        Apr 7, 2026
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/java/" rel="tag">java</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>На днях я ввязался в одну авантюру, а она оказалась смоляной ямой. Увяз по самые
+уши и не знаю, продолжать или бросить. Авантюра, кстати, тоже связана с
+Postgres.</p>
+
+<p>Я хотел проверить: будет ли драйвер для Postgres быстрее, если переписать его с
+чистой Джавы на Libpq. Кто не знает, Libpq – это библиотека на Си для работы с
+базой. Идея в том, чтобы поручить большую часть работы коду на Си, а самому
+только дергать функции через JNI.</p>
+
+<p>Такую сишную обертку я написал; тесты показали, что Libpq как минимум не хуже, а
+порой и быстрее Джавы. Взаимодействие Джавы с сишным рантаймом – мутная история,
+в ней много специфики. Ошибся указателем – Джава вылетает. Но это не идет ни в
+какое сравнение с тем, где я увяз – сборкой.</p>
+
+<p>Я хотел собрать сишный код под три платформы (винда, мак, линукс) и две
+архитектуры (x86-64, arm64). Их произведение дает шесть комбинаций. Вопрос: где
+и как собирать? Допустим, у меня есть Мак на арме; докер на нем дает Линукс на
+арме. Нужна винда на арме, а где ее взять? То же самое с интелом: у меня есть
+старый Мак на core i3, но по сегодняшним меркам он такой медленный, что лишний
+раз трогать его не хочется. Есть игровой комп с Виндой на интеле, но не будешь
+же носить его с собой? В итоге я поручил сборку Github actions: в нем доступны
+все шесть видов машин, а сценарий пишется на yaml.</p>
+
+<p>По наивности я думал, что напишу один Makefile, который вызову с разными
+переменными – и дело в шляпе. Идея провалилась из-за адского разнообразия сред и
+платформ. Сборка простого кода на C++ отличается даже не в рамках ОС, а
+дистрибутива. Везде спонтанные отличия, условности, разные названия папок, путей
+и так далее.</p>
+
+<p>Несколько примеров. На винде x64 компилятор MSYS2 ставится в папку
+<code class="language-plaintext highlighter-rouge">c:\temp\a\msys64</code>, а на арме – в <code class="language-plaintext highlighter-rouge">d:\temp\a\msys64</code> (другой диск). Почему был
+<code class="language-plaintext highlighter-rouge">C</code>, а стал <code class="language-plaintext highlighter-rouge">D</code>? И почему он ставится не в корень, а куда-то в temp? Уверен, что
+есть объяснение, но неудобно.</p>
+
+<p>Мак и его Homebrew тоже хорош. На интеле пакет <code class="language-plaintext highlighter-rouge">libpq</code> включает утилиту
+<code class="language-plaintext highlighter-rouge">pg_config</code> – она показывает, где лежат заголовочные файлы и другое барахло. На
+M1 в таком же пакете утилиты нет. Почему?</p>
+
+<p>Плохи дела и на этом вашем Линуксе. В той Убунте, что идет на Гитхабе, пакет
+<code class="language-plaintext highlighter-rouge">postgres-client</code> – 16 версии, а мне нужна 18. Нужно подключать частный
+репозиторий Postgres. У него тоже особенности: на интеле пакет
+<code class="language-plaintext highlighter-rouge">postgres-client-18</code> включает заголовочные файлы, а на арме – нет. Нужно качать
+dev-барахло.</p>
+
+<p>И таких вещей очень много. Разные пути, переменные среды; здесь есть файл, а тут
+нет и так далее. Смейтесь или нет, но мне понадобилось 166 (сто шестьдесят
+шесть) попыток, чтобы прошли все билды. Я убил на это вагон времени, забивая на
+работу и даже личные обязанности. При этом та удачная 166-я попытка – грубый
+черновик, который еще доводить и доводить до ума.</p>
+
+<p>Напомню, все это лишь для того, чтобы:</p>
+
+<ul>
+  <li>получить последнюю версию libpq под нужные ОС и архитектуру;</li>
+  <li>собрать динамическую библиотеку из кода на C++;</li>
+  <li>сохранить libpq и библиотеку в артефакты.</li>
+</ul>
+
+<p>Допускаю, что плохо знаю тонкости кроссплатформенной сборки; возможно, есть
+инструменты, которые щелкают эту проблему как дважды два. Почему их нет в
+поисковой выдаче? Я безвылазно сидел в Гугле и StackOverflow, повидал сотню
+разных ошибок – и ни разу не было ответа, мол, поставь программу X, и она все
+тебе соберет.</p>
+
+<p>Если такая программа есть или вы решали похожую проблему, расскажите,
+пожалуйста.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/good-vs-fast/">Хорошо или быстро</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-07T00:00:00+00:00">
+        Apr 7, 2026
+    </time>
+
+    <a href="/tag/life/" rel="tag">life</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Иногда говорят: я делаю хорошо, а нужно быстро. То есть противопоставляют эти
+две характеристики: либо одна, либо другая, но не одновременно.</p>
+
+<p>Я никогда не любил этот подход. На мой взгляд, скорость и качество
+неотделимы. Примерно как пространство и время образуют континуум, у специалиста
+скорость и качество идут рука об руку.</p>
+
+<p>Если кто-то делает хорошо и медленно, возможны варианты: искать удачные подходы,
+набивать руку. Планировать работу, договариваться: возможно, какое-то требование
+было избыточным или исказилось, пройдя конфлюэнсы и джиры. Иногда можно срезать
+углы, аккуратно нарушить правила.</p>
+
+<p>Часто скорость снижает не качество, а нелепые требования. Например, написать
+код, используя кривую библиотеку – взять нормальную запрещено. Или хочется
+обратиться к базе, но нельзя – вызывай сервис, который ходит в базу и выдает то
+же самое, только на два порядка медленней.</p>
+
+<p>На проверку оказывается, что главный враг качества – внутренние заморочки, и
+объяснение у них следующее: мы делаем так, потому что мы так делаем.</p>
+
+<p>Хорошая практика в том, чтобы следить за ощущениями и спрашивать себя: что
+мешает сделать работу быстро и качественно? При этом ни в коем случае не врать:
+если это коллега, руководитель или предубеждение, то не пытаться это
+скрыть. Честно сказать: если выбор решения за мной, я сделаю за X дней, если как
+говорят – за 3X дней.</p>
+
+<p>Качеству и скорости нужен третий компонент – свобода действий. Он – тот самый
+ингредиент, с которым все удается и прогресс идет. Нет свободы – и начинаются
+торги: долго, но качественно. Быстро, но тяп-ляп.</p>
+
+<p>Если вы заметили, что коллега тормозит, возможно, ему поможет капелька
+свободы. Какое-то самостоятельное решение и ответственность за него. Если
+тормозите вы — самое время попросить свободы.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/pg-book-json-ch02/">Глава 2. Базовые возможности JSON</a>
             </h2>
 
@@ -678,698 +1287,13 @@ from
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-030-pg/">Postgres №30</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-03-21T00:00:00+00:00">
-        Mar 21, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В <a href="/tip-029-pg/">прошлом совете</a> упоминались чистые функции в базе. Разумеется,
-их нужно тестировать. Для Постгреса написаны свои тестовые фреймворки, но ими
-пользуются при разработке расширений. Обычные функции тестируют в приложении:
-вызывают функцию и проверяют, что она вернула.</p>
-
-<p>Например, в базе есть функция для форматирования центов:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">or</span> <span class="k">replace</span> <span class="k">function</span> <span class="n">format_cents</span><span class="p">(</span><span class="n">cents</span> <span class="nb">integer</span><span class="p">)</span>
-<span class="k">returns</span> <span class="nb">text</span>
-<span class="k">immutable</span> <span class="k">strict</span> <span class="n">parallel</span> <span class="n">safe</span> <span class="k">language</span> <span class="k">sql</span>
-<span class="k">return</span> <span class="n">to_char</span><span class="p">(</span><span class="n">cents</span><span class="p">,</span> <span class="s1">'999.999'</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Тест посылает такой запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
- <span class="n">x</span><span class="p">,</span>
- <span class="n">format_cents</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">as</span> <span class="k">result</span>
-<span class="k">from</span> <span class="p">(</span><span class="k">values</span>
- <span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">999</span><span class="p">),</span> <span class="p">(</span><span class="k">null</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">42</span><span class="p">))</span> <span class="k">as</span> <span class="n">vals</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Читаем результат и проверяем, что он следующий:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────────┬──────────┐
-│   x    │  result  │
-├────────┼──────────┤
-│      1 │    1.000 │
-│    999 │  999.000 │
-│ &lt;null&gt; │ &lt;null&gt;   │
-│      0 │     .000 │
-│    -42 │  -42.000 │
-└────────┴──────────┘
-</code></pre></div></div>
-
-<p>Вот и все. Если кто-то поправит функцию, тест упадет.</p>
-
-<p>Сложную логику тестируют точно так же. Достаточно нескольких шагов:</p>
-
-<ul>
-  <li>положить нужные данные в базу;</li>
-  <li>запустить целевую функцию;</li>
-  <li>проверить, что данные изменились должным образом;</li>
-  <li>почистить за собой.</li>
-</ul>
-
-<p>Функция удобна тем, что данные не нужно готовить. Передал — получил. База
-фактически не участвует. А для сложной логики нужно готовить данные.</p>
-
-<p>К счастью, для этого есть фикстуры — функции, которые выполняются до или после
-теста, причем в разрезе всего набора или отдельного теста. Поэтому пишутся
-фикстуры, которые поднимают базу, накатывают тестовые данные, а в конце делают
-<code class="language-plaintext highlighter-rouge">TRUNCATE</code> по всем таблицам.</p>
-
-<p>Базу обычно запускают в Докере, потому что в нем многое можно задать из коробки
-(базу, пользователя, пароль, начальные .sql файлы и другое). Кто не любит Докер,
-пусть ставит локальный Постгрес — он есть везде.</p>
-
-<p>На этом месте начинаются вопли: мол, тесты-то не юнит-, а интеграционные! Ну и
-что? Юнит-тесты нужны, но порой их недостаточно. Когда сетевые вызовы закрыты
-моками, легко оказаться в мире Оруэлла: дважды два равно пяти. Тесты пробегают,
-прод падает.</p>
-
-<p>Так что если у вас Постгрес — тестируйте, как приложение ходит в Постгрес.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-029-pg/">Postgres №29</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-03-21T00:00:00+00:00">
-        Mar 21, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Когда речь заходит о бизнес-логике в базе, большинство людей теряют
-лицо. Начинаются крики, словно им намерены причинить увечье. А между тем логика
-в базе – хорошая вещь, нужно лишь правильно к ней подойти.</p>
-
-<p>Возьмем за аксиому следующее: никто не учит базы данных. Все учат Питоны-Джавы,
-почему-то забывая: если работаете с базой, нужно знать ее тоже. Однако все
-делается на ORM, а база – черный ящик. Редкий разработчик интересуется, какие
-запросы в нее идут. Еще реже – попадают ли запросы в индекс, каков план и так
-далее.</p>
-
-<p>Прикладной программист мыслит объектами. Когда он пишет на Питоне, в его
-распоряжении строки, числа и их комбинации – объекты. На ORM он выдает примерно
-такой код:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">user</span> <span class="o">=</span> <span class="n">User</span><span class="p">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
-<span class="k">if</span> <span class="n">user</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
-  <span class="k">return</span> <span class="bp">None</span>
-
-<span class="n">profiles</span> <span class="o">=</span> <span class="n">Profile</span><span class="p">.</span><span class="n">get_by_ref</span><span class="p">(</span><span class="s">'user_id'</span><span class="p">,</span> <span class="n">user</span><span class="p">.</span><span class="nb">id</span><span class="p">)</span>
-<span class="n">profile</span> <span class="o">=</span> <span class="n">profile</span><span class="p">.</span><span class="n">first</span><span class="p">()</span>
-<span class="k">if</span> <span class="ow">not</span> <span class="n">profile</span><span class="p">:</span>
-  <span class="k">return</span> <span class="bp">None</span>
-</code></pre></div></div>
-
-<p>Если вынудить программиста перенести этот код в базу, он напишет что-то такое:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">function</span> <span class="n">get_user_by_id</span><span class="p">(</span><span class="n">id</span> <span class="nb">integer</span><span class="p">)</span>
-<span class="k">returns</span> <span class="k">user</span>
-<span class="k">return</span> <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="o">?</span> <span class="o">=</span> <span class="n">id</span>
-
-<span class="k">create</span> <span class="k">function</span> <span class="n">get_profiles_by_user_id</span><span class="p">(</span><span class="n">user_id</span> <span class="nb">integer</span><span class="p">)</span>
-<span class="k">returns</span> <span class="n">profile</span>
-<span class="k">return</span> <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">profiles</span> <span class="k">where</span> <span class="o">?</span> <span class="o">=</span> <span class="n">user_id</span> <span class="k">limit</span> <span class="mi">1</span>
-</code></pre></div></div>
-
-<p>Далее та же петрушка: получить кортеж пользователя, проверить на NULL; получить
-профиль, проверить на NULL; далее что-то сделать. Это калька с императивного
-языка, и в SQL она выглядит уродливо. SQL предназначен для другого; он
-недостаточно выразителен для императивных нужд, поэтому писать на нем в таком
-стиле – сущее издевательство.</p>
-
-<p>Решение простое: пишите на SQL реляционно! Это язык для операций над отношениями
-(таблицами): проекция, объединение, соединение, полу- и анти-соединения и другие
-их виды. В SQL единица операции – не строка или число, а таблица. Бизнес-логика
-на SQL сводится к тому, что есть наборы данных и нужно выполнить операции над
-ними. Например, соединить два набора, что-то отсечь, пересечь с другим набором,
-дополнить третьим, записать результат в таблицу. Дубликаты записей либо
-обновить, либо игнорировать.</p>
-
-<p>Все это прекрасно ложится на SQL, и в прошлых советах были примеры. Напишите
-подобное на ORM – и кода станет больше, не говоря уж о том, что не будет
-малейшего понимания, что происходит с базой.</p>
-
-<p>Говорят: логика в базе уродлива. Увы, когда я вижу, как соединяют данные в
-приложении (бесконечные экраны кода) вместо запроса на три строчки, то понимаю —
-вон он, уродливый код.</p>
-
-<p>Разумеется, иногда один и тот же код повторяется, и его выносят в
-функции. Например, в фирме особые требования к форматированию денег. Чтобы не
-копировать одно и тоже, пишут чистую функцию:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">function</span> <span class="n">format_mln_eur</span><span class="p">(</span><span class="n">cents</span> <span class="nb">int</span><span class="p">)</span>
-<span class="k">returns</span> <span class="nb">text</span>
-<span class="k">immutable</span> <span class="k">strict</span> <span class="n">parallel</span> <span class="n">safe</span>
-<span class="k">return</span> <span class="p">...</span>
-</code></pre></div></div>
-
-<p>Далее вызывают ее в запросах. Такой подход в порядке вещей, потому что он
-предотвращает копирование кода.</p>
-
-<p>Другой пример – в финансах временной интервал хранится как четверка чисел: число
-лет, месяцев, недель и дней. Пишется функция <code class="language-plaintext highlighter-rouge">tenor_to_interval</code>, которая
-приводит четверку к типу <code class="language-plaintext highlighter-rouge">interval</code> и наоборот:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">create</span><span class="w"> </span><span class="n">function</span><span class="w"> </span><span class="n">tenor_to_interval</span><span class="p">(</span><span class="nf">y</span><span class="w"> </span><span class="n">int,</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">int,</span><span class="w"> </span><span class="n">w</span><span class="w"> </span><span class="n">int,</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="nb">int</span><span class="p">)</span><span class="w">
-</span><span class="n">returns</span><span class="w"> </span><span class="n">interval</span><span class="w">
-</span><span class="n">immutable</span><span class="w"> </span><span class="n">strict</span><span class="w"> </span><span class="n">parallel</span><span class="w"> </span><span class="n">safe</span><span class="w">
-</span><span class="n">return</span><span class="w"> </span><span class="n">...</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Но не нужно заворачивать в функции CRUD-операции! Именно тут кроется ошибка
-питонистов и джавистов. SQL – декларативный язык, и все операции носят
-описательный характер. Если писать процедуру на каждый чих, вы загоните себя в
-яму. В базе мыслят и программируют реляционно – то есть оперируют отношениями, а
-не строками и числами. Императивный подход оставьте за дверью, будьте так добры.</p>
-
-<p>Как развить реляционное мышление? Точно также, как и во всем другом: заниматься
-им.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-028-pg/">Postgres №28</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-03-21T00:00:00+00:00">
-        Mar 21, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Продолжение <a href="/tip-027-pg/">прошлого поста</a>. Тезис: выбирайте данные, только если
-нужно передать их третьей стороне, например фронтенду. Для промежуточных
-вычислений это чаще всего не требуется. Достаточно сказать базе: обнови такие-то
-поля согласно такой-то логике, и она все сделает сама.</p>
-
-<p>Обновление силами SQL особенно хорошо на больших данных. Не нужно гонять тысячи
-строк по сети. По компьютерным меркам сеть медленная, потому что это череда
-системных вызовов на обеих сторонах. Сеть требует сериализации данных. Даже в
-надежных сетях пакеты теряются, требуется повторная отправка и подтверждение.</p>
-
-<p>Не нужно писать код на языке приложения. Код на условном Питоне или Джаве всегда
-длиннее и многословнее, чем на SQL. Нет кода – нет проблем.</p>
-
-<p>Покажу, как управлять данными в базе без приложения. Для начала сделаем две
-таблицы: пользователи и профили:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
-    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-    <span class="n">name</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
-    <span class="n">points</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="mi">0</span>
-<span class="p">);</span>
-
-<span class="k">create</span> <span class="k">table</span> <span class="n">profiles</span> <span class="p">(</span>
-    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-    <span class="n">user_id</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
-    <span class="n">avatar</span> <span class="nb">text</span> <span class="k">null</span><span class="p">,</span>
-    <span class="n">del_requested</span> <span class="nb">boolean</span> <span class="k">null</span> <span class="k">default</span> <span class="k">false</span>
-<span class="p">);</span>
-</code></pre></div></div>
-
-<p>Кроме имени, в пользователе записано число баллов. Профиль ссылается на
-пользователя, и в нем два поля: аватарка (может быть пустой) и запрос на
-удаление (по умолчанию ложь). Вставим много записей:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">users</span>
-<span class="k">select</span>
-    <span class="n">x</span><span class="p">,</span>
-    <span class="n">format</span><span class="p">(</span><span class="s1">'user_%s'</span><span class="p">,</span> <span class="n">x</span><span class="p">),</span>
-    <span class="n">round</span><span class="p">(</span><span class="n">random</span><span class="p">()</span> <span class="o">*</span> <span class="mi">100000</span><span class="p">)</span>
-<span class="k">from</span>
-    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
-
-<span class="k">insert</span> <span class="k">into</span> <span class="n">profiles</span>
-<span class="k">select</span>
-    <span class="n">x</span><span class="p">,</span>
-    <span class="n">x</span><span class="p">,</span>
-    <span class="k">null</span>
-    <span class="k">false</span>
-<span class="k">from</span>
-    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Оператор INSERT принимает SELECT, который порождает данные. Не нужно генерить их
-на Питоне и передавать по сети, все происходит внутри базы.</p>
-
-<p>Первая задача – поместить в отдельную таблицу топ-100 пользователей. Это
-делается запросом:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">drop</span> <span class="k">table</span> <span class="n">if</span> <span class="k">exists</span> <span class="n">users_top_100</span><span class="p">;</span>
-
-<span class="k">create</span> <span class="k">table</span> <span class="n">users_top_100</span> <span class="k">as</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">points</span> <span class="k">desc</span>
-<span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
-
-<span class="k">table</span> <span class="n">users_top_100</span><span class="p">;</span>
-</code></pre></div></div>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌──────┬───────────┬────────┐
-│  id  │   name    │ points │
-├──────┼───────────┼────────┤
-│ 6637 │ user_6637 │  99996 │
-│ 8909 │ user_8909 │  99994 │
-│ 9040 │ user_9040 │  99979 │
-│ 2631 │ user_2631 │  99978 │
-│ 7240 │ user_7240 │  99961 │
-│  972 │ user_972  │  99958 │
-│ 8698 │ user_8698 │  99924 │
-│ 3850 │ user_3850 │  99914 │
-│  382 │ user_382  │  99892 │
-│ 2841 │ user_2841 │  99877 │
-│ 2607 │ user_2607 │  99870 │
-│ 5207 │ user_5207 │  99858 │
-</code></pre></div></div>
-
-<p>В приложении мы бы сначала прочитали данные, создали таблицу и записали данные в
-нее. Все это можно поручить базе. Таблица может быть временной для каких-то
-расчетов. Конечно, не следует создавать их в апишках, которые должны работать
-быстро. Но для других задач временные таблицы очень даже полезны.</p>
-
-<p>Другой пример. Фирма проводит акцию: загрузи аватар и получи тысячу
-баллов. Предположим, некоторые пользователи добавили аватарку:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">profiles</span>
-<span class="k">set</span> <span class="n">avatar</span> <span class="o">=</span> <span class="n">format</span><span class="p">(</span><span class="s1">'htts://path/to/file_%s'</span><span class="p">,</span> <span class="n">id</span><span class="p">)</span>
-<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">500</span> <span class="k">and</span> <span class="mi">600</span><span class="p">;</span>
-<span class="c1">-- UPDATE 101</span>
-</code></pre></div></div>
-
-<p>Вот как накинуть баллы тем, у кого она есть:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">users</span> <span class="n">u</span>
-<span class="k">set</span> <span class="n">points</span> <span class="o">=</span> <span class="n">points</span> <span class="o">+</span> <span class="mi">1000</span>
-<span class="k">from</span> <span class="n">profiles</span> <span class="n">p</span>
-<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span>
-<span class="k">and</span> <span class="n">p</span><span class="p">.</span><span class="n">avatar</span> <span class="k">is</span> <span class="k">not</span> <span class="k">null</span><span class="p">;</span>
-<span class="c1">-- UPDATE 101</span>
-</code></pre></div></div>
-
-<p>Оператор UPDATE поддерживает FROM с произвольным запросом, таблицей и так
-далее. В условии проверяют совпадение строк по ключам. Обновятся только те
-пользователи, профили которых с аватаркой.</p>
-
-<p>Третья задача: некоторые пользователи отметили в профиле значок “удалите меня”:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">profiles</span>
-<span class="k">set</span> <span class="n">del_requested</span> <span class="o">=</span> <span class="k">true</span>
-<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">666</span> <span class="k">and</span> <span class="mi">999</span><span class="p">;</span>
-<span class="c1">-- UPDATE 334</span>
-</code></pre></div></div>
-
-<p>Вот как удалить такие профили и их пользователей одним запросом:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">del_profiles</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span>
-    <span class="k">delete</span> <span class="k">from</span> <span class="n">profiles</span>
-    <span class="k">where</span> <span class="n">del_requested</span>
-    <span class="n">returning</span> <span class="n">user_id</span>
-<span class="p">)</span>
-<span class="k">delete</span> <span class="k">from</span> <span class="n">users</span> <span class="n">u</span>
-<span class="k">using</span> <span class="n">del_profiles</span> <span class="n">del</span>
-<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">del</span><span class="p">.</span><span class="n">user_id</span><span class="p">;</span>
-<span class="c1">-- DELETE 334</span>
-</code></pre></div></div>
-
-<p>Во всех случаях мы ничего не передавали клиенту.</p>
-
-<p>Вставки могут быть с реакцией на конфликт (выражение <code class="language-plaintext highlighter-rouge">ON CONFLICT</code>). Есть
-команда MERGE, которая делит два набора данных на категории: только слева,
-пересечение, только справа. Для каждой категории можно задать реакцию:
-пропустить, удалить, записать куда-то и так далее.</p>
-
-<p>Управлять данными при помощи SQL – это настоящий праздник. Нет зависимости от
-приложения и рантайма. База делает все сама: работает производительный код на
-Си, многократно проверенный и отлаженный. Не отбирайте у базы ее работу. Она
-сделает все лучше вас, достаточно базовых навыков SQL.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-027-pg/">Postgres №27</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-03-21T00:00:00+00:00">
-        Mar 21, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Представьте, что на кровати лежит книга, и нужно вернуть ее в шкаф. Вместо того,
-чтобы отнести книгу, вы толкаете шкаф к кровати, кладете книгу на полку, а потом
-толкаете шкаф на место. Подобная сцена уместна в ситкоме, но в целом это абсурд.</p>
-
-<p>Однако именно так большинство работает с базой данных: без конца гоняет данные
-туда-сюда, хотя можно обойтись командой.</p>
-
-<p>Предположим, нужно обновить статус пользователа по коду. На ORM это выглядит
-так:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">user</span> <span class="o">=</span> <span class="n">models</span><span class="p">.</span><span class="n">User</span><span class="p">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
-<span class="n">user</span><span class="p">.</span><span class="n">status</span> <span class="o">=</span> <span class="s">'active'</span>
-<span class="n">user</span><span class="p">.</span><span class="n">save</span><span class="p">()</span>
-</code></pre></div></div>
-
-<p>Разумеется, никому не интересно, какие запросы будут выполнены. Их никто не
-смотрит и даже не знает, как включить (см. <a href="/tip-011-pg/">прошлый совет</a>). А
-запросы будут такими:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span>
-<span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span>
-
-<span class="k">update</span> <span class="n">users</span> <span class="k">set</span> <span class="n">status</span><span class="o">=</span><span class="s1">'active'</span>
-<span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span>
-</code></pre></div></div>
-
-<p>Внимание: зачем нужен первый запрос? Мы выбрали все поля пользователя. Зачем?
-Второй <code class="language-plaintext highlighter-rouge">UPDATE</code> делает именно то, что нужно: обновляет статус по номеру. Ради
-этого не стоило читать пользователя! Нужно оставить только второй запрос.</p>
-
-<p>Говорят: перед обновлением я должен убедиться, что пользователь существует. Это
-легко сделать и после: оператор <code class="language-plaintext highlighter-rouge">UPDATE</code> возвращает число обновленных
-записей. Если оно равно нулю, пользователя не было. Не говоря уж о том, что
-существование записи проверяется <code class="language-plaintext highlighter-rouge">SELECT</code>-ом без полей или условием <code class="language-plaintext highlighter-rouge">EXISTS</code> –
-незачем выгребать все поля.</p>
-
-<p>Вообще, следите, чтобы данные извлекались из базы как можно реже. База прекрасно
-умеет обновлять и перекладывать данные без участия клиента. Например, кто-то
-блокирует запись при чтении, чтобы обновить ее:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">begin</span><span class="p">;</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span> <span class="k">for</span> <span class="k">update</span><span class="p">;</span>
-<span class="k">update</span> <span class="n">users</span> <span class="k">set</span> <span class="p">...</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span><span class="p">;</span>
-<span class="k">commit</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Зачем читать и блокировать запись? Просто обнови ее.</p>
-
-<p>Возразят: я читаю данные, чтобы рассчитать новые поля. Что ж, если логика
-сложная, это делают в приложении. Но многие вещи можно сделать на SQL. Например,
-начисление баллов, рейтинга, изменения цены и так далее. Для этого пишут
-одноразовую функцию:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">or</span> <span class="k">replace</span> <span class="n">pg_temp</span><span class="p">.</span><span class="n">get_new_rating</span><span class="p">(</span><span class="k">user</span> <span class="k">user</span><span class="p">)</span>
-<span class="k">returns</span> <span class="nb">integer</span>
-<span class="k">immutable</span> <span class="k">strict</span> <span class="n">parallel</span> <span class="n">safe</span> <span class="k">language</span> <span class="k">sql</span>
-<span class="k">return</span> <span class="p">...</span>
-</code></pre></div></div>
-
-<p>и обновляют сразу много пользователей:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">users</span>
-<span class="k">set</span> <span class="n">rating</span> <span class="o">=</span> <span class="n">get_new_rating</span><span class="p">(</span><span class="n">users</span><span class="p">)</span>
-<span class="k">FROM</span> <span class="n">subquery</span>
-<span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="n">subquery</span><span class="p">.</span><span class="n">user_id</span>
-</code></pre></div></div>
-
-<p>Поздапрос <code class="language-plaintext highlighter-rouge">subquery</code> выбирает пользователей, которых нужно обновить, а функция
-<code class="language-plaintext highlighter-rouge">get_new_rating</code> возвращает новый рейтинг.</p>
-
-<p>Уже слышу истерику: омг, хранимки, мои глаза! Ну, тут уж на ваше
-усмотрение. Хотите пользоваться базой нормально? Понадобится сырой скуль. Для
-этого нужно отложить ORM и почитать книжки. Но оно того стоит.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-026-pg/">Postgres №26</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-03-21T00:00:00+00:00">
-        Mar 21, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Продолжение <a href="/tip-025-pg/">прошлой заметки</a> про удаление.</p>
-
-<p>Решение – перенос! Данные нужно не помечать на удаление, а переносить между
-таблицами. В этом случае главная таблица не захламляется, а удаленные строки не
-висят грузом. Для начала решим задачу в лоб. Представим, есть таблица товаров:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">goods</span> <span class="p">(</span>
- <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
- <span class="n">title</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
- <span class="n">created_at</span> <span class="n">timestamptz</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="k">current_timestamp</span>
-<span class="p">);</span>
-</code></pre></div></div>
-
-<p>Вставим в нее много записей:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">goods</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
-<span class="k">select</span>
- <span class="n">format</span><span class="p">(</span><span class="s1">'good_%s'</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
-<span class="k">from</span>
- <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Подготовим таблицу удаленных записей. Ее структура такая же, поэтому используем
-выражение like <code class="language-plaintext highlighter-rouge">&lt;table&gt;</code>. Индексы и ограничения скопированы не будут.</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">goods_deleted</span> <span class="p">(</span><span class="k">like</span> <span class="n">goods</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Далее мы решили, что товары с кодами с 555 по 666 почему-то плохие, и нужно их
-удалить. Разработчики делают так: сперва читают данные в приложение:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">goods</span>
-<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Удаляют их:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">delete</span> <span class="k">from</span> <span class="n">goods</span>
-<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Вставляют в таблицу <code class="language-plaintext highlighter-rouge">goods_deleted</code> строки, которые висят в приложении:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">goods_deleted</span> <span class="p">...;</span>
-</code></pre></div></div>
-
-<p>В обратную сторону — то же самое: прочитали, удалили, вставили. Решение
-нормальное и встречается часто — и в нем все плохо.</p>
-
-<p>Во-первых, по какой-то причине мы гоняем строки в приложение и обратно, хотя
-нужды в этом никакой. Postgres прекрасно перенесет их между таблицами, не
-отправляя клиенту. Для этого выполним запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span>
- <span class="k">delete</span> <span class="k">from</span> <span class="n">goods</span>
- <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
- <span class="n">returning</span> <span class="o">*</span>
-<span class="p">)</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="n">goods_deleted</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">deleted</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Если <code class="language-plaintext highlighter-rouge">DELETE</code> имеет на конце <code class="language-plaintext highlighter-rouge">returning</code>, он не отличается от <code class="language-plaintext highlighter-rouge">SELECT</code> (разве
-что с побочным эффектом). В выборке <code class="language-plaintext highlighter-rouge">deleted</code> окажутся удаленные строки. Далее
-мы вставляем их в <code class="language-plaintext highlighter-rouge">goods_deleted</code>. Оба запроса протекают в неявной транзакции,
-снимок данных один и тот же.</p>
-
-<p>Теперь в <code class="language-plaintext highlighter-rouge">goods</code> не окажется товаров с айдишками 555…666, зато они будут в
-<code class="language-plaintext highlighter-rouge">goods_deleted</code>.</p>
-
-<p>Теперь в обратную сторону: удалить из <code class="language-plaintext highlighter-rouge">goods_deleted</code> и вставить в <code class="language-plaintext highlighter-rouge">goods</code>:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">restored</span> <span class="k">as</span> <span class="p">(</span>
- <span class="k">delete</span> <span class="k">from</span> <span class="n">goods_deleted</span>
- <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
- <span class="n">returning</span> <span class="o">*</span>
-<span class="p">)</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="n">goods</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">restored</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Один запрос, атомарность, нулевая передача клиенту.</p>
-
-<p>Теперь таблицы. Выше мы клонировали таблицу goods и назвали ее
-<code class="language-plaintext highlighter-rouge">goods_deleted</code>. И что, делать это для каждой таблицы? <code class="language-plaintext highlighter-rouge">users_deleted</code>,
-<code class="language-plaintext highlighter-rouge">orders_deleted</code>, <code class="language-plaintext highlighter-rouge">photos_deleted</code>, <code class="language-plaintext highlighter-rouge">profile_deleleted</code>…?</p>
-
-<p>А во-вторых, миграции. Если таблица <code class="language-plaintext highlighter-rouge">goods</code> изменится, перенос отвалится, потому
-что состав колонок будет другим. Придётся явно прописывать, что на что маппить.</p>
-
-<p>Поэтому вместо <code class="language-plaintext highlighter-rouge">goods_deleted</code>, <code class="language-plaintext highlighter-rouge">users_deleted</code> и так далее заведем таблицу
-<code class="language-plaintext highlighter-rouge">any_deleted</code>:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">any_deleted</span> <span class="p">(</span>
- <span class="n">entity</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
- <span class="n">pk</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
- <span class="k">data</span> <span class="n">jsonb</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
- <span class="n">created_at</span> <span class="n">timestamptz</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="k">current_timestamp</span>
-<span class="p">);</span>
-</code></pre></div></div>
-
-<p>Поле <code class="language-plaintext highlighter-rouge">entity</code> означает сущность (<code class="language-plaintext highlighter-rouge">user</code>, <code class="language-plaintext highlighter-rouge">profile</code> и другие), <code class="language-plaintext highlighter-rouge">pk</code> — ее
-первичный ключ. В идеале это UUID, чтобы быть уникальным в разрезе всех
-сущностей. В поле data хранится строка в формате JSON. Вот как выполнить
-перенос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span>
- <span class="k">delete</span> <span class="k">from</span> <span class="n">goods</span>
- <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
- <span class="n">returning</span> <span class="o">*</span>
-<span class="p">)</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="n">any_deleted</span>
-<span class="k">select</span>
- <span class="s1">'goods'</span><span class="p">,</span>
- <span class="n">deleted</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
- <span class="n">to_jsonb</span><span class="p">(</span><span class="n">deleted</span><span class="p">)</span>
-<span class="k">from</span> <span class="n">deleted</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Посмотрим, что оказалось в удаленной таблице:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─[ RECORD 1 ]─────────────────────────────────
-│ entity  │ goods
-│ pk      │ 555
-│ data    │ {"id": 555, "title": "good_555",
-│ created_at │ 2026-01-24 14:57:32.595317+03
-├─[ RECORD 2 ]─────────────────────────────────
-│ entity  │ goods
-│ pk      │ 556
-│ data    │ {"id": 556, "title": "good_556",
-│ created_at │ 2026-01-24 14:57:32.595317+03
-├─[ RECORD 3 ]─────────────────────────────────
-│ entity  │ goods
-│ pk      │ 557
-│ data    │ {"id": 557, "title": "good_557",
-│ created_at │ 2026-01-24 14:57:32.595317+03
-</code></pre></div></div>
-
-<p>Видим, что все однородно: можно удалять разные сущности, конфликтов не будет.</p>
-
-<p>Чтобы перенести обратно, выполним такой запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span>
- <span class="k">delete</span> <span class="k">from</span> <span class="n">any_deleted</span>
- <span class="k">where</span>
-         <span class="n">entity</span> <span class="o">=</span> <span class="s1">'goods'</span>
-     <span class="k">and</span> <span class="n">pk</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
- <span class="n">returning</span> <span class="o">*</span>
-<span class="p">)</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="n">goods</span>
-<span class="k">select</span>
- <span class="n">rec</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
- <span class="n">rec</span><span class="p">.</span><span class="n">title</span><span class="p">,</span>
- <span class="n">rec</span><span class="p">.</span><span class="n">created_at</span>
-<span class="k">from</span>
- <span class="n">deleted</span><span class="p">,</span>
- <span class="n">jsonb_to_record</span><span class="p">(</span><span class="n">deleted</span><span class="p">.</span><span class="k">data</span><span class="p">)</span> <span class="k">as</span> <span class="n">rec</span><span class="p">(</span>
-     <span class="n">id</span> <span class="nb">integer</span><span class="p">,</span>
-     <span class="n">title</span> <span class="nb">text</span><span class="p">,</span>
-     <span class="n">created_at</span> <span class="n">timestamptz</span>
- <span class="p">);</span>
-</code></pre></div></div>
-
-<p>Функция <code class="language-plaintext highlighter-rouge">jsonb_to_record</code> приводит JSON-объект к записи. Даже если в исходной
-таблице добавились колонки, после распаковки они будут <code class="language-plaintext highlighter-rouge">null</code>.</p>
-
-<p>В итоге у нас одна таблица удаленных сущностей. Она бесконечно растет вниз,
-устойчива к миграциям. Активные таблицы не захламляются. Чудо!</p>
-
-<p>Что бы еще добавить? Пожалуй, у таблицы <code class="language-plaintext highlighter-rouge">any_deleted</code> могут быть поля <code class="language-plaintext highlighter-rouge">done_by</code>
-(кто удалил), reason (причина: <code class="language-plaintext highlighter-rouge">ban</code>, <code class="language-plaintext highlighter-rouge">conflict</code>, <code class="language-plaintext highlighter-rouge">legacy</code>), комментарий (бывает
-нужен), срок хранения (для регулятора).</p>
-
-<p>Минус переноса в том, что нужно ослабить внешние ключи. Обычно против этого
-возражают, но с ростом базы это неминуемо. Если сущность удаляется (подлежит
-переносу), отключите <code class="language-plaintext highlighter-rouge">foreign key constraint</code> в тех таблицах, которые на нее
-ссылаются. Для джоинов используйте <code class="language-plaintext highlighter-rouge">inner join</code>, чтобы отсекать пустые
-ссылки. Записи, которые ссылаются вникуда, можно найти анти-соединением и либо
-удалить физически, либо тоже перенести. Часть этой работы можно поставить на
-крон (см. <code class="language-plaintext highlighter-rouge">pg_cron</code> в прошлых советах).</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 2 из 108</span>
+        <span class="page_number ">Страница 2 из 109</span>
         
         <a href="/page3" class="next">&rarr;</a>
         
