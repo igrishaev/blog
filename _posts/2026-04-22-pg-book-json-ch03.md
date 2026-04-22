@@ -1664,7 +1664,7 @@ app = Application.get_by_id("<UUID>")
 
 if app is None:
     app = Application(...)
-    app.save() # insert into …
+    app.save() # insert into ...
 else:
     app.status = "pending"
     app.save() # update ... where id = ?
