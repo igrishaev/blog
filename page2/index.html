@@ -106,6 +106,126 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-038-pg/">Postgres №38</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-07T00:00:00+00:00">
+        Apr 7, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Иногда бизнес-логику проще выразить на SQL – нравится вам это или нет. При этом
+окружающие теряют лицо: кричат “боже, хранимки!” и ведут себя
+недостойно. Бояться тут нечего, а истерика — от незнания.</p>
+
+<p>Я не говорю, что нужно писать хранимки. Речь о том, чтобы поручить базе ту
+работу, что делает ваш Питон или Джава. Часто SQL выигрывает: он короче, точнее,
+не требует многих обращений к базе.</p>
+
+<p>Нюанс в том, что меняется парадигма мышления. Когда вы пишете на SQL, то должны
+думать реляционно. Если писать хранимки императивно как на Питоне, это будет
+ужасно.</p>
+
+<p>Давайте вспомним пример, который я описывал в статье про <a href="/sql-rating/">рейтинг
+пользователей</a>. Постановка такая: у пользователей есть история
+начисления баллов. Также есть глобальный рейтинг. Как только пользователю
+начисляются баллы, он видит их в истории. Одновременно меняется его позиция в
+рейтинге.</p>
+
+<p>На какой-нибудь питонячей ORM это выглядит так:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">user_id</span> <span class="o">=</span> <span class="mi">51315</span>
+<span class="n">points</span> <span class="o">=</span> <span class="mi">100</span>
+
+<span class="n">points_entry</span> <span class="o">=</span> <span class="n">UserPoints</span><span class="p">.</span><span class="n">create</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="n">points</span><span class="p">)</span>
+<span class="n">points_entry</span><span class="p">.</span><span class="n">save</span><span class="p">()</span>
+
+<span class="n">rating_entry</span> <span class="o">=</span> <span class="n">UserRating</span><span class="p">.</span><span class="n">get_or_create</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="n">user_id</span><span class="p">)</span>
+<span class="n">rating_entry</span><span class="p">.</span><span class="n">points</span> <span class="o">+=</span> <span class="n">points</span>
+<span class="n">rating_entry</span><span class="p">.</span><span class="n">save</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Сперва мы добавили запись в историю баллов. Затем выбрали или создали запись в
+глобальном рейтинге. Прибавили баллы, записали. Все это нужно делать в
+транзакции, иначе есть риск потерять баллы (по аналогии с задачей про семейную
+пару и терминал).</p>
+
+<p>Предположим, руководитель сказал: “ребят, переносим логику в БД”, но не
+удосужился объяснить, что это значит. Окей, программист пишет процедуру на
+<code class="language-plaintext highlighter-rouge">plpgsql</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">procedure</span> <span class="n">add_points</span><span class="p">(</span><span class="nb">int</span> <span class="n">user_id</span><span class="p">,</span> <span class="nb">int</span> <span class="n">points</span><span class="p">)</span>
+<span class="k">begin</span>
+  <span class="n">create_points_history</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">);</span>
+  <span class="n">rating_entry</span> <span class="o">=</span> <span class="n">get_user_rating_by_user_id</span><span class="p">(</span><span class="n">user_id</span><span class="p">);</span>
+  <span class="n">if</span> <span class="p">(</span><span class="n">rating_entry</span> <span class="k">is</span> <span class="k">NULL</span><span class="p">)</span> <span class="k">then</span>
+    <span class="n">insert_user_rating</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">);</span>
+  <span class="k">else</span>
+    <span class="n">update_user_rating</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">);</span>
+  <span class="n">endif</span><span class="p">;</span>
+<span class="k">end</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Эта процедура – построчная калька с Питона. Далее пишутся функции
+<code class="language-plaintext highlighter-rouge">get_user_rating_by_user_id</code>, <code class="language-plaintext highlighter-rouge">get_user_rating_by_user_id</code> и другие. Получается
+два экрана SQL, который трудно понять и поддерживать. Запросов по-прежнему
+много. Один раз увидев такое, разработчик получает душевную травму. При слове
+“хранимки” у него начинается истерика.</p>
+
+<p>Проблема в том, что автор процедуры использует SQL не по назначению. Он пишет на
+нем императивно, а SQL создан для операций над отношениями. Прочитайте еще раз:
+<strong>SQL создан для операций над отношениями</strong>. Единица операции — таблица. Если
+ваш SQL полон функций <code class="language-plaintext highlighter-rouge">get_user_by_id</code>, <code class="language-plaintext highlighter-rouge">get_profile_by_id</code>, то это
+ошибка. Копаешь граблями – получишь заведомо плохой результат. Нельзя
+пересаживать программиста с императивного Питона на SQL. Пока мозги не
+перестроились, хорошего результата не ждите.</p>
+
+<p>Достойное решение на SQL выглядит примерно так:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">update_history</span> <span class="k">as</span> <span class="p">(</span>
+  <span class="k">insert</span> <span class="k">into</span> <span class="n">user_history</span> <span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
+  <span class="k">values</span> <span class="p">(</span><span class="err">$</span><span class="mi">1</span><span class="p">,</span> <span class="err">$</span><span class="mi">2</span><span class="p">)</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">user_rating</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
+  <span class="k">values</span> <span class="p">(</span><span class="err">$</span><span class="mi">1</span><span class="p">,</span> <span class="err">$</span><span class="mi">2</span><span class="p">)</span>
+  <span class="k">on</span> <span class="n">conflict</span> <span class="n">user_id</span> <span class="k">do</span> <span class="k">update</span>
+  <span class="k">set</span> <span class="n">points</span> <span class="o">+=</span> <span class="n">excluded</span><span class="p">.</span><span class="n">points</span>
+  <span class="n">returning</span> <span class="n">user_id</span><span class="p">,</span> <span class="n">points</span>
+</code></pre></div></div>
+
+<p>Здесь все просто: часть <code class="language-plaintext highlighter-rouge">update_history</code> добавляет запись в историю
+баллов. Основная часть пытается вставить пользователя и баллы в рейтинг, а если
+пользователь уже есть в нем, прибавляет баллы. Запрос возвращает пользователя и
+новую сумму баллов.</p>
+
+<p>Этот запрос выполняется транзакционно, обе части видят один снимок
+данных. Подчеркну: совершенно незачем выносить его в хранимку. Достаточно
+хранить запрос в проекте и вызывать его. Хранимки нет, но работа делегируется
+базе.</p>
+
+<p>Итого: не пишите хранимки только затем, чтобы они были. Думайте о том, как
+делегировать работу базе, а не писать бороду SQL-функций. Если вы работаете с
+базой, мыслите реляционно. Экраны императивного SQL говорят о том, что вы
+делаете что-то не так.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-037-pg/">Postgres №37</a>
             </h2>
 
@@ -738,7 +858,7 @@ dev-барахло.</p>
 <ol>
   <li><a href="/pg-book-json-ch01/">Введение в документы</a></li>
   <li><a href="/pg-book-json-ch02/">Базовые возможности JSON</a></li>
-  <li>JSON в таблицах</li>
+  <li><a href="/pg-book-json-ch03/">JSON в таблицах</a></li>
   <li>Индексирование JSON</li>
   <li>Ссылки и ограничения в документах</li>
   <li>Язык путей JSONPath</li>
@@ -1171,116 +1291,6 @@ from
 
 <p>У <code class="language-plaintext highlighter-rouge">text_pattern_ops</code> есть еще один полезный сценарий, но о нем – в следующий
 раз.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-031-pg/">Postgres №31</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-03-29T00:00:00+00:00">
-        Mar 29, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Не все поля сущности нужно хранить в одной таблице. Некоторые из них лучше
-вынести в отдельную таблицу, даже если связь один к одному.</p>
-
-<p>Банальный пример – пользователи и профили. Пользователь – это системная
-информация, и меняется она редко. А любимая группа и оконченный институт – это
-другой домен, и логично вынести его в другую таблицу.</p>
-
-<p>Еще пример – рейтинг пользователя. Начинающие программисты создают в таблице
-<code class="language-plaintext highlighter-rouge">users</code> поле <code class="language-plaintext highlighter-rouge">rating</code>, и зря. Рейтинг – это забава, в которую любят играть
-продакт-оунеры. Как только вы сделаете рейтинг, вам скажут: теперь сделаем
-рейтинг по сезонам и будем отслеживать взлеты и падения. Вы же не будете делать
-колонки <code class="language-plaintext highlighter-rouge">rating_summer_2025</code>, <code class="language-plaintext highlighter-rouge">rating_autumn_2025</code> и так далее. Все это поедет в
-новые таблицы, и первый рейтинг тоже должен был храниться отдельно.</p>
-
-<p>Технический момент: в Postgres любая операция над строкой порождает новую
-строку. В этом плане он похож на Git: единица изменения – строка. Если в поле 20
-колонок и вы изменили одну, будет создана новая строка на 20 колонок. Старая
-будет болтаться, пока ее не соберет <code class="language-plaintext highlighter-rouge">vacuum</code>. Если таблица обновляется часто, в
-ней должно быть как можно меньше полей. Если какой-то набор колонок не меняется,
-лучше вынести их в таблицу и связать один к одному.</p>
-
-<p>Еще пример: иногда сущность таскает за собой огромный JSON-документ. Это
-исторические данные, которые перетащили из какой-то системы и которые некому
-разобрать. Если обновить хотя бы одно поле, документ будет скопирован. Лучше
-вынести его в отдельную таблицу.</p>
-
-<p>Еще пример: индексация документов. В Postgres есть очень качественный
-полнотекстовый поиск – <code class="language-plaintext highlighter-rouge">tsvector</code>. С ним документы разбиваются на лексемы
-(стемминг), причем разбивка сильно зависит от указанного языка. На выходе
-получается набор уникальных лексем, причем каждая помнит свои положения в
-документе, порядок следования, а еще им можно задать веса. Разобранный документ
-хранят в отдельном поле, чтобы не парсить его каждый раз.</p>
-
-<p>Предположим, у нас аналог Хабра, и есть таблица <code class="language-plaintext highlighter-rouge">posts</code> с полем <code class="language-plaintext highlighter-rouge">content</code> –
-статьей. Логично добавить поле <code class="language-plaintext highlighter-rouge">tsvector</code> и складывать в него разобранный
-документ. При этом мы считаем: поскольку сайт русскоязычный, то при разборе
-документа указываем язык <code class="language-plaintext highlighter-rouge">ru</code>.</p>
-
-<p>На практике в статье могут быть цитаты на английском или код. Они будут
-индексированы русским стеммингом, и это плохо скажется на качестве. Чтобы найти
-документ по английским словам, нужно ввести их в точности как в статье.</p>
-
-<p>Но предположим, мы нашли способ разбить документ на языковые зоны. Например, в
-исходной разметке автор может указать язык:</p>
-
-<p>Идет текст на русском, а потом <code class="language-plaintext highlighter-rouge">&lt;quote lang="en"&gt;some text in English&lt;/quote&gt;</code>.</p>
-
-<p>Может быть, границы языка определяются гистограммой символов. Так иначе, у нас
-есть функция <code class="language-plaintext highlighter-rouge">split_by_langs</code>, которая принимает текст и возвращает его нарезку:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select * from split_by_lang(post.comment);
-
-┌──────┬──────┬─────────────────────────┐
-│ part │ lang │  content                │
-├──────┼──────┼─────────────────────────┤
-│    1 │ ru   │ Всем привет! ...        │
-├──────┼──────┼─────────────────────────┤
-│    2 │ en   │ A quote from Wikipedia  │
-├──────┼──────┼─────────────────────────┤
-│    3 │ ru   │ дальнейший текст        │
-├──────┼──────┼─────────────────────────┤
-│    4 │ en   │ another quote from wiki │
-</code></pre></div></div>
-
-<p>Каждая часть индексируется языком из колонки <code class="language-plaintext highlighter-rouge">lang</code>. Накопленные части
-объединяются в один документ и записываются в поле <code class="language-plaintext highlighter-rouge">tsvector</code>.</p>
-
-<p>Обратите внимание, что исходная статья не меняется. Мы обновляем индекс, а не
-статью, поэтому логично делать эти операции в отдельной таблице.</p>
-
-<p>Следующая доработка: мы решили, что веса слов из заголовка и подзаголовков
-должны быть больше, чем у обычных слов. Пишется функция, которая режет документ
-на подзаголовки и то, что между ними (заголовок хранится в отдельном
-поле). После этого части индексируются и схлопываются.</p>
-
-<p>В итоге мы наращиваем качество поиска без правок статей. Мы только читаем статьи
-и складываем индекс в другую таблицу. Когда приходит запрос на поиск, ищем по
-таблице индекса, получаем айдишки статей и подтягиваем их джоином.</p>
-
-<p>Решение о том, что хранить в основной таблице, а что в связанной, часто
-ситуативно. Нужно знать контекст и условия задачи. Но одно можно сказать точно:
-объединить данные проще, чем разделить. “Design is about keeping things apart”
-(c).</p>
 
                 
             </div>
