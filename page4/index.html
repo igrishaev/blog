@@ -106,7 +106,1267 @@
         <li>
 
             <h2>
-                <a class="post-link" href="/tip-021-pg/">Postgres №21</a>
+                <a class="post-link" href="/tip-032-pg/">Postgres №32</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-29T00:00:00+00:00">
+        Mar 29, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В Postgres индексы бывают разных типов. Самый базовый и нужный называется btree,
+который основан на одноименной структуре данных – дереве B-Tree. Оно состоит из
+распределительных узлов, и на последнем уровне находятся пары вида (значение,
+страница).</p>
+
+<p>Btree поддерживает равенство и сравнение. Это значит, в нем можно искать по
+точному значению и диапазонам, а еще он подходит для сортировки, потому что
+упорядочен.</p>
+
+<p>В случаях, когда нужно частичное сравнение, индекс btree не подходит. Вместо
+него используют Gin или Gist (отдавая предпочтение первому). Эти индексы сложнее
+и в целом медленнее btree. Поэтому пока возможно, используйте btree.</p>
+
+<p>Есть, однако, лазейка, чтобы использовать btree для частичного сравнения. Если
+применить его к строке с особой опцией, можно искать по началу строки оператором
+<code class="language-plaintext highlighter-rouge">(i)like</code> и регулярным выражением.</p>
+
+<p>Предположим, в таблице <code class="language-plaintext highlighter-rouge">demo</code> хранятся пути к файлам:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">demo</span><span class="p">(</span>
+    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">path</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Сгенерируем миллион файлов. Пути начинаются с года, месяца, дня и часа. Даты
+разнообразны в рамках десяти лет:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">demo</span>
+<span class="k">select</span>
+    <span class="n">x</span><span class="p">,</span>
+    <span class="n">format</span><span class="p">(</span><span class="s1">'%s/%s/picture.jpeg'</span><span class="p">,</span> <span class="n">to_char</span><span class="p">((</span><span class="n">now</span><span class="p">()</span> <span class="o">-</span> <span class="n">interval</span> <span class="s1">'10 years'</span> <span class="o">*</span>  <span class="n">random</span><span class="p">()),</span> <span class="s1">'yyyy/MM/DD/HH'</span><span class="p">),</span> <span class="n">gen_random_uuid</span><span class="p">())</span>
+<span class="k">from</span>
+    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">999999</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Навесим индекс на путь. Опция <code class="language-plaintext highlighter-rouge">text_pattern_ops</code> нужна, чтобы зафиксировать
+локаль. С ней сравнение строк не зависит от текущей локали:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">path_btree</span> <span class="k">on</span> <span class="n">demo</span>
+<span class="k">using</span> <span class="n">btree</span>
+<span class="p">(</span><span class="n">path</span> <span class="n">text_pattern_ops</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Выберем файлы за октябрь 2023 года:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">demo</span>
+<span class="k">where</span> <span class="n">path</span> <span class="k">like</span> <span class="s1">'2023/10/12%'</span>
+<span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Справа от like стоит шаблон, а не простой текст. Символ % означает любые
+символы. Вот что вернет запрос:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────────┬─────────────────────────────────────────┐
+│   id   │                path                     │
+├────────┼─────────────────────────────────────────┤
+│ 213875 │ 2023/10/12/01/00ec...af263/picture.jpeg │
+│ 670319 │ 2023/10/12/01/04e2...67afd/picture.jpeg │
+│  34516 │ 2023/10/12/01/063a...ebddc/picture.jpeg │
+│ 122843 │ 2023/10/12/01/3237...6ffd7/picture.jpeg │
+│ 227530 │ 2023/10/12/01/5a48...c4ec0/picture.jpeg │
+│ 141900 │ 2023/10/12/01/6a78...da021/picture.jpeg │
+│ 663626 │ 2023/10/12/01/9d6d...84da7/picture.jpeg │
+│ 154138 │ 2023/10/12/01/a02e...5570c/picture.jpeg │
+│  37955 │ 2023/10/12/01/a465...47a7a/picture.jpeg │
+│ 864446 │ 2023/10/12/01/ae47...943d9/picture.jpeg │
+│ 196849 │ 2023/10/12/01/cd15...25874/picture.jpeg │
+</code></pre></div></div>
+
+<p>Но гораздо интересней план:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>explain analyze
+select * from demo
+where path like '2023/10/12%'
+limit 100;
+
+│ Limit  (cost=0.55..8.57 rows=100 width=68)
+│ (actual time=0.054..0.364 rows=100 loops=1)
+│   -&gt;  Index Scan using path_btree on demo
+│       (cost=0.55..8.57 rows=100 width=68)
+│         Index Cond: ((path ~&gt;=~ '2023/10/12'::text)
+│                  AND (path ~&lt;~ '2023/10/13'::text))
+│         Filter: (path ~~ '2023/10/12%'::text)
+│ Planning Time: 0.375 ms
+│ Execution Time: 0.400 ms
+└────────────────────────────────────────────────────
+</code></pre></div></div>
+
+<p>Видим, что Postgres поступает хитро: заключает путь в диапазон 2023/10/12 и
+2023/10/13. Цифра 3 на конце получилась как следующий символ за 2.</p>
+
+<p>Попадаем в индекс, стоимость копеечная.</p>
+
+<p>Если поставить в начало шаблона <code class="language-plaintext highlighter-rouge">%</code>, индекс не сработает. Другими словами, с
+таким подходом нельзя искать пути по вхождению.</p>
+
+<p>Индекс и оператор <code class="language-plaintext highlighter-rouge">like</code> позволяют срезать пути по лидирующей строке. При этом
+не обязательно с точностью до папки. Например, шаблон может быть таким:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>2025/10/23/%cat%.jpeg
+</code></pre></div></div>
+
+<p>Так мы получим все фотографии в папке 2025/10/23/… со словом <code class="language-plaintext highlighter-rouge">cat</code> в названии
+и расширением <code class="language-plaintext highlighter-rouge">jpeg</code>. Кроме шаблонов <code class="language-plaintext highlighter-rouge">like</code>, индекс поддерживает регулярки, и с
+ними критерий поиска можно описать точнее.</p>
+
+<p>Чем больше лидирующих символов мы задали, тем быстрее будет поиск.</p>
+
+<p>Еще один трюк: что если нужно искать с конца строки? Например, имеется таблица
+товаров с серийными номерами:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">demo2</span><span class="p">(</span>
+    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">serial_number</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Вставим миллион серийных номеров:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>insert into demo2
+select
+    x,
+    to_char(random() * 1000000000000, '0000-0000-0000')
+from
+    generate_series(1, 999999) as seq(x);
+
+┌────────┬─────────────────┐
+│   id   │  serial_number  │
+├────────┼─────────────────┤
+│      1 │  7084-1644-4953 │
+│      2 │  2694-3476-5136 │
+│      3 │  3274-5880-3765 │
+│      4 │  9346-6945-3461 │
+│      5 │  3352-3981-1479 │
+│      6 │  7103-7860-4732 │
+│      7 │  2634-9208-2518 │
+│      8 │  1485-3601-0146 │
+│      9 │  8068-5128-1222 │
+│     10 │  5832-3252-5642 │
+</code></pre></div></div>
+
+<p>Сотрудники ищут продукцию по последним числам серийного номера. Чтобы сработал
+индекс btree, сделаем функциональный индекс на выражение
+<code class="language-plaintext highlighter-rouge">reverse(serial_number)</code>. В результате в индексе будут храниться перевернутые
+номера:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">path_btree_rev</span> <span class="k">on</span> <span class="n">demo2</span>
+<span class="k">using</span> <span class="n">btree</span>
+<span class="p">(</span><span class="n">reverse</span><span class="p">(</span><span class="n">serial_number</span><span class="p">)</span> <span class="n">text_pattern_ops</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Чтобы искать по ним, выражение поиска тоже нужно перевернуть. Давайте найдем все
+номера, которые заканчиваются на -0500:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">demo2</span>
+<span class="k">where</span> <span class="n">reverse</span><span class="p">(</span><span class="n">serial_number</span><span class="p">)</span> <span class="k">like</span> <span class="n">reverse</span><span class="p">(</span><span class="s1">'%-0500'</span><span class="p">)</span>
+<span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Результат:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────────┬─────────────────┐
+│   id   │  serial_number  │
+├────────┼─────────────────┤
+│ 237074 │  5088-3410-0500 │
+│ 231067 │  0411-7020-0500 │
+│ 728812 │  3489-6520-0500 │
+│ 618494 │  3972-6720-0500 │
+│ 486950 │  4871-5330-0500 │
+│ 634762 │  8038-7440-0500 │
+│ 733815 │  8856-2250-0500 │
+│ 451464 │  3640-0450-0500 │
+│ 868649 │  7289-2270-0500 │
+│ 485383 │  7016-0370-0500 │
+│ 782061 │  4076-8080-0500 │
+│ 234715 │  4279-2180-0500 │
+│  36948 │  9033-7280-0500 │
+│ 460010 │  5881-8090-0500 │
+</code></pre></div></div>
+
+<p>Самое интересное – план:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>│ Limit  (cost=0.42..8.45 rows=100 width=16) (actual
+│   -&gt;  Index Scan using path_btree_rev on demo2  (co
+│         Index Cond: ((reverse(serial_number) ~&gt;=~ '
+│         Filter: (reverse(serial_number) ~~ '0050-%'
+│ Planning Time: 0.286 ms
+│ Execution Time: 1.088 ms
+└────────────────────────────────────────────────────
+</code></pre></div></div>
+
+<p>Работает!</p>
+
+<p>Повторю, что <code class="language-plaintext highlighter-rouge">btree</code> и <code class="language-plaintext highlighter-rouge">text_pattern_ops</code> работают только для начала
+строки. Если нужен поиск посередине, обратитесь к расширению <code class="language-plaintext highlighter-rouge">pg_tgrm</code>
+(триграммы). Этот индекс, однако, требует Gin.</p>
+
+<p>У <code class="language-plaintext highlighter-rouge">text_pattern_ops</code> есть еще один полезный сценарий, но о нем – в следующий
+раз.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-031-pg/">Postgres №31</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-29T00:00:00+00:00">
+        Mar 29, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Не все поля сущности нужно хранить в одной таблице. Некоторые из них лучше
+вынести в отдельную таблицу, даже если связь один к одному.</p>
+
+<p>Банальный пример – пользователи и профили. Пользователь – это системная
+информация, и меняется она редко. А любимая группа и оконченный институт – это
+другой домен, и логично вынести его в другую таблицу.</p>
+
+<p>Еще пример – рейтинг пользователя. Начинающие программисты создают в таблице
+<code class="language-plaintext highlighter-rouge">users</code> поле <code class="language-plaintext highlighter-rouge">rating</code>, и зря. Рейтинг – это забава, в которую любят играть
+продакт-оунеры. Как только вы сделаете рейтинг, вам скажут: теперь сделаем
+рейтинг по сезонам и будем отслеживать взлеты и падения. Вы же не будете делать
+колонки <code class="language-plaintext highlighter-rouge">rating_summer_2025</code>, <code class="language-plaintext highlighter-rouge">rating_autumn_2025</code> и так далее. Все это поедет в
+новые таблицы, и первый рейтинг тоже должен был храниться отдельно.</p>
+
+<p>Технический момент: в Postgres любая операция над строкой порождает новую
+строку. В этом плане он похож на Git: единица изменения – строка. Если в поле 20
+колонок и вы изменили одну, будет создана новая строка на 20 колонок. Старая
+будет болтаться, пока ее не соберет <code class="language-plaintext highlighter-rouge">vacuum</code>. Если таблица обновляется часто, в
+ней должно быть как можно меньше полей. Если какой-то набор колонок не меняется,
+лучше вынести их в таблицу и связать один к одному.</p>
+
+<p>Еще пример: иногда сущность таскает за собой огромный JSON-документ. Это
+исторические данные, которые перетащили из какой-то системы и которые некому
+разобрать. Если обновить хотя бы одно поле, документ будет скопирован. Лучше
+вынести его в отдельную таблицу.</p>
+
+<p>Еще пример: индексация документов. В Postgres есть очень качественный
+полнотекстовый поиск – <code class="language-plaintext highlighter-rouge">tsvector</code>. С ним документы разбиваются на лексемы
+(стемминг), причем разбивка сильно зависит от указанного языка. На выходе
+получается набор уникальных лексем, причем каждая помнит свои положения в
+документе, порядок следования, а еще им можно задать веса. Разобранный документ
+хранят в отдельном поле, чтобы не парсить его каждый раз.</p>
+
+<p>Предположим, у нас аналог Хабра, и есть таблица <code class="language-plaintext highlighter-rouge">posts</code> с полем <code class="language-plaintext highlighter-rouge">content</code> –
+статьей. Логично добавить поле <code class="language-plaintext highlighter-rouge">tsvector</code> и складывать в него разобранный
+документ. При этом мы считаем: поскольку сайт русскоязычный, то при разборе
+документа указываем язык <code class="language-plaintext highlighter-rouge">ru</code>.</p>
+
+<p>На практике в статье могут быть цитаты на английском или код. Они будут
+индексированы русским стеммингом, и это плохо скажется на качестве. Чтобы найти
+документ по английским словам, нужно ввести их в точности как в статье.</p>
+
+<p>Но предположим, мы нашли способ разбить документ на языковые зоны. Например, в
+исходной разметке автор может указать язык:</p>
+
+<p>Идет текст на русском, а потом <code class="language-plaintext highlighter-rouge">&lt;quote lang="en"&gt;some text in English&lt;/quote&gt;</code>.</p>
+
+<p>Может быть, границы языка определяются гистограммой символов. Так иначе, у нас
+есть функция <code class="language-plaintext highlighter-rouge">split_by_langs</code>, которая принимает текст и возвращает его нарезку:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select * from split_by_lang(post.comment);
+
+┌──────┬──────┬─────────────────────────┐
+│ part │ lang │  content                │
+├──────┼──────┼─────────────────────────┤
+│    1 │ ru   │ Всем привет! ...        │
+├──────┼──────┼─────────────────────────┤
+│    2 │ en   │ A quote from Wikipedia  │
+├──────┼──────┼─────────────────────────┤
+│    3 │ ru   │ дальнейший текст        │
+├──────┼──────┼─────────────────────────┤
+│    4 │ en   │ another quote from wiki │
+</code></pre></div></div>
+
+<p>Каждая часть индексируется языком из колонки <code class="language-plaintext highlighter-rouge">lang</code>. Накопленные части
+объединяются в один документ и записываются в поле <code class="language-plaintext highlighter-rouge">tsvector</code>.</p>
+
+<p>Обратите внимание, что исходная статья не меняется. Мы обновляем индекс, а не
+статью, поэтому логично делать эти операции в отдельной таблице.</p>
+
+<p>Следующая доработка: мы решили, что веса слов из заголовка и подзаголовков
+должны быть больше, чем у обычных слов. Пишется функция, которая режет документ
+на подзаголовки и то, что между ними (заголовок хранится в отдельном
+поле). После этого части индексируются и схлопываются.</p>
+
+<p>В итоге мы наращиваем качество поиска без правок статей. Мы только читаем статьи
+и складываем индекс в другую таблицу. Когда приходит запрос на поиск, ищем по
+таблице индекса, получаем айдишки статей и подтягиваем их джоином.</p>
+
+<p>Решение о том, что хранить в основной таблице, а что в связанной, часто
+ситуативно. Нужно знать контекст и условия задачи. Но одно можно сказать точно:
+объединить данные проще, чем разделить. “Design is about keeping things apart”
+(c).</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-030-pg/">Postgres №30</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-21T00:00:00+00:00">
+        Mar 21, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В <a href="/tip-029-pg/">прошлом совете</a> упоминались чистые функции в базе. Разумеется,
+их нужно тестировать. Для Постгреса написаны свои тестовые фреймворки, но ими
+пользуются при разработке расширений. Обычные функции тестируют в приложении:
+вызывают функцию и проверяют, что она вернула.</p>
+
+<p>Например, в базе есть функция для форматирования центов:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">or</span> <span class="k">replace</span> <span class="k">function</span> <span class="n">format_cents</span><span class="p">(</span><span class="n">cents</span> <span class="nb">integer</span><span class="p">)</span>
+<span class="k">returns</span> <span class="nb">text</span>
+<span class="k">immutable</span> <span class="k">strict</span> <span class="n">parallel</span> <span class="n">safe</span> <span class="k">language</span> <span class="k">sql</span>
+<span class="k">return</span> <span class="n">to_char</span><span class="p">(</span><span class="n">cents</span><span class="p">,</span> <span class="s1">'999.999'</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Тест посылает такой запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
+ <span class="n">x</span><span class="p">,</span>
+ <span class="n">format_cents</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">as</span> <span class="k">result</span>
+<span class="k">from</span> <span class="p">(</span><span class="k">values</span>
+ <span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">999</span><span class="p">),</span> <span class="p">(</span><span class="k">null</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">42</span><span class="p">))</span> <span class="k">as</span> <span class="n">vals</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Читаем результат и проверяем, что он следующий:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────────┬──────────┐
+│   x    │  result  │
+├────────┼──────────┤
+│      1 │    1.000 │
+│    999 │  999.000 │
+│ &lt;null&gt; │ &lt;null&gt;   │
+│      0 │     .000 │
+│    -42 │  -42.000 │
+└────────┴──────────┘
+</code></pre></div></div>
+
+<p>Вот и все. Если кто-то поправит функцию, тест упадет.</p>
+
+<p>Сложную логику тестируют точно так же. Достаточно нескольких шагов:</p>
+
+<ul>
+  <li>положить нужные данные в базу;</li>
+  <li>запустить целевую функцию;</li>
+  <li>проверить, что данные изменились должным образом;</li>
+  <li>почистить за собой.</li>
+</ul>
+
+<p>Функция удобна тем, что данные не нужно готовить. Передал — получил. База
+фактически не участвует. А для сложной логики нужно готовить данные.</p>
+
+<p>К счастью, для этого есть фикстуры — функции, которые выполняются до или после
+теста, причем в разрезе всего набора или отдельного теста. Поэтому пишутся
+фикстуры, которые поднимают базу, накатывают тестовые данные, а в конце делают
+<code class="language-plaintext highlighter-rouge">TRUNCATE</code> по всем таблицам.</p>
+
+<p>Базу обычно запускают в Докере, потому что в нем многое можно задать из коробки
+(базу, пользователя, пароль, начальные .sql файлы и другое). Кто не любит Докер,
+пусть ставит локальный Постгрес — он есть везде.</p>
+
+<p>На этом месте начинаются вопли: мол, тесты-то не юнит-, а интеграционные! Ну и
+что? Юнит-тесты нужны, но порой их недостаточно. Когда сетевые вызовы закрыты
+моками, легко оказаться в мире Оруэлла: дважды два равно пяти. Тесты пробегают,
+прод падает.</p>
+
+<p>Так что если у вас Постгрес — тестируйте, как приложение ходит в Постгрес.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-029-pg/">Postgres №29</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-21T00:00:00+00:00">
+        Mar 21, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Когда речь заходит о бизнес-логике в базе, большинство людей теряют
+лицо. Начинаются крики, словно им намерены причинить увечье. А между тем логика
+в базе – хорошая вещь, нужно лишь правильно к ней подойти.</p>
+
+<p>Возьмем за аксиому следующее: никто не учит базы данных. Все учат Питоны-Джавы,
+почему-то забывая: если работаете с базой, нужно знать ее тоже. Однако все
+делается на ORM, а база – черный ящик. Редкий разработчик интересуется, какие
+запросы в нее идут. Еще реже – попадают ли запросы в индекс, каков план и так
+далее.</p>
+
+<p>Прикладной программист мыслит объектами. Когда он пишет на Питоне, в его
+распоряжении строки, числа и их комбинации – объекты. На ORM он выдает примерно
+такой код:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">user</span> <span class="o">=</span> <span class="n">User</span><span class="p">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">user</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+  <span class="k">return</span> <span class="bp">None</span>
+
+<span class="n">profiles</span> <span class="o">=</span> <span class="n">Profile</span><span class="p">.</span><span class="n">get_by_ref</span><span class="p">(</span><span class="s">'user_id'</span><span class="p">,</span> <span class="n">user</span><span class="p">.</span><span class="nb">id</span><span class="p">)</span>
+<span class="n">profile</span> <span class="o">=</span> <span class="n">profile</span><span class="p">.</span><span class="n">first</span><span class="p">()</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="n">profile</span><span class="p">:</span>
+  <span class="k">return</span> <span class="bp">None</span>
+</code></pre></div></div>
+
+<p>Если вынудить программиста перенести этот код в базу, он напишет что-то такое:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">function</span> <span class="n">get_user_by_id</span><span class="p">(</span><span class="n">id</span> <span class="nb">integer</span><span class="p">)</span>
+<span class="k">returns</span> <span class="k">user</span>
+<span class="k">return</span> <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="o">?</span> <span class="o">=</span> <span class="n">id</span>
+
+<span class="k">create</span> <span class="k">function</span> <span class="n">get_profiles_by_user_id</span><span class="p">(</span><span class="n">user_id</span> <span class="nb">integer</span><span class="p">)</span>
+<span class="k">returns</span> <span class="n">profile</span>
+<span class="k">return</span> <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">profiles</span> <span class="k">where</span> <span class="o">?</span> <span class="o">=</span> <span class="n">user_id</span> <span class="k">limit</span> <span class="mi">1</span>
+</code></pre></div></div>
+
+<p>Далее та же петрушка: получить кортеж пользователя, проверить на NULL; получить
+профиль, проверить на NULL; далее что-то сделать. Это калька с императивного
+языка, и в SQL она выглядит уродливо. SQL предназначен для другого; он
+недостаточно выразителен для императивных нужд, поэтому писать на нем в таком
+стиле – сущее издевательство.</p>
+
+<p>Решение простое: пишите на SQL реляционно! Это язык для операций над отношениями
+(таблицами): проекция, объединение, соединение, полу- и анти-соединения и другие
+их виды. В SQL единица операции – не строка или число, а таблица. Бизнес-логика
+на SQL сводится к тому, что есть наборы данных и нужно выполнить операции над
+ними. Например, соединить два набора, что-то отсечь, пересечь с другим набором,
+дополнить третьим, записать результат в таблицу. Дубликаты записей либо
+обновить, либо игнорировать.</p>
+
+<p>Все это прекрасно ложится на SQL, и в прошлых советах были примеры. Напишите
+подобное на ORM – и кода станет больше, не говоря уж о том, что не будет
+малейшего понимания, что происходит с базой.</p>
+
+<p>Говорят: логика в базе уродлива. Увы, когда я вижу, как соединяют данные в
+приложении (бесконечные экраны кода) вместо запроса на три строчки, то понимаю —
+вон он, уродливый код.</p>
+
+<p>Разумеется, иногда один и тот же код повторяется, и его выносят в
+функции. Например, в фирме особые требования к форматированию денег. Чтобы не
+копировать одно и тоже, пишут чистую функцию:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">function</span> <span class="n">format_mln_eur</span><span class="p">(</span><span class="n">cents</span> <span class="nb">int</span><span class="p">)</span>
+<span class="k">returns</span> <span class="nb">text</span>
+<span class="k">immutable</span> <span class="k">strict</span> <span class="n">parallel</span> <span class="n">safe</span>
+<span class="k">return</span> <span class="p">...</span>
+</code></pre></div></div>
+
+<p>Далее вызывают ее в запросах. Такой подход в порядке вещей, потому что он
+предотвращает копирование кода.</p>
+
+<p>Другой пример – в финансах временной интервал хранится как четверка чисел: число
+лет, месяцев, недель и дней. Пишется функция <code class="language-plaintext highlighter-rouge">tenor_to_interval</code>, которая
+приводит четверку к типу <code class="language-plaintext highlighter-rouge">interval</code> и наоборот:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">create</span><span class="w"> </span><span class="n">function</span><span class="w"> </span><span class="n">tenor_to_interval</span><span class="p">(</span><span class="nf">y</span><span class="w"> </span><span class="n">int,</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">int,</span><span class="w"> </span><span class="n">w</span><span class="w"> </span><span class="n">int,</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="nb">int</span><span class="p">)</span><span class="w">
+</span><span class="n">returns</span><span class="w"> </span><span class="n">interval</span><span class="w">
+</span><span class="n">immutable</span><span class="w"> </span><span class="n">strict</span><span class="w"> </span><span class="n">parallel</span><span class="w"> </span><span class="n">safe</span><span class="w">
+</span><span class="n">return</span><span class="w"> </span><span class="n">...</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Но не нужно заворачивать в функции CRUD-операции! Именно тут кроется ошибка
+питонистов и джавистов. SQL – декларативный язык, и все операции носят
+описательный характер. Если писать процедуру на каждый чих, вы загоните себя в
+яму. В базе мыслят и программируют реляционно – то есть оперируют отношениями, а
+не строками и числами. Императивный подход оставьте за дверью, будьте так добры.</p>
+
+<p>Как развить реляционное мышление? Точно также, как и во всем другом: заниматься
+им.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-028-pg/">Postgres №28</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-21T00:00:00+00:00">
+        Mar 21, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Продолжение <a href="/tip-027-pg/">прошлого поста</a>. Тезис: выбирайте данные, только если
+нужно передать их третьей стороне, например фронтенду. Для промежуточных
+вычислений это чаще всего не требуется. Достаточно сказать базе: обнови такие-то
+поля согласно такой-то логике, и она все сделает сама.</p>
+
+<p>Обновление силами SQL особенно хорошо на больших данных. Не нужно гонять тысячи
+строк по сети. По компьютерным меркам сеть медленная, потому что это череда
+системных вызовов на обеих сторонах. Сеть требует сериализации данных. Даже в
+надежных сетях пакеты теряются, требуется повторная отправка и подтверждение.</p>
+
+<p>Не нужно писать код на языке приложения. Код на условном Питоне или Джаве всегда
+длиннее и многословнее, чем на SQL. Нет кода – нет проблем.</p>
+
+<p>Покажу, как управлять данными в базе без приложения. Для начала сделаем две
+таблицы: пользователи и профили:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">name</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+    <span class="n">points</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="mi">0</span>
+<span class="p">);</span>
+
+<span class="k">create</span> <span class="k">table</span> <span class="n">profiles</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">user_id</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+    <span class="n">avatar</span> <span class="nb">text</span> <span class="k">null</span><span class="p">,</span>
+    <span class="n">del_requested</span> <span class="nb">boolean</span> <span class="k">null</span> <span class="k">default</span> <span class="k">false</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Кроме имени, в пользователе записано число баллов. Профиль ссылается на
+пользователя, и в нем два поля: аватарка (может быть пустой) и запрос на
+удаление (по умолчанию ложь). Вставим много записей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">users</span>
+<span class="k">select</span>
+    <span class="n">x</span><span class="p">,</span>
+    <span class="n">format</span><span class="p">(</span><span class="s1">'user_%s'</span><span class="p">,</span> <span class="n">x</span><span class="p">),</span>
+    <span class="n">round</span><span class="p">(</span><span class="n">random</span><span class="p">()</span> <span class="o">*</span> <span class="mi">100000</span><span class="p">)</span>
+<span class="k">from</span>
+    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+
+<span class="k">insert</span> <span class="k">into</span> <span class="n">profiles</span>
+<span class="k">select</span>
+    <span class="n">x</span><span class="p">,</span>
+    <span class="n">x</span><span class="p">,</span>
+    <span class="k">null</span>
+    <span class="k">false</span>
+<span class="k">from</span>
+    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Оператор INSERT принимает SELECT, который порождает данные. Не нужно генерить их
+на Питоне и передавать по сети, все происходит внутри базы.</p>
+
+<p>Первая задача – поместить в отдельную таблицу топ-100 пользователей. Это
+делается запросом:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">drop</span> <span class="k">table</span> <span class="n">if</span> <span class="k">exists</span> <span class="n">users_top_100</span><span class="p">;</span>
+
+<span class="k">create</span> <span class="k">table</span> <span class="n">users_top_100</span> <span class="k">as</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">points</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
+
+<span class="k">table</span> <span class="n">users_top_100</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌──────┬───────────┬────────┐
+│  id  │   name    │ points │
+├──────┼───────────┼────────┤
+│ 6637 │ user_6637 │  99996 │
+│ 8909 │ user_8909 │  99994 │
+│ 9040 │ user_9040 │  99979 │
+│ 2631 │ user_2631 │  99978 │
+│ 7240 │ user_7240 │  99961 │
+│  972 │ user_972  │  99958 │
+│ 8698 │ user_8698 │  99924 │
+│ 3850 │ user_3850 │  99914 │
+│  382 │ user_382  │  99892 │
+│ 2841 │ user_2841 │  99877 │
+│ 2607 │ user_2607 │  99870 │
+│ 5207 │ user_5207 │  99858 │
+</code></pre></div></div>
+
+<p>В приложении мы бы сначала прочитали данные, создали таблицу и записали данные в
+нее. Все это можно поручить базе. Таблица может быть временной для каких-то
+расчетов. Конечно, не следует создавать их в апишках, которые должны работать
+быстро. Но для других задач временные таблицы очень даже полезны.</p>
+
+<p>Другой пример. Фирма проводит акцию: загрузи аватар и получи тысячу
+баллов. Предположим, некоторые пользователи добавили аватарку:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">profiles</span>
+<span class="k">set</span> <span class="n">avatar</span> <span class="o">=</span> <span class="n">format</span><span class="p">(</span><span class="s1">'htts://path/to/file_%s'</span><span class="p">,</span> <span class="n">id</span><span class="p">)</span>
+<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">500</span> <span class="k">and</span> <span class="mi">600</span><span class="p">;</span>
+<span class="c1">-- UPDATE 101</span>
+</code></pre></div></div>
+
+<p>Вот как накинуть баллы тем, у кого она есть:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">users</span> <span class="n">u</span>
+<span class="k">set</span> <span class="n">points</span> <span class="o">=</span> <span class="n">points</span> <span class="o">+</span> <span class="mi">1000</span>
+<span class="k">from</span> <span class="n">profiles</span> <span class="n">p</span>
+<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span>
+<span class="k">and</span> <span class="n">p</span><span class="p">.</span><span class="n">avatar</span> <span class="k">is</span> <span class="k">not</span> <span class="k">null</span><span class="p">;</span>
+<span class="c1">-- UPDATE 101</span>
+</code></pre></div></div>
+
+<p>Оператор UPDATE поддерживает FROM с произвольным запросом, таблицей и так
+далее. В условии проверяют совпадение строк по ключам. Обновятся только те
+пользователи, профили которых с аватаркой.</p>
+
+<p>Третья задача: некоторые пользователи отметили в профиле значок “удалите меня”:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">profiles</span>
+<span class="k">set</span> <span class="n">del_requested</span> <span class="o">=</span> <span class="k">true</span>
+<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">666</span> <span class="k">and</span> <span class="mi">999</span><span class="p">;</span>
+<span class="c1">-- UPDATE 334</span>
+</code></pre></div></div>
+
+<p>Вот как удалить такие профили и их пользователей одним запросом:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">del_profiles</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span>
+    <span class="k">delete</span> <span class="k">from</span> <span class="n">profiles</span>
+    <span class="k">where</span> <span class="n">del_requested</span>
+    <span class="n">returning</span> <span class="n">user_id</span>
+<span class="p">)</span>
+<span class="k">delete</span> <span class="k">from</span> <span class="n">users</span> <span class="n">u</span>
+<span class="k">using</span> <span class="n">del_profiles</span> <span class="n">del</span>
+<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">del</span><span class="p">.</span><span class="n">user_id</span><span class="p">;</span>
+<span class="c1">-- DELETE 334</span>
+</code></pre></div></div>
+
+<p>Во всех случаях мы ничего не передавали клиенту.</p>
+
+<p>Вставки могут быть с реакцией на конфликт (выражение <code class="language-plaintext highlighter-rouge">ON CONFLICT</code>). Есть
+команда MERGE, которая делит два набора данных на категории: только слева,
+пересечение, только справа. Для каждой категории можно задать реакцию:
+пропустить, удалить, записать куда-то и так далее.</p>
+
+<p>Управлять данными при помощи SQL – это настоящий праздник. Нет зависимости от
+приложения и рантайма. База делает все сама: работает производительный код на
+Си, многократно проверенный и отлаженный. Не отбирайте у базы ее работу. Она
+сделает все лучше вас, достаточно базовых навыков SQL.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-027-pg/">Postgres №27</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-21T00:00:00+00:00">
+        Mar 21, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Представьте, что на кровати лежит книга, и нужно вернуть ее в шкаф. Вместо того,
+чтобы отнести книгу, вы толкаете шкаф к кровати, кладете книгу на полку, а потом
+толкаете шкаф на место. Подобная сцена уместна в ситкоме, но в целом это абсурд.</p>
+
+<p>Однако именно так большинство работает с базой данных: без конца гоняет данные
+туда-сюда, хотя можно обойтись командой.</p>
+
+<p>Предположим, нужно обновить статус пользователа по коду. На ORM это выглядит
+так:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">user</span> <span class="o">=</span> <span class="n">models</span><span class="p">.</span><span class="n">User</span><span class="p">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+<span class="n">user</span><span class="p">.</span><span class="n">status</span> <span class="o">=</span> <span class="s">'active'</span>
+<span class="n">user</span><span class="p">.</span><span class="n">save</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Разумеется, никому не интересно, какие запросы будут выполнены. Их никто не
+смотрит и даже не знает, как включить (см. <a href="/tip-011-pg/">прошлый совет</a>). А
+запросы будут такими:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span>
+<span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span>
+
+<span class="k">update</span> <span class="n">users</span> <span class="k">set</span> <span class="n">status</span><span class="o">=</span><span class="s1">'active'</span>
+<span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span>
+</code></pre></div></div>
+
+<p>Внимание: зачем нужен первый запрос? Мы выбрали все поля пользователя. Зачем?
+Второй <code class="language-plaintext highlighter-rouge">UPDATE</code> делает именно то, что нужно: обновляет статус по номеру. Ради
+этого не стоило читать пользователя! Нужно оставить только второй запрос.</p>
+
+<p>Говорят: перед обновлением я должен убедиться, что пользователь существует. Это
+легко сделать и после: оператор <code class="language-plaintext highlighter-rouge">UPDATE</code> возвращает число обновленных
+записей. Если оно равно нулю, пользователя не было. Не говоря уж о том, что
+существование записи проверяется <code class="language-plaintext highlighter-rouge">SELECT</code>-ом без полей или условием <code class="language-plaintext highlighter-rouge">EXISTS</code> –
+незачем выгребать все поля.</p>
+
+<p>Вообще, следите, чтобы данные извлекались из базы как можно реже. База прекрасно
+умеет обновлять и перекладывать данные без участия клиента. Например, кто-то
+блокирует запись при чтении, чтобы обновить ее:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">begin</span><span class="p">;</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span> <span class="k">for</span> <span class="k">update</span><span class="p">;</span>
+<span class="k">update</span> <span class="n">users</span> <span class="k">set</span> <span class="p">...</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span><span class="p">;</span>
+<span class="k">commit</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Зачем читать и блокировать запись? Просто обнови ее.</p>
+
+<p>Возразят: я читаю данные, чтобы рассчитать новые поля. Что ж, если логика
+сложная, это делают в приложении. Но многие вещи можно сделать на SQL. Например,
+начисление баллов, рейтинга, изменения цены и так далее. Для этого пишут
+одноразовую функцию:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">or</span> <span class="k">replace</span> <span class="n">pg_temp</span><span class="p">.</span><span class="n">get_new_rating</span><span class="p">(</span><span class="k">user</span> <span class="k">user</span><span class="p">)</span>
+<span class="k">returns</span> <span class="nb">integer</span>
+<span class="k">immutable</span> <span class="k">strict</span> <span class="n">parallel</span> <span class="n">safe</span> <span class="k">language</span> <span class="k">sql</span>
+<span class="k">return</span> <span class="p">...</span>
+</code></pre></div></div>
+
+<p>и обновляют сразу много пользователей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">users</span>
+<span class="k">set</span> <span class="n">rating</span> <span class="o">=</span> <span class="n">get_new_rating</span><span class="p">(</span><span class="n">users</span><span class="p">)</span>
+<span class="k">FROM</span> <span class="n">subquery</span>
+<span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="n">subquery</span><span class="p">.</span><span class="n">user_id</span>
+</code></pre></div></div>
+
+<p>Поздапрос <code class="language-plaintext highlighter-rouge">subquery</code> выбирает пользователей, которых нужно обновить, а функция
+<code class="language-plaintext highlighter-rouge">get_new_rating</code> возвращает новый рейтинг.</p>
+
+<p>Уже слышу истерику: омг, хранимки, мои глаза! Ну, тут уж на ваше
+усмотрение. Хотите пользоваться базой нормально? Понадобится сырой скуль. Для
+этого нужно отложить ORM и почитать книжки. Но оно того стоит.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-026-pg/">Postgres №26</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-21T00:00:00+00:00">
+        Mar 21, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Продолжение <a href="/tip-025-pg/">прошлой заметки</a> про удаление.</p>
+
+<p>Решение – перенос! Данные нужно не помечать на удаление, а переносить между
+таблицами. В этом случае главная таблица не захламляется, а удаленные строки не
+висят грузом. Для начала решим задачу в лоб. Представим, есть таблица товаров:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">goods</span> <span class="p">(</span>
+ <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+ <span class="n">title</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+ <span class="n">created_at</span> <span class="n">timestamptz</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="k">current_timestamp</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Вставим в нее много записей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">goods</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+<span class="k">select</span>
+ <span class="n">format</span><span class="p">(</span><span class="s1">'good_%s'</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+<span class="k">from</span>
+ <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Подготовим таблицу удаленных записей. Ее структура такая же, поэтому используем
+выражение like <code class="language-plaintext highlighter-rouge">&lt;table&gt;</code>. Индексы и ограничения скопированы не будут.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">goods_deleted</span> <span class="p">(</span><span class="k">like</span> <span class="n">goods</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Далее мы решили, что товары с кодами с 555 по 666 почему-то плохие, и нужно их
+удалить. Разработчики делают так: сперва читают данные в приложение:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">goods</span>
+<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Удаляют их:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">delete</span> <span class="k">from</span> <span class="n">goods</span>
+<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Вставляют в таблицу <code class="language-plaintext highlighter-rouge">goods_deleted</code> строки, которые висят в приложении:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">goods_deleted</span> <span class="p">...;</span>
+</code></pre></div></div>
+
+<p>В обратную сторону — то же самое: прочитали, удалили, вставили. Решение
+нормальное и встречается часто — и в нем все плохо.</p>
+
+<p>Во-первых, по какой-то причине мы гоняем строки в приложение и обратно, хотя
+нужды в этом никакой. Postgres прекрасно перенесет их между таблицами, не
+отправляя клиенту. Для этого выполним запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span>
+ <span class="k">delete</span> <span class="k">from</span> <span class="n">goods</span>
+ <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
+ <span class="n">returning</span> <span class="o">*</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">goods_deleted</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">deleted</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Если <code class="language-plaintext highlighter-rouge">DELETE</code> имеет на конце <code class="language-plaintext highlighter-rouge">returning</code>, он не отличается от <code class="language-plaintext highlighter-rouge">SELECT</code> (разве
+что с побочным эффектом). В выборке <code class="language-plaintext highlighter-rouge">deleted</code> окажутся удаленные строки. Далее
+мы вставляем их в <code class="language-plaintext highlighter-rouge">goods_deleted</code>. Оба запроса протекают в неявной транзакции,
+снимок данных один и тот же.</p>
+
+<p>Теперь в <code class="language-plaintext highlighter-rouge">goods</code> не окажется товаров с айдишками 555…666, зато они будут в
+<code class="language-plaintext highlighter-rouge">goods_deleted</code>.</p>
+
+<p>Теперь в обратную сторону: удалить из <code class="language-plaintext highlighter-rouge">goods_deleted</code> и вставить в <code class="language-plaintext highlighter-rouge">goods</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">restored</span> <span class="k">as</span> <span class="p">(</span>
+ <span class="k">delete</span> <span class="k">from</span> <span class="n">goods_deleted</span>
+ <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
+ <span class="n">returning</span> <span class="o">*</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">goods</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">restored</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Один запрос, атомарность, нулевая передача клиенту.</p>
+
+<p>Теперь таблицы. Выше мы клонировали таблицу goods и назвали ее
+<code class="language-plaintext highlighter-rouge">goods_deleted</code>. И что, делать это для каждой таблицы? <code class="language-plaintext highlighter-rouge">users_deleted</code>,
+<code class="language-plaintext highlighter-rouge">orders_deleted</code>, <code class="language-plaintext highlighter-rouge">photos_deleted</code>, <code class="language-plaintext highlighter-rouge">profile_deleleted</code>…?</p>
+
+<p>А во-вторых, миграции. Если таблица <code class="language-plaintext highlighter-rouge">goods</code> изменится, перенос отвалится, потому
+что состав колонок будет другим. Придётся явно прописывать, что на что маппить.</p>
+
+<p>Поэтому вместо <code class="language-plaintext highlighter-rouge">goods_deleted</code>, <code class="language-plaintext highlighter-rouge">users_deleted</code> и так далее заведем таблицу
+<code class="language-plaintext highlighter-rouge">any_deleted</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">any_deleted</span> <span class="p">(</span>
+ <span class="n">entity</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+ <span class="n">pk</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+ <span class="k">data</span> <span class="n">jsonb</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+ <span class="n">created_at</span> <span class="n">timestamptz</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="k">current_timestamp</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Поле <code class="language-plaintext highlighter-rouge">entity</code> означает сущность (<code class="language-plaintext highlighter-rouge">user</code>, <code class="language-plaintext highlighter-rouge">profile</code> и другие), <code class="language-plaintext highlighter-rouge">pk</code> — ее
+первичный ключ. В идеале это UUID, чтобы быть уникальным в разрезе всех
+сущностей. В поле data хранится строка в формате JSON. Вот как выполнить
+перенос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span>
+ <span class="k">delete</span> <span class="k">from</span> <span class="n">goods</span>
+ <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
+ <span class="n">returning</span> <span class="o">*</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">any_deleted</span>
+<span class="k">select</span>
+ <span class="s1">'goods'</span><span class="p">,</span>
+ <span class="n">deleted</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
+ <span class="n">to_jsonb</span><span class="p">(</span><span class="n">deleted</span><span class="p">)</span>
+<span class="k">from</span> <span class="n">deleted</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Посмотрим, что оказалось в удаленной таблице:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─[ RECORD 1 ]─────────────────────────────────
+│ entity  │ goods
+│ pk      │ 555
+│ data    │ {"id": 555, "title": "good_555",
+│ created_at │ 2026-01-24 14:57:32.595317+03
+├─[ RECORD 2 ]─────────────────────────────────
+│ entity  │ goods
+│ pk      │ 556
+│ data    │ {"id": 556, "title": "good_556",
+│ created_at │ 2026-01-24 14:57:32.595317+03
+├─[ RECORD 3 ]─────────────────────────────────
+│ entity  │ goods
+│ pk      │ 557
+│ data    │ {"id": 557, "title": "good_557",
+│ created_at │ 2026-01-24 14:57:32.595317+03
+</code></pre></div></div>
+
+<p>Видим, что все однородно: можно удалять разные сущности, конфликтов не будет.</p>
+
+<p>Чтобы перенести обратно, выполним такой запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span>
+ <span class="k">delete</span> <span class="k">from</span> <span class="n">any_deleted</span>
+ <span class="k">where</span>
+         <span class="n">entity</span> <span class="o">=</span> <span class="s1">'goods'</span>
+     <span class="k">and</span> <span class="n">pk</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
+ <span class="n">returning</span> <span class="o">*</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">goods</span>
+<span class="k">select</span>
+ <span class="n">rec</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
+ <span class="n">rec</span><span class="p">.</span><span class="n">title</span><span class="p">,</span>
+ <span class="n">rec</span><span class="p">.</span><span class="n">created_at</span>
+<span class="k">from</span>
+ <span class="n">deleted</span><span class="p">,</span>
+ <span class="n">jsonb_to_record</span><span class="p">(</span><span class="n">deleted</span><span class="p">.</span><span class="k">data</span><span class="p">)</span> <span class="k">as</span> <span class="n">rec</span><span class="p">(</span>
+     <span class="n">id</span> <span class="nb">integer</span><span class="p">,</span>
+     <span class="n">title</span> <span class="nb">text</span><span class="p">,</span>
+     <span class="n">created_at</span> <span class="n">timestamptz</span>
+ <span class="p">);</span>
+</code></pre></div></div>
+
+<p>Функция <code class="language-plaintext highlighter-rouge">jsonb_to_record</code> приводит JSON-объект к записи. Даже если в исходной
+таблице добавились колонки, после распаковки они будут <code class="language-plaintext highlighter-rouge">null</code>.</p>
+
+<p>В итоге у нас одна таблица удаленных сущностей. Она бесконечно растет вниз,
+устойчива к миграциям. Активные таблицы не захламляются. Чудо!</p>
+
+<p>Что бы еще добавить? Пожалуй, у таблицы <code class="language-plaintext highlighter-rouge">any_deleted</code> могут быть поля <code class="language-plaintext highlighter-rouge">done_by</code>
+(кто удалил), reason (причина: <code class="language-plaintext highlighter-rouge">ban</code>, <code class="language-plaintext highlighter-rouge">conflict</code>, <code class="language-plaintext highlighter-rouge">legacy</code>), комментарий (бывает
+нужен), срок хранения (для регулятора).</p>
+
+<p>Минус переноса в том, что нужно ослабить внешние ключи. Обычно против этого
+возражают, но с ростом базы это неминуемо. Если сущность удаляется (подлежит
+переносу), отключите <code class="language-plaintext highlighter-rouge">foreign key constraint</code> в тех таблицах, которые на нее
+ссылаются. Для джоинов используйте <code class="language-plaintext highlighter-rouge">inner join</code>, чтобы отсекать пустые
+ссылки. Записи, которые ссылаются вникуда, можно найти анти-соединением и либо
+удалить физически, либо тоже перенести. Часть этой работы можно поставить на
+крон (см. <code class="language-plaintext highlighter-rouge">pg_cron</code> в прошлых советах).</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-025-pg/">Postgres №25</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-10T00:00:00+00:00">
+        Mar 10, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Иногда мы хотим удалить что-то из базы, но нельзя. Причины разные:</p>
+
+<ul>
+  <li>
+    <p>высокая связность сущностей. Если это пользователь, на него завязаны
+публикации, комментарии, фотографии, упоминания, заказы, обращение в поддержку
+и так далее. Каскадный DELETE по всей базе – так себе решение.</p>
+  </li>
+  <li>
+    <p>В финансах и телекомах есть требования регулятора. Данные не должны удаляться
+бесследно.</p>
+  </li>
+  <li>
+    <p>Пользователь может передумать. Скажем, удалил письмо по ошибке, нажал Undo и
+оно вернулось в ящик.</p>
+  </li>
+  <li>
+    <p>При удалении данных не должна страдать статистика. Например, даже если
+пользователь удалился из маркетплейса, в отчете продаж должны быть его
+покупки.</p>
+  </li>
+</ul>
+
+<p>Словом, есть много случаев, когда DELETE вам не поможет.</p>
+
+<p>Часто поступают так: раз удалять нельзя, добавим флажок <code class="language-plaintext highlighter-rouge">is_deleted</code> и поставим
+ему истину. То есть вместо</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">delete</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span>
+</code></pre></div></div>
+
+<p>выполним</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">users</span> <span class="k">set</span> <span class="n">is_deleted</span> <span class="o">=</span> <span class="k">true</span>
+<span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span>
+</code></pre></div></div>
+
+<p>Когда-то давно я тоже выступал за такой подход, у меня даже есть заметка в
+блоге. Что ж, я заблуждался. Мне довелось поработать в проекте, где в каждой
+таблице был флаг <code class="language-plaintext highlighter-rouge">is_deleted</code>, и это был ад.</p>
+
+<p>Если коротко – база, из которой ничего не удаляют, становится квартирой, из
+которой ничего не выбрасывают. Поживите неделю, складывая мусор в шкафы, и вы
+поймете.</p>
+
+<p>Во-первых, обращаясь к любой таблице, нужно не забыть условие <code class="language-plaintext highlighter-rouge">where not
+is_deleted</code>. Редко, но разработчики его теряли, и удаленные строки шли на
+фронт. Вы, конечно, скажете: в моей ORM можно задать фильтры по умолчанию. Знаю,
+я так делал в Django: при обращении к модели условие добавится само. Но не все
+работают с ORM.</p>
+
+<p>Можно создать вьюху <code class="language-plaintext highlighter-rouge">users_active</code>, которая выбирает всех не удаленных
+пользователей. Но это новая сущность, плюс понадобится много таких вьюх.</p>
+
+<p>Во-вторых, удаленные записи болтаются в таблице, участвуют в сканировании,
+обходе по индексу и так далее. Они банально замедляют операции с записями: пусть
+ненамного, но все же. Возможно, вам понадобится строить частичные индексы с
+выражением <code class="language-plaintext highlighter-rouge">where not is_deleted</code>, чтобы отсечь удаленные записи.</p>
+
+<p>В-третьих, если встречаемся уникальность, удаленная запись не позволит вставить
+новую. Скажем, если пользователь с почтой <code class="language-plaintext highlighter-rouge">test@foobar.com</code> отмечен удаленным и
+почта уникальна, вы не вставите другого пользователя с такой почтой. Кроме
+почты, уникальными могут быть другие поля, например номер транзакции или чека.</p>
+
+<p>Технически это можно исправить: создать уникальный индекс с условием:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">unique</span> <span class="k">index</span> <span class="n">idx_user_email</span> <span class="k">on</span> <span class="n">users</span>
+<span class="k">using</span> <span class="n">btree</span> <span class="p">(</span><span class="n">email</span><span class="p">)</span> <span class="k">where</span> <span class="k">not</span> <span class="n">is_deleted</span>
+</code></pre></div></div>
+
+<p>В этом случае уникальность проверяется только для не удаленных
+пользователей. Вроде бы всё хорошо? Тогда вопрос: что вы будете делать с
+удаленным пользователем? При попытке снять флаг вас ждет конфликт, потому что
+почта уже занята.</p>
+
+<p>В-четвертых, флага <code class="language-plaintext highlighter-rouge">is_deleted</code> недостаточно, чтобы понять: почему данные
+удалены. В идеале мы бы хотели знать время события, пользователя, кто это сделал
+и минимальный комментарий. Выходит, к каждой таблице нужно добавить еще два-три
+поля?</p>
+
+<p>И наконец: таблица, где ничего не удаляется, становится помойкой. Нельзя понять,
+почему удалили данные и что с ними делать. Пользователь удалился сам? Его
+забанили? За что? Он на модерации? Кто кого ждет?</p>
+
+<p>Данные о платежах не были обработаны? Почему? Когда планируется снова их
+обработать? Что делать, если опять не получится? Десятки вопросов, и никто
+ничего не знает.</p>
+
+<p>Решение будет изложено в следующем совете.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-024-pg/">Postgres №24</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-10T00:00:00+00:00">
+        Mar 10, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Когда мы попадаем в индекс, желательно понимать, что при этом происходит. В
+Postgres btree-индекс – это дерево распределительных узлов, и на последнем
+уровне хранятся пары: значение -&gt; номер страницы (блока). Поэтому даже если вы
+попали в индекс, предстоит некоторая работа: проверить, есть ли такой блок в
+буферном кэше, если нет – подгрузить его с диска. Затем пройтись по всем строкам
+блока (линейным перебором) и найти ту, что подходит условию.</p>
+
+<p>В редких случаях можно срезать угол: взять данные только из индекса, не обращаясь к диску.</p>
+
+<p>Если выполнить такой запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">id</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">123456</span>
+</code></pre></div></div>
+
+<p>, то значение <code class="language-plaintext highlighter-rouge">id</code> будет взято из индекса – нет смысла обращаться в
+таблицу. Конечно, это наивный пример: мы и так знаем айдишку. Но он полезен для
+диапазонов: скажем, выбрать айдишки между 100 и 200 или &lt;= 10000. В этом случае
+они будут взяты из индекса.</p>
+
+<p>Более реалистичный пример: предположим, есть таблица пользователей. Из прошлого
+совета про ключи мы помним, что у людей должен быть суррогатный ключ, а почта
+используется для уникальности. Поэтому таблица объявлена так:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">email</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Уникальность гарантирует специальный индекс:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">unique</span> <span class="k">index</span> <span class="n">idx_users_email</span>
+<span class="k">on</span> <span class="n">users</span> <span class="p">(</span><span class="n">email</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>На практике индекс строят по выражению <code class="language-plaintext highlighter-rouge">trim(lower(email))</code>, но сейчас это не
+важно.</p>
+
+<p>Вставим миллион пользователей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">users</span>
+<span class="k">select</span> <span class="n">x</span><span class="p">,</span> <span class="n">format</span><span class="p">(</span><span class="s1">'email_%s@test.com'</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+<span class="k">from</span> <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1000000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Задача в следующем: нужно часто получать айди пользователя по его почте
+(обратный резолв). Нам передают почту, по ней мы находим айди, и все запросы
+пляшут от этого айдишника. Напишем следующий запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">id</span> <span class="k">from</span> <span class="n">users</span>
+<span class="k">where</span> <span class="n">email</span> <span class="o">=</span> <span class="s1">'email_500000@test.com'</span><span class="p">;</span>
+<span class="c1">-- 500000</span>
+</code></pre></div></div>
+
+<p>Он довольно шустрый:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌──────────────────────────────────────────
+│ Index Scan using idx_users_email on users
+│   Index Cond: (email = 'email_500000@test
+│ Planning Time: 0.155 ms
+│ Execution Time: 0.896 ms
+└──────────────────────────────────────────
+</code></pre></div></div>
+
+<p>Теперь удалим этот индекс и построим немного другой:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">drop</span> <span class="k">index</span> <span class="n">idx_users_email</span><span class="p">;</span>
+
+<span class="k">create</span> <span class="k">unique</span> <span class="k">index</span> <span class="n">idx_users_email</span>
+<span class="k">on</span> <span class="n">users</span> <span class="p">(</span><span class="n">email</span><span class="p">)</span> <span class="n">include</span> <span class="p">(</span><span class="n">id</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Такой индекс называется покрывающим из-за выражения <code class="language-plaintext highlighter-rouge">include (id)</code>. Смысл в том,
+что значение <code class="language-plaintext highlighter-rouge">id</code> хранится в дереве <code class="language-plaintext highlighter-rouge">btree</code> как метаданные. Это увеличивает
+размер индекса, зато позволяет взять указанное поле без обращения к диску. Вот
+что показывает новый план:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌───────────────────────────────────────────────
+│ Index Only Scan using idx_users_email on users
+│   Index Cond: (email = 'email_500000@test.com'
+│   Heap Fetches: 0
+│ Planning Time: 0.830 ms
+│ Execution Time: 0.141 ms
+└───────────────────────────────────────────────
+</code></pre></div></div>
+
+<p>Обратите внимание на “Index Only Scan” – только индекс без обращения к
+диску. Время выполнения ниже, стоимость тоже.</p>
+
+<p>Если прогреть индекс <code class="language-plaintext highlighter-rouge">idx_users_email</code> (см. прошлый совет), он будет находиться
+в памяти. В этом случае резолв айдишки по почте не отличается от Redis: все
+происходит в памяти без обращения к диску.</p>
+
+<p>Прием тем эффективней, чем больше столбцов и записей в таблице. Не обязательно
+пихать его тут и там, но в нужный момент он очень полезен.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-023-pg/">Postgres №23</a>
             </h2>
 
             
@@ -124,946 +1384,61 @@
 
             <div class="entry">
                 
-                    <p><a href="/tip-020-pg/">В прошлом совете</a> упоминалось: команда <code class="language-plaintext highlighter-rouge">EXPLAIN</code> возвращает
-оценочный план запроса, при этом запрос не выполняется. Можно написать <code class="language-plaintext highlighter-rouge">EXPLAIN
-drop table students</code>, и данные не пропадут.</p>
-
-<p>Вариант <code class="language-plaintext highlighter-rouge">EXPLAIN ANALYZE</code> выполняет запрос и возвращает фактический план. Цифры
-из него будут реальными, а не оценочными. Вместе с тем Postgres покажет
-отдельное время планирования (planning) и выполнения (execute).</p>
-
-<p>Когда запросы тестируют, часто предпочитают <code class="language-plaintext highlighter-rouge">EXPLAIN ANALYZE</code>. При этом есть
-одна особенность, о которой пишут редко.</p>
-
-<p>Если выполнить один и тот же запрос дважды, то второй запуск будет гораздо
-быстрее. Разница существенна — один-два порядка! Например, первый запуск занял
-900 миллисекунд, второй — 50. Во-первых, почему так? Во-вторых, все-таки 900 или
-50? Нужно оптимизировать или так прокатит?</p>
-
-<p>Дело в том, как устроена работа с буферами. В Postgres любая работа с таблицами и индексами сводится к буферному кэшу. Это область памяти, доступная всем процессам на чтение и запись. Своего рода рабочий стол. Данные не читаются напрямую из таблицы: сперва они выгружаются в кэш и оттуда читаются строки. Запись работает в обратном порядке: страницы кэша обновляются в памяти, а затем сбрасываются на диск.</p>
-
-<p>Скорее всего, первый запуск не нашел нужных буферов в кэше и спровоцировал их
-чтение. Такой запуск называют холодным. Если выполнить запрос еще раз, данные
-окажутся в кэше, и результат получится на порядки быстрее. Это горячий
-запуск. Примерно как в Redis — прочитали из памяти без обращения к диску.</p>
-
-<p>На какой запуск ориентироваться? Иногда разработчик чувствует, что запрос не
-оптимален: первый вызов занял секунду. Долго. Он запускает еще раз и такой: а
-теперь 200 миллисекунд! Сойдет.</p>
-
-<p>Лично я ориентируюсь на первый (холодный) вариант. Рассчитывать, что каждый раз
-данные окажутся к кэше — слишком оптимистично. База выполняет много запросов
-параллельно и постоянно жонглирует страницами и кэшами. Полагайте, что чаще
-всего ваш запрос будет холодным.</p>
-
-<p>Поэтому: когда вы выполнили <code class="language-plaintext highlighter-rouge">EXPLAIN ANALYZE</code>, сделайте скриншот плана или
-скопируйте его, чтобы было с чем сравнивать. В противном случае вы не вспомните,
-каким был холодный запуск, хотя именно он отражает реальность.</p>
-
-<p>И еще одна неоднозначность. Предположим, вы тестируете запрос и часто его
-вызываете. В результате все буферы прогреты, и не ясно, как поведет себя запрос
-в холодном случае. Увы, нормального решения проблемы нет. Postgres не предлагает
-функции очистки кэша. Если это локальный Postgres, перезагрузите его, и первый
-запуск снова станет холодным. Разумеется, перезагружать удаленный сервер —
-моветон, поэтому сделайте следующее: заставьте Postgres заполнить буферный кэш
-чем-то другим. Запустите полное сканирование большой таблицы, погоняйте сложные
-запросы, и вскоре это сработает: запрос, что вы тестируете, станет холодным
-(метрика execute возрастет).</p>
-
-<p>Согласен: все это напоминает шаманство, но иногда приходится так делать.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-020-pg/">Postgres №20</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-31T00:00:00+00:00">
-        Jan 31, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В прошлый раз мы говорили вот о чем. Когда мы изучаем план запроса, то смотрим,
-было ли попадание в индекс. Однако бывает подвох: индекс был, да не тот.</p>
-
-<p>Скажем, есть запрос: показать топ-100 активных заказов по убыванию
-даты. Пожалуйста:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span>
-<span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span>
-<span class="k">limit</span> <span class="mi">100</span>
-</code></pre></div></div>
-
-<p>Для поля status создан индекс <code class="language-plaintext highlighter-rouge">idx_orders_status</code>, для <code class="language-plaintext highlighter-rouge">created_at</code> —
-<code class="language-plaintext highlighter-rouge">idx_orders_created_at</code> (по убыванию).</p>
-
-<p>Смотрим <code class="language-plaintext highlighter-rouge">EXPLAIN</code>, а там примерно такое:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>limit: 100
-  filter scan condition: status = 'active'
-    index scan idx_orders_created_at: desc
-</code></pre></div></div>
-
-<p>Разработчик смотрит: index scan был? Был. Вот и ладушки.</p>
-
-<p>На самом деле произошло вот что. Вместо того, чтобы взять только активные заказы
-и отсортировать их, Postgres сделал обратное. Он пошел по всей таблице (full
-scan), просто не в случайном порядке (как записи лежат на диске), а согласно
-индексу. При этом записи были отобраны вручную: для каждой из них выполнялась
-проверка status = ‘active’. Фактически это был full scan, только в другом
-порядке.</p>
-
-<p>В идеале нам нужен другой план:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>limit: 100
-  in-memory sort, key: created_at (desc)
-    index scan idx_orders_status condition: status = 'active'
-</code></pre></div></div>
-
-<p>Этот план читают так. Сначала Postgres выбирает активные заказы по
-индексу. Ожидается, что в таблице много завершенных заказов, поэтому у активных
-будет высокая селективность. Далее эти заказы сортируются в памяти по created_at
-(уже без всякого индекса) и берутся первые сто.</p>
-
-<p>Почему был первый план, а не второй? Во-первых, индекса на <code class="language-plaintext highlighter-rouge">status</code> может не
-быть. Если он есть, у значения active низкая селективность: доля активных
-заказов высокая. Может быть, настало время обновить статистику командой
-<code class="language-plaintext highlighter-rouge">analyze</code>, и значение <code class="language-plaintext highlighter-rouge">active</code> уйдет из массива частых значений, которые нельзя
-брать в индекс. Наконец, можно признать, что тут ничего не поделаешь и мы
-согласы жить с первым планом, а не вторым. Возможны и другие варианты, их
-смотрят по ситуации.</p>
-
-<p>Общий принцип такой. Часто фильтры и сортировка тянут одеяло на себя. Postgres
-должен решить, что выгоднее: отсортировать по индексу и пройтись вручную или
-наоборот: сначала отсечь по индексу и отсортировать в памяти. Второй вариант
-предпочтительней: когда выборка мала, любая операция над ней дешева: сортировка,
-группировка и так далее. Стремитесь к тому, чтобы <code class="language-plaintext highlighter-rouge">WHERE</code> отсекал как можно
-больше записей, и только потом вступали в действие другие операции.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-019-pg/">Postgres №19</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-31T00:00:00+00:00">
-        Jan 31, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Чтобы узнать план запроса, предварите его командой <code class="language-plaintext highlighter-rouge">EXPLAIN</code>:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>explain select * from applications;
-
-Seq Scan on applications
-  (cost=0.00..359524.33 rows=965633 width=1745)
-</code></pre></div></div>
-
-<p>Эта команда НЕ выполнит запрос, а только вернет его план и приблизительные
-оценки.</p>
-
-<p>План представляет дерево узлов; вложенность определяется пробелами слева. План
-читают от вложенных узлов к корню. Графические программы вроде PGAdmin
-показывают его в виде графа. У каждого узла как минимум три характеристики:
-стоимость (cost), число записей (rows) и средняя длина строки (width).</p>
-
-<p>Стоимость (cost) – это условные попугаи, в которых измеряется каждая операция. С
-помощью глобальных настроек можно задать свою стоимость некоторым операциям, но
-обычно это ни к чему. Кроме того, стоимость можно задать функциям при их
-объявлении.</p>
-
-<p>Число записей (rows) – ожидаемое число записей, которые произведет узел. Для них
-рассчитана средняя длина в байтах. Эти числа берутся из статистики и могут быть
-неточны.</p>
-
-<p>Стоимость выражается двумя цифрами: X..Y. Первая цифра – столько усилий уйдет на
-то, чтобы произвести первую запись. Вторая – последнюю, то есть все остальное.</p>
-
-<p>Зачем две цифры? Дело в том, что даже когда запрос производит много записей,
-важно знать, сколько усилий требует предварительная работа. Например, у обхода
-большой таблицы первый кост маленький, а второй – большой. Это нормально, потому
-что записи передаются следующему узлу без задержки. Если же добавить
-группировку, то следующий узел не получит данные, пока не выполнится
-группировка. Из-за этого первый кост будет большим. В идеале нужно держать его
-маленьким, чтобы клиент сразу начал получать строки.</p>
-
-<p>У команды explain много параметров, чтобы собрать дополнительные метрики
-узлов. Например, время в секундах, число прочитанных страниц, попадание в
-буферный кэш. Самый важный параметр называется <code class="language-plaintext highlighter-rouge">ANALYZE</code>. С ним запрос будет
-выполнен, и метрики будут реальными, а не оценочными.</p>
-
-<p>Модуль <code class="language-plaintext highlighter-rouge">auto_explain</code> автоматически логирует план запросов, которые выполнялись
-дольше порога, например одной секунды. Иногда его включают на проде.</p>
-
-<p>Читать план тяжело, этот навык приходит с годами. Вы должны точно понимать,
-какую информацию ищете и почему ее там нет. В простом случае вас интересует,
-использовался ли индекс. Вы запускаете explain analyze и смотрите, был ли узел с
-типом “index scan”.</p>
-
-<p>Узел “index only scan” означает, что данные получены из индекса без обращения к
-таблице. Это самый жир, лучше которого ничего не бывает. Узел “bitmap index
-scan” означает построение битовой карты, где каждый бит — номер блока. Такой
-обход используется для совмещения нескольких индексов, и он тоже хорош.</p>
-
-<p>Узел “full seq scan” означает полный обход таблицы. Это нормально, если таблица
-мала или нужна ее большая часть. Если вы рассчитывали на индекс, это повод
-пересмотреть его.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-018-pg/">Postgres №18</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-31T00:00:00+00:00">
-        Jan 31, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Когда Postgres выполняет запрос, он строит план. Это сложная задача: сперва
-нужно распрасить запрос, построить дерево, проверить синтаксис. Затем строится
-логический план: здесь некоторые шаги разбиваются на подшаги, а другие,
-наоборот, группируются в один. На последнем этапе выводится физический план: в
-какую таблицу пойти, брать индекс или нет, в каком порядке выполнить джоины.</p>
-
-<p>Парсинг запроса протекает достаточно быстро, потому что это чистая
-функция. Физический план, наоборот, дорогой. Вспомним: для того, чтобы
-определить, использовать индекс или нет, Postgres должен проверить, сколько в
-среднем строк в таблице; если она маленькая, проще сделать full scan. Далее
-нужно проверить, не является ли значение частым (с низкой селективностью). При
-анализе джоинов число комбинаций растет факториалом, поэтому Postgres применяет
-разные эвристики.</p>
-
-<p>Подготовленное выражение – это запрос, который прошел этапы выше, и для него
-построен план. Далее его можно выполнить с разными параметрами, и (в идеале)
-план будет переиспользоваться. В идеале – потому что даже когда подготовленное
-выражение готово, оно не гарантирует применения плана. Если параметров нет,
-Postgres использует план. Если выражение вызывается с разными параметрами,
-Postgres ведет хеш-таблицу: параметры -&gt; план -&gt; время. Для одинаковых
-параметров план будет один и тот же. Накопив пять вызовов с разными параметрами,
-Postgres наконец-то определится с планом (с минимальным временем), и далее он
-используется всегда.</p>
-
-<p>Некоторые клиенты к Postgres ведут свой кэш вида SQL -&gt;
-preparedStatement. Каждый раз когда выполняется запрос, клиент ищет айди
-подготовленного выражения во внутреннем кэше. Если он есть, вызывается команда
-“выполни выражение foobar с такими-то параметрами” (аналог execute). Если
-Postgres ругнулся, что такого выражения нет, эта ошибка перехватывается, и
-посылается команда “тогда подготовь этот SQL и назначь ему имя foobar”. Далее
-все повторяется.</p>
-
-<p>Подготовленные выражения живут в рамках одного соединения с БД. Это особенно
-важно для пула соединений: когда мы выполняем запросы, то заимствуем подключение
-из пула, и они могут быть разными. Клиент учитывает это: кэш подготовленных
-выражений ведется в разрезе подключения. По мере ротации подключений
-подготовленные выражения распространяются по ним.</p>
-
-<p>Пожалуй, в этом совете нечего взять на заметку, разве что подумать, сколько
-работы делают клиентские библиотеки помимо основных обязанностей. Заодно это
-плавный переход к теме планов и их анализа.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-017-pg/">Postgres №17</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-31T00:00:00+00:00">
-        Jan 31, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/uuid/" rel="tag">uuid</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Наверное, вы много слышали про UUID версии 7. Дело в том, что недавно его
-утвердили окончательно, и он появился в Postgres 18. До этого люди писали свой
-UUID на коленке, но теперь все официально.</p>
-
-<p>В целом UUID – это контейнер из 128 бит. Первые несколько содержат информацию о
-версии, остальное заполняется в зависимости от нее. Самый популярный стандарт
-сегодня – UUID 4, который полностью случаен. Есть и другие алгоритмы: например,
-1 и 2 использовали MAC-адрес машины, на которой генерировались, и таким образом
-раскрывали системную инфу.</p>
-
-<p>Чем хороша версия 7? Ее первые 48 битов содержат время Unix в миллисекундах. Это
-значит, такие ключи сохраняют порядок в разрезе тысячной секунды. Кроме того, из
-него можно извлечь дату и время, а также получить UUID из времени, зная, как
-заполнить хвост. Уникальность плюс время, два в одном.</p>
-
-<p>Существует три подмножества UUID v7. Они различаются тем, как заполняется
-хвост. Версия a) хвост заполняется рандомом. Версия b) используется возрастающий
-счетчик из 12 бит, остальное – рандом. Версия c) используется два счетчика: 12 и
-10 бит (могу быть неточным, читал спеку давно).</p>
-
-<p>Счетчики в хвосте важны для супер-точных систем, например трейдинга. Лично я не
-сталкивался с ситуацией, когда порядка в рамках тысячной секунды недостаточно.</p>
-
-<p>Как я уже рассказывал, UUID v7 отлично подходит на роль первичного
-ключа. Во-первых, если у вас числовые айдишки, вы становитесь заложником
-базы. Только она назначает айдишки сущностям. Это становится проблемой в
-распределенных системах, очередях задач. Пока сущность не вставилась в базу,
-можно наначить ей временный айди, но это лишнее усложнение.</p>
-
-<p>Наоборот, в случае UUID можно присвоить сущности ключ до вставки в базу,
-например:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code># python
-user_id = generate_uuid()
-profile_id = generate_uuid()
-
-# sql
-insert into users (id) values (user_id)
-
-insert into profiles (id, user_id)
-values (profile_id, user_id)
-</code></pre></div></div>
-
-<p>Оба запроса можно выполнить, не обращаясь к полю <code class="language-plaintext highlighter-rouge">generated_id</code> результата.</p>
-
-<p>Говорят: UUID длиней числовой айдишки, это раздувание таблицы. Вспомним, что
-UUIDv7 = id + created_at. Так или иначе нужно хранить время создания
-сущности. Типы timestamp(tz) занимают 8 байт, тип biginteger/bigserial – тоже 8
-байт. В сумме 16, а это столько же, сколько занимает UUID. Все сходится.</p>
-
-<p>Главное: UUIDv4 (полностью случайный) не очень подходит для индексов btree. Если
-добавлять в него значения возрастанию, они будут наполнять бакеты
-последовательно. Примерно как фигурки в Тетрисе, когда профессиональные игроки
-укладывают их слева направо. Если данные случайны, фигурки падают в разные
-бакеты. Из-за этого выше фрагментация, а кроме того, часто срабатывает
-перераспределение узлов.</p>
-
-<p>Похожая беда с обходом индекса. Когда мы обходим btree-индекс с числами, то
-порядок блоков почти совпадает с порядком ключей, например:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>id   block
-1 -&gt; 1001
-2 -&gt; 1001
-3 -&gt; 1002
-</code></pre></div></div>
-
-<p>Если у нас уиды, маппинг будет такой:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>id                           block
-b7b0547b-...-148889ec0602 -&gt; 51451
-d1897a03-...-520566c5c9a7 -&gt; 13
-ef0093d3-...-26e923a66fe4 -&gt; 7232
-</code></pre></div></div>
-
-<p>Будет много случайного доступа к файлу, и обход такого индекса медленней, чем с
-числовыми айдишками.</p>
-
-<p>К счастью, седьмой уид сводит проблему на нет, так что пользуйтесь!</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-016-pg/">Postgres №16</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-31T00:00:00+00:00">
-        Jan 31, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Разберем ситуацию, когда индекс есть, но не используется.</p>
-
-<p>Предположим, в системе есть пользователи, и каждый указывает город:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
-  <span class="n">id</span> <span class="n">uuid</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-  <span class="n">name</span> <span class="nb">text</span><span class="p">,</span>
-  <span class="n">city</span> <span class="nb">text</span>
-<span class="p">)</span>
-</code></pre></div></div>
-
-<p>В реальности поле <code class="language-plaintext highlighter-rouge">city</code> ссылается на таблицу городов, но сейчас это не важно –
-оставим текст. Разработчик создал индекс на город:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">idx_user_city</span>
-<span class="k">using</span> <span class="n">btree</span> <span class="k">on</span> <span class="n">users</span><span class="p">(</span><span class="n">city</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Выполняет запрос, чтобы найти пользователей из Москвы:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">city</span> <span class="o">=</span> <span class="s1">'Moscow'</span>
-</code></pre></div></div>
-
-<p>Смотрит план, а там full scan. Почему?</p>
-
-<p>Самое важное: Postgres никогда не использует индекс просто потому, что он
-есть. Индекс берется в работу, только если а) по нему собрана статистика и б)
-она показывает, что индекс дешевле full scan.</p>
-
-<p>Разберем оба условия. Статистика по каждой таблице, ее колонке и индексу
-хранится в каталоге <code class="language-plaintext highlighter-rouge">pg_statistics</code>. Это очень низкоуровневые данные. В них
-записаны наиболее частые значения колонок, их гистограмма, приблизительные
-диапазоны значений. Поверх <code class="language-plaintext highlighter-rouge">pg_statistics</code> создана вьюха <code class="language-plaintext highlighter-rouge">pg_stats</code>, которая
-удобнее в работе и проверяет права на таблицы.</p>
-
-<p>Статистику собирает специальный процесс по расписанию. Если вы только что
-создали индекс, статистики для него нет. Обновите ее командой:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">analyze</span> <span class="n">users</span>
-</code></pre></div></div>
-
-<p>В идеале <code class="language-plaintext highlighter-rouge">analyze</code> нужно добавлять в миграции, которые создают или меняют
-индексы, чтобы сразу после их применения индекс подхватился.</p>
-
-<p>Итак, статистика есть, но индекс “мигает” – то используется, то нет. Например,
-ищем пользователей из Читы, попадаем в индекс:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">city</span> <span class="o">=</span> <span class="s1">'Chita'</span>
-<span class="cm">/* index scan on idx_user_city ... */</span>
-</code></pre></div></div>
-
-<p>А если из Москвы, будет full scan:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">city</span> <span class="o">=</span> <span class="s1">'Moscow'</span>
-<span class="cm">/* full seq scan on users ... */</span>
-</code></pre></div></div>
-
-<p>В чем дело? Ответ – селективность, она же избирательность. Так называют долю
-найденных записей относительно их общего числа. С селективностью есть путаница:
-разные учебники по-разному трактуют этот показатель. Одни говорят: если процент
-малый (1-5%), то селективность высокая, а если большой (30 и выше) – то
-низкая. Другие наоборот: малый процент – низкая селективность, высокий —
-большая. Я предпочитаю первый (обратный) вариант: чем меньше записей охватывает
-условие, тем точнее (выше) селективность.</p>
-
-<p>Если проверить, сколько в базе пользователей из какого города, то окажется
-следующее. Из Читы – три человека (высокая селективность), а из Москвы – триста
-тысяч (крайне низкая). Москва окажется в каталоге <code class="language-plaintext highlighter-rouge">pg_statistics</code> в колонке
-“частые значения” – сигнал к тому, чтобы не брать индекс в работу. При анализе
-запроса Postgres это проверит и возьмет full scan. Москвичи пролетают!</p>
-
-<p>Какова должна быть селективность значения? Реальность такова, что Postgres берет
-в работу индекс, если селективность условия не превышает 5-10 процентов. Это
-довольно мало! Именно поэтому нет смысла создавать индексы на логические флаги
-(true/false), статусы (<code class="language-plaintext highlighter-rouge">active</code>, <code class="language-plaintext highlighter-rouge">pending</code>, <code class="language-plaintext highlighter-rouge">done</code>) и другие значения с малым
-разбросом. Их селективность слишком низкая (высокая доля выборки).</p>
-
-<p>Для таких значений используйте частичные индексы <a href="/tip-005-pg/">(см. прошлый
-совет)</a>. Например, только активные заказы, только москвичи и так далее. И
-потом ищите уже внутри этого подмножества.</p>
-
-<p>Почему Postgres предпочитает full scan для условия, которое покрывает 30%
-таблицы? Ведь прочитать треть таблицы быстрее, чем всю? Дело в том, что обход
-индекса возвращает не сами строки, а номера блоков, где они находятся. Блоки
-идут не один за другим, а разбросаны по всему файлу. Даже если отсортировать
-номера по возрастанию, между ними могут быть большие промежутки. В результате
-будет много дисковых операций. На крутящихся жестких дисках это приводило к
-частому переносу головки.</p>
-
-<p>Напротив, чтение всех блоков подряд относительно дешево. При таком методе
-Postgres читает сразу много блоков, а не по одному.</p>
-
-<p>Итого: выполняйте <code class="language-plaintext highlighter-rouge">analyze</code>, проверяйте селективность условия.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/pg-book-json-ch01/">Глава 1. Введение в документы</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-25T00:00:00+00:00">
-        Jan 25, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/json/" rel="tag">json</a>, <a href="/tag/book/" rel="tag">book</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <h2 id="главы">Главы</h2>
-
-<ol>
-  <li><a href="/pg-book-json-ch01/">Введение в документы</a></li>
-  <li><a href="/pg-book-json-ch02/">Базовые возможности JSON</a></li>
-  <li><a href="/pg-book-json-ch03/">JSON в таблицах</a></li>
-  <li>Индексирование JSON</li>
-  <li>Ссылки и ограничения в документах</li>
-  <li>Язык путей JSONPath</li>
-  <li>Отчеты и функции</li>
-  <li>Функции на языке Python</li>
-  <li>Версионирование и архивация документов</li>
-  <li>Релевантный поиск</li>
-</ol>
-
-<h2>
-
-    Содержание
-
-</h2>
-
-<ul id="toc-item-pg-book-json-ch01">
-  <li><a href="#главы" id="toc-item-pg-book-json-ch01-главы">Главы</a></li>
-  <li><a href="#табличное-мышление" id="toc-item-pg-book-json-ch01-табличное-мышление">Табличное мышление</a></li>
-  <li><a href="#подход-nosql" id="toc-item-pg-book-json-ch01-подход-nosql">Подход NoSQL</a></li>
-  <li><a href="#знакомство-с-документами" id="toc-item-pg-book-json-ch01-знакомство-с-документами">Знакомство с документами</a></li>
-  <li><a href="#доводы-в-пользу-документов" id="toc-item-pg-book-json-ch01-доводы-в-пользу-документов">Доводы в пользу документов</a></li>
-  <li><a href="#задачи-которые-решают-документы" id="toc-item-pg-book-json-ch01-задачи-которые-решают-документы">Задачи, которые решают документы</a></li>
-  <li><a href="#слабые-стороны-документов" id="toc-item-pg-book-json-ch01-слабые-стороны-документов">Слабые стороны документов</a></li>
-  <li><a href="#замечание-о-переоценке" id="toc-item-pg-book-json-ch01-замечание-о-переоценке">Замечание о переоценке</a></li>
-  <li><a href="#почему-postgres" id="toc-item-pg-book-json-ch01-почему-postgres">Почему Postgres</a></li>
-  <li><a href="#тайное-преимущество-sql" id="toc-item-pg-book-json-ch01-тайное-преимущество-sql">Тайное преимущество SQL</a></li>
-</ul>
-
-<p><em>В первой главе мы рассмотрим реляционные и документо-ориентированные базы
-данных. Мы обсудим их сильные и слабые стороны, сценарии, когда одному виду
-предпочитают другой и наоборот. Здесь же мы коснемся понятия документа:
-структуры данных, которая ввиду сложности плохо ложится на реляционные
-таблицы. Мы узнаем, для каких задач выбирают документы и чем может быть полезен
-Postgres.</em></p>
-
-<h2 id="табличное-мышление">Табличное мышление</h2>
-
-<p>Если вы бэкенд-разработчик, то скорее всего работали с реляционными базами
-данных. Наиболее известные их представители — это MySQL, ее форк MariaDB,
-PostgreSQL, Microsoft SQL Server, Oracle DB. Реляционные базы называются так
-из-за лежащей в их основе <a href="https://ru.wikipedia.org/wiki/%D0%A0%D0%B5%D0%BB%D1%8F%D1%86%D0%B8%D0%BE%D0%BD%D0%BD%D0%B0%D1%8F_%D0%B0%D0%BB%D0%B3%D0%B5%D0%B1%D1%80%D0%B0">реляционной алгебры</a> (она же алгебра
-отношений). Это математический аппарат, который строится на отношениях
-(множествах кортежей) и операций над ними (проекция, объединение, пересечение и
-другие).</p>
-
-<p>Чтобы работать с базой на прикладном уровне, реляционная алгебра не
-требуется. Гораздо важнее следствия математической модели:</p>
-
-<ul>
-  <li>любой массив данных является таблицей;</li>
-  <li>любая операция над таблицей порождает таблицу.</li>
-</ul>
-
-<p>В каждой базе найдется техника, которая не подходит под эти правила. Однако
-общую картину это не меняет: в основе реляционных баз лежат таблицы и операции
-над ними.</p>
-
-
-                    <p><a href="/pg-book-json-ch01/">Read more &rarr;</a></p>
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-015-pg/">Postgres №15</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-23T00:00:00+00:00">
-        Jan 23, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Пагинация, продолжение.</p>
-
-<p>Вернемся к случаю, когда нужна пагинация по убыванию времени <code class="language-plaintext highlighter-rouge">(created_at,
-updated_at)</code> и так далее. Этот критерий встречается так часто, что для него есть
-лазейка.</p>
-
-<p>В прошлый раз мы использовали кортеж <code class="language-plaintext highlighter-rouge">(created_at, id)</code>. Идея в том, что
-поскольку <code class="language-plaintext highlighter-rouge">created_at</code> не уникален, он не дает точного положения в таблице. Но
-так как id уникален, их комбинация – тоже уникальна.</p>
-
-<p>От кортежа можно избавиться, если в качестве ID используется UUID v7. Дело в
-том, что v7 совмещает в себе эти два свойства: время и уникальность. Существуют
-разные подвиды UUID v7, но не зависимо от них пагинация будет:</p>
-
-<ul>
-  <li>точно попадать в границы;</li>
-  <li>использовать btree индекс.</li>
-</ul>
-
-<p>Итак, если у вас API и нужна пагинация, ваши варианты:</p>
-
-<ul>
-  <li>
-    <p>limit и offset; убедитесь, что offset не превышает какого-то разумного числа,
-например тысячи. Иначе вас будут парсить.</p>
-  </li>
-  <li>
-    <p>keyset: комбинация полей <code class="language-plaintext highlighter-rouge">(some_field + id)</code> для уникальности. Требует
-отдельного индекса.</p>
-  </li>
-  <li>
-    <p>UUIDv7 – если требуется пагинация по <code class="language-plaintext highlighter-rouge">created_at</code>. Это частый случай, поэтому
-рассмотрите его.</p>
-  </li>
-</ul>
-
-<p>Перейдем к пагинации, которая используется не в API, а для служебных
-нужд. Например, в миграциях, переносе данных и так далее. Нужно обойти огромную
-таблицу, при этом выгрузить ее в память нельзя – слишком большая (например, 100
-миллионов записей).</p>
-
-<p>Один из способов – использовать курсор и FETCH API. Апишка у него довольно
-простая:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">BEGIN</span><span class="p">;</span>
-
-<span class="k">DECLARE</span> <span class="n">cur_foo</span> <span class="k">CURSOR</span> <span class="k">FOR</span> <span class="k">SELECT</span> <span class="o">*</span> <span class="k">FROM</span> <span class="n">items</span><span class="p">;</span>
-
-<span class="k">FETCH</span> <span class="k">FORWARD</span> <span class="mi">100</span> <span class="k">FROM</span> <span class="n">cur_foo</span><span class="p">;</span>
-<span class="k">FETCH</span> <span class="k">FORWARD</span> <span class="mi">100</span> <span class="k">FROM</span> <span class="n">cur_foo</span><span class="p">;</span>
-<span class="k">FETCH</span> <span class="k">FORWARD</span> <span class="mi">100</span> <span class="k">FROM</span> <span class="n">cur_foo</span><span class="p">;</span>
-<span class="p">...</span>
-<span class="k">CLOSE</span> <span class="n">cur_foo</span><span class="p">;</span>
-<span class="k">COMMIT</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Объявляем курсор, затем в цикле вытягиваем по 100 записей, пока результат не
-пустой. В конце закрываем курсор.</p>
-
-<p>Казалось бы, вот он – святой Грааль. Но беда в том, что курсор требует
-транзакции. В момент открытия он запоминает текущий снимок (номер транзакции) и
-просматривает записи, версия которых не превышает его. Чтобы пользоваться
-курсором, нужно держать транзакцию в течение всего цикла. Для больших таблиц это
-дорого, поэтому подходит только для всяких ночных скриптов.</p>
-
-<p>Кроме того, курсор привязан к конкретному соединению с БД. Использовать их в
-HTTP API невозможно.</p>
-
-<p>Другой способ обойти большую таблицу – сдампить ее в файл при помощи COPY
-(см. <a href="/tip-006-pg/">прошлый совет</a>). Чтобы таблица не заняла весь диск, ее
-сжимают в gzip. В результате у вас оказывается файл <code class="language-plaintext highlighter-rouge">my_table.gzip</code>, вы
-отрываете его и спокойно парсите. Идея в том, чтобы забрать данные из базы как
-можно скорее и потом не мучить ее пагинацией. Если скрипт упадет, не придется
-насиловать базу снова – у вас уже есть файл.</p>
-
-<p>Третий способ – использовать драйвер, который позволяет обрабатывать записи в
-полете. Например, мой <a href="https://github.com/igrishaev/pg2">pg2</a>. Функция <code class="language-plaintext highlighter-rouge">execute</code> принимает запрос и всякие
-опции. Среди прочих можно передать редьюсер – функцию трех тел:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(fn
-  ([]
-   (make-acc ...))
-  ([acc row]
-   (conj acc row))
-  ([acc]
-   (finalize acc)))
-</code></pre></div></div>
-
-<p>Тело без аргументов – инициатор аккумулятора (может быть мутабельным), тело с
-одним аргументом – финализатор аккумулятора, с двумя – приращение записи к
-аккумулятору. Из коробки доступны разные редьюсеры (см документацию). Легко
-написать свой, который будет отправлять каждую строку в сеть, в асинхронный
-канал и так далее. И все это – в полете, то есть по мере получения сообщений от
-Postgres, без исчерпания всей памяти.</p>
-
-<p>Полагаю, это все, что можно сказать про пагинацию.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-014-pg/">Postgres №14</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-23T00:00:00+00:00">
-        Jan 23, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Итак, пагинация. Прежде всего, совет такой: если можете избежать пагинации,
-сделайте это. Пагинация — это состояние и его проброс. Лишние заморочки,
-пространство для багов.</p>
-
-<p>Пример, когда пагинации можно избежать — поиск. Как правило, релевантность
-поиска резко снижается с продвижением по выдаче. Условно, первые 10 позиций
-точные, еще десять — более-менее, остальное — просто чтобы заполнить
-выдачу. Вспомните, как давно вы были на пятой странице Гугла? Если нужной
-информации нет, лучше отправить другой запрос, чем скроллить страницы. Поэтому
-договоритесь: в поиске выдаем 50-100 позиций и никаких пагинаций. Живые люди не
-будут ей пользоваться, а вы только откроете ворота различным ботам и парсерам.</p>
-
-<p>Конечно, иногда пагинация необходима. Простой способ ее добавить — это выражения
-LIMIT и OFFSET. Дешево и сердито, но с недостатками. Во-первых, на больших
-смещениях выборка линейно замедляется. Это все равно что перематывать
-аудиокассету каждый раз с начала. В моей таблице миллион документов, и выражение</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="k">table</span> <span class="k">limit</span> <span class="mi">1</span> <span class="k">offset</span> <span class="mi">500000</span>
-</code></pre></div></div>
-
-<p>занимает 7 секунд. Целая вечность!</p>
-
-<p>Второй минус — LIMIT-OFFSET неконсистентны. В перерывах между запросами может
-добавиться новая запись, и произойдет наслоение. Я видел такое много раз:
-листаешь первую страницу, переходишь на вторую и видишь наверху заголовок,
-который был внизу первой страницы.</p>
-
-<p>Дело в том, что пока я мотал первую страницу, добавили новую статью, и окно
-сместилось. Для новостного сайта это не страшно, но представьте, что у нас
-аналог Твиттера. Пока мы читали первые 20 твитов, кто-то наспамил еще
-двадцать. В результате вторая страница может полностью состоять из твитов,
-которые мы только что видели на первой! Это никуда не годится.</p>
-
-<p>Чтобы этого избежать, используют пагинацию по уникальному btree-индексу. Такой
-индекс однозначно определяет позицию в таблице: новые записи не сместят окно. У
-каждой таблицы есть такой индекс — это первичный ключ (id). Если логика
-позволяет листать по id, этим нужно воспользоваться. Пример:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">id</span> <span class="o">&lt;</span> <span class="o">?</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">id</span> <span class="p">(</span><span class="k">desc</span><span class="p">)</span>
-<span class="k">limit</span> <span class="mi">100</span>
-</code></pre></div></div>
-
-<p><code class="language-plaintext highlighter-rouge">Id</code> последней записи запоминается и передается в следующий запрос. Продолжаем
-до тех пор, пока выборка не пустая.</p>
-
-<p>Как быть, если id случаен, и требуется сортировка по дате создания? Задача
-усложняется, потому что дата не уникальна. Записи могут быть вставлены импортом
-и поэтому иметь одну дату. Граница окна пагинации может попасть на серию записей
-с одинаковой датой. Если запомнить дату последней записи и выполнить запрос</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span>
-<span class="k">where</span> <span class="n">created_at</span> <span class="o">&lt;</span> <span class="o">?</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span>
-<span class="k">limit</span> <span class="mi">100</span>
-</code></pre></div></div>
-
-<p>, мы пропустим записи, которые не показали.</p>
-
-<p>Решение в следующем: уникальный атрибут + неуникальный дают уникальное комбо. В
-самом деле: если поле <code class="language-plaintext highlighter-rouge">created_at</code> не уникальное, то пара <code class="language-plaintext highlighter-rouge">(created_at, id)</code> —
-уникальная. Поэтому заводим составной индекс на пару <code class="language-plaintext highlighter-rouge">(created_at desc, id
-desc)</code> и листаем по нему:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span>
-<span class="k">where</span> <span class="p">(</span><span class="n">created_at</span><span class="p">,</span> <span class="n">id</span><span class="p">)</span> <span class="o">&lt;</span> <span class="p">(</span><span class="o">?</span><span class="p">,</span> <span class="o">?</span><span class="p">)</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span><span class="p">,</span> <span class="n">id</span> <span class="k">desc</span>
-<span class="k">limit</span> <span class="mi">100</span>
-</code></pre></div></div>
-
-<p>Обратите внимание, мы сравниваем кортежи (они сравниваются поэлементно). Общий
-принцип такой, что создается уникальный индекс на пару (поле, id). Он называется
-keyset, потому что “набор ключей”.</p>
-
-<p>Каждая сотрировка (возраст, имя, зарплата) требует своей пары, поэтому
-договоритесь о них заранее.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-013-pg/">Postgres №13</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-23T00:00:00+00:00">
-        Jan 23, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Работая с ORM, избегайте проблемы 1 + N. Это когда вы обращаетесь к ссылочным
-полям, и база подтягивает сущности штучно, а не разом.</p>
-
-<p>Пример: магазин товаров, сущность <code class="language-plaintext highlighter-rouge">Order</code> ссылается на <code class="language-plaintext highlighter-rouge">User</code> (кто заказал) и
-<code class="language-plaintext highlighter-rouge">Item</code> (что заказали). Модель выглядит так:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Order</span><span class="p">(</span><span class="n">model</span><span class="p">.</span><span class="n">Model</span><span class="p">):</span>
-  <span class="n">status</span> <span class="o">=</span> <span class="n">EnunField</span><span class="p">(</span><span class="n">active</span><span class="p">,</span> <span class="n">cancelled</span><span class="p">,</span> <span class="n">pending</span><span class="p">...)</span>
-  <span class="n">created_at</span> <span class="o">=</span> <span class="n">DateTimeFiled</span><span class="p">(</span><span class="n">now</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
-  <span class="n">user</span> <span class="o">=</span> <span class="n">ForeignField</span><span class="p">(</span><span class="n">class</span><span class="o">=</span><span class="n">User</span><span class="p">)</span>
-  <span class="n">item</span> <span class="o">=</span> <span class="n">ForeignField</span><span class="p">(</span><span class="n">class</span><span class="o">=</span><span class="n">Item</span><span class="p">)</span>
-</code></pre></div></div>
-
-<p>Типичная задача — вывести активные заказы с информацией о клиенте и
-товаре. Разработчик делает так:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">orders</span> <span class="o">=</span> <span class="n">Orders</span><span class="p">.</span><span class="nb">filter</span><span class="p">(</span><span class="n">status</span><span class="o">=</span><span class="n">active</span><span class="p">)</span> \
-  <span class="p">.</span><span class="n">order_by</span><span class="p">(</span><span class="n">created_at</span><span class="p">,</span> <span class="n">desc</span><span class="p">).</span><span class="nb">all</span><span class="p">()</span>
-</code></pre></div></div>
-
-<p>Затем он строит таблицу:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">for</span> <span class="n">order</span> <span class="ow">in</span> <span class="n">orders</span><span class="p">:</span>
-  <span class="k">print</span> <span class="n">order</span><span class="p">.</span><span class="nb">id</span><span class="p">,</span> <span class="n">order</span><span class="p">.</span><span class="n">user</span><span class="p">.</span><span class="n">name</span><span class="p">,</span> <span class="n">order</span><span class="p">.</span><span class="n">item</span><span class="p">.</span><span class="n">title</span>
-</code></pre></div></div>
-
-<p>Что произойдет под капотом? Сначала выполнится запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span> <span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Тут все в порядке. Однако в цикле, когда происходит обращение к полям <code class="language-plaintext highlighter-rouge">user</code> и
-<code class="language-plaintext highlighter-rouge">item</code>, выполняются запросы <code class="language-plaintext highlighter-rouge">get-by-id</code>:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">1</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">2</span>
-<span class="p">...</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">100</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">200</span>
-<span class="p">...</span>
-</code></pre></div></div>
-
-<p>В среднем запросов будет 1 + 2N. На практике в одном заказе может быть много
-товаров, а кроме того, возможны подгрузки других сущностей. Скажем, товар хранит
-ссылку на продавца. Если в таблице должен быть продавец, это будет еще +N
-запросов.</p>
-
-<p>Именно для таких случаев нужны прошлые советы. Во-первых, запросы должны быть
-видны в консоли, и разработчик обязан смотреть, что идет в базу. Во-вторых, на
-эту логику должен быть тест, который считает запросы.</p>
-
-<p>Проблема 1 + N лечится разными способами. Первый — ORM может джойнить сущности,
-то есть выполнить запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span>
-<span class="k">left</span> <span class="k">join</span> <span class="n">users</span> <span class="k">on</span> <span class="n">orders</span><span class="p">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="k">user</span><span class="p">.</span><span class="n">id</span>
-<span class="k">left</span> <span class="k">join</span> <span class="n">items</span> <span class="k">on</span> <span class="k">order</span><span class="p">.</span><span class="n">item_id</span> <span class="o">=</span> <span class="n">item</span><span class="p">.</span><span class="n">id</span>
-<span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Такой джоин может нарушить пагинацию по limit/offset, но это страшно. Можно либо
-не использовать ее вообще, либо взять пагинацию по keyset, либо заменить limit
-выражением fetch.</p>
-
-<p>Другой способ — вытянуть записи по слоям на уровне приложения. Первый слой — это
-orders. Как только происходит обращение к user, ORM собирает все user_id и
-выполнят запрос</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="k">in</span> <span class="p">(</span><span class="o">?</span><span class="p">,</span> <span class="o">?</span><span class="p">,</span> <span class="o">?</span> <span class="p">...)</span>
-</code></pre></div></div>
-
-<p>То же самое с <code class="language-plaintext highlighter-rouge">items</code> — выгребаются уникальные <code class="language-plaintext highlighter-rouge">item_id</code>, и по ним делается
-запрос с IN.</p>
-
-<p>Некоторые ORM действуют тоньше. Если айдишников много, они выгребают смежные
-сущности кусками по 10-30. Таким образом, если нужно пройти 100 заказов, мы
-совершим 4-10 запросов, что не так страшно.</p>
-
-<p>Проблема 1 + N — настоящий бич ORM. Сколько подобных ошибок я исправил —
-затрудняюсь припомнить (и конечно, совершил сам).</p>
-
-<p>На мой взгляд, в ORM должна быть опция: кидать исключение, если смежные записи
-читаются штучно. Опция должна быть глобальной, чтобы раз и навсегда запретить
-подобные вещи. Глядишь, новички стали бы лучше понимать, что вообще происходит.</p>
+                    <p>Почти любой таблице нужен первичный ключ. Это поле или их комбинация, которая
+однозначно определяет запись. Первичный ключ уникален и не допускает <code class="language-plaintext highlighter-rouge">NULL</code>
+(обычный <code class="language-plaintext highlighter-rouge">UNIQUE</code> допускает его). Для первичного ключа автоматом строится btree
+индекс.</p>
+
+<p>Первичные ключи бывают естественными и суррогатными. К первым относятся
+различные международные коды и стандарты отрасли. Например, коды аэропортов
+назначаются однажды и не меняются. Есть всемирные классификаторы болезней. На
+заводах каждая деталь имеет свой код — это и есть естественные ключи.</p>
+
+<p>Важно, чтобы первичный ключ не раскрывал приватные данные. Скажем, серийный
+номер ноутбука состоит из частей: страна производства, код завода, номер партии,
+флаги модификаций и так далее. Не всегда безопасно выкладывать эти данные в
+общий доступ. В этом случае у записи может быть суррогатный ключ (число, UUID),
+а серийный номер хранится в отдельном поле — уникальном, но не первичном.</p>
+
+<p>Особая ситуация с людьми: попытки найти у них естественный ключ обречены на
+провал. Во-первых, комбинации ФИО, даты и места рождения не уникальны. Редко, но
+бывают полные тезки, родившиеся в один год. Кроме того, у людей все
+меняется. Женщины выходят замуж: была Иванова, стала Петрова. Мужчины тоже
+меняют имена, хоть и реже (знаю два случая). На прошлой работе коллега совершил
+гендерный переход: сменил имя и пол (не удивлюсь, если при этом пофиксил дату
+рождения).</p>
+
+<p>Если вы дизайните таблицу пользователей, электронная почта не может быть
+первичным ключом. Почта раскрывает данные: в некоторых системах она является
+самым сокровенным. Ни одна соцсеть не покажет почту пользователя, чтобы вы не
+вступили в прямой диалог. Почту предоставляет сторонний сервис, и к ней легко
+потерять доступ. Если первичный ключ пользователя — id, то почту легко сменить,
+пройдя процедуру. Если ключ — почта, придется обновить внешние ключи в десятках
+таблиц (заказы, отзывы, посты, комментарии, лайки, сообщения, фотографии,
+обращения в поддержку и так далее).</p>
+
+<p>Номера телефонов и паспортов — все это небезопасно и меняется со временем.</p>
+
+<p>На тему того, чем должен быть первичный ключ — счетчиком или UUID — я уже
+писал. Вкратце, счетчик делает вас заложником БД: только она знает, каким будет
+очередное значение. Это плохо подходит для распределенных систем. UUID
+отвязывает вас от БД, а кроме того, в нем можно хранить метаданные. Например,
+UUIDv7 содержит время, поэтому подлежит сортировке и заменяет поле
+created_at. Идентификатор Snowflake, придуманный в Твиттере, хранит коды
+региона, датацентра, сервера и другие метаданные.</p>
+
+<p>В больших дружных компаниях (банках, заводах, тюрьмах) сотрудникам назначают
+коды — нечто среднее между числами и идентификаторами. Бейджик — это и есть код
+сотрудника. Если сотрудник изменит имя или пол, админам не придется заводить
+новую запись: они перебьют поля в админке.</p>
+
+<p>Не всегда роль и человек совпадают один к одному. Скажем, один человек может
+быть двумя студентами одновременно (разные факультеты, очное-заочное и так
+далее). В этом случае есть таблица person, а таблица <code class="language-plaintext highlighter-rouge">students</code> ссылается на
+человека по внешнему ключу. Если гражданка Иванова сменила фамилию на Петрову,
+оба факультета это увидят. По аналогии в больших компаниях один человек может
+занимать несколько должностей, быть пациентом многих отделений клиники и так
+далее. Это надо учитывать.</p>
 
                 
             </div>
@@ -1076,7 +1451,7 @@ orders. Как только происходит обращение к user, ORM
         
         <a href="/page3" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 4 из 109</span>
+        <span class="page_number ">Страница 4 из 110</span>
         
         <a href="/page5" class="next">&rarr;</a>
         

@@ -106,40 +106,110 @@
         <li>
 
             <h2>
-                <a class="post-link" href="/tip-002-pg/">Postgres №2</a>
+                <a class="post-link" href="/tip-013-pg/">Postgres №13</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2026-01-15T00:00:00+00:00">
-        Jan 15, 2026
+          datetime="2026-01-23T00:00:00+00:00">
+        Jan 23, 2026
     </time>
 
-    <a href="/tag/yyyy/" rel="tag">yyyy</a>, <a href="/tag/time/" rel="tag">time</a>
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
 
 </div>
 
 
             <div class="entry">
                 
-                    <p>Новый год, подарки, “запах мандарин”…, а это значит, пришла пора сделать вот
-что. Откройте свои проекты и убедитесь, что для форматирования дат используете
-<code class="language-plaintext highlighter-rouge">yyyy-MM-dd</code>, а не <code class="language-plaintext highlighter-rouge">YYYY-MM-dd</code>. Буквы года должны быть маленькими!</p>
+                    <p>Работая с ORM, избегайте проблемы 1 + N. Это когда вы обращаетесь к ссылочным
+полям, и база подтягивает сущности штучно, а не разом.</p>
 
-<p>YYYY возвращает week-based year, а yyyy – обычный календарный. Прелесть в том,
-стреляет на границе годов. Примеры:</p>
+<p>Пример: магазин товаров, сущность <code class="language-plaintext highlighter-rouge">Order</code> ссылается на <code class="language-plaintext highlighter-rouge">User</code> (кто заказал) и
+<code class="language-plaintext highlighter-rouge">Item</code> (что заказали). Модель выглядит так:</p>
 
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(format-date (LocalDate/now) "YYYY-MM-dd")
-"2026-12-30"
-
-(format-date (LocalDate/now) "yyyy-MM-dd")
-"2025-12-30"
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Order</span><span class="p">(</span><span class="n">model</span><span class="p">.</span><span class="n">Model</span><span class="p">):</span>
+  <span class="n">status</span> <span class="o">=</span> <span class="n">EnunField</span><span class="p">(</span><span class="n">active</span><span class="p">,</span> <span class="n">cancelled</span><span class="p">,</span> <span class="n">pending</span><span class="p">...)</span>
+  <span class="n">created_at</span> <span class="o">=</span> <span class="n">DateTimeFiled</span><span class="p">(</span><span class="n">now</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+  <span class="n">user</span> <span class="o">=</span> <span class="n">ForeignField</span><span class="p">(</span><span class="n">class</span><span class="o">=</span><span class="n">User</span><span class="p">)</span>
+  <span class="n">item</span> <span class="o">=</span> <span class="n">ForeignField</span><span class="p">(</span><span class="n">class</span><span class="o">=</span><span class="n">Item</span><span class="p">)</span>
 </code></pre></div></div>
 
-<p>Если этого не учесть – мой случай – то за день до нового года файлы уедут в
-папку с 2026 годом. С чем вас и поздравляю.</p>
+<p>Типичная задача — вывести активные заказы с информацией о клиенте и
+товаре. Разработчик делает так:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">orders</span> <span class="o">=</span> <span class="n">Orders</span><span class="p">.</span><span class="nb">filter</span><span class="p">(</span><span class="n">status</span><span class="o">=</span><span class="n">active</span><span class="p">)</span> \
+  <span class="p">.</span><span class="n">order_by</span><span class="p">(</span><span class="n">created_at</span><span class="p">,</span> <span class="n">desc</span><span class="p">).</span><span class="nb">all</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Затем он строит таблицу:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">for</span> <span class="n">order</span> <span class="ow">in</span> <span class="n">orders</span><span class="p">:</span>
+  <span class="k">print</span> <span class="n">order</span><span class="p">.</span><span class="nb">id</span><span class="p">,</span> <span class="n">order</span><span class="p">.</span><span class="n">user</span><span class="p">.</span><span class="n">name</span><span class="p">,</span> <span class="n">order</span><span class="p">.</span><span class="n">item</span><span class="p">.</span><span class="n">title</span>
+</code></pre></div></div>
+
+<p>Что произойдет под капотом? Сначала выполнится запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span> <span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Тут все в порядке. Однако в цикле, когда происходит обращение к полям <code class="language-plaintext highlighter-rouge">user</code> и
+<code class="language-plaintext highlighter-rouge">item</code>, выполняются запросы <code class="language-plaintext highlighter-rouge">get-by-id</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="p">...</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">100</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">200</span>
+<span class="p">...</span>
+</code></pre></div></div>
+
+<p>В среднем запросов будет 1 + 2N. На практике в одном заказе может быть много
+товаров, а кроме того, возможны подгрузки других сущностей. Скажем, товар хранит
+ссылку на продавца. Если в таблице должен быть продавец, это будет еще +N
+запросов.</p>
+
+<p>Именно для таких случаев нужны прошлые советы. Во-первых, запросы должны быть
+видны в консоли, и разработчик обязан смотреть, что идет в базу. Во-вторых, на
+эту логику должен быть тест, который считает запросы.</p>
+
+<p>Проблема 1 + N лечится разными способами. Первый — ORM может джойнить сущности,
+то есть выполнить запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span>
+<span class="k">left</span> <span class="k">join</span> <span class="n">users</span> <span class="k">on</span> <span class="n">orders</span><span class="p">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="k">user</span><span class="p">.</span><span class="n">id</span>
+<span class="k">left</span> <span class="k">join</span> <span class="n">items</span> <span class="k">on</span> <span class="k">order</span><span class="p">.</span><span class="n">item_id</span> <span class="o">=</span> <span class="n">item</span><span class="p">.</span><span class="n">id</span>
+<span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Такой джоин может нарушить пагинацию по limit/offset, но это страшно. Можно либо
+не использовать ее вообще, либо взять пагинацию по keyset, либо заменить limit
+выражением fetch.</p>
+
+<p>Другой способ — вытянуть записи по слоям на уровне приложения. Первый слой — это
+orders. Как только происходит обращение к user, ORM собирает все user_id и
+выполнят запрос</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="k">in</span> <span class="p">(</span><span class="o">?</span><span class="p">,</span> <span class="o">?</span><span class="p">,</span> <span class="o">?</span> <span class="p">...)</span>
+</code></pre></div></div>
+
+<p>То же самое с <code class="language-plaintext highlighter-rouge">items</code> — выгребаются уникальные <code class="language-plaintext highlighter-rouge">item_id</code>, и по ним делается
+запрос с IN.</p>
+
+<p>Некоторые ORM действуют тоньше. Если айдишников много, они выгребают смежные
+сущности кусками по 10-30. Таким образом, если нужно пройти 100 заказов, мы
+совершим 4-10 запросов, что не так страшно.</p>
+
+<p>Проблема 1 + N — настоящий бич ORM. Сколько подобных ошибок я исправил —
+затрудняюсь припомнить (и конечно, совершил сам).</p>
+
+<p>На мой взгляд, в ORM должна быть опция: кидать исключение, если смежные записи
+читаются штучно. Опция должна быть глобальной, чтобы раз и навсегда запретить
+подобные вещи. Глядишь, новички стали бы лучше понимать, что вообще происходит.</p>
 
                 
             </div>
@@ -149,7 +219,622 @@
         <li>
 
             <h2>
-                <a class="post-link" href="/tip-001-pg/">Postgres №1</a>
+                <a class="post-link" href="/tip-012-pg/">Postgres №12</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-23T00:00:00+00:00">
+        Jan 23, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Дополнение <a href="/tip-011-pg/">вчерашней заметки</a> насчет запросов в базу. Смотреть
+запросы, которые выполняются во время тестов – это хорошо, можно поймать много
+кривых вещей. Но есть еще одна техника: считать запросы и проверять их
+количество. Этим вы защищаете код от ситуации, когда небольшое изменение
+накинуло +20 запросов. В ORM подобные вещи случаются часто. В основном они
+вызваны проблемой 1 + N, о которой будет следующий совет.</p>
+
+<p>Фреймворки-гиганты предлагают встроенный метод подсчета запросов. Например, в
+Django, если тестовый класс унаследован от <code class="language-plaintext highlighter-rouge">TransactionTestCase</code>, доступен метод
+<code class="language-plaintext highlighter-rouge">assertNumQueries</code>. В целом подобный тест выглядит так:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">TestSomeFunc</span><span class="p">(</span><span class="n">TestCase</span><span class="p">):</span>
+    <span class="n">dеf</span> <span class="n">test_func</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="p">.</span><span class="n">assertNumQueries</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="n">using</span><span class="o">=</span><span class="s">"db1"</span><span class="p">):</span>
+            <span class="n">some_func</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Если кто-то поправит логику, число запросов изменится, и тест не пройдет.</p>
+
+<p>Если запросов много (10 и больше), посмотрите лог и добавьте комментарий с
+распределением запросов. Так логика будет понятна хотя бы в общих чертах:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># 1 auth
+# 2 permission check
+# 4 fetch data
+# 2 update data
+# 2 send notifications
+</span></code></pre></div></div>
+
+<p>В одном проекте выяснилось: удаление сущности порождало 400 с лишним
+запросов. Разумеется, почти все они удалялись поштучно, потому что разработчики
+не дружили с БД.</p>
+
+<p>Для Django написаны в том числе сторонние сборщики запросов, их легко
+нагуглить. Полагаю, то же самое есть в Руби, Spring Boot и прочих
+комбайнах. Подсчет легко сделать в Кложе: достаточно динамической переменной и
+макроса.</p>
+
+<p>Не обязательно считать запросы во всех апишках: скажем, для <code class="language-plaintext highlighter-rouge">get-by-id</code> подсчет
+избыточен. Но удаление сущностей, сложные перемещения из одной таблицы в другую
+– очень желательно. Все для этого есть, просто воспользуйтесь.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-011-pg/">Postgres №11</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-23T00:00:00+00:00">
+        Jan 23, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Если вы работаете с базой, то должны видеть все запросы, которые в нее идут. Это
+абсолютно обязательное условие. В особой степени оно касается ORM. Когда я делаю
+ревью, и в коде используются абстракции над базой, то всегда спрашиваю: какие
+запросы производит этот код? При этом ожидаю не гадание, а лог терминала,
+приложенный PR.</p>
+
+<p>Увидеть запросы можно следующим образом. Если Postgres запущен в Докере,
+передайте в <code class="language-plaintext highlighter-rouge">command</code> ключ <code class="language-plaintext highlighter-rouge">-E</code>:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">services</span><span class="pi">:</span>
+  <span class="na">postgres</span><span class="pi">:</span>
+<span class="err"> </span><span class="na">image</span><span class="pi">:</span> <span class="s">postgres:17</span>
+ <span class="na">command</span><span class="pi">:</span> <span class="s">-E</span>
+</code></pre></div></div>
+
+<p>Если это ванильный Postgres, включите логирование всех запросов опцией:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>log_statement = 'all'
+</code></pre></div></div>
+
+<p>После этого лог отслеживают командой <code class="language-plaintext highlighter-rouge">tail</code>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">tail</span> <span class="nt">-f</span> <span class="s1">'/var/log/postgresql.log'</span>
+</code></pre></div></div>
+
+<p>Расположение лога зависит от операционной системы и менеджера пакетов.</p>
+
+<p>Третий способ — настроить логирование в приложении. Скажем, в Джанго все
+операции с базой идут в логгер <code class="language-plaintext highlighter-rouge">django.db.backends</code>. Нужно выставить ему уровень
+<code class="language-plaintext highlighter-rouge">INFO</code> и направить в консоль.</p>
+
+<p>Минус такого логирования в том, что оно учитывает только свои запросы. Если
+кто-то ходит в базу минуя ORM, этих запросов вы не увидите.</p>
+
+<p>С другой стороны, мы перекладываем бремя логирования с базы на приложение. База
+одна, и если логировать каждый запрос, это замедлит ее. А поскольку узлов
+приложения много, на них это не скажется.</p>
+
+<p>Вместе с запросами полезно логировать время их выполнения. Заведите дашбоард,
+который находит топ-100 медленных запросов. Раз в месяц заводите задачу на
+оптимизацию.</p>
+
+<p>Расширение <code class="language-plaintext highlighter-rouge">pg_stat_statements</code> (доступно из коробки) ведет статистику запросов:
+число вызовов, среднее, минимальное и максимальное времена, размер переданных
+строк и так далее. Очень помогает на проде.</p>
+
+<p>Если вы не видите, какие запросы идут в базу, разработка подобна блужданию в
+темноте.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-010-pg/">Postgres №10</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-16T00:00:00+00:00">
+        Jan 16, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Прелесть рекурсивных запросов в том, что их источником может быть что угодно –
+не обязательно таблица. В примере ниже мы рассмотрим, как обойти вложенный
+JSON-документ.</p>
+
+<p>Проблема в следующем. В базе лежит огромный JSON с каталогом услуг. Его схема
+примерно такая:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DOC = {
+ "id": ID,
+ "code": CODE,
+ "children": [DOC]
+}
+</code></pre></div></div>
+
+<p>Головной элемент содержит некоторые поля и <code class="language-plaintext highlighter-rouge">children</code>, в которых список
+элементов. У каждого элемента свои <code class="language-plaintext highlighter-rouge">children</code> и так далее. Вложенность
+значительна: иная ветка достигает 30 элементов.</p>
+
+<p>Уж не знаю, почему документ хранят в таком виде. Подозреваю, что это дамп
+какого-то виджета для редактирования дерева. Разработчик поленился разложить его
+на плоские записи и собрать обратно, поэтому он хранится как есть. Разумеется,
+услуги часто нужны в плоском виде. Разработчики вынимают JSON из базы и обходят
+в приложении.</p>
+
+<p>Есть, однако, простой способ привести JSON к плоскому виду – рекурсивный запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">prepare</span> <span class="n">flatten</span> <span class="k">as</span>
+<span class="k">with</span> <span class="k">recursive</span> <span class="n">step</span> <span class="k">as</span> <span class="p">(</span>
+    <span class="k">select</span>
+        <span class="n">jt</span><span class="p">.</span><span class="o">*</span><span class="p">,</span>
+        <span class="mi">0</span> <span class="k">as</span> <span class="k">level</span>
+    <span class="k">from</span>
+        <span class="n">json_table</span><span class="p">(</span><span class="err">$</span><span class="mi">1</span><span class="p">::</span><span class="n">jsonb</span><span class="p">,</span> <span class="s1">'$'</span> <span class="n">columns</span><span class="p">(</span>
+            <span class="n">id</span> <span class="n">int4</span> <span class="n">path</span> <span class="s1">'$.id'</span><span class="p">,</span>
+            <span class="n">code</span> <span class="nb">text</span> <span class="n">path</span> <span class="s1">'$.code'</span><span class="p">,</span>
+            <span class="n">children</span> <span class="n">jsonb</span> <span class="n">path</span> <span class="s1">'$.children'</span>
+    <span class="p">))</span> <span class="k">as</span> <span class="n">jt</span>
+    <span class="k">UNION</span> <span class="k">ALL</span>
+    <span class="k">select</span>
+        <span class="n">jt</span><span class="p">.</span><span class="o">*</span><span class="p">,</span>
+        <span class="n">step</span><span class="p">.</span><span class="k">level</span> <span class="o">+</span> <span class="mi">1</span> <span class="k">as</span> <span class="k">level</span>
+    <span class="k">from</span>
+        <span class="n">step</span><span class="p">,</span>
+        <span class="n">json_table</span><span class="p">(</span><span class="n">step</span><span class="p">.</span><span class="n">children</span><span class="p">,</span> <span class="s1">'$[*]'</span> <span class="n">columns</span><span class="p">(</span>
+            <span class="n">id</span> <span class="n">int4</span> <span class="n">path</span> <span class="s1">'$.id'</span><span class="p">,</span>
+            <span class="n">code</span> <span class="nb">text</span> <span class="n">path</span> <span class="s1">'$.code'</span><span class="p">,</span>
+            <span class="n">children</span> <span class="n">jsonb</span> <span class="n">path</span> <span class="s1">'$.children'</span>
+    <span class="p">))</span> <span class="k">as</span> <span class="n">jt</span><span class="p">)</span>
+<span class="k">select</span> <span class="n">id</span><span class="p">,</span> <span class="n">code</span><span class="p">,</span> <span class="k">level</span> <span class="k">from</span> <span class="n">step</span>
+<span class="k">order</span> <span class="k">by</span> <span class="k">level</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Первая часть производит строку с полями <code class="language-plaintext highlighter-rouge">id</code>, <code class="language-plaintext highlighter-rouge">code</code> и <code class="language-plaintext highlighter-rouge">children</code>. В нем –
+JSON-массив вложенных элементов. Рекурсивная часть берет каждый элемент и делает
+то же самое: расщепляет его на <code class="language-plaintext highlighter-rouge">id</code>, <code class="language-plaintext highlighter-rouge">code</code> и другие элементы. Все это
+колбасится, пока вложенные элементы не исчерпаются. А теперь – пример:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">execute</span> <span class="n">flatten</span><span class="p">(</span><span class="err">$${</span>
+    <span class="nv">"id"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product A"</span><span class="p">,</span>
+    <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+        <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product B"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+            <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product E"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+                <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">6</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product F"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[]</span><span class="err">}</span>
+            <span class="p">]</span><span class="err">}</span>
+        <span class="p">]</span><span class="err">}</span><span class="p">,</span>
+        <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product C"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+            <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">7</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product F"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+                <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product G"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[]</span><span class="err">}</span>
+            <span class="p">]</span><span class="err">}</span>
+
+        <span class="p">]</span><span class="err">}</span><span class="p">,</span>
+        <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product D"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+            <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product E"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+                <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">9</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product H"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[]</span><span class="err">}</span>
+            <span class="p">]</span><span class="err">}</span>
+        <span class="p">]</span><span class="err">}</span>
+<span class="p">]</span><span class="err">}$$</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Результат:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────┬───────────┬───────┐
+│ id │   code    │ level │
+├────┼───────────┼───────┤
+│  1 │ Product A │     0 │
+│  2 │ Product B │     1 │
+│  3 │ Product C │     1 │
+│  4 │ Product D │     1 │
+│  5 │ Product E │     2 │
+│  7 │ Product F │     2 │
+│  5 │ Product E │     2 │
+│  6 │ Product F │     3 │
+│  8 │ Product G │     3 │
+│  9 │ Product H │     3 │
+└────┴───────────┴───────┘
+</code></pre></div></div>
+
+<p>Такой обход очень полезен. Быстро выяснилось, что плоские продукты нужны
+аналитикам, которые не владеют Кложей или другим ЯП, чтобы их распутать. Я
+написал им запрос, и они чуть не заплакали от счастья. Во-вторых, продукты
+изменяются редко, поэтому из запроса легко сделать материализованную вьюху и
+обновлять ее каждый день. Для аналитиков это обычная таблица, которую можно
+джойнить в запросах.</p>
+
+<p>Еще одно уточнение — код выше является чистым с точки зрения ФП. В нем нет
+побочных эффектов, например обращения к диску. Такая функция может быть вызвана
+параллельно для многих документов.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-009-pg/">Postgres №9</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-16T00:00:00+00:00">
+        Jan 16, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В комментарии к прошлой заметке прислали ссылку на Кирилла Макевнина. <a href="https://t.me/orgprog/74">Он
+пишет</a> о хранении деревьев в базе, и первый абзац
+такой:</p>
+
+<blockquote>
+  <p>Обычно, для хранения деревьев в базе в таблицу добавляется поле parent_id. Это
+дубовое решение, которое работает хорошо в небольшом количестве
+ситуаций. Кому-то даже может хватить, но есть запросы, на которых такая схема
+не работает. Например если нам понадобится извлечь ветку этого дерева. В таком
+случае понадобится рекурсивно выполнять запрос с parent_id где для каждого
+нового запроса parent_id становится id записи из предыдущего запроса. Кто-то
+пытается решать эту задачу прямо в коде, создавая очень не эффективное
+решение, кто-то с помощью возможностей базы данных, что сильно привязывает к
+ней, плюс, страдает интеграция с ORM.</p>
+</blockquote>
+
+<p>На мой взгляд, это неверно. Подход с <code class="language-plaintext highlighter-rouge">parent_id</code> – не дубовое решение, а вполне
+даже рабочее. Просто мне кажется, на момент написания заметки Кирилл не знал о
+рекурсивных запросах в Postgres (под рекурсивными запросами он имеет в виду
+запросы в цикле из приложения, и это конечно же плохо).</p>
+
+<p>Приведу минимальный пример с деревом в базе. Предположим, мы храним вот такое
+дерево:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─────────────────────────────┐
+│            ┌───┐            │
+│       ┌────│ A │────┐       │
+│       ▼    └───┘    ▼       │
+│     ┌───┐         ┌───┐     │
+│   ┌─│ B │─┐     ┌─│ C │─┐   │
+│   ▼ └───┘ ▼     ▼ └───┘ ▼   │
+│ ┌───┐   ┌───┐ ┌───┐   ┌───┐ │
+│ │ D │   │ E │ │ F │   │ G │ │
+│ └───┘   └───┘ └───┘   └───┘ │
+└─────────────────────────────┘
+</code></pre></div></div>
+
+<p>Запишем его в базу:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">tree</span><span class="p">(</span>
+    <span class="n">id</span> <span class="nb">text</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">parent_id</span> <span class="nb">text</span> <span class="k">null</span>
+<span class="p">);</span>
+
+<span class="k">insert</span> <span class="k">into</span> <span class="n">tree</span> <span class="k">values</span>
+    <span class="p">(</span><span class="s1">'a'</span><span class="p">,</span> <span class="k">null</span><span class="p">),</span>
+    <span class="p">(</span><span class="s1">'b'</span><span class="p">,</span> <span class="s1">'a'</span><span class="p">),</span>
+    <span class="p">(</span><span class="s1">'c'</span><span class="p">,</span> <span class="s1">'a'</span><span class="p">),</span>
+    <span class="p">(</span><span class="s1">'d'</span><span class="p">,</span> <span class="s1">'b'</span><span class="p">),</span>
+    <span class="p">(</span><span class="s1">'e'</span><span class="p">,</span> <span class="s1">'b'</span><span class="p">),</span>
+    <span class="p">(</span><span class="s1">'f'</span><span class="p">,</span> <span class="s1">'c'</span><span class="p">),</span>
+    <span class="p">(</span><span class="s1">'g'</span><span class="p">,</span> <span class="s1">'c'</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Напишем запрос, чтобы выгрести поддерево, зная вершину:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">prepare</span> <span class="n">get_branch</span> <span class="k">as</span>
+<span class="k">with</span> <span class="k">recursive</span> <span class="n">sub</span> <span class="k">as</span> <span class="p">(</span>
+    <span class="k">select</span> <span class="n">tree</span><span class="p">.</span><span class="o">*</span><span class="p">,</span> <span class="mi">0</span> <span class="k">as</span> <span class="k">level</span> <span class="k">from</span> <span class="n">tree</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="err">$</span><span class="mi">1</span>
+    <span class="k">UNION</span> <span class="k">ALL</span>
+    <span class="k">select</span> <span class="n">tree</span><span class="p">.</span><span class="o">*</span><span class="p">,</span> <span class="n">sub</span><span class="p">.</span><span class="k">level</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="k">from</span> <span class="n">tree</span><span class="p">,</span> <span class="n">sub</span>
+    <span class="k">where</span> <span class="n">tree</span><span class="p">.</span><span class="n">parent_id</span> <span class="o">=</span> <span class="n">sub</span><span class="p">.</span><span class="n">id</span>
+<span class="p">)</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">sub</span> <span class="k">order</span> <span class="k">by</span> <span class="k">level</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Проверка:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>execute get_branch('b');
+┌────┬───────────┬───────┐
+│ id │ parent_id │ level │
+├────┼───────────┼───────┤
+│ b  │ a         │     0 │
+│ d  │ b         │     1 │
+│ e  │ b         │     1 │
+└────┴───────────┴───────┘
+</code></pre></div></div>
+
+<p>Второй запрос, чтобы найти путь к вершине:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">prepare</span> <span class="n">get_path</span> <span class="k">as</span>
+<span class="k">with</span> <span class="k">recursive</span> <span class="n">sub</span> <span class="k">as</span> <span class="p">(</span>
+    <span class="k">select</span> <span class="n">tree</span><span class="p">.</span><span class="o">*</span><span class="p">,</span> <span class="mi">0</span> <span class="k">as</span> <span class="k">level</span> <span class="k">from</span> <span class="n">tree</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="err">$</span><span class="mi">1</span>
+    <span class="k">union</span> <span class="k">all</span>
+    <span class="k">select</span> <span class="n">tree</span><span class="p">.</span><span class="o">*</span><span class="p">,</span> <span class="n">sub</span><span class="p">.</span><span class="k">level</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="k">from</span> <span class="n">tree</span><span class="p">,</span> <span class="n">sub</span>
+    <span class="k">where</span> <span class="n">tree</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">sub</span><span class="p">.</span><span class="n">parent_id</span>
+<span class="p">)</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">sub</span> <span class="k">order</span> <span class="k">by</span> <span class="k">level</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Проверка:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>execute get_path('f');
+┌────┬───────────┬───────┐
+│ id │ parent_id │ level │
+├────┼───────────┼───────┤
+│ a  │ &lt;null&gt;    │    -2 │
+│ c  │ a         │    -1 │
+│ f  │ c         │     0 │
+└────┴───────────┴───────┘
+</code></pre></div></div>
+
+<p>Как видим, в обоих случаях был один запрос, циклы не понадобились, база все
+сделала сама. Напоминаю, что with recursive позволяет собрать вершины вглубь и
+вширь, находить циклы и многое другое.</p>
+
+<p>Материализованные пути, о которых пишет Кирилл, тоже бывают полезны. Скажем,
+если у вас система файлов и папок (виртуальное файловое хранилище), то иной раз
+это даже лучше, чем <code class="language-plaintext highlighter-rouge">parent_id</code>, потому что позволяет эффективно искать по
+префиксу. Но есть и недостатки: если каждый узел – UUID, путь становится
+огромным. Кроме того, если нужно переместить поддерево, то в случае с
+<code class="language-plaintext highlighter-rouge">parent_id</code> достаточно переключить ссылку, а materialized path требует пересчета
+всех путей поддерева.</p>
+
+<p>Ну а отказывать себе в мощных средствах только потому, что с ними не дружит
+ORM… это примерно как рушить свою жизнь из-за непутевого друга.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-008-pg/">Postgres №8</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-16T00:00:00+00:00">
+        Jan 16, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Если в базе есть хоть какой-то намек на иерархию – <code class="language-plaintext highlighter-rouge">parent_id</code>, <code class="language-plaintext highlighter-rouge">children_ids</code> и
+так далее – вам не избежать рекурсивных запросов. Если точнее, избежать их
+можно: выбрать данные и обойти в приложении. Но зачем, если это может сделать
+база?</p>
+
+<p>Рекурсивный запрос на самом деле не имеет отношение к рекурсии. Это цикл или
+свертка. В целом он выглядит так:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="k">recursive</span> <span class="n">NAME</span> <span class="k">as</span> <span class="p">(</span>
+  <span class="n">init</span><span class="o">-</span><span class="n">part</span>
+  <span class="k">UNION</span> <span class="p">(</span><span class="k">ALL</span><span class="p">)</span>
+  <span class="n">continuous</span><span class="o">-</span><span class="n">part</span>
+<span class="p">)</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">NAME</span>
+</code></pre></div></div>
+
+<p>Часть <code class="language-plaintext highlighter-rouge">init-part</code> выполняется однажды. Часть <code class="language-plaintext highlighter-rouge">continuous-part</code> выполняется много
+раз, при этом псевдоним NAME ссылается на результат прошлой выборки. Например,
+когда <code class="language-plaintext highlighter-rouge">continuous-part</code> сработает в первый раз, в NAME будет то, что вернула
+<code class="language-plaintext highlighter-rouge">init-part</code>. Когда <code class="language-plaintext highlighter-rouge">continuous-part</code> сработает второй раз, в NAME будет то, что
+вернула <code class="language-plaintext highlighter-rouge">continuous-part</code> до этого и так далее.</p>
+
+<p>Цикл заканчивается, когда в очередной раз <code class="language-plaintext highlighter-rouge">continuous-part</code> вернула пустой
+результат. Должно быть ясное условие остановки, иначе запрос уйдет в бесконечный
+цикл. В итоговом SELECT алиас NAME содержит результат всех операций.</p>
+
+<p>При помощи рекурсивного запроса легко обойти дерево потомков, графы, отношения,
+различные связи. Более того – внутри рекурсивного запроса доступны формы SEARCH
+DEPTH FIRST и SEARCH BREADTH FIRST, выявление циклов по массиву вершин и другие
+приятные вещи. Так что когда на собеседовании скажут обойти граф, расчехляйте
+psql!</p>
+
+<p>Последнее, кстати, не такая уж и шутка. Скажем, дали вам файл с вершинами. А
+откуда взялся файл? Скорее всего, из базы. “Вот где графы храните, там и
+обходите.” (с) Поэтому связные структуры я обхожу в SQL без выгрузки в
+приложение. Это и быстрее, и результат виден сразу, и удобно
+коллегам-аналитикам, которые не знают Кложу/Питон.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-007-pg/">Postgres №7</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-16T00:00:00+00:00">
+        Jan 16, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Коль скоро COPY – <a href="/tip-006-pg/">ваш лучший друг</a>, присмотритесь к бинарному
+формату. В среднем он на 30% меньше, чем текстовый и CSV. Числа хранятся
+компактно, а не по принципу “байт на разряд”. Строки не экранируются. Это очень
+удобно: не нужно бежать по строке и проверять, есть ли обратный слэш и что-то за
+ним. Прочитал байтовый массив, обернул в <code class="language-plaintext highlighter-rouge">(new String)</code> и готово.</p>
+
+<p>Бинарный формат COPY в целом прост. Первые 19 байтов можно пропустить – это
+заголовок и резерв под флаги, которые в данный момент не используются. Далее
+идет набор строк. Каждая строка – это пара <code class="language-plaintext highlighter-rouge">(int2, content)</code>, где int2 – число
+колонок. Оно одинаково для всех строк, но дублируется. Последняя строка содержит
+-1, а за ней ничего нет.</p>
+
+<p>С свою очередь content – это набор пар <code class="language-plaintext highlighter-rouge">(int4, field)</code> – длина поля и его
+содержимого. Если длина -1, то значение null, а содержимого нет. В зависимости
+от типа поле читают по-разному. Перечислять все типы и их особенности я не буду:
+для этого есть библиотеки. Радует, что библиотек для бинарного формата Postgres
+все больше: в Гугле находятся версии для Python, Node.js, Go и так далее. Среди
+прочих есть и мои реализации: <a href="https://github.com/igrishaev/pg-bin">pg-bin</a> на
+Кложе и модуль <a href="https://github.com/igrishaev/pg2/tree/master/pg-core/src/java/org/pg/codec">org.pg.codec</a>
+на Джаве в составе pg2.</p>
+
+<p>Возня с бинарным форматом помогла мне понять, как лучше хранить данные,
+передавать по сети, как ускорить их обработку. В целом, поковыряться с байтами –
+хорошее дело: развивает кодерские навыки, поддерживает форму.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-006-pg/">Postgres №6</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-16T00:00:00+00:00">
+        Jan 16, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Если вы работаете с Postgres, команда COPY должна стать вашим другом. COPY
+перемещает данные с сервера на клиент и обратно в потоковом режиме. Она подходит
+для забора больших данных и вставки. COPY эффективнее, чем массовые INSERT и
+SELECT с пагинацией.</p>
+
+<p>В режиме чтения COPY забирает данные из таблицы или произвольного
+запроса. Данные передаются в один из трех пунктов назначения: клиенту, в файл
+или процессу. Процессом может быть выражение, например <code class="language-plaintext highlighter-rouge">'gzip -9 &gt; output.gzip'</code>.</p>
+
+<p>В режиме записи COPY ожидает таблицу. Данные принимаются либо от клиента, либо
+из файла, либо от процесса.</p>
+
+<p>С помощью COPY можно сделать потоковую обработку. В джаве для этого служит класс
+<code class="language-plaintext highlighter-rouge">CopyManager</code>, который ожидает <code class="language-plaintext highlighter-rouge">OutputStream</code>. Этот стрим можно обернуть в
+<code class="language-plaintext highlighter-rouge">PipedInputStream</code> и читать его в другом потоке. Данные могут быть огромны, но
+вы не израсходуете память – все будет проходить в полете порциями.</p>
+
+<p>COPY позволяет забрать таблицу целиком, не выгружая результат в память. Я часто
+этим пользуюсь: каждое утро запускается задача, которая сбрасывает большие
+таблицы в файл. Позже я работаю с файлами, не напрягая базу.</p>
+
+<p>Можно вставлять огромные таблицы через COPY параллельно в несколько
+потоков. Один поток колбасит первую четверть файла, второй – вторую и так
+далее. Прирост скорости почти линейный.</p>
+
+<p>COPY поддерживает три формата данных: текстовый, CSV и двоичный. Первые два
+содержат данные в виде текста и отличаются разделителями. Их удобно
+просматривать, но числа занимают больше места, а многие символы
+экранируются. Двоичный формат компактный, в нем ничего не экранируется. Его
+структура довольно простая: фиксированный заголовок, потом набор строк. Каждая
+строка – набор пар (длина, содержимое). Если значение NULL, то длина равна -1, а
+содержимого нет.</p>
+
+<p>COPY полезен в тестах: вместо того, чтобы вставлять данные штучно, можно хранить
+файлы CSV с именами таблиц. Специальная фикстура пробегает папку и копирует CSV
+в нужные таблицы. Файлы можно редактировать в Экселе.</p>
+
+<p>В консоли psql есть команда \copy. Ее синтаксис в точности повторяет запрос
+COPY. Разница в том, что \copy связывает удаленный сервер с локальной
+машиной. Например, если выполнить</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">copy</span> <span class="n">users</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">email</span><span class="p">)</span> <span class="k">to</span> <span class="s1">'/path/to/file.csv'</span> <span class="k">with</span> <span class="p">(</span><span class="n">format</span> <span class="n">csv</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>, то файл будет создан на сервере Postgres. Если предварить copy обратной
+чертой, psql запросит с сервера поток и направит в локальный файл
+<code class="language-plaintext highlighter-rouge">/path/to/file.csv</code>. По аналогии работает вставка: <code class="language-plaintext highlighter-rouge">\copy</code> читает локальный файл
+и шлет поток сообщений.</p>
+
+<p>Надеюсь, я смог вас заинтересовать.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-005-pg/">Postgres №5</a>
             </h2>
 
             
@@ -167,19 +852,45 @@
 
             <div class="entry">
                 
-                    <p>Следите за тем, какие индексы используются, а какие нет. Для этого время от
-времени проверяйте представление <code class="language-plaintext highlighter-rouge">pg_stat_user_indexes</code>. Оно накапливает случаи
-обращения к индексу. Сохраняются имя схемы, таблицы, индекса, дата последнего
-обращения, общее число обращений, число прочитанных элементов, число прочитанных
-строк. Пример:</p>
+                    <p>Если в запросе одно из условий – константа, это хороший кандидат на оптимизацию.</p>
 
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">pg_stat_user_indexes</span>
-<span class="k">where</span> <span class="n">relname</span> <span class="o">=</span> <span class="s1">'users'</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">last_idx_scan</span> <span class="k">desc</span> <span class="n">nulls</span> <span class="k">last</span>
+<p>Предположим, у нас магазин, и нужно выбрать текущие заказы пользователя. Это
+примерно такой запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span>
+<span class="k">where</span> <span class="n">user_id</span> <span class="o">=</span> <span class="o">?</span> <span class="k">and</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
 </code></pre></div></div>
 
-<p>Удалите индексы с малым показателем <code class="language-plaintext highlighter-rouge">idx_scan</code>. Сделайте такую проверку
-регулярной, например раз в месяц.</p>
+<p>Из <a href="/tip-004-pg/">прошлого совета</a> мы знаем, что два индекса на <code class="language-plaintext highlighter-rouge">user_id</code> и
+<code class="language-plaintext highlighter-rouge">status</code> не работают. Будет использован только один, скорее всего для <code class="language-plaintext highlighter-rouge">user_id</code>,
+потому что у него высокая селективность (точность). Можно сделать составной
+индекс <code class="language-plaintext highlighter-rouge">(status, user_id)</code>, и он будет быстрее обычного <code class="language-plaintext highlighter-rouge">user_id</code>.</p>
+
+<p>Есть, однако, еще один вариант: условный индекс по <code class="language-plaintext highlighter-rouge">user_id</code> для активных
+заказов. У оператора <code class="language-plaintext highlighter-rouge">create index</code> на конце выражение <code class="language-plaintext highlighter-rouge">where</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">idx_users_user_id_active</span>
+<span class="k">on</span> <span class="n">orders</span> <span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
+<span class="k">using</span> <span class="n">btree</span>
+<span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
+</code></pre></div></div>
+
+<p>В чем прелесть такого индекса? Он намного меньше аналогов, потому что охватывает
+не всю таблицу, а ее подмножество. Если магазин появился не вчера, то большая
+часть заказов находится в статусе “доставлено”, и лишь малая часть активны. Эту
+часть и охватит индекс.</p>
+
+<p>По условию <code class="language-plaintext highlighter-rouge">status = 'active'</code> Postgres определит, что нужно взять именно этот
+индекс. Фактически условие будет отброшено, потому что значения в индексе уже
+отфильтрованы по нему.</p>
+
+<p>Скорость такого индекса <strong>ошеломительна</strong>: запрос может стать быстрее в 10–100
+раз – без преувеличений.</p>
+
+<p>Общее правило такое: всякие статусы, категории, флаг удаления и все прочее, что
+задается константой – кандидаты на выделенный индекс. Если каждый раз выбираются
+только активные пользователи, только текущие заказы, только не удаленные заявки
+– подумайте об условном индексе.</p>
 
                 
             </div>
@@ -189,1138 +900,51 @@
         <li>
 
             <h2>
-                <a class="post-link" href="/ui-gap/">Щели в интерфейсе</a>
+                <a class="post-link" href="/tip-004-pg/">Postgres №4</a>
             </h2>
 
             
 <div class="post-meta">
 
     <time class="post-time"
-          datetime="2025-12-31T00:00:00+00:00">
-        Dec 31, 2025
+          datetime="2026-01-15T00:00:00+00:00">
+        Jan 15, 2026
     </time>
 
-    <a href="/tag/ui/" rel="tag">ui</a>
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
 
 </div>
 
 
             <div class="entry">
                 
-                    <p><img src="/assets/static/aws/ui-gap/1.jpeg" /></p>
+                    <p>Предположим, в запросе условие по двум полям:</p>
 
-<p>Если вы дизайните интерфейс, помните о следующем правиле: в интерфейсе не должно
-быть щелей. Всякие панели, сайдбары, палитры должны быть прижаты плотно. Между
-не должно быть зазора.</p>
-
-<p>У зазоров две проблемы: первая – интерфейс занимает больше места. Если уж
-хочется отступа, добавь его внутри прямоугольника. Хотя и этот прием спорный:
-отступы – бич современности. Из-за пухлых кнопок и сайдбаров ничего не
-помещается на экран.</p>
-
-<p>Вторая беда щелей в том, что они “сквозят”. Так я называю эффект, когда
-перематываешь контент, и сквозь щель что-то мелькает. Через три пикселя ты все
-равно ничего не разглядишь, но мельтешение отвлекает.</p>
-
-<p>Кажется, в каком-то обновлении Фигмы сделали боковые панели, парящие в
-воздухе. Это было так плохо, что их вернули на место. Скриншота я не сохранил.</p>
-
-<p>А вот другой пример. Обновил Телеграм на телефоне, и пожалуйста – дизайнер решил
-поиграться с жидким стеклом. Нижний бар стал пилюлей, которая висит в воздухе.</p>
-
-<p>Что в ней плохого? Хотя бы то, что теперь она занимает больше места. Щель снизу
-бесполезна: ты же не будешь читать сообщение сквозь нее? (Хотя технически это
-возможно – настолько она большая.) Нормальный человек промотает вверх.</p>
-
-<p>Какая-то загадка: почему новый интерфейс требует на один-два сантиметра больше?
-Откуда это? Я не понимаю.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/sql-rating/">Рейтинг пользователей на чистом SQL</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-12-31T00:00:00+00:00">
-        Dec 31, 2025
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/rating/" rel="tag">rating</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Решил написать небольшой мануальчик по SQL. В нем рассматривается задача,
-которую я подсмотрел у Кирилла Мокевнина. Возможно, кому-то из вас ее дадут на
-собеседовании.</p>
-
-<p>Задача следующая: сделать на сайте систему рейтинга. Пользователям начисляют
-баллы за разные достижения, и нужно вывести топ-100 пользователей. Позиция в
-рейтинге должна изменяться мгновенно. Например, кто-то получил 200 баллов и
-сразу оказался на вершине таблицы. Предполагается, что имеется только
-реляционная база данных, все остальное – по желанию.</p>
-
-<p>Эта задача мне очень понравилась. Она лаконичная, но ее можно наращивать очень
-долго. Удивился тому, в комментариях – а у Кирилла довольно большая аудитория –
-почти никто не решил ее силами SQL. Большинство предлагали какие-то кэши,
-редисы-кафки, Firebase и прочую ахинею. Дело не в том, что это плохие
-инструменты. Наоборот, в нужных местах Редис и Кафка изумительны. Просто в
-данном случае их выбор ничем не обоснован.</p>
-
-<p>Итак, давайте решим задачу силами ванильного Postgres. Чтобы разогреться,
-сначала сделаем небольшое послабление – предположим, что рейтинг нужно обновлять
-не мгновенно, а раз в час. Позже мы сделаем все как надо.</p>
-
-<p>Подготовим таблицу пользователей:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span><span class="p">(</span>
-    <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-    <span class="n">name</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span>
-<span class="p">);</span>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">items</span> <span class="k">where</span> <span class="n">foo</span> <span class="o">=</span> <span class="mi">1</span> <span class="k">and</span> <span class="n">bar</span> <span class="o">=</span> <span class="mi">2</span>
 </code></pre></div></div>
 
-<p>Вставим в нее 100 тысяч случайных людей:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">users</span>
-<span class="k">select</span> <span class="n">n</span><span class="p">,</span> <span class="n">format</span><span class="p">(</span><span class="s1">'User %s'</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
-<span class="k">from</span> <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">100000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">n</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Создадим таблицу для начислений баллов. Она хранит код пользователя, баллы и
-поле reason – опциональный комментарий за что эти баллы.</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">user_points</span><span class="p">(</span>
-    <span class="n">user_id</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
-    <span class="n">points</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="n">d</span><span class="err">е</span><span class="n">fault</span> <span class="mi">0</span><span class="p">,</span>
-    <span class="n">reason</span> <span class="nb">text</span>
-<span class="p">);</span>
-</code></pre></div></div>
-
-<p>Начислим каждому пользователю десять раз случайное число баллов:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">user_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">,</span> <span class="n">reason</span><span class="p">)</span>
-<span class="k">select</span>
-    <span class="n">n</span> <span class="o">/</span> <span class="mi">10</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
-    <span class="p">(</span><span class="n">random</span><span class="p">()</span> <span class="o">*</span> <span class="n">n</span><span class="p">)::</span><span class="nb">int</span> <span class="o">%</span> <span class="mi">100</span><span class="p">,</span>
-    <span class="n">format</span><span class="p">(</span><span class="s1">'iteration %s'</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
-<span class="k">from</span>
-    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1000000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">n</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Объявим материализованную вьюху. Ее запрос выбирает сумму баллов с группировкой
-по коду пользователя:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="n">materialized</span> <span class="k">view</span> <span class="n">mv_user_rating</span> <span class="k">as</span>
-<span class="k">select</span>
-    <span class="n">user_id</span><span class="p">,</span> <span class="k">sum</span><span class="p">(</span><span class="n">points</span><span class="p">)</span> <span class="k">as</span> <span class="n">total_points</span>
-<span class="k">from</span> <span class="n">user_points</span>
-<span class="k">group</span> <span class="k">by</span> <span class="n">user_id</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Обновим ее:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">refresh</span> <span class="n">materialized</span> <span class="k">view</span> <span class="n">mv_user_rating</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Добавим индекс по убыванию общего числа баллов и обновим его:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">idx_mv_total_points</span> <span class="k">on</span> <span class="n">mv_user_rating</span>
-    <span class="k">using</span> <span class="n">btree</span> <span class="p">(</span><span class="n">total_points</span> <span class="k">desc</span><span class="p">);</span>
-
-<span class="k">analyze</span> <span class="n">mv_user_rating</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Теперь к сути: выберем топ-100 записей из вьюхи по убыванию суммы
-баллов. Подцепим джоином пользователей, выберем их имена. Запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
-    <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="k">as</span> <span class="n">user_id</span><span class="p">,</span>
-    <span class="n">u</span><span class="p">.</span><span class="n">name</span> <span class="k">as</span> <span class="n">user_name</span><span class="p">,</span>
-    <span class="n">mv</span><span class="p">.</span><span class="n">total_points</span> <span class="k">as</span> <span class="n">total_points</span>
-<span class="k">from</span>
-    <span class="n">mv_user_rating</span> <span class="n">mv</span><span class="p">,</span>
-    <span class="n">users</span> <span class="n">u</span>
-<span class="k">where</span>
-    <span class="n">mv</span><span class="p">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span>
-<span class="k">order</span> <span class="k">by</span>
-    <span class="n">mv</span><span class="p">.</span><span class="n">total_points</span> <span class="k">desc</span>
-<span class="k">limit</span>
-    <span class="mi">100</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Частичный результат:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─────────┬────────────┬────────┐
-│ user_id │ user_name  │ points │
-├─────────┼────────────┼────────┤
-│      96 │ User 96    │   1225 │
-│      45 │ User 45    │   1185 │
-│      85 │ User 85    │   1169 │
-│      10 │ User 10    │   1140 │
-│      33 │ User 33    │   1138 │
-│      80 │ User 80    │   1135 │
-│      48 │ User 48    │   1133 │
-│      53 │ User 53    │   1121 │
-│      11 │ User 11    │   1119 │
-│      91 │ User 91    │   1099 │
-│      79 │ User 79    │   1096 │
-│      56 │ User 56    │   1090 │
-│      72 │ User 72    │   1089 │
-│      31 │ User 31    │   1088 │
-│      40 │ User 40    │   1072 │
-│      97 │ User 97    │   1070 │
-│      65 │ User 65    │   1068 │
-│      42 │ User 42    │   1058 │
-│      43 │ User 43    │   1057 │
-│      78 │ User 78    │   1054 │
-│      63 │ User 63    │   1053 │
-│      54 │ User 54    │   1049 │
-│      93 │ User 93    │   1031 │
-│      29 │ User 29    │   1029 │
-│      51 │ User 51    │   1028 │
-│     100 │ User 100   │   1027 │
-│      98 │ User 98    │   1021 │
-│      69 │ User 69    │   1014 │
-│      28 │ User 28    │   1003 │
-│      67 │ User 67    │    994 │
-│      60 │ User 60    │    990 │
-│      21 │ User 21    │    987 │
-│      58 │ User 58    │    986 │
-│      26 │ User 26    │    984 │
-</code></pre></div></div>
-
-<p>Будет ли он тормозить? Посмотрим план:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>explain analyze
-select
-    u.id as user_id,
-    u.name as user_name,
-    mv.total_points as total_points
-from
-    mv_user_rating mv,
-    users u
-where
-    mv.user_id = u.id
-order by
-    mv.total_points desc
-limit
-    100;
-
-├────────────────────────────────────────
-│ Limit  (cost=0.58..38.88 rows=100 width
-│   -&gt;  Nested Loop  (cost=0.58..38292.36
-│         -&gt;  Index Scan using idx_mv_tot
-│         -&gt;  Index Scan using users_pkey
-│               Index Cond: (id = mv.user
-│ Planning Time: 0.286 ms
-│ Execution Time: 0.368 ms
-└────────────────────────────────────────
-</code></pre></div></div>
-
-<p>Обе таблицы попадают в индексы, стоимость – копейки. Поэтому ответ – не будет.</p>
-
-<p>Теперь дело за тем, как обновлять вьюху. У материализованных вьюх особенность:
-во время обновления она недоступна. Можно обновлять их параллельно при помощи
-<code class="language-plaintext highlighter-rouge">refresh materialized view concurrently</code>. Это медленней, зато не блокирует
-чтение. Попытаемся:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">refresh</span> <span class="n">materialized</span> <span class="k">view</span> <span class="n">concurrently</span> <span class="n">mv_user_rating</span><span class="p">;</span>
-
-<span class="n">ERROR</span><span class="p">:</span>  <span class="n">cannot</span> <span class="n">refresh</span> <span class="n">materialized</span> <span class="k">view</span> <span class="nv">"public.mv_user_rating"</span> <span class="n">concurrently</span>
-<span class="n">HINT</span><span class="p">:</span>  <span class="k">Create</span> <span class="n">a</span> <span class="k">unique</span> <span class="k">index</span> <span class="k">with</span> <span class="k">no</span> <span class="k">WHERE</span> <span class="n">clause</span>
-       <span class="k">on</span> <span class="n">one</span> <span class="k">or</span> <span class="k">more</span> <span class="n">columns</span> <span class="k">of</span> <span class="n">the</span> <span class="n">materialized</span> <span class="k">view</span><span class="p">.</span>
-</code></pre></div></div>
-
-<p>Что такое? Дело в том, что для concurrently нужен хотя бы один уникальный
-индекс. По нему обновление вьюхи отслеживает свой прогресс. Добавим такой
-индекс:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">unique</span> <span class="k">index</span> <span class="n">idx_uq_mv_user_rating_user_id</span>
-    <span class="k">on</span> <span class="n">mv_user_rating</span><span class="p">(</span><span class="n">user_id</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Теперь параллельное обновление работает:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">refresh</span> <span class="n">materialized</span> <span class="k">view</span> <span class="n">concurrently</span> <span class="n">mv_user_rating</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Как сделать обновление регулярным? Поможет стороннее расширение <code class="language-plaintext highlighter-rouge">pg_cron</code>. Из
-коробки его нет, но оно доступно во всех пакетах и установлено почти у всех
-облачных провайдеров. После установки включите его:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="n">extension</span> <span class="n">pg_cron</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Добавьте задачу на расписание:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span> <span class="n">cron</span><span class="p">.</span><span class="n">schedule</span><span class="p">(</span>
-    <span class="s1">'cron_job_refresh_user_rating'</span><span class="p">,</span>
-    <span class="s1">'refresh materialized view concurrently mv_user_rating;'</span>
-<span class="p">);</span>
-</code></pre></div></div>
-
-<p>В результате каждый час вьюха будет обновляться параллельно. Для проверки
-регулярных задач и их истории служат специальные таблицы.</p>
-
-<p>Это был прогрев. Напомню, что мы сделали послабление: обновляем рейтинг каждый
-час, а не мгновенно. Пора это исправить.</p>
-
-<p>Вьюха становится не нужна, ее можно удалить. Вместо нее создайте таблицу
-аналогичной структуры:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">user_total_points</span><span class="p">(</span>
-    <span class="n">user_id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-    <span class="n">total_points</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="n">d</span><span class="err">е</span><span class="n">fault</span> <span class="mi">0</span>
-<span class="p">);</span>
-</code></pre></div></div>
-
-<p>Чтобы начислить пользователю баллы и одновременно изменить его рейтинг, нужно
-сделать два действия. Первое – записать баллы в таблицу <code class="language-plaintext highlighter-rouge">user_points</code> как мы
-делали это раньше. Второе – если в итоговой таблице есть пользователь, прибавить
-баллы к тем, что есть. Если нет – вписать туда пользователя и начальные баллы.</p>
-
-<p>На этом месте говорят “триггеры”, и зря. Триггеры – слишком сложный
-инструмент. Они слишком строгие, и порой это неудобно, например в разработке, в
-тестах, в моделировании ситуаций. Ниже мы решим задачу без триггеров.</p>
-
-<p>Предположим, пользователю 999 начислено 100 баллов. Первый запрос будет таким:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">user_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
-<span class="k">values</span> <span class="p">(</span><span class="mi">999</span><span class="p">,</span> <span class="mi">100</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Второй – посложнее. Это UPSERT в таблицу рейтинга, который либо вставляет
-данные, либо обновляет их:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">user_total_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">total_points</span><span class="p">)</span>
-  <span class="k">values</span> <span class="p">(</span><span class="mi">999</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
-  <span class="k">on</span> <span class="n">conflict</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
-  <span class="k">do</span> <span class="k">update</span>
-  <span class="k">set</span> <span class="n">total_points</span> <span class="o">=</span> <span class="n">user_total_points</span><span class="p">.</span><span class="n">total_points</span>
-    <span class="o">+</span> <span class="n">excluded</span><span class="p">.</span><span class="n">total_points</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Все это делается в транзакции, чтобы не допустить частичных изменений.</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">begin</span><span class="p">;</span>
-<span class="c1">-- query 1;</span>
-<span class="c1">-- query 2;</span>
-<span class="k">commit</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Выполним транзакцию два раза. В истории баллов будет две записи по 100, а в
-таблице рейтинга – их сумма 200.</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select * from user_points;
-┌─────────┬────────┬────────┐
-│ user_id │ points │ reason │
-├─────────┼────────┼────────┤
-│     999 │    100 │ &lt;null&gt; │
-│     999 │    100 │ &lt;null&gt; │
-└─────────┴────────┴────────┘
-
-select * from user_total_points;
-┌─────────┬──────────────┐
-│ user_id │ total_points │
-├─────────┼──────────────┤
-│     999 │          200 │
-└─────────┴──────────────┘
-</code></pre></div></div>
-
-<p>Транзакцию можно опустить, если переписать запрос на CTE. У таких запросов
-особенность – все они видят один снимок данных и выполняются атомарно. Это
-удобно, потому что транзакцию begin/end легко потерять, а в случае CTE это
-невозможно.</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span>
-<span class="n">step_1</span> <span class="k">as</span> <span class="p">(</span>
-    <span class="k">insert</span> <span class="k">into</span> <span class="n">user_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
-    <span class="k">values</span> <span class="p">(</span><span class="mi">999</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
-<span class="p">)</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="n">user_total_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">total_points</span><span class="p">)</span>
-    <span class="k">values</span> <span class="p">(</span><span class="mi">999</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
-<span class="k">on</span> <span class="n">conflict</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
-    <span class="k">do</span> <span class="k">update</span>
-    <span class="k">set</span> <span class="n">total_points</span> <span class="o">=</span> <span class="n">user_total_points</span><span class="p">.</span><span class="n">total_points</span>
-        <span class="o">+</span> <span class="n">excluded</span><span class="p">.</span><span class="n">total_points</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Выполним его три раза, и в таблице рейтинга окажется значение 500:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─────────┬────────┬────────┐
-│ user_id │ points │ reason │
-├─────────┼────────┼────────┤
-│     999 │    100 │ &lt;null&gt; │
-│     999 │    100 │ &lt;null&gt; │
-│     999 │    100 │ &lt;null&gt; │
-│     999 │    100 │ &lt;null&gt; │
-│     999 │    100 │ &lt;null&gt; │
-└─────────┴────────┴────────┘
-
-select * from user_total_points;
-
-┌─────────┬──────────────┐
-│ user_id │ total_points │
-├─────────┼──────────────┤
-│     999 │          500 │
-└─────────┴──────────────┘
-</code></pre></div></div>
-
-<p>Если в базу пишут клиенты из разных систем, им будет неудобно таскать за собой
-этот запрос. Сделаем так: напишем функцию, которая принимает код пользователя и
-сколько баллов добавить. Функция возвращает суммарные баллы после всех
-изменений. Вот она:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">or</span> <span class="k">replace</span> <span class="k">function</span> <span class="n">func_add_points</span>
-    <span class="p">(</span><span class="n">user_id</span> <span class="nb">integer</span><span class="p">,</span> <span class="n">points</span> <span class="nb">integer</span><span class="p">)</span>
-<span class="k">returns</span> <span class="nb">integer</span>
-<span class="k">as</span> <span class="err">$$</span>
-<span class="k">with</span> <span class="n">step_1</span> <span class="k">as</span> <span class="p">(</span>
-    <span class="k">insert</span> <span class="k">into</span> <span class="n">user_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
-    <span class="k">values</span> <span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
-<span class="p">)</span>
-<span class="k">insert</span> <span class="k">into</span> <span class="n">user_total_points</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">total_points</span><span class="p">)</span>
-    <span class="k">values</span> <span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
-<span class="k">on</span> <span class="n">conflict</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span> <span class="k">do</span> <span class="k">update</span>
-    <span class="k">set</span> <span class="n">total_points</span> <span class="o">=</span> <span class="n">user_total_points</span><span class="p">.</span><span class="n">total_points</span>
-        <span class="o">+</span> <span class="n">excluded</span><span class="p">.</span><span class="n">total_points</span>
-<span class="n">returning</span>
-    <span class="n">total_points</span>
-<span class="err">$$</span>
-<span class="k">language</span> <span class="k">sql</span> <span class="k">strict</span> <span class="n">parallel</span> <span class="n">safe</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Теперь клиенты вызывают функцию select <code class="language-plaintext highlighter-rouge">func_add_points(1234, 500)</code>, а что
-внутри – их не касается. Функцию удобно вызывать из psql, если это баш-скрипт.</p>
-
-<p>Вот как накинуть баллы – и одновременно изменить рейтинг – некоторым
-пользователям из диапазона:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select
-    n as user_id,
-    func_add_points(n, n * 5)
-    as total
-from
-    generate_series(25, 50) seq(n);
-
-┌─────────┬───────┐
-│ user_id │ total │
-├─────────┼───────┤
-│      25 │   125 │
-│      26 │   130 │
-│      27 │   135 │
-│      28 │   140 │
-│      29 │   145 │
-│      30 │   150 │
-│      31 │   155 │
-│      32 │   160 │
-│      33 │   165 │
-│      34 │   170 │
-│      35 │   175 │
-│      36 │   180 │
-│      37 │   185 │
-│      38 │   190 │
-│      39 │   195 │
-│      40 │   200 │
-│      41 │   205 │
-│      42 │   210 │
-│      43 │   215 │
-│      44 │   220 │
-│      45 │   225 │
-│      46 │   230 │
-│      47 │   235 │
-│      48 │   240 │
-│      49 │   245 │
-│      50 │   250 │
-└─────────┴───────┘
-</code></pre></div></div>
-
-<p>Функцию можно вызывать параллельно. Давайте накинем баллов пользователю 1003 и
-посмотрим на результат:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select
-    user_id,
-    points,
-    func_add_points(user_id, points)
-    as total
-from (values
-    (1003, 3),
-    (1003, 2),
-    (1003, 1),
-    (1003, 5),
-    (1003, 7))
-    as vals(user_id, points);
-
-┌─────────┬────────┬────────┐
-│ user_id │ points │ total  │
-├─────────┼────────┼────────┤
-│    1003 │      3 │      3 │
-│    1003 │      2 │      5 │
-│    1003 │      1 │      6 │
-│    1003 │      5 │     11 │
-│    1003 │      7 │     18 │
-└─────────┴────────┴────────┘
-</code></pre></div></div>
-
-<p>Видим, что итоговая сумма приращивалась каждый раз правильно.</p>
-
-<p>Теперь делаем то же самое, что и со вьюхой. Добавим индекс по убыванию баллов:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">idx_total_points</span> <span class="k">on</span> <span class="n">user_total_points</span>
-    <span class="k">using</span> <span class="n">btree</span> <span class="p">(</span><span class="n">total_points</span> <span class="k">desc</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Выберем из таблицы рейтинга топ-100 записей, приклеим пользователей и готово:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select
-    u.id as user_id,
-    u.name as user_name,
-    total.total_points as total_points
-from
-    user_total_points total,
-    users u
-where
-    total.user_id = u.id
-order by
-    total.total_points desc
-limit
-    100;
-
-┌─────────┬───────────┬───────┐
-│ user_id │ user_name │ total │
-├─────────┼───────────┼───────┤
-│     999 │ User 999  │  1500 │
-│      50 │ User 50   │   250 │
-│      49 │ User 49   │   245 │
-│      48 │ User 48   │   240 │
-│      47 │ User 47   │   235 │
-│      46 │ User 46   │   230 │
-│      45 │ User 45   │   225 │
-│      44 │ User 44   │   220 │
-│      43 │ User 43   │   215 │
-│      42 │ User 42   │   210 │
-│      41 │ User 41   │   205 │
-│      40 │ User 40   │   200 │
-│      39 │ User 39   │   195 │
-│      38 │ User 38   │   190 │
-│      37 │ User 37   │   185 │
-│      36 │ User 36   │   180 │
-│      35 │ User 35   │   175 │
-│      34 │ User 34   │   170 │
-│      33 │ User 33   │   165 │
-│      32 │ User 32   │   160 │
-│      31 │ User 31   │   155 │
-│      30 │ User 30   │   150 │
-│      29 │ User 29   │   145 │
-│      28 │ User 28   │   140 │
-│      27 │ User 27   │   135 │
-│      26 │ User 26   │   130 │
-│      25 │ User 25   │   125 │
-└─────────┴───────────┴───────┘
-</code></pre></div></div>
-
-<p>Одно из улучшений вот в чем. Выше у каждого пользователя разное число баллов, и
-нет случаев, когда двое участников делят одно место. Давайте добавим
-пользователю 49 пять баллов, чтобы уравнять его с пользователем 50:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>select func_add_points(49, 5);
-
-┌─────────────────┐
-│ func_add_points │
-├─────────────────┤
-│             250 │
-└─────────────────┘
-</code></pre></div></div>
-
-<p>Их место будет неоднозначно: мы сортируем по убыванию суммы баллов, но если
-значения равны, порядок записей не гарантируется. Чтобы участники не спорили,
-кто на втором, а кто на третьем месте, вычислим плотный ранг. Это оконная
-функция, которая учитывает поля с одинаковым значением. Обычный ранг нумерует
-записи подряд, а плотный – с учетом повторов. Запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
-    <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="k">as</span> <span class="n">user_id</span><span class="p">,</span>
-    <span class="n">u</span><span class="p">.</span><span class="n">name</span> <span class="k">as</span> <span class="n">user_name</span><span class="p">,</span>
-    <span class="n">total</span><span class="p">.</span><span class="n">total_points</span> <span class="k">as</span> <span class="n">total_points</span><span class="p">,</span>
-    <span class="n">dense_rank</span><span class="p">()</span> <span class="n">over</span> <span class="n">w</span> <span class="k">as</span> <span class="n">rank</span>
-<span class="k">from</span>
-    <span class="n">user_total_points</span> <span class="n">total</span><span class="p">,</span>
-    <span class="n">users</span> <span class="n">u</span>
-<span class="k">where</span>
-    <span class="n">total</span><span class="p">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span>
-<span class="n">window</span>
-    <span class="n">w</span> <span class="k">as</span> <span class="p">(</span><span class="k">order</span> <span class="k">by</span> <span class="n">total_points</span> <span class="k">desc</span><span class="p">)</span>
-<span class="k">order</span> <span class="k">by</span>
-    <span class="n">total_points</span> <span class="k">desc</span>
-<span class="k">limit</span>
-    <span class="mi">100</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Результат:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─────────┬───────────┬───────┬──────┐
-│ user_id │ user_name │ total │ rank │
-├─────────┼───────────┼───────┼──────┤
-│     999 │ User 999  │  1500 │    1 │
-│      50 │ User 50   │   250 │    2 │
-│      49 │ User 49   │   250 │    2 │
-│      48 │ User 48   │   240 │    3 │
-│      47 │ User 47   │   235 │    4 │
-│      46 │ User 46   │   230 │    5 │
-│      45 │ User 45   │   225 │    6 │
-│      44 │ User 44   │   220 │    7 │
-│      43 │ User 43   │   215 │    8 │
-│      42 │ User 42   │   210 │    9 │
-│      41 │ User 41   │   205 │   10 │
-│      40 │ User 40   │   200 │   11 │
-│      39 │ User 39   │   195 │   12 │
-│      38 │ User 38   │   190 │   13 │
-│      37 │ User 37   │   185 │   14 │
-│      36 │ User 36   │   180 │   15 │
-│      35 │ User 35   │   175 │   16 │
-│      34 │ User 34   │   170 │   17 │
-</code></pre></div></div>
-
-<p>Теперь участники 49 и 50 делят второе место, и неоднозначность ушла.</p>
-
-<p>Собственно, вот как решить эту задачу силами SQL. Не понадобились кафки,
-распределенные кэши и все остальное. Схема простая и быстрая, ее легко
-объяснить.</p>
-
-<p>Любите Постгрес! Учите Пострес! Всем любви и добра.</p>
-
-<p><a href="https://gist.github.com/igrishaev/7d171d6c4882e922d81469c2e556345c">Весь исходный код</a></p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/specific-lang/">На чем писать</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-12-31T00:00:00+00:00">
-        Dec 31, 2025
-    </time>
-
-    <a href="/tag/work/" rel="tag">work</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Существует расхожее мнение о том, что на чем писать. Так, почему-то многие
-уверены, что банк должен быть написан на Джаве. Потому что банк должен быть
-надежным, а Джава – надежная. При этом в чем именно надежность, не уточняется.</p>
-
-<p>Ну да, статический анализ. Только как он спасет от деления на ноль? От ошибки
-подключения к базе? От троттлинга в сетевых сервисах? От того, что файла нет? От
-коллеги, который не выкатил фикс? Это для меня загадка.</p>
-
-<p>Я работаю в крупном финтехе. Таком большом, что подобно муравью, вижу лишь
-крохотную его часть. При этом у нас Кложа, все динамическое – и работает. Не
-припомню, когда в последний раз я ожидал число, а пришла строка. Может, и было
-такое пару лет назад, это не важно. Гораздо больше других проблем: потоки данных
-и зависимости сервисов. Что нужно кому, кто откуда что получает и куда
-складывает. В какое время данные появляются и до какого момента нужно записать
-новые, чтобы другие службы подхватили.</p>
-
-<p>Проблему можно описать так: миллион зависимостей. Между файлами, сервисами,
-людьми, отделами. Она не решается языком программирования. Если точнее, проблему
-можно облегчить, взяв тот язык, который снижает когнитивную нагрузку. Просто
-ради того, чтобы, победив очередную организационную проблему, у тебя остались
-силы на код.</p>
-
-<p>Рассуждения о том, что какие-то вещи нужно писать на конкретном языке – пустые
-слова. Правильно брать ту технологию, с которой легче двигаться и которая быстро
-дает результат. Если у вас армия джавистов, то это одно. Если отряд питонистов,
-которых силой переучивают на Джаву, это другое – и хуже.</p>
-
-<p>Скажем, Postgres написан на Си, и это одна их стабильнейших вещей на свете. А
-недавно чудаки в Cloudflare написали конфиг-парсер на Расте и уронили половину
-интернета. Вот она, ваша пресловутая надежность.</p>
-
-<p>Так что писать можно что угодно на чем угодно. Не уподобляйтесь деревенскому
-гопнику, который знает, какой прикид правильный, а какой нет и в каком ухе
-должна быть серьга.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/kindle3/">Впечатления от читалки Kindle десять лет спустя</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-12-31T00:00:00+00:00">
-        Dec 31, 2025
-    </time>
-
-    <a href="/tag/kindle/" rel="tag">kindle</a>, <a href="/tag/amazon/" rel="tag">amazon</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Почти десять лет назад я купил читалку Kindle Paperwhite. О ней я писал <a href="/kindle/">первую
-заметку</a>, через два года — <a href="/kindle2/">вторую</a>.</p>
-
-<p>Иногда я про нее забывал, и она месяцами лежала разряженная. Недавно я снова
-достал ее с полки, протер, зарядил. Закинул серию статей на тему, которую давно
-хотел освоить. Теперь почитываю в фоне, ожидая детей на секциях и кружках.</p>
-
-<p>Интересно взглянуть на читалку современным взглядом. Первое, что бросается в
-глаза — устройство крайне молчаливо. Оно просто работает! Закинул — прочил,
-закинул — прочитал. Никаких нотификаций, попапов, выпадашек. Читалка ничего не
-спрашивает — никогда и ни при каких условиях.</p>
-
-<p>Уже стало нормой, что, открывая мобильное приложение, первым делом закрываешь
-баннеры. У читалки этого нет, хотя технически ничто не мешает это
-сделать. Открыл читалку — пройди опрос! Открыл еще раз — участвуй в розыгрыше
-призов! Открыл в третий раз — получи бесплатную книгу-нейрослоп! Я прямо
-возмущен — куда смотрят маркетологи? На ровном месте пропадает столько показов
-рекламы.</p>
-
-<p>Далее обновления. За эти десять лет устройство обновило прошивку только раз,
-примерно через месяц после покупки. Остальное время оно работает как
-есть. Видимо, инженеры спроектировали его столь удачно, что добавить сверху
-нечего. Тоже удивительно.</p>
-
-<p>Еще один интересный факт: за десять лет меня ни разу не разлогинило. Как ввел
-учетную запись при первом запуске, так она и работает. Напомню, иной раз читалка
-лежала разряженная в ноль месяцами, и ничего — при запуске всякие токены-шмокены
-подхватились.</p>
-
-<p>Устройство удобно в плане коммуникации. Воткнул в комп и видишь файловую
-систему. Но еще удобней слать статьи на почту: отправил письмо с документами на
-<code class="language-plaintext highlighter-rouge">username@kindle.com</code> — и через минуту они на устройстве.</p>
-
-<p>Для отправки веб-страниц служит расширение Push to Kindle (сервис Five
-Filters). Оно очень качественное и выдает красивую верстку. Формально действует
-ограничение: не более 10 статей в месяц, но при переходе в анонимный режим
-счетчик сбрасывается.</p>
-
-<p>Единственная претензия — после десяти лет немного просела батарея. Раньше заряда
-хватало без преувеличения на месяц, а теперь — максимум на неделю. Впрочем, и
-это хороший показатель. В иных устройствах аккумуляторы деградируют за год.</p>
-
-<p>По сегодняшним меркам Kindle Paperwhite — это устройство из другого мира. Оно
-слишком качественное, простое, функциональное. Пользуешься — и буквально
-чувствуешь его простоту и бесхитростность. В его дизайне на первое место ставили
-интерес пользователя — бывает же!</p>
-
-<p>Изумительная вещь.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/how-to-gdt/">Как все успевать</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-12-31T00:00:00+00:00">
-        Dec 31, 2025
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/gdt/" rel="tag">gdt</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Иногда попадаются статьи с заголовком “Как все успевать?”. Все они сводятся к
-тому, что некий гуру утверждает: я успешен, я все успеваю, делайте так-то и
-так-то. А еще зайдите на мой канал, бусти, купите книгу и подпишитесь на
-рассылку.</p>
-
-<p>Я понял вот что: успевать все невозможно. Однако можно успевать хоть
-что-то. Если это соблюдать – постоянно успевать хоть что-то – получается вполне
-продуктивно.</p>
-
-<p>Вопрос, как успевать хоть что-то? Дело здесь не в приложении или технике
-GDT. Может быть, кому-то помогает то и другое, но я уверен, что они – туфта. Это
-технические средства, которые не должны затенять главное.</p>
-
-<p>А главное вот что – нужно записывать дела и порой поглядывать на них. В
-свободное время, например когда идешь по улице, планировать – сделать то или
-иное дело. При этом ни в коем случае не делать больше одного дела в
-день. Работать на минималке: один день – максимум одно дело.</p>
-
-<p>Почему так? Поймите, что список дел – это не десять-двадцать пунктов. Его длина
-– вся жизнь. Сколько бы вы ни выполнили пунктов, добавятся новые. Некоторые
-считают: запишу в приложение, потом пройдусь по списку и сделаю. Это работает
-неделю, а дальше начинается фрустрация: это дело не хочется, это слишком размыто
-и вообще я устал.</p>
-
-<p>Можно порвать задницу и сделать десять дел в день, да. Но на следующий день
-задница будет болеть, и жить в таком режиме нельзя. Важно протаскивать задачи по
-одной, не затрачивая на них все силы. Ведь работу, детей и домашний быт никто не
-отменял.</p>
-
-<p>Иногда можно устроить “выходной” – день без дополнительных дел. Знаете, какой
-самый легкий день для меня? Когда я прихожу в офис и просто работаю. Не пишу
-книгу, не контрибучу опен-сорс, не ищу маме ноты, не покупаю родственникам
-билеты, не записываюсь в поликлинику и так далее. Просто поработать – уже
-праздник!</p>
-
-<p>Не старайтесь законичить все дела. Список дел – это и есть жизнь. Берите из него
-понемножку и делайте, не уставая. И тогда, пусть даже вы ничего не успеваете,
-вас спросят: как ты все успеваешь?</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/git3-main/">Git 3</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-12-31T00:00:00+00:00">
-        Dec 31, 2025
-    </time>
-
-    <a href="/tag/git/" rel="tag">git</a>, <a href="/tag/master/" rel="tag">master</a>, <a href="/tag/main/" rel="tag">main</a>, <a href="/tag/gender/" rel="tag">gender</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Поздравляю читателей со скорым релизом Git 3, который по умолчанию использует
-ветку <code class="language-plaintext highlighter-rouge">main</code>. Требуется действие: откройте глобальный файл <code class="language-plaintext highlighter-rouge">~/.gitconfig</code> и
-впишите следующее:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[init]
- dеfaultBranch = master
-</code></pre></div></div>
-
-<p>Все, вы в безопасности.</p>
-
-<p>Дело тут не в бунтарстве. Практика показывает, что с мастерами-мейнами легко
-отстрелить ногу на ровном месте. Например, сегодня я полчаса кувыркался, чтобы
-переименовать ветку. Оказалось, для этого нужны четыре команды:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git branch -m main master
-git fetch origin
-git branch -u origin/master master
-git remote set-head origin -a
-</code></pre></div></div>
-
-<p>Разумеется, ребятам, что все это начали, не пришла в голову очевидная
-мысль. Должна быть одна команда (или хотя бы алиас) на случай
-переименования. Одна – а не блок из четырех.</p>
-
-<p>Вообще, смена имен в программировании – опасная вещь. Это всегда ломающее
-изменение. По всему миру разработчики должны что-то обновить, выкатить, дернуть
-апишки – просто ради того, что кому-то не нравятся определенные слова.</p>
-
-<p>Шлю лучи добра авторам библиотеки JSoup. Обновил ее – проект не
-собирается. Оказалось, это клоуны переименовали класс <code class="language-plaintext highlighter-rouge">Whitelist</code> в <code class="language-plaintext highlighter-rouge">Allowlist</code>,
-и ты вынужден исправлять. Если в других проектах указана старая версия, обновить
-и там. Насыпали работы на ровном месте.</p>
-
-<p>Вспоминается история с Микрософтом. Они выкатили в опен-сорс какой-то проект, и
-люди заметили: все “обидные” слова заменены звездочками. Тупая автозамена по
-словарю: фразы <code class="language-plaintext highlighter-rouge">race condition</code> или <code class="language-plaintext highlighter-rouge">red-black tree</code> написаны как <code class="language-plaintext highlighter-rouge">****
-condition</code> и <code class="language-plaintext highlighter-rouge">red-***** tree</code>. Как бы чего не вышло…</p>
-
-<p>Термины – вообще спорная вещь. Скажем, по всему миру люди пользуются Гитом, не
-зная, что на британском сленге git означает “ушлепок” (если не уебок,
-простите). Линус Торвальдс был молод, дерзок и с лексикой не церемонился. И
-ничего, название никому не мешает. Зато master/slave и white/black, видите ли,
-не подходят.</p>
-
-<p>Мне очевидно следующее: не всегда ошибки нуждаются в исправлении. Какие-то из
-них можно оставить в качестве музейного экспоната. Делайте форки, пишите свои
-системы контроля версий. Пусть вместо master/slave у вас будут pony/rainbow. Но
-не наваливайте мне работы просто ради убеждений – которых, к тому же, я не
-разделяю.</p>
-
-<p>И так проблем хватает.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/dream2/">Сны-фильмы (2)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-12-31T00:00:00+00:00">
-        Dec 31, 2025
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/dreams/" rel="tag">dreams</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><a href="/dream/">Я уже рассказывал</a>, что иногда вижу сны-фильмы. Это когда сон
-красочный, яркий, события быстро сменяют друг друга. При этом они целостны и
-образуют сюжет по правилам драматургии. Смотря такие сны, я сам не знаю, чем все
-закончится, и это очень интересно.</p>
-
-<p>Многие сны я забываю, но не сегодня. Проснувшись, несколько раз повторил его,
-дал персонажам имена, додумал концовку – и получилось недурно! Уточню, что
-история рассчитана на зрителей лет двадцати. Сорокалетним читателям она
-покажется наивной, но для молодежи – самое то. Можно снять отличный фильм иди
-аниме.</p>
-
-<p>Итак, сюжет. Молодой человек Артем приезжает из Питера в Москву на какую-то
-конференцию. Там он знакомится с красивой девушкой Еленой. Артем гостит в Москве
-несколько дней, за это время они встречаются и влюбляются. Поскольку они –
-подростки, то интересуются бывшими отношениями друг друга. У Артема не было
-серьезных отношений; Елена говорит, что у нее был ухажер, но потом он ее
-бросил. Артем не понимает, как можно бросить такую девушку. Еще Елена говорит,
-что в ее окружении есть некий Филипп, который добивается ее руки, но он ей не
-нравится.</p>
-
-<p>В день отъезда Елена приглашает Артема в свою компанию. Там он замечает Филиппа
-– он красив, но держится замкнуто. Артем пытается с ним поговорить, но Филипп
-грубит. Артем понимает – ревность. Ему пора на вокзал. Елена хочет его
-проводить, но Артем уговаривает ее остаться на вечеринке. Они страстно
-прощаются, и Артем отправляется на вокзал.</p>
-
-<p>По пути он замечает, что за ним следует Филипп: в автобусе, в метро, на
-улице. Это действует Артему на нервы. Филипп следует за ним до самого
-перрона. Артем разворачивается и хочет разобраться, но Филипп
-отворачивается. Артем подходит к нему со спины и грубо толкает, но это
-оказывается незнакомый человек. Начинается ругань, разборки. Артема уводят в
-отдел полиции.</p>
-
-<p>На Артема составляют протокол о хулиганстве, угрожают задержать. Он
-оправдывается. Ему показывают записи с камер: на них никакого Филиппа нет. Артем
-на ровном месте подходит к человеку и толкает его. Это ввергает его в шок. Чтобы
-избежать задержания, он отдает все наличные полицейскому, на оставшиеся гроши
-покупает другой билет и добирается до Питера, не понимая, что произошло.</p>
-
-<p>Утром Елена присылает ему фотографии с вечеринки, и на многих он видит
-Филиппа. Выходит, он был в двух местах одновременно – и на вечеринке, и вместе с
-тем преследовал Артема по всей Москве. Артем звонит Елене и между делом
-выясняет, что Филипп никуда не уходил. О происшествии с полицией он умалчивает.</p>
-
-<p>Идут дни, Артем и Елена созваниваются. Под разными предлогами Артем вытягивает
-из Елены информацию о Филиппе. Он странный, отличается дурацкими привычками,
-неуживчив. Его пытались травить, но со всеми, кто это делал, случались
-неприятности. Окружающие уловили эту связь и отстали от него, но вместе с тем и
-не приняли. Компания Лены – исключение, потому что ей его жалко. В конце
-разговора Елена говорит, что очень ждет Артема в Москве.</p>
-
-<p>Артем понимает, что здесь какая-то мистика и не знает, как поступить. Тем
-временем Филипп, считая, что отделался от конкурента, делает навязчивые знаки
-Елене. Получив отказ, он начинает показываться ей в местах, где это
-невозможно. Однажды, открыв телефон, Елена видит на рабочем столе фотографию с
-вечеринки, где они вдвоем с Филиппом. Все это расшатывает ей нервы. Она звонит
-Артему и просит помочь.</p>
-
-<p>Вместе они разрабатывают план: Елена скажет друзьям, что поехала к
-родственникам, а на самом деле сбежит к Артему в Питер. Он приезжает за ней, и
-вместе они следуют на вокзал. Однако по пути Артем замечает Филиппа. Пара
-садится в ночной поезд, почти пустой.</p>
-
-<p>В поездке Елена засыпает. Артем идет по вагонам, чтобы проверить, нет ли Филиппа
-рядом. Затем он понимает ошибку: нельзя оставлять Елену одну. Он
-разворачивается, но сзади ждет Филипп. Он рассказывает свою историю: с малых лет
-он был странным, мало спал, остро чувствовал чужие эмоции. Со временем он развил
-паранормальную способность: мог произвести свою призрачную копию, которая
-подчинялась его воле. Но он так и не придумал, как использовать ее во благо, а
-кроме того, боялся ее и не мог находиться с ней рядом. От своей ненормальности
-он устал и был несчастен, ощущая себя чужим. Своим спасением он считал Елену,
-добиваясь ее любви. От ее прошлого ухажера он избавился похожим образом:
-подкараулил в поезде, запугал и заставил выпрыгнуть из окна.</p>
-
-<p>Артем не ведется на угрозы и намерен положить этому конец. Он наступает на
-Филиппа, тот пятится, не ожидав сопротивления. Тем временем копия Филиппа
-оказывается в вагоне с Еленой, та в ужасе отступает. Все персонажи собираются в
-одном тамбуре. Филипп не может быть рядом со своей копией, он ее боится. Почуяв
-страх хозяина, копия выходит из-под контроля. Начинается потасовка. После
-всяческих толчков и подножек копия оказывается в переходе между поездами. Туда
-же Артем закидывает ослабевшего Филиппа и закрывает дверь. Слышен крик, сверкает
-вспышка. Артем открывает дверь, но там никого нет. Филипп и его копия взаимно
-уничтожили друг друга.</p>
-
-<p>На шум прибегает проводник поезда и ссаживает Артема и Елену. Они оказываются на
-незнакомой станции, глубокой ночью, без денег и документов. Но это не важно:
-больше им ничего не угрожает. Взявшись за руки, они идут в сторону
-поселка. Конец.</p>
-
-<p>Повторюсь, сюжет может показаться глупым, но все зависит от того, как его
-снять. Во сне я видел сцены преследования, лица персонажей, была какая-то музыка
-– и смотрелось это очень хорошо и динамично. Проснулся с таким впечатлением,
-словно вышел из кинозала после отличного фильма.</p>
-
-<p>Вот такой сон. Увижу еще – напишу.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/ddh-twit/">Твиты DDH</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-12-31T00:00:00+00:00">
-        Dec 31, 2025
-    </time>
-
-    <a href="/tag/ddh/" rel="tag">ddh</a>, <a href="/tag/microservices/" rel="tag">microservices</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Недавно человек с ником DHH (или DDH, каждый раз путаюсь) твитнул, что
-микросервисы — скам. Видимо, он знаменитость, потому что эту новость обсуждали
-всем интернетом. Фанатов DDH несколько огорчило то, что во втором твите он
-признался: первый написал за него чат-гпт. Странный подход к работе с
-аудиторией: обычно люди читают человека, потому что верят ему. Писать при помощи
-нейросетей, а потом вскрывать этот факт — немного странно.</p>
-
-<p>Однако важно другое. Каждый раз меня удивляет факт: почему, чтобы осознать
-простую вещь, нужен твит знаменитости? Разве у людей нет головы на плечах? Если
-бы речь шла о голове! Неужели не хватает банальных ощущений и восприятия? Когда
-сел на кактус и больно — разве мы думаем, что делать? Но с микросервисами
-история противоположна. Людям неудобно — но они глубже садятся задницей на
-кактус. Обещают себе и другим, что еще немного — и станет легче. Нет, не
-станет. Ни через три месяца, ни через три года.</p>
-
-<p>Без всяких ГПТ я расскажу, что такое микросервисы на практике. И прежде всего:
-желаю их фанатикам попасть в проект, где микросервисов не три, а
-тридцать. Бойтесь своих желаний, уважаемые, потому что вы заговорите
-по-иному. Одно дело — рисовать круги и стрелки на маркерной доске, другое —
-отлаживать цепочку из пяти вызовов.</p>
-
-<p>Я варюсь в подобном аду уже два с половиной года и накопил негативный опыт. Он
-тоже важен: поможет не вестись на провокации, когда кто-то заливает про
-микросоверсы, Гугл и так далее.</p>
-
-<p>Главная беда микросервисов в следующем: они резко повышают сложность
-системы. Буквально сразу на два порядка. Если сервисов тридцать, нужно столько
-же сборочных линий, коллекторов логов, скриптов деплоя и всего
-остального. Многое из этого копируется, но многое придется создавать руками.</p>
-
-<p>Если нет трассировщика запросов, ни о каких микросервисах не может быть и
-речи. Должна быть админ-панель, где вводишь айди, и показано дерево с
-таймингами.</p>
-
-<p>Передача данных по сети — целая вечность по сравнению с передачей
-указателя. Сериализация данных — тоже нетривиальная задача, где сплошные
-компромиссы. JSON читается человеком, но избыточен и поддерживает мало
-типов. Protobuf — быстр, но порог входа высокий, нужен обвес. gRPS быстрее
-обычного REST API, но это фреймворк с высоким порогом. К тому же REST API так
-или иначе остается для браузера.</p>
-
-<p>Если делать микросервисы по уму, то не хватит никакого воображения, чтобы
-охватить масштаб. Судите сами: во-первых, одних лишь сервисов недостаточно, им
-нужен API-гейтвей — согласно бест-практис. Этот гейтвей отвечает за глобальный
-роутинг, лимиты и многое другое.</p>
-
-<p>У каждого сервиса своя база. Тридцать сервисов — тридцать баз! Плюс нужна
-консолидированная база для отчетности, например когда требуются джоины разных
-сущностей. Кто будет заниматься этими тридцатью базами?</p>
-
-<p>Согласно бест-практис, даже внутри контура исповедуют Zero Trust. Между
-сервисами налаживают взаимное TLS-шифрование. Это значит, кто-то должен следить
-за выпуском сертификатов и их ротацией.</p>
-
-<p>Когда жалуешься на микросервисы, говорят — вы не умеете их готовить. Что ж,
-может быть, где-то в мире есть фирма, где микросервисы сделаны по уму — я этого
-не отрицаю. Но гораздо чаще я видел другое — сервисы сделаны через задницу, и
-при этом говорят, что трудности временны. Сейчас мы добавим Кафку, асинхронное
-взаимодействие, gRPC — и тогда полетим. Увы, этого не происходит.</p>
-
-<p>Микросервисы становятся рассадником разных заболеваний. Одно и то же уродливое
-решение копируется из проекта в проект, и его чистка может занять годы — я не
-преувеличиваю. В теории разработчики должны выносить общий код в библиотеки, но
-этим никто не занимается. Одному проще написать у себя в проекте, другому —
-скопировать.</p>
-
-<p>Сервисы могут быть написаны очень плохо. Я уже год борюсь с тем, что важный
-сервис проглатывает ошибки. Возвращает пустой результат <code class="language-plaintext highlighter-rouge">{"data": []}</code> и пишет в
-лог. Не читаешь логи? Твои проблемы.</p>
-
-<p>Владение сервисом может быть как благом, так и проклятьем. У него может быть
-неудобная апишка, но владельцев это не интересует. Заведи задачу — может быть,
-через три месяца возьмем в работу. А пока что так, у нас другие дела.</p>
-
-<p>Я смотрю на это и думаю: похоже, все эти идеальные микросервисы бывают только в
-раю. Столько требований, столько ограничений, столько бест-практис, что кажется
-— нужно быть богом или супер-мозгом, чтобы организовать все правильно. При этом
-— в разумное время и бюджет(!), и еще параллельно делать бизнес-фичи(!!).</p>
-
-<p>Мне кажется, так не бывает. Скорее всего, каждая фирма, где практикуют
-микросервисы, находится на разном этапе одной и той же истории. Много
-разработчиков, подобно рабам-строителям пирамид, тянут лямку в надежде, что
-однажды стройка кончится и все будет хорошо. Но все проще: если раб умер, его
-хоронят прямо на месте и берут нового. Путь микросервисов — это путь перемещения
-тяжестей туда-сюда. Это сжигание денег. Просто совпадение: находятся люди,
-которые дают деньги; находятся те, кто проектирует; находятся те, кто выполняет
-работу.</p>
-
-<p>Еще ни разу я не видел задачи, которая бы не решалась монолитом и Постгресом. Ни
-разу — без преувеличений. Только не рассказывайте про Гугл. Во-первых, это
-другая весовая категория, а во-вторых — в том же OpenAI один мастер-инстанс
-Postgres. Вполне можно выйти на уровень Faang за счет простых технологий.</p>
+<p>Разработчик знает про индексы и добавляет их два: один на <code class="language-plaintext highlighter-rouge">foo</code>, второй на
+<code class="language-plaintext highlighter-rouge">bar</code>. Логика такая: с одним индексом быстро, с двумя – еще быстрее.</p>
+
+<p>Ан нет: не все так просто. Как правило, Postgres использует только один индекс
+при обходе, потому что так быстрее. В этом легко убедиться, посмотрев план: там
+будет индекс либо на <code class="language-plaintext highlighter-rouge">foo</code>, либо на <code class="language-plaintext highlighter-rouge">bar</code>, но не оба одновременно.</p>
+
+<p>Конечно, бывает, что используются оба индекса. Это возможно, если условия
+связаны через <code class="language-plaintext highlighter-rouge">OR</code> и Postgres выбрал bitmap index scan, используются подзапросы,
+джоины. Но конкретно в нашем случае индекс будет один.</p>
+
+<p>Если условия соединяются через AND, задайте составной индекс на пару <code class="language-plaintext highlighter-rouge">(foo,
+bar)</code>. Он будет быстрее, чем то и другое поле по отдельности.</p>
+
+<p>Порядок полей в составном индексе важен. Желательно располагать их по нарастанию
+множественности, а кроме того, иметь в виду следующее. Составной индекс может
+быть использован, если известны его лидирующие компоненты. Например, <code class="language-plaintext highlighter-rouge">(foo,
+bar)</code> сработает, если условие только на <code class="language-plaintext highlighter-rouge">foo</code>. По аналогии, индекс <code class="language-plaintext highlighter-rouge">(foo, bar,
+baz)</code> сработает, если заданы <code class="language-plaintext highlighter-rouge">foo</code> и <code class="language-plaintext highlighter-rouge">bar</code>. Однако для <code class="language-plaintext highlighter-rouge">bar</code> и <code class="language-plaintext highlighter-rouge">baz</code> он не
+подхватится.</p>
+
+<p>Планируйте составной индекс так, чтобы охватить как можно больше случаев.</p>
 
                 
             </div>
@@ -1333,7 +957,7 @@ Postgres. Вполне можно выйти на уровень Faang за сч
         
         <a href="/page5" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 6 из 109</span>
+        <span class="page_number ">Страница 6 из 110</span>
         
         <a href="/page7" class="next">&rarr;</a>
         
