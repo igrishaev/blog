@@ -15,9 +15,7 @@ telegram_id: 819
 Когда вы закроете диалог, у вас будет сотня модальных попапов и абсолютно черный
 экран. Каждый затеняет то, что под ним на 5 процентов, и они суммируются.
 
-<video width="1280" height="720" controls>
-  <source src="/assets/static/aws/telegram-popup/1.mp4" type="video/mp4">
-</video>
+{% include video.html path="telegram-popup/1.mp4" width="1280" height="720" %}
 
 Лет 7 назад я делал мобильное приложение на гремучей смеси технологий: Кложа,
 React.Native и Objective-C для доступа к нативным штучкам. В том числе я делал

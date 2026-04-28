@@ -16,9 +16,7 @@ tags: video adobe indesign
 несколько раз открывал и закрывал его, и поэтому оно прогрето. Холодный запуск
 будет медленней.
 
-<video controls>
-  <source src="/assets/static/aws/indesign/1.mp4" type="video/mp4">
-</video>
+{% include video.html path="indesign/1.mp4" %}
 
 Но дело не в этом. После того, как окно распахнется на весь экран, программа
 вступает во вторую фазу: загружает внутренний экран с последними файлами и
@@ -32,9 +30,7 @@ tags: video adobe indesign
 проектом, он откроется мгновенно. Можно не ждать эти 10 секунд, а открыть файл
 ручками и работать. Это подтверждает второе видео:
 
-<video width="1280" height="720" controls>
-  <source src="/assets/static/aws/indesign/2.mp4" type="video/mp4">
-</video>
+{% include video.html path="indesign/2.mp4" width="1280" height="720" %}
 
 Такие вот интересные программы Адоба.
 

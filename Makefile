@@ -17,7 +17,7 @@ run:
 build:
 	$(DOCKER_BASE) jekyll build
 
-serve:
+serve: clear
 	$(DOCKER_BASE) jekyll serve --watch --incremental
 
 
