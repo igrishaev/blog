@@ -117,3 +117,7 @@ json(b) types. The API is easy to use and extend.
 
 -- [Any](https://github.com/igrishaev/any) is a number of smart objects that
 equal to anything you want. Quite useful for test.
+
+-- [Alike](https://github.com/igrishaev/alike) is a library data matching in
+tests. Simple and extendable, provides nice error report and clear explanation
+of what did wrong.
