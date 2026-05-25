@@ -106,6 +106,128 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-016-pg/">Postgres №16</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-31T00:00:00+00:00">
+        Jan 31, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Разберем ситуацию, когда индекс есть, но не используется.</p>
+
+<p>Предположим, в системе есть пользователи, и каждый указывает город:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
+  <span class="n">id</span> <span class="n">uuid</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+  <span class="n">name</span> <span class="nb">text</span><span class="p">,</span>
+  <span class="n">city</span> <span class="nb">text</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>В реальности поле <code class="language-plaintext highlighter-rouge">city</code> ссылается на таблицу городов, но сейчас это не важно –
+оставим текст. Разработчик создал индекс на город:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">idx_user_city</span>
+<span class="k">using</span> <span class="n">btree</span> <span class="k">on</span> <span class="n">users</span><span class="p">(</span><span class="n">city</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Выполняет запрос, чтобы найти пользователей из Москвы:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">city</span> <span class="o">=</span> <span class="s1">'Moscow'</span>
+</code></pre></div></div>
+
+<p>Смотрит план, а там full scan. Почему?</p>
+
+<p>Самое важное: Postgres никогда не использует индекс просто потому, что он
+есть. Индекс берется в работу, только если а) по нему собрана статистика и б)
+она показывает, что индекс дешевле full scan.</p>
+
+<p>Разберем оба условия. Статистика по каждой таблице, ее колонке и индексу
+хранится в каталоге <code class="language-plaintext highlighter-rouge">pg_statistics</code>. Это очень низкоуровневые данные. В них
+записаны наиболее частые значения колонок, их гистограмма, приблизительные
+диапазоны значений. Поверх <code class="language-plaintext highlighter-rouge">pg_statistics</code> создана вьюха <code class="language-plaintext highlighter-rouge">pg_stats</code>, которая
+удобнее в работе и проверяет права на таблицы.</p>
+
+<p>Статистику собирает специальный процесс по расписанию. Если вы только что
+создали индекс, статистики для него нет. Обновите ее командой:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">analyze</span> <span class="n">users</span>
+</code></pre></div></div>
+
+<p>В идеале <code class="language-plaintext highlighter-rouge">analyze</code> нужно добавлять в миграции, которые создают или меняют
+индексы, чтобы сразу после их применения индекс подхватился.</p>
+
+<p>Итак, статистика есть, но индекс “мигает” – то используется, то нет. Например,
+ищем пользователей из Читы, попадаем в индекс:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">city</span> <span class="o">=</span> <span class="s1">'Chita'</span>
+<span class="cm">/* index scan on idx_user_city ... */</span>
+</code></pre></div></div>
+
+<p>А если из Москвы, будет full scan:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">city</span> <span class="o">=</span> <span class="s1">'Moscow'</span>
+<span class="cm">/* full seq scan on users ... */</span>
+</code></pre></div></div>
+
+<p>В чем дело? Ответ – селективность, она же избирательность. Так называют долю
+найденных записей относительно их общего числа. С селективностью есть путаница:
+разные учебники по-разному трактуют этот показатель. Одни говорят: если процент
+малый (1-5%), то селективность высокая, а если большой (30 и выше) – то
+низкая. Другие наоборот: малый процент – низкая селективность, высокий —
+большая. Я предпочитаю первый (обратный) вариант: чем меньше записей охватывает
+условие, тем точнее (выше) селективность.</p>
+
+<p>Если проверить, сколько в базе пользователей из какого города, то окажется
+следующее. Из Читы – три человека (высокая селективность), а из Москвы – триста
+тысяч (крайне низкая). Москва окажется в каталоге <code class="language-plaintext highlighter-rouge">pg_statistics</code> в колонке
+“частые значения” – сигнал к тому, чтобы не брать индекс в работу. При анализе
+запроса Postgres это проверит и возьмет full scan. Москвичи пролетают!</p>
+
+<p>Какова должна быть селективность значения? Реальность такова, что Postgres берет
+в работу индекс, если селективность условия не превышает 5-10 процентов. Это
+довольно мало! Именно поэтому нет смысла создавать индексы на логические флаги
+(true/false), статусы (<code class="language-plaintext highlighter-rouge">active</code>, <code class="language-plaintext highlighter-rouge">pending</code>, <code class="language-plaintext highlighter-rouge">done</code>) и другие значения с малым
+разбросом. Их селективность слишком низкая (высокая доля выборки).</p>
+
+<p>Для таких значений используйте частичные индексы <a href="/tip-005-pg/">(см. прошлый
+совет)</a>. Например, только активные заказы, только москвичи и так далее. И
+потом ищите уже внутри этого подмножества.</p>
+
+<p>Почему Postgres предпочитает full scan для условия, которое покрывает 30%
+таблицы? Ведь прочитать треть таблицы быстрее, чем всю? Дело в том, что обход
+индекса возвращает не сами строки, а номера блоков, где они находятся. Блоки
+идут не один за другим, а разбросаны по всему файлу. Даже если отсортировать
+номера по возрастанию, между ними могут быть большие промежутки. В результате
+будет много дисковых операций. На крутящихся жестких дисках это приводило к
+частому переносу головки.</p>
+
+<p>Напротив, чтение всех блоков подряд относительно дешево. При таком методе
+Postgres читает сразу много блоков, а не по одному.</p>
+
+<p>Итого: выполняйте <code class="language-plaintext highlighter-rouge">analyze</code>, проверяйте селективность условия.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/pg-book-json-ch01/">Глава 1. Введение в документы</a>
             </h2>
 
@@ -130,7 +252,7 @@
   <li><a href="/pg-book-json-ch01/">Введение в документы</a></li>
   <li><a href="/pg-book-json-ch02/">Базовые возможности JSON</a></li>
   <li><a href="/pg-book-json-ch03/">JSON в таблицах</a></li>
-  <li>Индексирование JSON</li>
+  <li><a href="/pg-book-json-ch04/">Индексирование JSON</a></li>
   <li>Ссылки и ограничения в документах</li>
   <li>Язык путей JSONPath</li>
   <li>Отчеты и функции</li>
@@ -1014,57 +1136,6 @@ psql!</p>
 обходите.” (с) Поэтому связные структуры я обхожу в SQL без выгрузки в
 приложение. Это и быстрее, и результат виден сразу, и удобно
 коллегам-аналитикам, которые не знают Кложу/Питон.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-007-pg/">Postgres №7</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-16T00:00:00+00:00">
-        Jan 16, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Коль скоро COPY – <a href="/tip-006-pg/">ваш лучший друг</a>, присмотритесь к бинарному
-формату. В среднем он на 30% меньше, чем текстовый и CSV. Числа хранятся
-компактно, а не по принципу “байт на разряд”. Строки не экранируются. Это очень
-удобно: не нужно бежать по строке и проверять, есть ли обратный слэш и что-то за
-ним. Прочитал байтовый массив, обернул в <code class="language-plaintext highlighter-rouge">(new String)</code> и готово.</p>
-
-<p>Бинарный формат COPY в целом прост. Первые 19 байтов можно пропустить – это
-заголовок и резерв под флаги, которые в данный момент не используются. Далее
-идет набор строк. Каждая строка – это пара <code class="language-plaintext highlighter-rouge">(int2, content)</code>, где int2 – число
-колонок. Оно одинаково для всех строк, но дублируется. Последняя строка содержит
--1, а за ней ничего нет.</p>
-
-<p>С свою очередь content – это набор пар <code class="language-plaintext highlighter-rouge">(int4, field)</code> – длина поля и его
-содержимого. Если длина -1, то значение null, а содержимого нет. В зависимости
-от типа поле читают по-разному. Перечислять все типы и их особенности я не буду:
-для этого есть библиотеки. Радует, что библиотек для бинарного формата Postgres
-все больше: в Гугле находятся версии для Python, Node.js, Go и так далее. Среди
-прочих есть и мои реализации: <a href="https://github.com/igrishaev/pg-bin">pg-bin</a> на
-Кложе и модуль <a href="https://github.com/igrishaev/pg2/tree/master/pg-core/src/java/org/pg/codec">org.pg.codec</a>
-на Джаве в составе pg2.</p>
-
-<p>Возня с бинарным форматом помогла мне понять, как лучше хранить данные,
-передавать по сети, как ускорить их обработку. В целом, поковыряться с байтами –
-хорошее дело: развивает кодерские навыки, поддерживает форму.</p>
 
                 
             </div>

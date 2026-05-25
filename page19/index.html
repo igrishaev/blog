@@ -106,6 +106,88 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/singleton-2/">Синглтон (2)</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2025-05-11T00:00:00+00:00">
+        May 11, 2025
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/singleton/" rel="tag">singleton</a>, <a href="/tag/patterns/" rel="tag">patterns</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Вдогонку о синглтоне — пара мелочей, о которых забыл вчера. Рассмотрим простую
+функцию:</p>
+
+<div class="language-lisp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nv">func</span> <span class="nv">get-user-by-id</span> <span class="nv">[db</span> <span class="nv">id]</span>
+  <span class="p">(</span><span class="nb">first</span> <span class="p">(</span><span class="nv">jdbc/execute!</span> <span class="nv">db</span> <span class="s">"where id = ?"</span> <span class="nv">id</span><span class="p">)))</span>
+</code></pre></div></div>
+
+<p>Она принимает объект базы и работает с ним. Все прозрачно и логично. А вот
+варианты этой же функции, которые рассчитывают на глобальное подключение к базе:</p>
+
+<div class="language-lisp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nv">func</span> <span class="nv">get-user-by-id</span> <span class="nv">[id]</span>
+  <span class="p">(</span><span class="k">let</span> <span class="nv">[db</span> <span class="nv">some.namespace/*DB*]</span>
+    <span class="p">(</span><span class="nb">first</span> <span class="p">(</span><span class="nv">jdbc/execute!</span> <span class="nv">db</span> <span class="s">"..."</span> <span class="nv">id</span><span class="p">))))</span>
+</code></pre></div></div>
+
+<p>или</p>
+
+<div class="language-lisp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nv">func</span> <span class="nv">get-user-by-id</span> <span class="nv">[id]</span>
+  <span class="p">(</span><span class="k">let</span> <span class="nv">[db</span> <span class="p">(</span><span class="nv">db/get-or-create</span> <span class="o">...</span><span class="p">)</span><span class="nv">]</span>
+    <span class="p">(</span><span class="nb">first</span> <span class="p">(</span><span class="nv">jdbc/execute!</span> <span class="nv">db</span> <span class="s">"..."</span> <span class="nv">id</span><span class="p">))))</span>
+</code></pre></div></div>
+
+<p>Оба варианта плохи по многим критериям. Если глобальный объект куда-то переедет,
+придется менять все функции. Нарушается связность системы — функции лезут в
+кишки, куда им лезть не следует. Объект может быть не инициирован — вполне
+возможная ситуация, если он включается по запросу. Наконец, функцию
+db/get-or-create нужно проверить на потокобезопасность, чтобы несколько потоков
+не наплодили более одного объекта.</p>
+
+<p>А теперь вернемся к первому варианту:</p>
+
+<div class="language-lisp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nv">func</span> <span class="nv">get-user-by-id</span> <span class="nv">[db</span> <span class="nv">id]</span>
+  <span class="p">(</span><span class="nb">first</span> <span class="p">(</span><span class="nv">jdbc/execute!</span> <span class="nv">db</span> <span class="s">"..."</span> <span class="nv">id</span><span class="p">)))</span>
+</code></pre></div></div>
+
+<p>Очевидно, что когда функция принимает объект, все претензии снимаются. Ей все
+равно, синглтон это или нет, это не играет роли. Даже если в системе десять
+подключений к разным базам, на функции это не скажется. Наоборот, сплошная
+польза: я могу прочитать пользователя из мастера, из реплики, из исторической
+базы. В некоторых случаях это важно.</p>
+
+<p>Если отбросить красивые слова, синглтон — это глобальное состояние, подпертое
+костылями. А состояния лучше избегать — сегодня это ясно как день, причем
+независимо от языка.</p>
+
+<p>Пока писал, вспомнил, как словил неприятное поведение из-за синглтона. В одном
+проекте авторы сделали глобальный пул соединений с базой. Синглтон, все по
+статьям в интернете. А потом я стал писать тесты и обнаружил: если тест закроет
+пул, то все, капут — система становится нерабочей. При попытке обратиться к пулу
+получишь исключение, что он закрыт. А пересоздать нельзя, потому что пул
+глобален. Нога прострелена, и нужно перезапускать приложение. Я это починил, но
+шлю авторам лучиков знаний, чтобы так не делать.</p>
+
+<p>Повторюсь, сегодня нет причин использовать синглтон. Ни под каким видом. Знать,
+что это такое, нужно, но только за тем, чтобы не напороться на описанные грабли.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/singleton-1/">Синглтон (1)</a>
             </h2>
 
@@ -677,48 +759,6 @@ challenging problems.</p>
 
 <p>Вряд ли я достойный пример для подражания, но рассказы про бизнес нужно
 воспринимать с прохладой. Это лапша.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/limiter/">Вертикальная полоса</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-04-24T00:00:00+00:00">
-        Apr 24, 2025
-    </time>
-
-    <a href="/tag/life/" rel="tag">life</a>, <a href="/tag/monitor/" rel="tag">monitor</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Как-то сижу, быдлокодю понемножку и замечаю, что в редакторе включена
-вертикальная полоса – ограничитель 80 символов. Думаю: странно, не помню, что
-ее включал. Я таким не пользуюсь – переношу код согласно внутреннему чутью. Но
-пусть будет, тем более что лень искать, как выключить.</p>
-
-<p>А через месяц я подвинул окно и обнаружил, что это не ограничитель, а
-вертикальный ряд битых пикселей. Представьте, он не двигается за редактором и
-искажает цвет в любой программе.</p>
-
-<p>Может быть, в прошлом я бы устроил внутреннюю истерику: как так, 4к-монитор, 144
-герц, и вдруг сдох целый ряд. Но потом я подвинул редактор на место и продолжил
-быдлокодить. С тех пор притворяюсь, что это ограничитель.</p>
-
-<p>Чем меньше истерик – как внешних, так и внутренних – тем лучше для
-психики. Мне кажется, это правило продлевает жизнь, хоть и доказывать еще рано.</p>
 
                 
             </div>

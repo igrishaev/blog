@@ -106,6 +106,213 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-026-pg/">Postgres №26</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-21T00:00:00+00:00">
+        Mar 21, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Продолжение <a href="/tip-025-pg/">прошлой заметки</a> про удаление.</p>
+
+<p>Решение – перенос! Данные нужно не помечать на удаление, а переносить между
+таблицами. В этом случае главная таблица не захламляется, а удаленные строки не
+висят грузом. Для начала решим задачу в лоб. Представим, есть таблица товаров:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">goods</span> <span class="p">(</span>
+ <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+ <span class="n">title</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+ <span class="n">created_at</span> <span class="n">timestamptz</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="k">current_timestamp</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Вставим в нее много записей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">goods</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+<span class="k">select</span>
+ <span class="n">format</span><span class="p">(</span><span class="s1">'good_%s'</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+<span class="k">from</span>
+ <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Подготовим таблицу удаленных записей. Ее структура такая же, поэтому используем
+выражение like <code class="language-plaintext highlighter-rouge">&lt;table&gt;</code>. Индексы и ограничения скопированы не будут.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">goods_deleted</span> <span class="p">(</span><span class="k">like</span> <span class="n">goods</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Далее мы решили, что товары с кодами с 555 по 666 почему-то плохие, и нужно их
+удалить. Разработчики делают так: сперва читают данные в приложение:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">goods</span>
+<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Удаляют их:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">delete</span> <span class="k">from</span> <span class="n">goods</span>
+<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Вставляют в таблицу <code class="language-plaintext highlighter-rouge">goods_deleted</code> строки, которые висят в приложении:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">goods_deleted</span> <span class="p">...;</span>
+</code></pre></div></div>
+
+<p>В обратную сторону — то же самое: прочитали, удалили, вставили. Решение
+нормальное и встречается часто — и в нем все плохо.</p>
+
+<p>Во-первых, по какой-то причине мы гоняем строки в приложение и обратно, хотя
+нужды в этом никакой. Postgres прекрасно перенесет их между таблицами, не
+отправляя клиенту. Для этого выполним запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span>
+ <span class="k">delete</span> <span class="k">from</span> <span class="n">goods</span>
+ <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
+ <span class="n">returning</span> <span class="o">*</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">goods_deleted</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">deleted</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Если <code class="language-plaintext highlighter-rouge">DELETE</code> имеет на конце <code class="language-plaintext highlighter-rouge">returning</code>, он не отличается от <code class="language-plaintext highlighter-rouge">SELECT</code> (разве
+что с побочным эффектом). В выборке <code class="language-plaintext highlighter-rouge">deleted</code> окажутся удаленные строки. Далее
+мы вставляем их в <code class="language-plaintext highlighter-rouge">goods_deleted</code>. Оба запроса протекают в неявной транзакции,
+снимок данных один и тот же.</p>
+
+<p>Теперь в <code class="language-plaintext highlighter-rouge">goods</code> не окажется товаров с айдишками 555…666, зато они будут в
+<code class="language-plaintext highlighter-rouge">goods_deleted</code>.</p>
+
+<p>Теперь в обратную сторону: удалить из <code class="language-plaintext highlighter-rouge">goods_deleted</code> и вставить в <code class="language-plaintext highlighter-rouge">goods</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">restored</span> <span class="k">as</span> <span class="p">(</span>
+ <span class="k">delete</span> <span class="k">from</span> <span class="n">goods_deleted</span>
+ <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
+ <span class="n">returning</span> <span class="o">*</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">goods</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">restored</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Один запрос, атомарность, нулевая передача клиенту.</p>
+
+<p>Теперь таблицы. Выше мы клонировали таблицу goods и назвали ее
+<code class="language-plaintext highlighter-rouge">goods_deleted</code>. И что, делать это для каждой таблицы? <code class="language-plaintext highlighter-rouge">users_deleted</code>,
+<code class="language-plaintext highlighter-rouge">orders_deleted</code>, <code class="language-plaintext highlighter-rouge">photos_deleted</code>, <code class="language-plaintext highlighter-rouge">profile_deleleted</code>…?</p>
+
+<p>А во-вторых, миграции. Если таблица <code class="language-plaintext highlighter-rouge">goods</code> изменится, перенос отвалится, потому
+что состав колонок будет другим. Придётся явно прописывать, что на что маппить.</p>
+
+<p>Поэтому вместо <code class="language-plaintext highlighter-rouge">goods_deleted</code>, <code class="language-plaintext highlighter-rouge">users_deleted</code> и так далее заведем таблицу
+<code class="language-plaintext highlighter-rouge">any_deleted</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">any_deleted</span> <span class="p">(</span>
+ <span class="n">entity</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+ <span class="n">pk</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+ <span class="k">data</span> <span class="n">jsonb</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+ <span class="n">created_at</span> <span class="n">timestamptz</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="k">current_timestamp</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Поле <code class="language-plaintext highlighter-rouge">entity</code> означает сущность (<code class="language-plaintext highlighter-rouge">user</code>, <code class="language-plaintext highlighter-rouge">profile</code> и другие), <code class="language-plaintext highlighter-rouge">pk</code> — ее
+первичный ключ. В идеале это UUID, чтобы быть уникальным в разрезе всех
+сущностей. В поле data хранится строка в формате JSON. Вот как выполнить
+перенос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span>
+ <span class="k">delete</span> <span class="k">from</span> <span class="n">goods</span>
+ <span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
+ <span class="n">returning</span> <span class="o">*</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">any_deleted</span>
+<span class="k">select</span>
+ <span class="s1">'goods'</span><span class="p">,</span>
+ <span class="n">deleted</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
+ <span class="n">to_jsonb</span><span class="p">(</span><span class="n">deleted</span><span class="p">)</span>
+<span class="k">from</span> <span class="n">deleted</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Посмотрим, что оказалось в удаленной таблице:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─[ RECORD 1 ]─────────────────────────────────
+│ entity  │ goods
+│ pk      │ 555
+│ data    │ {"id": 555, "title": "good_555",
+│ created_at │ 2026-01-24 14:57:32.595317+03
+├─[ RECORD 2 ]─────────────────────────────────
+│ entity  │ goods
+│ pk      │ 556
+│ data    │ {"id": 556, "title": "good_556",
+│ created_at │ 2026-01-24 14:57:32.595317+03
+├─[ RECORD 3 ]─────────────────────────────────
+│ entity  │ goods
+│ pk      │ 557
+│ data    │ {"id": 557, "title": "good_557",
+│ created_at │ 2026-01-24 14:57:32.595317+03
+</code></pre></div></div>
+
+<p>Видим, что все однородно: можно удалять разные сущности, конфликтов не будет.</p>
+
+<p>Чтобы перенести обратно, выполним такой запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">deleted</span> <span class="k">as</span> <span class="p">(</span>
+ <span class="k">delete</span> <span class="k">from</span> <span class="n">any_deleted</span>
+ <span class="k">where</span>
+         <span class="n">entity</span> <span class="o">=</span> <span class="s1">'goods'</span>
+     <span class="k">and</span> <span class="n">pk</span> <span class="k">between</span> <span class="mi">555</span> <span class="k">and</span> <span class="mi">666</span>
+ <span class="n">returning</span> <span class="o">*</span>
+<span class="p">)</span>
+<span class="k">insert</span> <span class="k">into</span> <span class="n">goods</span>
+<span class="k">select</span>
+ <span class="n">rec</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
+ <span class="n">rec</span><span class="p">.</span><span class="n">title</span><span class="p">,</span>
+ <span class="n">rec</span><span class="p">.</span><span class="n">created_at</span>
+<span class="k">from</span>
+ <span class="n">deleted</span><span class="p">,</span>
+ <span class="n">jsonb_to_record</span><span class="p">(</span><span class="n">deleted</span><span class="p">.</span><span class="k">data</span><span class="p">)</span> <span class="k">as</span> <span class="n">rec</span><span class="p">(</span>
+     <span class="n">id</span> <span class="nb">integer</span><span class="p">,</span>
+     <span class="n">title</span> <span class="nb">text</span><span class="p">,</span>
+     <span class="n">created_at</span> <span class="n">timestamptz</span>
+ <span class="p">);</span>
+</code></pre></div></div>
+
+<p>Функция <code class="language-plaintext highlighter-rouge">jsonb_to_record</code> приводит JSON-объект к записи. Даже если в исходной
+таблице добавились колонки, после распаковки они будут <code class="language-plaintext highlighter-rouge">null</code>.</p>
+
+<p>В итоге у нас одна таблица удаленных сущностей. Она бесконечно растет вниз,
+устойчива к миграциям. Активные таблицы не захламляются. Чудо!</p>
+
+<p>Что бы еще добавить? Пожалуй, у таблицы <code class="language-plaintext highlighter-rouge">any_deleted</code> могут быть поля <code class="language-plaintext highlighter-rouge">done_by</code>
+(кто удалил), reason (причина: <code class="language-plaintext highlighter-rouge">ban</code>, <code class="language-plaintext highlighter-rouge">conflict</code>, <code class="language-plaintext highlighter-rouge">legacy</code>), комментарий (бывает
+нужен), срок хранения (для регулятора).</p>
+
+<p>Минус переноса в том, что нужно ослабить внешние ключи. Обычно против этого
+возражают, но с ростом базы это неминуемо. Если сущность удаляется (подлежит
+переносу), отключите <code class="language-plaintext highlighter-rouge">foreign key constraint</code> в тех таблицах, которые на нее
+ссылаются. Для джоинов используйте <code class="language-plaintext highlighter-rouge">inner join</code>, чтобы отсекать пустые
+ссылки. Записи, которые ссылаются вникуда, можно найти анти-соединением и либо
+удалить физически, либо тоже перенести. Часть этой работы можно поставить на
+крон (см. <code class="language-plaintext highlighter-rouge">pg_cron</code> в прошлых советах).</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-025-pg/">Postgres №25</a>
             </h2>
 
@@ -932,128 +1139,6 @@ ef0093d3-...-26e923a66fe4 -&gt; 7232
 числовыми айдишками.</p>
 
 <p>К счастью, седьмой уид сводит проблему на нет, так что пользуйтесь!</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-016-pg/">Postgres №16</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-31T00:00:00+00:00">
-        Jan 31, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Разберем ситуацию, когда индекс есть, но не используется.</p>
-
-<p>Предположим, в системе есть пользователи, и каждый указывает город:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
-  <span class="n">id</span> <span class="n">uuid</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-  <span class="n">name</span> <span class="nb">text</span><span class="p">,</span>
-  <span class="n">city</span> <span class="nb">text</span>
-<span class="p">)</span>
-</code></pre></div></div>
-
-<p>В реальности поле <code class="language-plaintext highlighter-rouge">city</code> ссылается на таблицу городов, но сейчас это не важно –
-оставим текст. Разработчик создал индекс на город:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">idx_user_city</span>
-<span class="k">using</span> <span class="n">btree</span> <span class="k">on</span> <span class="n">users</span><span class="p">(</span><span class="n">city</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Выполняет запрос, чтобы найти пользователей из Москвы:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">city</span> <span class="o">=</span> <span class="s1">'Moscow'</span>
-</code></pre></div></div>
-
-<p>Смотрит план, а там full scan. Почему?</p>
-
-<p>Самое важное: Postgres никогда не использует индекс просто потому, что он
-есть. Индекс берется в работу, только если а) по нему собрана статистика и б)
-она показывает, что индекс дешевле full scan.</p>
-
-<p>Разберем оба условия. Статистика по каждой таблице, ее колонке и индексу
-хранится в каталоге <code class="language-plaintext highlighter-rouge">pg_statistics</code>. Это очень низкоуровневые данные. В них
-записаны наиболее частые значения колонок, их гистограмма, приблизительные
-диапазоны значений. Поверх <code class="language-plaintext highlighter-rouge">pg_statistics</code> создана вьюха <code class="language-plaintext highlighter-rouge">pg_stats</code>, которая
-удобнее в работе и проверяет права на таблицы.</p>
-
-<p>Статистику собирает специальный процесс по расписанию. Если вы только что
-создали индекс, статистики для него нет. Обновите ее командой:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">analyze</span> <span class="n">users</span>
-</code></pre></div></div>
-
-<p>В идеале <code class="language-plaintext highlighter-rouge">analyze</code> нужно добавлять в миграции, которые создают или меняют
-индексы, чтобы сразу после их применения индекс подхватился.</p>
-
-<p>Итак, статистика есть, но индекс “мигает” – то используется, то нет. Например,
-ищем пользователей из Читы, попадаем в индекс:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">city</span> <span class="o">=</span> <span class="s1">'Chita'</span>
-<span class="cm">/* index scan on idx_user_city ... */</span>
-</code></pre></div></div>
-
-<p>А если из Москвы, будет full scan:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">explain</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">city</span> <span class="o">=</span> <span class="s1">'Moscow'</span>
-<span class="cm">/* full seq scan on users ... */</span>
-</code></pre></div></div>
-
-<p>В чем дело? Ответ – селективность, она же избирательность. Так называют долю
-найденных записей относительно их общего числа. С селективностью есть путаница:
-разные учебники по-разному трактуют этот показатель. Одни говорят: если процент
-малый (1-5%), то селективность высокая, а если большой (30 и выше) – то
-низкая. Другие наоборот: малый процент – низкая селективность, высокий —
-большая. Я предпочитаю первый (обратный) вариант: чем меньше записей охватывает
-условие, тем точнее (выше) селективность.</p>
-
-<p>Если проверить, сколько в базе пользователей из какого города, то окажется
-следующее. Из Читы – три человека (высокая селективность), а из Москвы – триста
-тысяч (крайне низкая). Москва окажется в каталоге <code class="language-plaintext highlighter-rouge">pg_statistics</code> в колонке
-“частые значения” – сигнал к тому, чтобы не брать индекс в работу. При анализе
-запроса Postgres это проверит и возьмет full scan. Москвичи пролетают!</p>
-
-<p>Какова должна быть селективность значения? Реальность такова, что Postgres берет
-в работу индекс, если селективность условия не превышает 5-10 процентов. Это
-довольно мало! Именно поэтому нет смысла создавать индексы на логические флаги
-(true/false), статусы (<code class="language-plaintext highlighter-rouge">active</code>, <code class="language-plaintext highlighter-rouge">pending</code>, <code class="language-plaintext highlighter-rouge">done</code>) и другие значения с малым
-разбросом. Их селективность слишком низкая (высокая доля выборки).</p>
-
-<p>Для таких значений используйте частичные индексы <a href="/tip-005-pg/">(см. прошлый
-совет)</a>. Например, только активные заказы, только москвичи и так далее. И
-потом ищите уже внутри этого подмножества.</p>
-
-<p>Почему Postgres предпочитает full scan для условия, которое покрывает 30%
-таблицы? Ведь прочитать треть таблицы быстрее, чем всю? Дело в том, что обход
-индекса возвращает не сами строки, а номера блоков, где они находятся. Блоки
-идут не один за другим, а разбросаны по всему файлу. Даже если отсортировать
-номера по возрастанию, между ними могут быть большие промежутки. В результате
-будет много дисковых операций. На крутящихся жестких дисках это приводило к
-частому переносу головки.</p>
-
-<p>Напротив, чтение всех блоков подряд относительно дешево. При таком методе
-Postgres читает сразу много блоков, а не по одному.</p>
-
-<p>Итого: выполняйте <code class="language-plaintext highlighter-rouge">analyze</code>, проверяйте селективность условия.</p>
 
                 
             </div>
