@@ -106,6 +106,106 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-027-pg/">Postgres №27</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-21T00:00:00+00:00">
+        Mar 21, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Представьте, что на кровати лежит книга, и нужно вернуть ее в шкаф. Вместо того,
+чтобы отнести книгу, вы толкаете шкаф к кровати, кладете книгу на полку, а потом
+толкаете шкаф на место. Подобная сцена уместна в ситкоме, но в целом это абсурд.</p>
+
+<p>Однако именно так большинство работает с базой данных: без конца гоняет данные
+туда-сюда, хотя можно обойтись командой.</p>
+
+<p>Предположим, нужно обновить статус пользователа по коду. На ORM это выглядит
+так:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">user</span> <span class="o">=</span> <span class="n">models</span><span class="p">.</span><span class="n">User</span><span class="p">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+<span class="n">user</span><span class="p">.</span><span class="n">status</span> <span class="o">=</span> <span class="s">'active'</span>
+<span class="n">user</span><span class="p">.</span><span class="n">save</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Разумеется, никому не интересно, какие запросы будут выполнены. Их никто не
+смотрит и даже не знает, как включить (см. <a href="/tip-011-pg/">прошлый совет</a>). А
+запросы будут такими:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span>
+<span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span>
+
+<span class="k">update</span> <span class="n">users</span> <span class="k">set</span> <span class="n">status</span><span class="o">=</span><span class="s1">'active'</span>
+<span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span>
+</code></pre></div></div>
+
+<p>Внимание: зачем нужен первый запрос? Мы выбрали все поля пользователя. Зачем?
+Второй <code class="language-plaintext highlighter-rouge">UPDATE</code> делает именно то, что нужно: обновляет статус по номеру. Ради
+этого не стоило читать пользователя! Нужно оставить только второй запрос.</p>
+
+<p>Говорят: перед обновлением я должен убедиться, что пользователь существует. Это
+легко сделать и после: оператор <code class="language-plaintext highlighter-rouge">UPDATE</code> возвращает число обновленных
+записей. Если оно равно нулю, пользователя не было. Не говоря уж о том, что
+существование записи проверяется <code class="language-plaintext highlighter-rouge">SELECT</code>-ом без полей или условием <code class="language-plaintext highlighter-rouge">EXISTS</code> –
+незачем выгребать все поля.</p>
+
+<p>Вообще, следите, чтобы данные извлекались из базы как можно реже. База прекрасно
+умеет обновлять и перекладывать данные без участия клиента. Например, кто-то
+блокирует запись при чтении, чтобы обновить ее:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">begin</span><span class="p">;</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span> <span class="k">for</span> <span class="k">update</span><span class="p">;</span>
+<span class="k">update</span> <span class="n">users</span> <span class="k">set</span> <span class="p">...</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">42</span><span class="p">;</span>
+<span class="k">commit</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Зачем читать и блокировать запись? Просто обнови ее.</p>
+
+<p>Возразят: я читаю данные, чтобы рассчитать новые поля. Что ж, если логика
+сложная, это делают в приложении. Но многие вещи можно сделать на SQL. Например,
+начисление баллов, рейтинга, изменения цены и так далее. Для этого пишут
+одноразовую функцию:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">or</span> <span class="k">replace</span> <span class="n">pg_temp</span><span class="p">.</span><span class="n">get_new_rating</span><span class="p">(</span><span class="k">user</span> <span class="k">user</span><span class="p">)</span>
+<span class="k">returns</span> <span class="nb">integer</span>
+<span class="k">immutable</span> <span class="k">strict</span> <span class="n">parallel</span> <span class="n">safe</span> <span class="k">language</span> <span class="k">sql</span>
+<span class="k">return</span> <span class="p">...</span>
+</code></pre></div></div>
+
+<p>и обновляют сразу много пользователей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">users</span>
+<span class="k">set</span> <span class="n">rating</span> <span class="o">=</span> <span class="n">get_new_rating</span><span class="p">(</span><span class="n">users</span><span class="p">)</span>
+<span class="k">FROM</span> <span class="n">subquery</span>
+<span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="n">subquery</span><span class="p">.</span><span class="n">user_id</span>
+</code></pre></div></div>
+
+<p>Поздапрос <code class="language-plaintext highlighter-rouge">subquery</code> выбирает пользователей, которых нужно обновить, а функция
+<code class="language-plaintext highlighter-rouge">get_new_rating</code> возвращает новый рейтинг.</p>
+
+<p>Уже слышу истерику: омг, хранимки, мои глаза! Ну, тут уж на ваше
+усмотрение. Хотите пользоваться базой нормально? Понадобится сырой скуль. Для
+этого нужно отложить ORM и почитать книжки. Но оно того стоит.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-026-pg/">Postgres №26</a>
             </h2>
 
@@ -1034,111 +1134,6 @@ Postgres ругнулся, что такого выражения нет, эта
 <p>Пожалуй, в этом совете нечего взять на заметку, разве что подумать, сколько
 работы делают клиентские библиотеки помимо основных обязанностей. Заодно это
 плавный переход к теме планов и их анализа.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-017-pg/">Postgres №17</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-31T00:00:00+00:00">
-        Jan 31, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/uuid/" rel="tag">uuid</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Наверное, вы много слышали про UUID версии 7. Дело в том, что недавно его
-утвердили окончательно, и он появился в Postgres 18. До этого люди писали свой
-UUID на коленке, но теперь все официально.</p>
-
-<p>В целом UUID – это контейнер из 128 бит. Первые несколько содержат информацию о
-версии, остальное заполняется в зависимости от нее. Самый популярный стандарт
-сегодня – UUID 4, который полностью случаен. Есть и другие алгоритмы: например,
-1 и 2 использовали MAC-адрес машины, на которой генерировались, и таким образом
-раскрывали системную инфу.</p>
-
-<p>Чем хороша версия 7? Ее первые 48 битов содержат время Unix в миллисекундах. Это
-значит, такие ключи сохраняют порядок в разрезе тысячной секунды. Кроме того, из
-него можно извлечь дату и время, а также получить UUID из времени, зная, как
-заполнить хвост. Уникальность плюс время, два в одном.</p>
-
-<p>Существует три подмножества UUID v7. Они различаются тем, как заполняется
-хвост. Версия a) хвост заполняется рандомом. Версия b) используется возрастающий
-счетчик из 12 бит, остальное – рандом. Версия c) используется два счетчика: 12 и
-10 бит (могу быть неточным, читал спеку давно).</p>
-
-<p>Счетчики в хвосте важны для супер-точных систем, например трейдинга. Лично я не
-сталкивался с ситуацией, когда порядка в рамках тысячной секунды недостаточно.</p>
-
-<p>Как я уже рассказывал, UUID v7 отлично подходит на роль первичного
-ключа. Во-первых, если у вас числовые айдишки, вы становитесь заложником
-базы. Только она назначает айдишки сущностям. Это становится проблемой в
-распределенных системах, очередях задач. Пока сущность не вставилась в базу,
-можно наначить ей временный айди, но это лишнее усложнение.</p>
-
-<p>Наоборот, в случае UUID можно присвоить сущности ключ до вставки в базу,
-например:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code># python
-user_id = generate_uuid()
-profile_id = generate_uuid()
-
-# sql
-insert into users (id) values (user_id)
-
-insert into profiles (id, user_id)
-values (profile_id, user_id)
-</code></pre></div></div>
-
-<p>Оба запроса можно выполнить, не обращаясь к полю <code class="language-plaintext highlighter-rouge">generated_id</code> результата.</p>
-
-<p>Говорят: UUID длиней числовой айдишки, это раздувание таблицы. Вспомним, что
-UUIDv7 = id + created_at. Так или иначе нужно хранить время создания
-сущности. Типы timestamp(tz) занимают 8 байт, тип biginteger/bigserial – тоже 8
-байт. В сумме 16, а это столько же, сколько занимает UUID. Все сходится.</p>
-
-<p>Главное: UUIDv4 (полностью случайный) не очень подходит для индексов btree. Если
-добавлять в него значения возрастанию, они будут наполнять бакеты
-последовательно. Примерно как фигурки в Тетрисе, когда профессиональные игроки
-укладывают их слева направо. Если данные случайны, фигурки падают в разные
-бакеты. Из-за этого выше фрагментация, а кроме того, часто срабатывает
-перераспределение узлов.</p>
-
-<p>Похожая беда с обходом индекса. Когда мы обходим btree-индекс с числами, то
-порядок блоков почти совпадает с порядком ключей, например:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>id   block
-1 -&gt; 1001
-2 -&gt; 1001
-3 -&gt; 1002
-</code></pre></div></div>
-
-<p>Если у нас уиды, маппинг будет такой:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>id                           block
-b7b0547b-...-148889ec0602 -&gt; 51451
-d1897a03-...-520566c5c9a7 -&gt; 13
-ef0093d3-...-26e923a66fe4 -&gt; 7232
-</code></pre></div></div>
-
-<p>Будет много случайного доступа к файлу, и обход такого индекса медленней, чем с
-числовыми айдишками.</p>
-
-<p>К счастью, седьмой уид сводит проблему на нет, так что пользуйтесь!</p>
 
                 
             </div>

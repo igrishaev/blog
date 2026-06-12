@@ -6,9 +6,850 @@
 </description>
     <link>https://grishaev.me/</link>
     <atom:link href="https://grishaev.me/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Tue, 09 Jun 2026 06:08:17 +0000</pubDate>
-    <lastBuildDate>Tue, 09 Jun 2026 06:08:17 +0000</lastBuildDate>
+    <pubDate>Fri, 12 Jun 2026 15:32:08 +0000</pubDate>
+    <lastBuildDate>Fri, 12 Jun 2026 15:32:08 +0000</lastBuildDate>
     <generator>Jekyll v4.2.0</generator>
+    
+      <item>
+        <title>Глава 5. Ограничения в документах</title>
+        <description>&lt;h2 id=&quot;главы&quot;&gt;Главы&lt;/h2&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;&lt;a href=&quot;/pg-book-json-ch01/&quot;&gt;Введение в документы&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;/pg-book-json-ch02/&quot;&gt;Базовые возможности JSON&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;/pg-book-json-ch03/&quot;&gt;JSON в таблицах&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;/pg-book-json-ch04/&quot;&gt;Индексирование JSON&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;/pg-book-json-ch05/&quot;&gt;Ограничения в документах&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;Язык путей JSONPath&lt;/li&gt;
+  &lt;li&gt;Отчеты и функции&lt;/li&gt;
+  &lt;li&gt;Функции на языке Python&lt;/li&gt;
+  &lt;li&gt;Версионирование и архивация документов&lt;/li&gt;
+  &lt;li&gt;Релевантный поиск&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h2&gt;
+
+    Содержание
+
+&lt;/h2&gt;
+
+&lt;ul id=&quot;toc-item-pg-book-json-ch05&quot;&gt;
+  &lt;li&gt;&lt;a href=&quot;#главы&quot; id=&quot;toc-item-pg-book-json-ch05-главы&quot;&gt;Главы&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#огриничение-check&quot; id=&quot;toc-item-pg-book-json-ch05-огриничение-check&quot;&gt;Огриничение CHECK&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#ограничение-unique-и-уникальный-индекс&quot; id=&quot;toc-item-pg-book-json-ch05-ограничение-unique-и-уникальный-индекс&quot;&gt;Ограничение UNIQUE и уникальный индекс&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#ограничение-foreign-key-ссылки&quot; id=&quot;toc-item-pg-book-json-ch05-ограничение-foreign-key-ссылки&quot;&gt;Ограничение FOREIGN KEY (ссылки)&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;#прочие-сведения&quot; id=&quot;toc-item-pg-book-json-ch05-прочие-сведения&quot;&gt;Прочие сведения&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;em&gt;В этой главе мы поговорим о том, как добавить документам ограничения: проверку
+поля предикатом, гарантию уникальности в рамках таблицы или ее части. Мы
+рассмотрим ссылочную целостность, познакомимся с вычисляемыми столбцами и
+другими возможностями Postgres.&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;В начале книги мы упоминали разницу между реляционными и документными базами
+данных. В первом случае данные хранятся в виде плоских таблиц; им нельзя придать
+произвольную форму. Документ, напротив, принимает любую структуру и вложенность
+в зависимости от ситуации.&lt;/p&gt;
+
+&lt;p&gt;Плоские таблицы сильны в отношениях между ними. Легко сделать так, чтобы одна
+таблица ссылалась на другую, соединить их как по горизонтали (оператор JOIN),
+так и вертикали (UNION). Таблице можно назначить ограничения и проверки, которые
+база выполняет за нас. Независимо от того, из какой платформы мы обращаемся к
+базе, она не позволит записать неверные данные.&lt;/p&gt;
+
+&lt;p&gt;Документы, напротив, слабы в связях и ограничениях. При работе с ними
+предполагается, что приложение само следит за целостностью данных. Например,
+перед тем как добавить документ А со ссылкой на В, мы проверяем, что последний
+существует.&lt;/p&gt;
+
+&lt;p&gt;Postgres – реляционная база данных, и многие ее ограничения можно применить к
+документам. Ниже мы рассмотрим основные случаи и их особенности.&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;h2 id=&quot;огриничение-check&quot;&gt;Огриничение CHECK&lt;/h2&gt;
+
+&lt;p&gt;Первый вид ограничений называется CHECK – простая проверка. В ней указывают
+выражение, и если при вставке или изменении записи оно ложно, операция
+отменяется.&lt;/p&gt;
+
+&lt;p&gt;Добавим проверку на то, что номер заявки не пуст. Для этого сперва удалим индекс
+на поле application_id, который мы создали в прошлой главе:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;drop&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;index&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;exists&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;idx_applications_application_id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Код ниже создаст ограничение с типом CHECK:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;alter&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;add&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constraint&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ctr_doc_application_id_nn&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;check&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'application_id'&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;is&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;not&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;За выражением &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;...add constraint&lt;/code&gt; следует машинное имя ограничения. Убедитесь,
+что имя хотя бы примерно сообщает о том, что и как оно проверяет. В нашем случае
+doc и application_id указывают на колонку и поле документа, а часть nn означает
+not null. За именем следует тип ограничения (CHECK), а дальше – код, специфичный
+для конкретного типа. По ходу главы мы рассмотрим и другие виды ограничений.&lt;/p&gt;
+
+&lt;p&gt;Убедимся, что не получится добавить документ без номера:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'{&quot;test&quot;: &quot;abc&quot;}'&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- ERROR:  new row for relation &quot;applications&quot; violates check constraint &quot;ctr_doc_application_id_nn&quot;&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;-- DETAIL:  Failing row contains (b6edce9d-285f-4df0-9bba-5f65d390608a, {&quot;test&quot;: &quot;abc&quot;}, 2026-06-05 17:49:33.757553+03, null).&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Подчеркнем, что проверка не зависит от языка или платформы, из которой мы
+обращаемся. Она задана на уровне базы и поэтому сработает всегда.&lt;/p&gt;
+
+&lt;p&gt;Улучшим нашу проверку так, чтобы она проверяла, что в поле &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;application_id&lt;/code&gt;
+записано именно число. Однако в прошлых экспериментах мы добавили документы, где
+поле &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;application_id&lt;/code&gt; не было числом. Чтобы удалить их, выполните запрос с
+выражением на языке JSON Path (мы изучим его в следующей главе):&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;delete&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;@@&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'$.application_id.type() != &quot;number&quot; '&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Удалите прежнее ограничение:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;alter&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;drop&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constraint&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ctr_doc_application_id_nn&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;и добавьте новое:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;alter&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;add&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constraint&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ctr_doc_application_id_int&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;check&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'application_id'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;is&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;not&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Теперь при попытке записать документ с неверным номером получим ошибку:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'{&quot;application_id&quot;: &quot;abc&quot;}'&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- ERROR: cannot cast jsonb string to type integer&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Вероятно, вам захочется добавить как можно больше проверок CHECK, чтобы
+защититься от ошибок. Увы, это сомнительная практика. Множественные проверки
+замедляют вставку и изменение данных, поэтому за безопасность вы платите
+быстродействием. В документе могут быть сотни полей, в том числе опциональных, и
+проверка их всех ни к чему хорошему не приведет.&lt;/p&gt;
+
+&lt;p&gt;Более удачное решение – проверять документ в приложении до записи в базу. Обычно
+это делают при помощи JSON-схемы. Библиотеки для работы со схемами есть для всех
+популярных языков. Храните схемы в отдельном репозитории, чтобы ими могли
+пользоваться клиенты на Python, Java и других языках. Приведем фрагмент схемы
+нашей заявки:&lt;/p&gt;
+
+&lt;div class=&quot;language-json highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;type&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;object&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;properties&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+    &lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;type&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;string&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;format&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;uuid&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;},&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+    &lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;status&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;enum&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;active&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;deleted&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;pending&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]},&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+    &lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;created_at&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;type&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;string&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;format&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;date-time&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;},&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+    &lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;application_id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;type&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;integer&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;},&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+    &lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;organization&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;...&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;},&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+    &lt;/span&gt;&lt;span class=&quot;err&quot;&gt;...&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;},&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+  &lt;/span&gt;&lt;span class=&quot;nl&quot;&gt;&quot;required&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;status&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;created_at&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;w&quot;&gt; &lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;...&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Резюмируюя, можно сказать, что ограничения CHECK малополезны для
+документов. Если можно вынести проверку в схему, так и следует поступить. В
+редких случаях CHECK может опираться на глобальные настройки или параметры
+сеанса. Однако такие примеры не будем рассматривать ввиду их надуманности.&lt;/p&gt;
+
+&lt;h2 id=&quot;ограничение-unique-и-уникальный-индекс&quot;&gt;Ограничение UNIQUE и уникальный индекс&lt;/h2&gt;
+
+&lt;p&gt;Гораздо интересней ограничения, которые нельзя вынести в JSON-схему. Это может
+быть проверка поля на уникальность: гарантия, что в таблице нет другой заявки с
+таким номером. В этом случае JSON-схема не поможет: ей доступен только документ,
+но не содержимое базы. Технически возможно написать валидатор схемы, который
+обращается к базе в поисках дубликата, но такое решение грубо и неуклюже.&lt;/p&gt;
+
+&lt;p&gt;При создании таблицы можно задать поле или их комбинацию уникальными. Первый
+случай – одно уникальное поле – подходит для различных кодов, артикулов, адресов
+электронной почты и других атрибутов, которые однозначно определяют сущность. В
+таблице ниже поле email задано уникальным, чтобы не допустить двух пользователей
+с одной почтой (проблему регистра и мусорных символов мы не рассматриваем).&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;users_demo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;integer&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;primary&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;key&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;full_name&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;text&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;not&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;email&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;text&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;not&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;unique&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;email&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Уникальная комбинация полезна в таблицах-мостах; такие таблицы связывают другие
+сущности, например публикацию и тег. Чтобы не допустить случая, когда у статьи
+два одинаковых тега, комбинацию &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;post_id&lt;/code&gt; и &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;tag_id&lt;/code&gt; объявляют уникальной:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;post_tags&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;post_id&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;integer&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;not&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;tag_id&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;integer&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;not&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;created_at&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;timestamptz&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;not&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;default&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;current_timestamp&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;unique&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;post_id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tag_id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Если вы забыли часть &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;unique&lt;/code&gt; в объявлении таблицы, легко добавить ограничение
+командой:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;alter&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;post_tags&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;add&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constraint&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ctx_post_id_tag_id_u&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;unique&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;post_id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tag_id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Если мы выполним следующий запрос дважды:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;post_tags&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;post_id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tag_id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;100&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;10&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;то во второй раз получим ошибку уникальности:&lt;/p&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;ERROR:  duplicate key value violates unique constraint &quot;ctx_post_id_tag_id_u&quot;
+DETAIL:  Key (post_id, tag_id)=(100, 10) already exists.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Особенность ограничения UNIQUE в том, что оно принимает столбцы, а не
+произвольные выражения. Не получится создать уникальное ограничение на поле
+документа. С точки зрения Postgres это неверный синтаксис:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;alter&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;add&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constraint&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ctx_doc_application_id_u&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;unique&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'application_id'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;));&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- ERROR:  syntax error at or near &quot;(&quot;&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;-- LINE 3: unique (((doc-&amp;gt;&amp;gt;'application_id')::int));&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;И все же есть способ добиться желаемого. Postgres предлагает индекс btree с
+гарантией уникальности. Он проверяет, что значение встречается в индексе не
+больше одного раза, а иначе получим ошибку. Поскольку это индекс, в выражении
+может быть не только столбец, но и сложная конструкция.&lt;/p&gt;
+
+&lt;p&gt;Удалите из таблицы applications ограничения, что мы создали ранее. Посмотреть их
+имена можно командой &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;\d+ applications&lt;/code&gt;:&lt;/p&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;Indexes:
+    &quot;applications_pkey&quot; PRIMARY KEY, btree (id)
+    ...
+Check constraints:
+    &quot;ctr_doc_application_id_int&quot; CHECK (((doc -&amp;gt;&amp;gt; 'application_id'::text)::integer) IS NOT NULL)
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Затем создайте уникальный индекс командой:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;unique&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;index&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;idx_doc_application_id_u&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'application_id'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;));&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Свойство &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;unique&lt;/code&gt; поддерживает только индекс btree. Применить его к индексам GIN
+или GIST не получится.&lt;/p&gt;
+
+&lt;p&gt;В прошлой главе мы уже создали индекс btree для поля &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;application_id&lt;/code&gt; под
+названием &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;idx_applications_application_id&lt;/code&gt;. С новым уникальным индексом в нем
+нет нужды, поэтому удалите его командой &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;drop index&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;Убедимся, что база воспротивится документу с номером, который уже есть в
+таблице:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'{&quot;application_id&quot;: &quot;12345&quot;}'&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- ERROR:  duplicate key value violates unique constraint &quot;idx_doc_application_id_u&quot;&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;-- DETAIL:  Key (((doc -&amp;gt;&amp;gt; 'application_id'::text)::integer))=(12345) already exists.&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Что произойдет, если в документе вообще нет номера? Оказывается, их можно
+добавить сколько угодно:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'{&quot;test&quot;: &quot;abc&quot;}'&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- INSERT 0 1&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Почему Postgres пропускает документы без номера? Дело в том, что когда поля
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;application_id&lt;/code&gt; нет, выражение &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;doc -&amp;gt;&amp;gt; 'application_id'&lt;/code&gt; возвращает
+NULL. Уникальный индекс устроен так, что каждый NULL не равен другому NULL. Это
+общая идиома Postgres: NULL считается неизвестностью, а неизвестности нельзя
+сравнивать.&lt;/p&gt;
+
+&lt;p&gt;На поведение NULL можно повлиять, указав опцию индекса &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;nulls not
+distinct&lt;/code&gt;. Удалите прежний индекс и создайте новый:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;drop&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;index&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;idx_doc_application_id_u&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;unique&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;index&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;idx_doc_application_id_u&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'application_id'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;nulls&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;not&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;distinct&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Теперь индекс трактует значения NULL как равные. Получится добавить только один
+документ без номера, но не больше:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'{&quot;test&quot;: &quot;abc&quot;}'&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- OK&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'{&quot;test&quot;: &quot;abc&quot;}'&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- ERROR:  duplicate key value violates unique constraint &quot;idx_doc_application_id_u&quot;&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;-- DETAIL:  Key (((doc-&amp;gt;&amp;gt;'application_id'::text)::integer))=(null) already exists.&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Подчеркнем: проверку заполненности полей лучше поручить приложению. Уникальный
+индекс должен делать только ту работу, которая не под силу схеме: проверять
+данные на уровне базы.&lt;/p&gt;
+
+&lt;p&gt;Выше мы сделали номер уникальным глобально, то есть в рамках всей
+таблицы. Иногда уникальность требуется в рамках периода. Скажем, бухгалтерия
+обнуляет счетчик заявок каждый год. Номер 12345 может встречаться в заявках за
+2025 и 2024 годы, но не одновременно в том или другом.&lt;/p&gt;
+
+&lt;p&gt;Чтобы построить подобный индекс, сперва удалим прошлый:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;drop&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;index&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;idx_doc_application_id_u&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Подготовим неизменяемую функцию &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;created_at_year&lt;/code&gt;. Она принимает документ и
+возвращает дату из поля &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;created_at&lt;/code&gt;, срезанную на начало года:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;or&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;replace&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;created_at_year&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;jsonb&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;returns&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;timestamptz&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;language&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;sql&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;immutable&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;strict&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;parallel&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;safe&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;date_trunc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'year'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'created_at'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;timestamp&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Объявим индекс, уникальный по двум критериям:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;unique&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;index&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;idx_doc_app_id_date_u&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'application_id'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;created_at_year&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Убедимся, что он работает: добавим две заявки с одинаковыми номерами за разные
+годы:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'{&quot;application_id&quot;: &quot;10001111&quot;, &quot;created_at&quot;: &quot;2026-06-05T15:33:55Z&quot;}'&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'{&quot;application_id&quot;: &quot;10001111&quot;, &quot;created_at&quot;: &quot;2027-06-05T15:33:55Z&quot;}'&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Обе вставки сработали без ошибок. Но если повторить один из запросов, операция
+не пройдет:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'{&quot;application_id&quot;: &quot;10001111&quot;, &quot;created_at&quot;: &quot;2026-12-05T15:33:55Z&quot;}'&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- ERROR:  duplicate key value violates unique constraint &quot;idx_doc_app_id_date_u&quot;&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;-- DETAIL:  Key (((doc -&amp;gt;&amp;gt; 'application_id'::text)::integer), get_year(doc))=(10001111, 2026-01-01 00:00:00+03) already exists.&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Напомним: даже если индекс составной, можно пользоватся его лидирующими
+элементами, в нашем случае – критерием &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;((doc-&amp;gt;&amp;gt;'application_id')::int)&lt;/code&gt;. Это
+значит, что быстрый поиск по номеру по-прежнему в нашем распоряжении. Возможно,
+вам понадобится другой доступ: сначала за указанный год, а затем по номеру. В
+этом случае переставьте компоненты индекса местами.&lt;/p&gt;
+
+&lt;p&gt;Уникальный индекс дает еще одну возможность: можно указать его в выражении &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ON
+CONFLICT&lt;/code&gt; при вставке документа. Напишем запрос UPSERT, который реагирует именно
+на конфликт номера и года, а не другие ограничения:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;s1&quot;&gt;'{&quot;application_id&quot;: &quot;10001111&quot;, &quot;created_at&quot;: &quot;2026-12-05T15:33:55Z&quot;}'&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;conflict&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'application_id'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;created_at_year&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;do&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;nothing&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- INSERT 0 0&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Что именно поместить после DO – зависит от конкретной задачи. Выше мы
+проигнорировали операцию, но возможно, вам потребуется обновить какие-то поля
+документа.&lt;/p&gt;
+
+&lt;p&gt;Обратите внимание, что мы указали выражение индекса, а не его имя. Форма ON
+CONFLICT ожидает от нас либо имя уникального столбца, либо выражение, по
+которому построен уникальный индекс. В результате запрос выглядит
+громоздко. Если вы строете запросы при помощи ORM, поместите выражение индекса в
+константу.&lt;/p&gt;
+
+&lt;p&gt;Создайте уникальный индекс для другого поля или их комбинации. Напишите UPSERT с
+разными действиями в случае конфликта.&lt;/p&gt;
+
+&lt;h2 id=&quot;ограничение-foreign-key-ссылки&quot;&gt;Ограничение FOREIGN KEY (ссылки)&lt;/h2&gt;
+
+&lt;p&gt;Рассмотрим еще одно ограничение Postgres для внешний ключей (ссылок) между
+таблицами. Проблема, которую мы пытаемся решить, звучит так: если первый
+документ ссылается на второй, то второй обязательно существует. Из этого
+следует, что нельзя добавить документ, который ссылается на то, чего нет в
+базе. Вдобавок нельзя удалить документ, на который кто-то ссылается.&lt;/p&gt;
+
+&lt;p&gt;Вместе эти ограничения называются целостностью данных. Целостность уберегает
+базу от многих ошибок; ее отключают только в особых случаях, всегда осознанно и
+принимая риски.&lt;/p&gt;
+
+&lt;p&gt;Как правило, документные базы слабы в плане целостности ссылок. Предполагается,
+что эту работу выполняет приложение: перед вставкой документа делается запрос,
+чтобы убедиться, что документы по ссылкам существуют. В распределенных системах
+целостность не проверяется намеренно. Время от времени запускают скрипт, который
+находит ссылки, ведущие в никуда, и как-то их исправляет.&lt;/p&gt;
+
+&lt;p&gt;Поскольку мы храним документы в Postgres, нам доступны ссылочные
+ограничения. Ниже мы покажем техническую возможность, а пользоваться ей или нет
+– остается на ваше усмотрение.&lt;/p&gt;
+
+&lt;p&gt;Ссылка между таблицами подразумевает, что по крайней мере таблиц две. На текущий
+момент у нас только один вид документа – заявка. Чтобы это исправить, заведем
+второй тип документа – организацию, на которую ссылаются заявки.&lt;/p&gt;
+
+&lt;p&gt;Добавим организации за несколько шагов. Первый – подготовим для них таблицу. Ее
+структура в точности повторяет таблицу заявок, отличается только название:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;organizations&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;uuid&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;primary&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;key&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;default&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;uuid_generate_v4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(),&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;jsonb&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;compression&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;lz4&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;not&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;created_at&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;timestamptz&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;not&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;default&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;current_timestamp&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;updated_at&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;timestamptz&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Второй шаг – добавим в таблицу организации. Очевидно, их первичные ключи должны
+быть взяты из заявок, а не сгенерированы случайно. Прежде всего удалим мусорные
+заявки, которые мы создали во время прошлых экспериментов. Для этого выполним
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;DELETE&lt;/code&gt; с условием, что поле &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;organization&lt;/code&gt;→&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;id&lt;/code&gt; пустое:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;delete&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;is&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Выберем из заявок уникальные коды организаций:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;distinct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;org_id&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;limit&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;100&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;┌──────────────────────────────────────┐
+│                org_id                │
+├──────────────────────────────────────┤
+│ 00000000-0000-0000-0000-000000000000 │
+│ 00000000-0000-0000-0000-000000000001 │
+│ 00000000-0000-0000-0000-000000000002 │
+│ 00000000-0000-0000-0000-000000000003 │
+│ 00000000-0000-0000-0000-000000000004 │
+│ 00000000-0000-0000-0000-000000000005 │
+│ 00000000-0000-0000-0000-000000000006 │
+│ 00000000-0000-0000-0000-000000000007 │
+│ 00000000-0000-0000-0000-000000000008 │
+│ 00000000-0000-0000-0000-000000000009 │
+│ 00000000-0000-0000-0000-000000000010 │
+│ 00000000-0000-0000-0000-000000000011 │
+│ 00000000-0000-0000-0000-000000000012 │
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Доработаем запрос, чтобы вместе с кодом организации формировался документ с
+минимальным набором полей:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;distinct&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;uuid&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;jsonb_build_object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'id'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;         &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'status'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;     &lt;span class=&quot;s1&quot;&gt;'active'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'code'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;       &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,code}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'short_name'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,short_name}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;from&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;limit&lt;/span&gt;
+    &lt;span class=&quot;mi&quot;&gt;100&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Частичный результат:&lt;/p&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;┌──────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                  id                  │                                                        doc                                                        │
+├──────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 00000000-0000-0000-0000-000000000000 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000000&quot;, &quot;code&quot;: &quot;0&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 0&quot;}   │
+│ 00000000-0000-0000-0000-000000000001 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000001&quot;, &quot;code&quot;: &quot;1&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 1&quot;}   │
+│ 00000000-0000-0000-0000-000000000002 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000002&quot;, &quot;code&quot;: &quot;2&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 2&quot;}   │
+│ 00000000-0000-0000-0000-000000000003 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000003&quot;, &quot;code&quot;: &quot;3&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 3&quot;}   │
+│ 00000000-0000-0000-0000-000000000004 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000004&quot;, &quot;code&quot;: &quot;4&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 4&quot;}   │
+│ 00000000-0000-0000-0000-000000000005 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000005&quot;, &quot;code&quot;: &quot;5&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 5&quot;}   │
+│ 00000000-0000-0000-0000-000000000006 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000006&quot;, &quot;code&quot;: &quot;6&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 6&quot;}   │
+│ 00000000-0000-0000-0000-000000000007 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000007&quot;, &quot;code&quot;: &quot;7&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 7&quot;}   │
+│ 00000000-0000-0000-0000-000000000008 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000008&quot;, &quot;code&quot;: &quot;8&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 8&quot;}   │
+│ 00000000-0000-0000-0000-000000000009 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000009&quot;, &quot;code&quot;: &quot;9&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 9&quot;}   │
+│ 00000000-0000-0000-0000-000000000010 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000010&quot;, &quot;code&quot;: &quot;10&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 10&quot;} │
+│ 00000000-0000-0000-0000-000000000011 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000011&quot;, &quot;code&quot;: &quot;11&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 11&quot;} │
+│ 00000000-0000-0000-0000-000000000012 │ {&quot;id&quot;: &quot;00000000-0000-0000-0000-000000000012&quot;, &quot;code&quot;: &quot;12&quot;, &quot;status&quot;: &quot;active&quot;, &quot;short_name&quot;: &quot;Organization 12&quot;} │
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Предварите запрос командой &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;insert into organizations&lt;/code&gt;, удалите &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;limit&lt;/code&gt; – и
+перенос организаций готов. Вот что получилось у автора:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;organizations&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;distinct&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;uuid&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;jsonb_build_object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'id'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;         &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'status'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;     &lt;span class=&quot;s1&quot;&gt;'active'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'code'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;       &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,code}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt;
+        &lt;span class=&quot;s1&quot;&gt;'short_name'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,short_name}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;from&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Проверьте число организаций – их будет тысяча:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;count&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;organizations&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;┌───────┐
+│ count │
+├───────┤
+│  1000 │
+└───────┘
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Итак, заявки и организации согласованы: первые указывают на вторые. Это легко
+проверить оператором JOIN. Присоединим к заявкам организации и выберем несколько
+полей из каждого документа:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;app&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;app_id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;org&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'code'&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;org_code&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;org&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'short_name'&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;org_name&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;from&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;app&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;join&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;organizations&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;org&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;app&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;uuid&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;org&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;limit&lt;/span&gt;
+    &lt;span class=&quot;mi&quot;&gt;100&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;┌──────────────────────────────────────┬──────────┬──────────────────┐
+│                app_id                │ org_code │     org_name     │
+├──────────────────────────────────────┼──────────┼──────────────────┤
+│ 00000000-0000-0000-0000-000000635585 │ 585      │ Organization 585 │
+│ 00000000-0000-0000-0000-000000635586 │ 586      │ Organization 586 │
+│ 00000000-0000-0000-0000-000000635587 │ 587      │ Organization 587 │
+│ 00000000-0000-0000-0000-000000635588 │ 588      │ Organization 588 │
+│ 00000000-0000-0000-0000-000000635589 │ 589      │ Organization 589 │
+│ 00000000-0000-0000-0000-000000635590 │ 590      │ Organization 590 │
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Обратите внимание, как легко соединить документы по горизонтали – не все
+документные базы предлагают такую возможность. В примере выше соединение JOIN
+сработает быстро: оно происходит по первичному ключу организаций, а первичный
+ключ всегда индексирован.&lt;/p&gt;
+
+&lt;p&gt;Мы добились того, что ссылки на организации верны (не указывают в никуда),
+однако сейчас это ничем не зафиксировано. Если добавить заявку или удалить
+организацию, нарушится целостность ссылок. Следующий шаг – сделать так, чтобы
+база не позволила этого сделать.&lt;/p&gt;
+
+&lt;p&gt;Postgres предлагает ограничение FOREIGN KEY – внешний ключ. Оно проверяет, что
+строка, на которую ссылается поле таблицы, действительно существует. Особенность
+внешних ключей в том, что они работают только с колонками, а не
+выражениями. Команда ниже вызовет ошибку синтаксиса, потому что после слов
+foreign key ожидается колонка или их комбинация, а не выражение:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;alter&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;add&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constraint&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;fk_org_id&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;foreign&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;key&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;uuid&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;references&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;organizations&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- ERROR:  syntax error at or near &quot;(&quot;&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;-- LINE 2: foreign key ((doc #&amp;gt;&amp;gt; '{organization,id}')::uuid) references...&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Как и в случае с уникальностью, есть способ добиться желаемого. C версии 13
+Postgres поддерживает вычисляемые колонки. От обычных они отличаются тем, что
+хранят значения, рассчитанные из других колонок. При изменении вторых первые
+автоматически пересчитываются.&lt;/p&gt;
+
+&lt;p&gt;Приведем пример: в таблице demo две обычные колонки &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;x&lt;/code&gt; и &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;y&lt;/code&gt;, а третья &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sum&lt;/code&gt; –
+вычисляемая, которая складывает &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;x&lt;/code&gt; и &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;y&lt;/code&gt;. При вставке не нужно беспокоиться о
+поведении колонки &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sum&lt;/code&gt; – ее согласованность обеспечит Postgres:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;demo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;integer&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;not&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;default&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;y&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;integer&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;not&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;default&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;sum&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;integer&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;generated&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;always&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;y&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;stored&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;demo&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;),&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;returning&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;y&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;sum&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;┌───┬───┬─────┐
+│ x │ y │ sum │
+├───┼───┼─────┤
+│ 1 │ 2 │   3 │
+│ 3 │ 4 │   7 │
+└───┴───┴─────┘
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;До версии 18 Postgres поддерживал только один вид вычисляемой колонки –
+хранимый. Выше это свойство задано словом stored. Хранимая колонка вычисляет
+значение и записывает на диск. При чтении поля sum не происходит обращения к x
+или y.&lt;/p&gt;
+
+&lt;p&gt;С версии 18 доступен второй тип – виртуальный, когда слово stored опущено. Такая
+колонка не хранит значение, а вычисляет при каждом обращении. Разница подходов
+очевидна: первый снижает затраты на вычисления, но потребляет диск. Второй не
+требует диска, но вынуждает Postgres вычислять поле.&lt;/p&gt;
+
+&lt;p&gt;В нашем случае мы выбрали первый вариант с хранением на диске. Мы исходим из
+предположения, что ссылка на организацию никогда не меняется – передача заявок
+между организациями не вписывается ни в какие процессы. Напротив, обращаться к
+этому полю мы будем часто, так что имеет смысл рассчитать его заранее. Также мы
+считаем, что дисковое хранение в целом дешевле, чем процессорное время. Наконец,
+хотелось бы, чтобы примеры из книги работали на многих версиях Postgres, а не
+только начиная с 18.&lt;/p&gt;
+
+&lt;p&gt;Независимо от типа – хранимая или виртуальная – вычисляемая колонка доступна
+только для чтения. Записать в нее данные невозможно.&lt;/p&gt;
+
+&lt;p&gt;Вычисляемые колонки предъявляют некоторые требования. Их выражение должно быть
+чистым – не иметь побочных эффектов (случайных чисел, текущей даты и так
+далее). Одна вычисляемая колонка не может зависеть от другой: в противном случае
+пришлось бы строить граф зависимостей, что весьма накладно. Есть и другие, более
+тонкие условия, которые в данный момент нас не интересуют.&lt;/p&gt;
+
+&lt;p&gt;Вычисляемые колонки доступны в индексах и ограничениях. Вынесем поле заявки
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;((doc #&amp;gt;&amp;gt; '{organization,id}')::uuid)&lt;/code&gt; в вычисляемую колонку и наложим на нее
+ограничение FOREIGN KEY. Первый шаг – подготовка поля:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;alter&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;add&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;column&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;_org_id&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;uuid&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;generated&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;always&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;uuid&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;stored&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Обратите внимание на два факта. Во-первых, поле начинается с подчеркивания, что
+говорит о его приватном характере. Во-вторых, выражение приводится к uuid, чтобы
+его тип совпадал с типом первичного ключа организаций. Приведение типа служит
+дополнительной проверкой: если добавить заявку с неправильной ссылкой, получим
+ошибку.&lt;/p&gt;
+
+&lt;p&gt;Выберем виртуальную колонку в запросе – она ничем не отличается от обычной:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;_org_id&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;limit&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;10&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;┌──────────────────────────────────────┬──────────────────────────────────────┐
+│                  id                  │               _org_id                │
+├──────────────────────────────────────┼──────────────────────────────────────┤
+│ 00000000-0000-0000-0000-000000635649 │ 00000000-0000-0000-0000-000000000649 │
+│ 00000000-0000-0000-0000-000000635650 │ 00000000-0000-0000-0000-000000000650 │
+│ 00000000-0000-0000-0000-000000635651 │ 00000000-0000-0000-0000-000000000651 │
+│ 00000000-0000-0000-0000-000000635652 │ 00000000-0000-0000-0000-000000000652 │
+│ 00000000-0000-0000-0000-000000635653 │ 00000000-0000-0000-0000-000000000653 │
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Наложим ограничение, что колонка ссылается на организацию:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;alter&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;add&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constraint&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;fk_org_id&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;foreign&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;key&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;_org_id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;references&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;organizations&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Поскольку мы подготовили данные правильно, ошибки не произошло. Теперь мы
+уверены, что целостность ссылок под защитой. Чтобы это проверить, добавим заявку
+с организацией, которой не существует:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;insert&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;into&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;values&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;$$&lt;/span&gt;
+  &lt;span class=&quot;err&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;&quot;application_id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1999111&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;&quot;organization&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;err&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;nv&quot;&gt;&quot;id&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;&quot;967849e5-9c59-4fa2-bc57-0a4a84bbd41c&quot;&lt;/span&gt;
+    &lt;span class=&quot;err&quot;&gt;}&lt;/span&gt;
+  &lt;span class=&quot;err&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;err&quot;&gt;$$&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;jsonb&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- ERROR:  insert or update on table &quot;applications&quot; violates foreign key constraint &quot;fk_org_id&quot;&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;-- DETAIL:  Key (_org_id)=(967849e5-9c59-4fa2-bc57-0a4a84bbd41c) is not present in table &quot;organizations&quot;.&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;В обратную сторону: удалим организацию, на которую ссылается хотя бы одна
+заявка.&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;delete&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;organizations&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'00000000-0000-0000-0000-000000000649'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- ERROR:  update or delete on table &quot;organizations&quot; violates foreign key constraint &quot;fk_org_id&quot; on table &quot;applications&quot;&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;-- DETAIL:  Key (id)=(00000000-0000-0000-0000-000000000649) is still referenced from table &quot;applications&quot;.&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;В обоих случаях база не выполнила то, что нарушает ограничение.&lt;/p&gt;
+
+&lt;p&gt;В теле FOREIGN KEY можно указать реакцию на удаление. Выражение &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;on delete
+cascade&lt;/code&gt; означает, что документы, которые ссылаются на удаляемый, будут тоже
+удалены. Чтобы проверить это в действии, удалим прошлое ограничение и наложим
+новое:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;alter&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;add&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constraint&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;fk_org_id&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;foreign&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;key&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;_org_id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;references&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;organizations&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;delete&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;cascade&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Если теперь удалить организацию, исчезнут заявки, которые на нее ссылались. Проверим это:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;delete&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;organizations&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'00000000-0000-0000-0000-000000000649'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'00000000-0000-0000-0000-000000000649'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;-- (0 rows)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Каскадное удаление слишком радикально для документов. Иногда на одну сущность
+ссылаются десятки других, и удаление затронет нужные документы. Маловероятно,
+каскадное удаление понадобится в боевом запуске, но знать о нем не помешает.&lt;/p&gt;
+
+&lt;p&gt;FOREIGN KEY предлагает другой вариант удаления: &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;on delete set null&lt;/code&gt;. С ним
+удаляется только та запись, что мы указали, а ссылкам в других таблицах
+присваивается NULL. Вспомним, однако, что поле &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;_org_id&lt;/code&gt; – вычисляемое, поэтому
+ему нельзя ничего присвоить. Postgres учитывает этот случай и не позволит
+создать ограничение:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;alter&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;table&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;add&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constraint&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;fk_org_id&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;foreign&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;key&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;_org_id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;references&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;organizations&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;delete&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;set&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+&lt;span class=&quot;c1&quot;&gt;-- ERROR:  invalid ON DELETE action for foreign key constraint containing generated column&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Можно решить проблему триггером. Перед удалением организации вызывается функция,
+которая находит заявки и удаляет в них поле organization. Таким образом DELETE
+сводится к UPDATE; колонка &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;_org_id&lt;/code&gt; будет вычислена повторно и получит значение
+NULL. Подготовим функцию триггера:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;or&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;replace&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;fn_applications_org_ref_null&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;returns&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;trigger&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;err&quot;&gt;$$&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;begin&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;update&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;set&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'organization'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;null&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;uuid&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;OLD&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;OLD&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;end&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;err&quot;&gt;$$&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;language&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;plpgsql&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;А вот и сам триггер: он запускает функцию перед удалением организации.&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;create&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;trigger&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;trg_organizations_before_delete&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;before&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;delete&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;on&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;organizations&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;each&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;row&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;execute&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;function&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;fn_applications_org_ref_null&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Удалим организацию:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;delete&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;organizations&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'00000000-0000-0000-0000-000000000651'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Проверим заявку, которая раньше на нее ссылалась. Поля организации пусты,
+триггер сработал:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;_org_id&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'organization'&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;org&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;applications&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;id&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'00000000-0000-0000-0000-000000635651'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;language-text highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;┌──────────────────────────────────────┬─────────┬──────┐
+│                  id                  │ _org_id │ org  │
+├──────────────────────────────────────┼─────────┼──────┤
+│ 00000000-0000-0000-0000-000000635651 │ &amp;lt;null&amp;gt;  │ null │
+└──────────────────────────────────────┴─────────┴──────┘
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;прочие-сведения&quot;&gt;Прочие сведения&lt;/h2&gt;
+
+&lt;p&gt;Вычисляемые столбцы можно использовать и для других ограничений. Когда мы
+рассматривали уникальность, то столкнулись с похожей проблемой: выражение UNIQUE
+принимает столбец или их кортеж, но не выражение. Тогда мы выкрутились с помощью
+с уникального индекса, однако был и другой путь: создать вычисляемый столбец и
+назначить его уникальным. Предлагаем читателю проделать это самостоятельно.&lt;/p&gt;
+
+&lt;p&gt;Как и многие другие техники, вычисляемые колонки следует использовать
+осторожно. Не допускайте их большого количества. Не опирайтесь на них в запросах
+сверх меры, потому что в случае рефакторинга потребуется много
+исправлений. Каждая колонка должна быть обоснована тем или иным требованием.&lt;/p&gt;
+
+&lt;p&gt;То же самое относится к ограничениям CHECK, UNIQUE и FOREIGN KEY. В реляционной
+модели их преимущество бесспорно, однако в случае с документами это не всегда
+так. На долгой дистанции некоторые ограничения оказываются неудобны. Перед их
+внедрением убедитесь, что они действительно нужны – иными словами, такие
+требования диктует бизнес.&lt;/p&gt;
+
+&lt;p&gt;У вычисляемых колонок есть еще одно свойство: индекс по ним работает немного
+быстрее, чем по выражениям. Как вы помните, индекс btree сопоставляет значение с
+позицией строки, где оно находится. В редких случаях Postgres проверяет условие
+повторно, даже если строка найдена. Скажем, мы создали индекс на выражение
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;(((doc #&amp;gt;&amp;gt; '{organization,id}')::uuid))&lt;/code&gt; и выполнили запрос с условием по нему:&lt;/p&gt;
+
+&lt;div class=&quot;language-sql highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;select&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;...&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;where&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(((&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;doc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;#&amp;gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'{organization,id}'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;uuid&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;UUID&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Чтобы выполнить условие повторно (это случается при нехватке памяти), Postgres
+читает колонку doc и берет и из нее поле &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;organization&lt;/code&gt;→&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;id&lt;/code&gt;. Напомним, что
+при определенном пороге значения jsonb сбрасываются в TOAST-таблицу, где они
+хранятся в виде фрагментов. Чтобы получить документ, требуется прочитать и
+соединить все фрагменты. Для больших документов это влечет дисковые операции и
+время процессора.&lt;/p&gt;
+
+&lt;p&gt;Если же индекс создан по полю &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;_org_id&lt;/code&gt;, обращение к документу требуется. Тип
+uuid использует хранение PLAIN (без тостов и сжатия, см. главу 4), поэтому
+значение находится в основной таблице, а не TOAST. Проверка &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;_org_id = &amp;lt;UUID&amp;gt;&lt;/code&gt;
+выполняется быстрее и потому предпочтительней.&lt;/p&gt;
+
+&lt;p&gt;Итак, мы рассмотрели ограничения документов на уровне базы данных: проверки
+CHECK, уникальные индексы, внешние ключи и вычисляемые столбцы. Что именно из
+этого применять – зависит от задачи и в целом остается на усмотрение читателя.&lt;/p&gt;
+
+&lt;p&gt;В следующей главе мы вернемся к теме, с которой временно переключились: как
+извлекать данные из JSON-документов, но на этот раз – более мощными средствами.&lt;/p&gt;
+</description>
+        <pubDate>Fri, 12 Jun 2026 00:00:00 +0000</pubDate>
+        <link>https://grishaev.me/pg-book-json-ch05/</link>
+        <guid isPermaLink="true">https://grishaev.me/pg-book-json-ch05/</guid>
+        
+        <category>postgres</category>
+        
+        <category>json</category>
+        
+        <category>book</category>
+        
+        <category>sql</category>
+        
+        
+      </item>
     
       <item>
         <title>Глава 4. Индексирование JSON</title>
@@ -19,7 +860,7 @@
   &lt;li&gt;&lt;a href=&quot;/pg-book-json-ch02/&quot;&gt;Базовые возможности JSON&lt;/a&gt;&lt;/li&gt;
   &lt;li&gt;&lt;a href=&quot;/pg-book-json-ch03/&quot;&gt;JSON в таблицах&lt;/a&gt;&lt;/li&gt;
   &lt;li&gt;&lt;a href=&quot;/pg-book-json-ch04/&quot;&gt;Индексирование JSON&lt;/a&gt;&lt;/li&gt;
-  &lt;li&gt;Ссылки и ограничения в документах&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;/pg-book-json-ch05/&quot;&gt;Ограничения в документах&lt;/a&gt;&lt;/li&gt;
   &lt;li&gt;Язык путей JSONPath&lt;/li&gt;
   &lt;li&gt;Отчеты и функции&lt;/li&gt;
   &lt;li&gt;Функции на языке Python&lt;/li&gt;
@@ -3335,51 +4176,6 @@ ShortInt. Первый фигурирует, когда читаешь сеть 
         <guid isPermaLink="true">https://grishaev.me/leaky-case/</guid>
         
         <category>programming</category>
-        
-        
-      </item>
-    
-      <item>
-        <title>Закончили Гарри Поттера</title>
-        <description>
-&lt;p&gt;Вчера закончили с дочкой Гарри Поттера – все семь книг. Это заняло год и пять
-месяцев. Я вычислил срок с помощью блога: оказалось, в январе 2025 года я
-публиковал &lt;a href=&quot;/harry-potter-money/&quot;&gt;маленькую заметку&lt;/a&gt; о денежной системе в мире ГП.&lt;/p&gt;
-
-&lt;p&gt;О каждой книге можно сказать разное: где-то лучше, где-то хуже. Кто-что
-затянуто; какие-то сцены никуда не ведут; от некоторых персонажей можно было
-отказаться. Однако в целом ГП – замечательный, монументальный труд. Это новая
-вселенная по образу Звездный Войн, и по ней еще долго будут делать
-приквелы-сиквелы, фанатский контент и прочее.&lt;/p&gt;
-
-&lt;p&gt;Гарри Поттер – это современная детская литература. Ключевое слово “современная”,
-то есть описывает персонажа нашего времени. Несмотря на все нелепости вселенной
-ГП, ключевые темы вроде отношений, любви, долга, преданности совпадают с
-ориентирами нормального современного человека. При этом книга взрослеет вместе с
-читателем.&lt;/p&gt;
-
-&lt;p&gt;Я жалею лишь об одном: мы читали ГП в неудачном переводе. Нам подарили первые
-несколько книг, и на тот момент мне были безразличны все эти Снейпы-Злеи. Когда
-я разобрался, то уже был полный комплект, и покупать новый не хотелось. Считаю,
-что переводчиков Махаона, которые исковеркали все имена, нужно отпинать и
-сбросить в канализацию. Может, так они поймут, что нельзя портить чужой труд.&lt;/p&gt;
-
-&lt;p&gt;Прикупил пару книжек о ГП на английском. Развивает: много прилагательных,
-разговорных оборотов, художественные вещи, с которыми не имеешь дела на
-созвонах.&lt;/p&gt;
-
-&lt;p&gt;ГП — важная веха современности. Читайте детям Гарри Поттера. И детям хорошо, и
-вам понравится.&lt;/p&gt;
-</description>
-        <pubDate>Tue, 05 May 2026 00:00:00 +0000</pubDate>
-        <link>https://grishaev.me/harry-potter-finished/</link>
-        <guid isPermaLink="true">https://grishaev.me/harry-potter-finished/</guid>
-        
-        <category>life</category>
-        
-        <category>books</category>
-        
-        <category>harry-potter</category>
         
         
       </item>
