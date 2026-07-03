@@ -106,6 +106,114 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-035-pg/">Postgres №35</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-07T00:00:00+00:00">
+        Apr 7, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В прошлый раз мы говорили об уникальных ограничениях, а еще есть внешние. Это
+когда значение поля обязано быть первичным ключом другой таблицы. Например, в
+профиле колонка <code class="language-plaintext highlighter-rouge">user_id</code> ссылается на пользователя: таблицу <code class="language-plaintext highlighter-rouge">users</code> и ее
+первичный ключ <code class="language-plaintext highlighter-rouge">id</code>.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">...</span>
+<span class="p">);</span>
+
+<span class="k">create</span> <span class="k">table</span> <span class="n">profiles</span><span class="p">(</span>
+    <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">user_id</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="k">references</span> <span class="n">users</span><span class="p">(</span><span class="n">id</span><span class="p">)</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Ключевое слово <code class="language-plaintext highlighter-rouge">references</code> создает это ограничение автоматом. Можно задать его явно таким выражением:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">alter</span> <span class="k">table</span> <span class="n">profiles</span>
+<span class="k">add</span> <span class="k">constraint</span> <span class="n">fk_profile_user_id</span>
+<span class="k">foreign</span> <span class="k">key</span> <span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
+<span class="k">references</span> <span class="n">users</span> <span class="p">(</span><span class="n">id</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Первичные ключи бывают составными, и тогда внешний ключ тоже составной.</p>
+
+<p>Когда создано подобное ограничение, профиль не может ссылаться на пользователя,
+которого не существует. При этом значения NULL допускаются, потому что он не
+равен другим нуллам. Если поле не должно содержать нуллы, это задается свойством
+NOT NULL.</p>
+
+<p>Поскольку первичный ключ всегда индексирован, проверка внешнего ключа работает
+быстро. Например, мы добавляем профиль с полем user_id 100500. Проверка
+аналогична запросу ниже (обратите внимание, что из него ничего не выбирается):</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="mi">100500</span>
+</code></pre></div></div>
+
+<p>Под капотом Postgres проверяет только индекс – нет смысла дергать таблицу —
+поэтому запроса в логах вы не увидите.</p>
+
+<p>Некоторое разработчики считают, что внешние ключи тоже индексируются. Например,
+зная пользователя, мы хотим взять его профиль (технику часто называют backref,
+обратной ссылкой):</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">profiles</span> <span class="k">where</span> <span class="n">user_id</span> <span class="o">=</span> <span class="mi">100500</span>
+</code></pre></div></div>
+
+<p>Увы, это не так. По умолчанию внешний ключ не индексируется, и запрос выше даст
+full scan. Повесьте на него btree:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">idx_profile_user_id</span>
+<span class="k">on</span> <span class="n">profiles</span> <span class="k">using</span> <span class="n">btree</span> <span class="p">(</span><span class="n">user_id</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Теперь обратная ссылка индексирована, и зная родительскую сущность, легко найти
+дочерние.</p>
+
+<p>Пример с профилем можно сделать еще строже: мы допускаем только один профиль на
+пользователя, поэтому повесим на <code class="language-plaintext highlighter-rouge">user_id</code> уникальный индекс:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">UNIQUE</span> <span class="k">index</span> <span class="p">...</span>
+</code></pre></div></div>
+
+<p>Индексы на внешние ключи обязательны, если используется join. Скажем, вы строите
+отчет по всем пользователям системы:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="n">u</span>
+<span class="k">left</span> <span class="k">join</span> <span class="n">profiles</span> <span class="n">p</span> <span class="k">on</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span>
+</code></pre></div></div>
+
+<p>Без индекса на <code class="language-plaintext highlighter-rouge">profiles.user_id</code> запрос будет очень тяжелым. Зато если поле
+индексировано и вдобавок обе таблицы отсортированы по коду пользователя,
+возможно, сработает Merge Join – соединение слиянием. Это самый быстрый алгоритм
+соединения. Принцип у него такой же, как и у сортировки слиянием.</p>
+
+<p>Внешние ключи вносят в базу ограничения, и желательно следовать им. В противном
+случае вы рискуете создать “висяки” – ссылки, ведущие в никуда. Как и в случае с
+дублями, их тяжело расследовать и удалять.</p>
+
+<p>Мне известны для случая, когда от внешних ключей отказываются добровольно. Я
+рассмотрю их в следующих советах.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/libpq-java/">Libpq и Java</a>
             </h2>
 
@@ -285,7 +393,7 @@ dev-барахло.</p>
   <li><a href="/pg-book-json-ch03/">JSON в таблицах</a></li>
   <li><a href="/pg-book-json-ch04/">Индексирование JSON</a></li>
   <li><a href="/pg-book-json-ch05/">Ограничения в документах</a></li>
-  <li>Язык путей JSONPath</li>
+  <li><a href="/pg-book-json-ch06/">Язык путей JSONPath</a></li>
   <li>Отчеты и функции</li>
   <li>Функции на языке Python</li>
   <li>Версионирование и архивация документов</li>
@@ -1031,178 +1139,6 @@ from
 
 <p>Как развить реляционное мышление? Точно также, как и во всем другом: заниматься
 им.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-028-pg/">Postgres №28</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-03-21T00:00:00+00:00">
-        Mar 21, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Продолжение <a href="/tip-027-pg/">прошлого поста</a>. Тезис: выбирайте данные, только если
-нужно передать их третьей стороне, например фронтенду. Для промежуточных
-вычислений это чаще всего не требуется. Достаточно сказать базе: обнови такие-то
-поля согласно такой-то логике, и она все сделает сама.</p>
-
-<p>Обновление силами SQL особенно хорошо на больших данных. Не нужно гонять тысячи
-строк по сети. По компьютерным меркам сеть медленная, потому что это череда
-системных вызовов на обеих сторонах. Сеть требует сериализации данных. Даже в
-надежных сетях пакеты теряются, требуется повторная отправка и подтверждение.</p>
-
-<p>Не нужно писать код на языке приложения. Код на условном Питоне или Джаве всегда
-длиннее и многословнее, чем на SQL. Нет кода – нет проблем.</p>
-
-<p>Покажу, как управлять данными в базе без приложения. Для начала сделаем две
-таблицы: пользователи и профили:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
-    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-    <span class="n">name</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
-    <span class="n">points</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="mi">0</span>
-<span class="p">);</span>
-
-<span class="k">create</span> <span class="k">table</span> <span class="n">profiles</span> <span class="p">(</span>
-    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-    <span class="n">user_id</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
-    <span class="n">avatar</span> <span class="nb">text</span> <span class="k">null</span><span class="p">,</span>
-    <span class="n">del_requested</span> <span class="nb">boolean</span> <span class="k">null</span> <span class="k">default</span> <span class="k">false</span>
-<span class="p">);</span>
-</code></pre></div></div>
-
-<p>Кроме имени, в пользователе записано число баллов. Профиль ссылается на
-пользователя, и в нем два поля: аватарка (может быть пустой) и запрос на
-удаление (по умолчанию ложь). Вставим много записей:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">users</span>
-<span class="k">select</span>
-    <span class="n">x</span><span class="p">,</span>
-    <span class="n">format</span><span class="p">(</span><span class="s1">'user_%s'</span><span class="p">,</span> <span class="n">x</span><span class="p">),</span>
-    <span class="n">round</span><span class="p">(</span><span class="n">random</span><span class="p">()</span> <span class="o">*</span> <span class="mi">100000</span><span class="p">)</span>
-<span class="k">from</span>
-    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
-
-<span class="k">insert</span> <span class="k">into</span> <span class="n">profiles</span>
-<span class="k">select</span>
-    <span class="n">x</span><span class="p">,</span>
-    <span class="n">x</span><span class="p">,</span>
-    <span class="k">null</span>
-    <span class="k">false</span>
-<span class="k">from</span>
-    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Оператор INSERT принимает SELECT, который порождает данные. Не нужно генерить их
-на Питоне и передавать по сети, все происходит внутри базы.</p>
-
-<p>Первая задача – поместить в отдельную таблицу топ-100 пользователей. Это
-делается запросом:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">drop</span> <span class="k">table</span> <span class="n">if</span> <span class="k">exists</span> <span class="n">users_top_100</span><span class="p">;</span>
-
-<span class="k">create</span> <span class="k">table</span> <span class="n">users_top_100</span> <span class="k">as</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">points</span> <span class="k">desc</span>
-<span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
-
-<span class="k">table</span> <span class="n">users_top_100</span><span class="p">;</span>
-</code></pre></div></div>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌──────┬───────────┬────────┐
-│  id  │   name    │ points │
-├──────┼───────────┼────────┤
-│ 6637 │ user_6637 │  99996 │
-│ 8909 │ user_8909 │  99994 │
-│ 9040 │ user_9040 │  99979 │
-│ 2631 │ user_2631 │  99978 │
-│ 7240 │ user_7240 │  99961 │
-│  972 │ user_972  │  99958 │
-│ 8698 │ user_8698 │  99924 │
-│ 3850 │ user_3850 │  99914 │
-│  382 │ user_382  │  99892 │
-│ 2841 │ user_2841 │  99877 │
-│ 2607 │ user_2607 │  99870 │
-│ 5207 │ user_5207 │  99858 │
-</code></pre></div></div>
-
-<p>В приложении мы бы сначала прочитали данные, создали таблицу и записали данные в
-нее. Все это можно поручить базе. Таблица может быть временной для каких-то
-расчетов. Конечно, не следует создавать их в апишках, которые должны работать
-быстро. Но для других задач временные таблицы очень даже полезны.</p>
-
-<p>Другой пример. Фирма проводит акцию: загрузи аватар и получи тысячу
-баллов. Предположим, некоторые пользователи добавили аватарку:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">profiles</span>
-<span class="k">set</span> <span class="n">avatar</span> <span class="o">=</span> <span class="n">format</span><span class="p">(</span><span class="s1">'htts://path/to/file_%s'</span><span class="p">,</span> <span class="n">id</span><span class="p">)</span>
-<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">500</span> <span class="k">and</span> <span class="mi">600</span><span class="p">;</span>
-<span class="c1">-- UPDATE 101</span>
-</code></pre></div></div>
-
-<p>Вот как накинуть баллы тем, у кого она есть:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">users</span> <span class="n">u</span>
-<span class="k">set</span> <span class="n">points</span> <span class="o">=</span> <span class="n">points</span> <span class="o">+</span> <span class="mi">1000</span>
-<span class="k">from</span> <span class="n">profiles</span> <span class="n">p</span>
-<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span>
-<span class="k">and</span> <span class="n">p</span><span class="p">.</span><span class="n">avatar</span> <span class="k">is</span> <span class="k">not</span> <span class="k">null</span><span class="p">;</span>
-<span class="c1">-- UPDATE 101</span>
-</code></pre></div></div>
-
-<p>Оператор UPDATE поддерживает FROM с произвольным запросом, таблицей и так
-далее. В условии проверяют совпадение строк по ключам. Обновятся только те
-пользователи, профили которых с аватаркой.</p>
-
-<p>Третья задача: некоторые пользователи отметили в профиле значок “удалите меня”:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">profiles</span>
-<span class="k">set</span> <span class="n">del_requested</span> <span class="o">=</span> <span class="k">true</span>
-<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">666</span> <span class="k">and</span> <span class="mi">999</span><span class="p">;</span>
-<span class="c1">-- UPDATE 334</span>
-</code></pre></div></div>
-
-<p>Вот как удалить такие профили и их пользователей одним запросом:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">del_profiles</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span>
-    <span class="k">delete</span> <span class="k">from</span> <span class="n">profiles</span>
-    <span class="k">where</span> <span class="n">del_requested</span>
-    <span class="n">returning</span> <span class="n">user_id</span>
-<span class="p">)</span>
-<span class="k">delete</span> <span class="k">from</span> <span class="n">users</span> <span class="n">u</span>
-<span class="k">using</span> <span class="n">del_profiles</span> <span class="n">del</span>
-<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">del</span><span class="p">.</span><span class="n">user_id</span><span class="p">;</span>
-<span class="c1">-- DELETE 334</span>
-</code></pre></div></div>
-
-<p>Во всех случаях мы ничего не передавали клиенту.</p>
-
-<p>Вставки могут быть с реакцией на конфликт (выражение <code class="language-plaintext highlighter-rouge">ON CONFLICT</code>). Есть
-команда MERGE, которая делит два набора данных на категории: только слева,
-пересечение, только справа. Для каждой категории можно задать реакцию:
-пропустить, удалить, записать куда-то и так далее.</p>
-
-<p>Управлять данными при помощи SQL – это настоящий праздник. Нет зависимости от
-приложения и рантайма. База делает все сама: работает производительный код на
-Си, многократно проверенный и отлаженный. Не отбирайте у базы ее работу. Она
-сделает все лучше вас, достаточно базовых навыков SQL.</p>
 
                 
             </div>

@@ -106,6 +106,151 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/leaky-case/">Текущий case</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-05-05T00:00:00+00:00">
+        May 5, 2026
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Один из худших атавизмов в программировании – это протекающий оператор
+<code class="language-plaintext highlighter-rouge">switch/case</code>. Он ведет родословную со времен Си и в настоящее время есть во
+всех императивных языках.</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>switch (expression) {
+    case constant1:
+        // Code to execute if expression == constant1
+        break;
+    case constant2:
+        // Code to execute if expression == constant2
+        break;
+    default:
+        // Code to execute if no case matches
+}
+</code></pre></div></div>
+
+<p>В чем проблема? В том, что без оператора <code class="language-plaintext highlighter-rouge">break</code> управление передается в
+ниже. Если expression подходит под разные условия, сработают две ветки одна за
+другой. Счастливой отладки.</p>
+
+<p>Сколько людей погорело на протечках в <code class="language-plaintext highlighter-rouge">switch/case</code> – я даже боюсь предположить.</p>
+
+<p>В Джаве <code class="language-plaintext highlighter-rouge">switch/case</code> устроен аналогично, но к счастью там это поправили. Есть
+другой <code class="language-plaintext highlighter-rouge">switch/case</code> со стрелками, который гарантирует, что будет выполнена
+только одна ветка. Вдобавок он возвращает значение:</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">int</span> <span class="n">result</span> <span class="o">=</span> <span class="k">switch</span> <span class="o">(</span><span class="n">input</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">case</span> <span class="s">"A"</span> <span class="o">-&gt;</span> <span class="o">{</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"Processing A"</span><span class="o">);</span>
+        <span class="n">yield</span> <span class="mi">1</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="k">case</span> <span class="s">"B"</span> <span class="o">-&gt;</span> <span class="o">{</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"Processing B"</span><span class="o">);</span>
+        <span class="n">yield</span> <span class="mi">2</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="k">default</span> <span class="o">-&gt;</span> <span class="mi">0</span><span class="o">;</span>
+<span class="o">};</span>
+</code></pre></div></div>
+
+<p>В последних Джавах много внимания уделяют паттерн-матчингу. Можно сказать, что
+любой switch лучше свести к паттерн-матчингу, потому что иначе получается минное
+поле из-за протечек.</p>
+
+<p>В Кложе, например, макрос <code class="language-plaintext highlighter-rouge">case</code> гарантирует, что сработает только одна
+ветка. При этом выражения должны быть литералами, потому что компилятор
+вычисляет от них хеши для таблицы переходов:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(case (:status item)
+
+  "active"
+  (process-active item)
+
+  "pending"
+  (process-pending item)
+
+  ;; default
+  (throw-error "wrong status"))
+</code></pre></div></div>
+
+<p>Есть макрос <code class="language-plaintext highlighter-rouge">cond</code> для условий, которые вычисляются в рантайме. Будет вычеслена
+первая ветка, для которой условие вернет истину:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(cond
+
+  (-&gt; item :status (= "active"))
+  (process-active item)
+
+  (or (-&gt; item :status (= "pending"))
+      (queue-is-blocked ...)
+  (process-pending item)
+
+  :else
+  (default-case "..."))
+</code></pre></div></div>
+
+<p>Наконец, есть скользящий, “протекающий” <code class="language-plaintext highlighter-rouge">cond-&gt;</code> со стрелкой. Он принимает пары
+(условие-&gt;выражение) и пропускает сквозь них исходное выражение.</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(cond-&gt; []
+
+  :always
+  (conj (get-some-item ..))
+
+  (item-is-active? item)
+  (conj the-item)
+
+  :finally
+  (into (get-additional-items)))
+</code></pre></div></div>
+
+<p>Пишу я это потому, что погорел со <code class="language-plaintext highlighter-rouge">switch/case</code> в Питоне. Хотя с версии 3.10 в
+него завезли оператор <code class="language-plaintext highlighter-rouge">match</code>, многие до сих пор пишут каскады
+<code class="language-plaintext highlighter-rouge">if...elif...elif...elif...else</code>. И вот я добавил новую ветку в середину, а
+вместо <code class="language-plaintext highlighter-rouge">elif</code> написал <code class="language-plaintext highlighter-rouge">if</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">if</span> <span class="n">action</span> <span class="o">==</span> <span class="s">"foobar"</span><span class="p">:</span>
+  <span class="n">do_this</span><span class="p">()</span>
+
+<span class="k">elif</span> <span class="n">action</span> <span class="o">==</span> <span class="s">"kek"</span><span class="p">:</span>
+  <span class="n">do_that</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="n">action</span> <span class="o">==</span> <span class="s">"some_action"</span><span class="p">:</span>
+  <span class="n">do_lol</span><span class="p">()</span>
+
+<span class="k">else</span><span class="p">:</span>
+  <span class="n">throw</span> <span class="nb">Exception</span><span class="p">(</span><span class="s">"..."</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Ветка выполняется, но первый оператор <code class="language-plaintext highlighter-rouge">if</code> обрывается и начинается второй. Для
+него условие не находится и срабатывает <code class="language-plaintext highlighter-rouge">else</code>, где бросается
+исключение. Получилось так, что действие выполняется, но из-за того, что было
+исключение, задача запускается еще раз. В итоге мой код вызвал действие три
+раза. Линтер ничего не заметил.</p>
+
+<p>На мой взгляд, старого оператора <code class="language-plaintext highlighter-rouge">switch/case</code> в коде быть не должно – только
+паттерн-матчинг, который гарантирует, что сработает только одна ветка. А второе
+– не знаю, как можно жить с языком без макросов. Это словно красть у себя
+самого.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/harry-potter-finished/">Закончили Гарри Поттера</a>
             </h2>
 
@@ -990,134 +1135,6 @@ JavaScript.</p>
 
 <p>В следующей заметке я планирую рассмотреть, как процессор складывает два числа с
 плавающей запятой.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/numbers-07/">Числа №7. Нормализация</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-04-27T00:00:00+00:00">
-        Apr 27, 2026
-    </time>
-
-    <a href="/tag/numbers/" rel="tag">numbers</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Возвращаемся к числам. Мы выяснили, что любая десятичная дробь приводится к
-двоичной чередой делений и умножений на два. Чаще всего вы получите
-периодическую дробь как в случае с 0.1. Но бывают и удачные варианты: например,
-число <code class="language-plaintext highlighter-rouge">42.515625</code> в двоичном представлении дает <code class="language-plaintext highlighter-rouge">101010.100001</code>.</p>
-
-<p>Легко заметить: проблем не создают те десятичные числа, которые являются
-половинками, четвертинками, восьмушками и так далее. Объяснение простое: помните
-таблицу умножения на 2 из прошлой заметки? Мы останавливаемся, когда получаем
-единицу, вычитаем из нее единицу и получаем ноль. Это значит, что очередное
-умножение должно вернуть 1. Если размотать алгоритм назад, на предыдущем шаге
-должно быть 0.5, перед ним — 0.25 и так далее.</p>
-
-<p>Поэтому 25% — это ок: в двоичном виде 0.25 будет 0.01. А 10% — не ок: 0.1 будет
-<code class="language-plaintext highlighter-rouge">0.0(0011)</code>. Двоичная природа дает о себе знать.</p>
-
-<p>Хорошо, мы привели десятичную дробь к двоичной, что дальше? Как ее хранить?
-Наивное решение — выделить группу бит под целую и дробные части
-отдельно. Например, если float занимает 4 байта, разделим его пополам: по два
-байта под каждую часть. В два байта умещаются числа от -32,768 до
-32,767. Выходит, подобный float сможет хранить числа от -32,768.32768 до
-32,767.32767. Не густо, если сравнить с нормальным float.</p>
-
-<p>Стандарт чисел с плавающей запятой предусматривает другой принцип
-хранения. Первый шаг на пути к нему — нормализовать двоичную дробь. Возьмем
-число 42.515625, которое привели к двоичному виду:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>101010.100001
-</code></pre></div></div>
-
-<p>Это же число я могу представить так:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>101010.100001 * 2^0
-</code></pre></div></div>
-
-<p>Оператор “крышка” означает возведение в степень. Два в нулевой степени равно
-единице, поэтому такое умножение ничего не изменит.</p>
-
-<p>Далее: я могу побитово сдвинуть число влево или вправо и компенсировать это
-степенью двойки. Например, если я передвину точку влево, это равносильно тому,
-что поделить число на 2. Чтобы уравновесить это деление, я умножу число на два —
-то есть увеличу степень на единицу. Поэтому число можно записать так:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>10101.0100001 * 2^(0+1)
-</code></pre></div></div>
-
-<p>Оно ничуть не изменилось: это все то же число, только в другой записи.</p>
-
-<p>Теперь сделаем обратное: сдвинем разделитель на два разряда вправо. Это
-равносильно тому, что дважды умножить число на 2. Чтобы компенсировать
-умножение, вычтем из степени двойки два:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>1010101.00001 * 2^(0+1-2)
-</code></pre></div></div>
-
-<p>Выходит, что разделитель можно двигать куда угодно и компенсировать его
-степенью. Если у нас безграничное число битов, точность не
-пострадает. Разумеется, на практике это не так: биты конечны, и передвижение
-разделителя приводит к тому, что их часть отбрасывается.</p>
-
-<p>Так вот: что же значит нормализовать двоичную дробь? Ответ — сдвинуть
-разделитель так, чтобы он оказался позади первого единичного бита. При этом
-неважно, в какой части встречается этот бит: целой или дробной. Мы сканируем
-биты слева направо, находим первый единичный и передвигаем разделитель так,
-чтобы он был сразу за ним.</p>
-
-<p>С числом</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>101010.100001 * 2^0
-</code></pre></div></div>
-
-<p>нам повезло: оно начинается сразу с единицы (в отличии, скажем, от
-0.00001). Потребуется пять сдвигов влево. Это равносильно тому, чтобы поделить
-число на 2 пять раз. Компенсация степени составит +5. Вот как выглядит
-нормализованное число:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>1.01010100001 * 2^5
-</code></pre></div></div>
-
-<p>Этой процедуре подвергаются все числа после перевода из десятичной системы к
-двоичной.</p>
-
-<p>Теперь вспомним 0.1 — оно становится <code class="language-plaintext highlighter-rouge">0.0(0011)</code> в двоичной системе. Чтобы
-разделитель оказался за единицей, нужно четыре сдвига вправо. Это равносильно
-умножению, поэтому степень уменьшается. Вот что было до:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>0.0(0011) * 2^0
-</code></pre></div></div>
-
-<p>и после:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>1.1(0011) * 2^-4
-</code></pre></div></div>
-
-<p>Обращаю внимание: только сейчас мы рассмотрели ключевое свойство чисел с
-плавающей запятой — их разделитель плавает! Ни одна из прошлых заметок не
-раскрывала этого, но теперь вы в курсе. Как мы увидим позже, разделитель плавает
-и в других случаях, например при сложении чисел. Вот почему в их названии есть
-слово float.</p>
-
-<p>После нормализации следует третий этап — битовая упаковка, который мы рассмотрим
-в следующей заметке.</p>
 
                 
             </div>
