@@ -106,6 +106,248 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-021-pg/">Postgres №21</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-09T00:00:00+00:00">
+        Mar 9, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><a href="/tip-020-pg/">В прошлом совете</a> упоминалось: команда <code class="language-plaintext highlighter-rouge">EXPLAIN</code> возвращает
+оценочный план запроса, при этом запрос не выполняется. Можно написать <code class="language-plaintext highlighter-rouge">EXPLAIN
+drop table students</code>, и данные не пропадут.</p>
+
+<p>Вариант <code class="language-plaintext highlighter-rouge">EXPLAIN ANALYZE</code> выполняет запрос и возвращает фактический план. Цифры
+из него будут реальными, а не оценочными. Вместе с тем Postgres покажет
+отдельное время планирования (planning) и выполнения (execute).</p>
+
+<p>Когда запросы тестируют, часто предпочитают <code class="language-plaintext highlighter-rouge">EXPLAIN ANALYZE</code>. При этом есть
+одна особенность, о которой пишут редко.</p>
+
+<p>Если выполнить один и тот же запрос дважды, то второй запуск будет гораздо
+быстрее. Разница существенна — один-два порядка! Например, первый запуск занял
+900 миллисекунд, второй — 50. Во-первых, почему так? Во-вторых, все-таки 900 или
+50? Нужно оптимизировать или так прокатит?</p>
+
+<p>Дело в том, как устроена работа с буферами. В Postgres любая работа с таблицами и индексами сводится к буферному кэшу. Это область памяти, доступная всем процессам на чтение и запись. Своего рода рабочий стол. Данные не читаются напрямую из таблицы: сперва они выгружаются в кэш и оттуда читаются строки. Запись работает в обратном порядке: страницы кэша обновляются в памяти, а затем сбрасываются на диск.</p>
+
+<p>Скорее всего, первый запуск не нашел нужных буферов в кэше и спровоцировал их
+чтение. Такой запуск называют холодным. Если выполнить запрос еще раз, данные
+окажутся в кэше, и результат получится на порядки быстрее. Это горячий
+запуск. Примерно как в Redis — прочитали из памяти без обращения к диску.</p>
+
+<p>На какой запуск ориентироваться? Иногда разработчик чувствует, что запрос не
+оптимален: первый вызов занял секунду. Долго. Он запускает еще раз и такой: а
+теперь 200 миллисекунд! Сойдет.</p>
+
+<p>Лично я ориентируюсь на первый (холодный) вариант. Рассчитывать, что каждый раз
+данные окажутся к кэше — слишком оптимистично. База выполняет много запросов
+параллельно и постоянно жонглирует страницами и кэшами. Полагайте, что чаще
+всего ваш запрос будет холодным.</p>
+
+<p>Поэтому: когда вы выполнили <code class="language-plaintext highlighter-rouge">EXPLAIN ANALYZE</code>, сделайте скриншот плана или
+скопируйте его, чтобы было с чем сравнивать. В противном случае вы не вспомните,
+каким был холодный запуск, хотя именно он отражает реальность.</p>
+
+<p>И еще одна неоднозначность. Предположим, вы тестируете запрос и часто его
+вызываете. В результате все буферы прогреты, и не ясно, как поведет себя запрос
+в холодном случае. Увы, нормального решения проблемы нет. Postgres не предлагает
+функции очистки кэша. Если это локальный Postgres, перезагрузите его, и первый
+запуск снова станет холодным. Разумеется, перезагружать удаленный сервер —
+моветон, поэтому сделайте следующее: заставьте Postgres заполнить буферный кэш
+чем-то другим. Запустите полное сканирование большой таблицы, погоняйте сложные
+запросы, и вскоре это сработает: запрос, что вы тестируете, станет холодным
+(метрика execute возрастет).</p>
+
+<p>Согласен: все это напоминает шаманство, но иногда приходится так делать.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-020-pg/">Postgres №20</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-31T00:00:00+00:00">
+        Jan 31, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В прошлый раз мы говорили вот о чем. Когда мы изучаем план запроса, то смотрим,
+было ли попадание в индекс. Однако бывает подвох: индекс был, да не тот.</p>
+
+<p>Скажем, есть запрос: показать топ-100 активных заказов по убыванию
+даты. Пожалуйста:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span>
+<span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span>
+</code></pre></div></div>
+
+<p>Для поля status создан индекс <code class="language-plaintext highlighter-rouge">idx_orders_status</code>, для <code class="language-plaintext highlighter-rouge">created_at</code> —
+<code class="language-plaintext highlighter-rouge">idx_orders_created_at</code> (по убыванию).</p>
+
+<p>Смотрим <code class="language-plaintext highlighter-rouge">EXPLAIN</code>, а там примерно такое:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>limit: 100
+  filter scan condition: status = 'active'
+    index scan idx_orders_created_at: desc
+</code></pre></div></div>
+
+<p>Разработчик смотрит: index scan был? Был. Вот и ладушки.</p>
+
+<p>На самом деле произошло вот что. Вместо того, чтобы взять только активные заказы
+и отсортировать их, Postgres сделал обратное. Он пошел по всей таблице (full
+scan), просто не в случайном порядке (как записи лежат на диске), а согласно
+индексу. При этом записи были отобраны вручную: для каждой из них выполнялась
+проверка status = ‘active’. Фактически это был full scan, только в другом
+порядке.</p>
+
+<p>В идеале нам нужен другой план:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>limit: 100
+  in-memory sort, key: created_at (desc)
+    index scan idx_orders_status condition: status = 'active'
+</code></pre></div></div>
+
+<p>Этот план читают так. Сначала Postgres выбирает активные заказы по
+индексу. Ожидается, что в таблице много завершенных заказов, поэтому у активных
+будет высокая селективность. Далее эти заказы сортируются в памяти по created_at
+(уже без всякого индекса) и берутся первые сто.</p>
+
+<p>Почему был первый план, а не второй? Во-первых, индекса на <code class="language-plaintext highlighter-rouge">status</code> может не
+быть. Если он есть, у значения active низкая селективность: доля активных
+заказов высокая. Может быть, настало время обновить статистику командой
+<code class="language-plaintext highlighter-rouge">analyze</code>, и значение <code class="language-plaintext highlighter-rouge">active</code> уйдет из массива частых значений, которые нельзя
+брать в индекс. Наконец, можно признать, что тут ничего не поделаешь и мы
+согласы жить с первым планом, а не вторым. Возможны и другие варианты, их
+смотрят по ситуации.</p>
+
+<p>Общий принцип такой. Часто фильтры и сортировка тянут одеяло на себя. Postgres
+должен решить, что выгоднее: отсортировать по индексу и пройтись вручную или
+наоборот: сначала отсечь по индексу и отсортировать в памяти. Второй вариант
+предпочтительней: когда выборка мала, любая операция над ней дешева: сортировка,
+группировка и так далее. Стремитесь к тому, чтобы <code class="language-plaintext highlighter-rouge">WHERE</code> отсекал как можно
+больше записей, и только потом вступали в действие другие операции.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-019-pg/">Postgres №19</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-31T00:00:00+00:00">
+        Jan 31, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Чтобы узнать план запроса, предварите его командой <code class="language-plaintext highlighter-rouge">EXPLAIN</code>:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>explain select * from applications;
+
+Seq Scan on applications
+  (cost=0.00..359524.33 rows=965633 width=1745)
+</code></pre></div></div>
+
+<p>Эта команда НЕ выполнит запрос, а только вернет его план и приблизительные
+оценки.</p>
+
+<p>План представляет дерево узлов; вложенность определяется пробелами слева. План
+читают от вложенных узлов к корню. Графические программы вроде PGAdmin
+показывают его в виде графа. У каждого узла как минимум три характеристики:
+стоимость (cost), число записей (rows) и средняя длина строки (width).</p>
+
+<p>Стоимость (cost) – это условные попугаи, в которых измеряется каждая операция. С
+помощью глобальных настроек можно задать свою стоимость некоторым операциям, но
+обычно это ни к чему. Кроме того, стоимость можно задать функциям при их
+объявлении.</p>
+
+<p>Число записей (rows) – ожидаемое число записей, которые произведет узел. Для них
+рассчитана средняя длина в байтах. Эти числа берутся из статистики и могут быть
+неточны.</p>
+
+<p>Стоимость выражается двумя цифрами: X..Y. Первая цифра – столько усилий уйдет на
+то, чтобы произвести первую запись. Вторая – последнюю, то есть все остальное.</p>
+
+<p>Зачем две цифры? Дело в том, что даже когда запрос производит много записей,
+важно знать, сколько усилий требует предварительная работа. Например, у обхода
+большой таблицы первый кост маленький, а второй – большой. Это нормально, потому
+что записи передаются следующему узлу без задержки. Если же добавить
+группировку, то следующий узел не получит данные, пока не выполнится
+группировка. Из-за этого первый кост будет большим. В идеале нужно держать его
+маленьким, чтобы клиент сразу начал получать строки.</p>
+
+<p>У команды explain много параметров, чтобы собрать дополнительные метрики
+узлов. Например, время в секундах, число прочитанных страниц, попадание в
+буферный кэш. Самый важный параметр называется <code class="language-plaintext highlighter-rouge">ANALYZE</code>. С ним запрос будет
+выполнен, и метрики будут реальными, а не оценочными.</p>
+
+<p>Модуль <code class="language-plaintext highlighter-rouge">auto_explain</code> автоматически логирует план запросов, которые выполнялись
+дольше порога, например одной секунды. Иногда его включают на проде.</p>
+
+<p>Читать план тяжело, этот навык приходит с годами. Вы должны точно понимать,
+какую информацию ищете и почему ее там нет. В простом случае вас интересует,
+использовался ли индекс. Вы запускаете explain analyze и смотрите, был ли узел с
+типом “index scan”.</p>
+
+<p>Узел “index only scan” означает, что данные получены из индекса без обращения к
+таблице. Это самый жир, лучше которого ничего не бывает. Узел “bitmap index
+scan” означает построение битовой карты, где каждый бит — номер блока. Такой
+обход используется для совмещения нескольких индексов, и он тоже хорош.</p>
+
+<p>Узел “full seq scan” означает полный обход таблицы. Это нормально, если таблица
+мала или нужна ее большая часть. Если вы рассчитывали на индекс, это повод
+пересмотреть его.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-018-pg/">Postgres №18</a>
             </h2>
 
@@ -828,291 +1070,13 @@ orders. Как только происходит обращение к user, ORM
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-012-pg/">Postgres №12</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-23T00:00:00+00:00">
-        Jan 23, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Дополнение <a href="/tip-011-pg/">вчерашней заметки</a> насчет запросов в базу. Смотреть
-запросы, которые выполняются во время тестов – это хорошо, можно поймать много
-кривых вещей. Но есть еще одна техника: считать запросы и проверять их
-количество. Этим вы защищаете код от ситуации, когда небольшое изменение
-накинуло +20 запросов. В ORM подобные вещи случаются часто. В основном они
-вызваны проблемой 1 + N, о которой будет следующий совет.</p>
-
-<p>Фреймворки-гиганты предлагают встроенный метод подсчета запросов. Например, в
-Django, если тестовый класс унаследован от <code class="language-plaintext highlighter-rouge">TransactionTestCase</code>, доступен метод
-<code class="language-plaintext highlighter-rouge">assertNumQueries</code>. В целом подобный тест выглядит так:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">TestSomeFunc</span><span class="p">(</span><span class="n">TestCase</span><span class="p">):</span>
-    <span class="n">dеf</span> <span class="n">test_func</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">with</span> <span class="bp">self</span><span class="p">.</span><span class="n">assertNumQueries</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="n">using</span><span class="o">=</span><span class="s">"db1"</span><span class="p">):</span>
-            <span class="n">some_func</span><span class="p">()</span>
-</code></pre></div></div>
-
-<p>Если кто-то поправит логику, число запросов изменится, и тест не пройдет.</p>
-
-<p>Если запросов много (10 и больше), посмотрите лог и добавьте комментарий с
-распределением запросов. Так логика будет понятна хотя бы в общих чертах:</p>
-
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># 1 auth
-# 2 permission check
-# 4 fetch data
-# 2 update data
-# 2 send notifications
-</span></code></pre></div></div>
-
-<p>В одном проекте выяснилось: удаление сущности порождало 400 с лишним
-запросов. Разумеется, почти все они удалялись поштучно, потому что разработчики
-не дружили с БД.</p>
-
-<p>Для Django написаны в том числе сторонние сборщики запросов, их легко
-нагуглить. Полагаю, то же самое есть в Руби, Spring Boot и прочих
-комбайнах. Подсчет легко сделать в Кложе: достаточно динамической переменной и
-макроса.</p>
-
-<p>Не обязательно считать запросы во всех апишках: скажем, для <code class="language-plaintext highlighter-rouge">get-by-id</code> подсчет
-избыточен. Но удаление сущностей, сложные перемещения из одной таблицы в другую
-– очень желательно. Все для этого есть, просто воспользуйтесь.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-011-pg/">Postgres №11</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-23T00:00:00+00:00">
-        Jan 23, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Если вы работаете с базой, то должны видеть все запросы, которые в нее идут. Это
-абсолютно обязательное условие. В особой степени оно касается ORM. Когда я делаю
-ревью, и в коде используются абстракции над базой, то всегда спрашиваю: какие
-запросы производит этот код? При этом ожидаю не гадание, а лог терминала,
-приложенный PR.</p>
-
-<p>Увидеть запросы можно следующим образом. Если Postgres запущен в Докере,
-передайте в <code class="language-plaintext highlighter-rouge">command</code> ключ <code class="language-plaintext highlighter-rouge">-E</code>:</p>
-
-<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">services</span><span class="pi">:</span>
-  <span class="na">postgres</span><span class="pi">:</span>
-<span class="err"> </span><span class="na">image</span><span class="pi">:</span> <span class="s">postgres:17</span>
- <span class="na">command</span><span class="pi">:</span> <span class="s">-E</span>
-</code></pre></div></div>
-
-<p>Если это ванильный Postgres, включите логирование всех запросов опцией:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>log_statement = 'all'
-</code></pre></div></div>
-
-<p>После этого лог отслеживают командой <code class="language-plaintext highlighter-rouge">tail</code>:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">tail</span> <span class="nt">-f</span> <span class="s1">'/var/log/postgresql.log'</span>
-</code></pre></div></div>
-
-<p>Расположение лога зависит от операционной системы и менеджера пакетов.</p>
-
-<p>Третий способ — настроить логирование в приложении. Скажем, в Джанго все
-операции с базой идут в логгер <code class="language-plaintext highlighter-rouge">django.db.backends</code>. Нужно выставить ему уровень
-<code class="language-plaintext highlighter-rouge">INFO</code> и направить в консоль.</p>
-
-<p>Минус такого логирования в том, что оно учитывает только свои запросы. Если
-кто-то ходит в базу минуя ORM, этих запросов вы не увидите.</p>
-
-<p>С другой стороны, мы перекладываем бремя логирования с базы на приложение. База
-одна, и если логировать каждый запрос, это замедлит ее. А поскольку узлов
-приложения много, на них это не скажется.</p>
-
-<p>Вместе с запросами полезно логировать время их выполнения. Заведите дашбоард,
-который находит топ-100 медленных запросов. Раз в месяц заводите задачу на
-оптимизацию.</p>
-
-<p>Расширение <code class="language-plaintext highlighter-rouge">pg_stat_statements</code> (доступно из коробки) ведет статистику запросов:
-число вызовов, среднее, минимальное и максимальное времена, размер переданных
-строк и так далее. Очень помогает на проде.</p>
-
-<p>Если вы не видите, какие запросы идут в базу, разработка подобна блужданию в
-темноте.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-010-pg/">Postgres №10</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-16T00:00:00+00:00">
-        Jan 16, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Прелесть рекурсивных запросов в том, что их источником может быть что угодно –
-не обязательно таблица. В примере ниже мы рассмотрим, как обойти вложенный
-JSON-документ.</p>
-
-<p>Проблема в следующем. В базе лежит огромный JSON с каталогом услуг. Его схема
-примерно такая:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DOC = {
- "id": ID,
- "code": CODE,
- "children": [DOC]
-}
-</code></pre></div></div>
-
-<p>Головной элемент содержит некоторые поля и <code class="language-plaintext highlighter-rouge">children</code>, в которых список
-элементов. У каждого элемента свои <code class="language-plaintext highlighter-rouge">children</code> и так далее. Вложенность
-значительна: иная ветка достигает 30 элементов.</p>
-
-<p>Уж не знаю, почему документ хранят в таком виде. Подозреваю, что это дамп
-какого-то виджета для редактирования дерева. Разработчик поленился разложить его
-на плоские записи и собрать обратно, поэтому он хранится как есть. Разумеется,
-услуги часто нужны в плоском виде. Разработчики вынимают JSON из базы и обходят
-в приложении.</p>
-
-<p>Есть, однако, простой способ привести JSON к плоскому виду – рекурсивный запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">prepare</span> <span class="n">flatten</span> <span class="k">as</span>
-<span class="k">with</span> <span class="k">recursive</span> <span class="n">step</span> <span class="k">as</span> <span class="p">(</span>
-    <span class="k">select</span>
-        <span class="n">jt</span><span class="p">.</span><span class="o">*</span><span class="p">,</span>
-        <span class="mi">0</span> <span class="k">as</span> <span class="k">level</span>
-    <span class="k">from</span>
-        <span class="n">json_table</span><span class="p">(</span><span class="err">$</span><span class="mi">1</span><span class="p">::</span><span class="n">jsonb</span><span class="p">,</span> <span class="s1">'$'</span> <span class="n">columns</span><span class="p">(</span>
-            <span class="n">id</span> <span class="n">int4</span> <span class="n">path</span> <span class="s1">'$.id'</span><span class="p">,</span>
-            <span class="n">code</span> <span class="nb">text</span> <span class="n">path</span> <span class="s1">'$.code'</span><span class="p">,</span>
-            <span class="n">children</span> <span class="n">jsonb</span> <span class="n">path</span> <span class="s1">'$.children'</span>
-    <span class="p">))</span> <span class="k">as</span> <span class="n">jt</span>
-    <span class="k">UNION</span> <span class="k">ALL</span>
-    <span class="k">select</span>
-        <span class="n">jt</span><span class="p">.</span><span class="o">*</span><span class="p">,</span>
-        <span class="n">step</span><span class="p">.</span><span class="k">level</span> <span class="o">+</span> <span class="mi">1</span> <span class="k">as</span> <span class="k">level</span>
-    <span class="k">from</span>
-        <span class="n">step</span><span class="p">,</span>
-        <span class="n">json_table</span><span class="p">(</span><span class="n">step</span><span class="p">.</span><span class="n">children</span><span class="p">,</span> <span class="s1">'$[*]'</span> <span class="n">columns</span><span class="p">(</span>
-            <span class="n">id</span> <span class="n">int4</span> <span class="n">path</span> <span class="s1">'$.id'</span><span class="p">,</span>
-            <span class="n">code</span> <span class="nb">text</span> <span class="n">path</span> <span class="s1">'$.code'</span><span class="p">,</span>
-            <span class="n">children</span> <span class="n">jsonb</span> <span class="n">path</span> <span class="s1">'$.children'</span>
-    <span class="p">))</span> <span class="k">as</span> <span class="n">jt</span><span class="p">)</span>
-<span class="k">select</span> <span class="n">id</span><span class="p">,</span> <span class="n">code</span><span class="p">,</span> <span class="k">level</span> <span class="k">from</span> <span class="n">step</span>
-<span class="k">order</span> <span class="k">by</span> <span class="k">level</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Первая часть производит строку с полями <code class="language-plaintext highlighter-rouge">id</code>, <code class="language-plaintext highlighter-rouge">code</code> и <code class="language-plaintext highlighter-rouge">children</code>. В нем –
-JSON-массив вложенных элементов. Рекурсивная часть берет каждый элемент и делает
-то же самое: расщепляет его на <code class="language-plaintext highlighter-rouge">id</code>, <code class="language-plaintext highlighter-rouge">code</code> и другие элементы. Все это
-колбасится, пока вложенные элементы не исчерпаются. А теперь – пример:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">execute</span> <span class="n">flatten</span><span class="p">(</span><span class="err">$${</span>
-    <span class="nv">"id"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
-    <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product A"</span><span class="p">,</span>
-    <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-        <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product B"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-            <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product E"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-                <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">6</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product F"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[]</span><span class="err">}</span>
-            <span class="p">]</span><span class="err">}</span>
-        <span class="p">]</span><span class="err">}</span><span class="p">,</span>
-        <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product C"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-            <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">7</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product F"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-                <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product G"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[]</span><span class="err">}</span>
-            <span class="p">]</span><span class="err">}</span>
-
-        <span class="p">]</span><span class="err">}</span><span class="p">,</span>
-        <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product D"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-            <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product E"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-                <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">9</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product H"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[]</span><span class="err">}</span>
-            <span class="p">]</span><span class="err">}</span>
-        <span class="p">]</span><span class="err">}</span>
-<span class="p">]</span><span class="err">}$$</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Результат:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────┬───────────┬───────┐
-│ id │   code    │ level │
-├────┼───────────┼───────┤
-│  1 │ Product A │     0 │
-│  2 │ Product B │     1 │
-│  3 │ Product C │     1 │
-│  4 │ Product D │     1 │
-│  5 │ Product E │     2 │
-│  7 │ Product F │     2 │
-│  5 │ Product E │     2 │
-│  6 │ Product F │     3 │
-│  8 │ Product G │     3 │
-│  9 │ Product H │     3 │
-└────┴───────────┴───────┘
-</code></pre></div></div>
-
-<p>Такой обход очень полезен. Быстро выяснилось, что плоские продукты нужны
-аналитикам, которые не владеют Кложей или другим ЯП, чтобы их распутать. Я
-написал им запрос, и они чуть не заплакали от счастья. Во-вторых, продукты
-изменяются редко, поэтому из запроса легко сделать материализованную вьюху и
-обновлять ее каждый день. Для аналитиков это обычная таблица, которую можно
-джойнить в запросах.</p>
-
-<p>Еще одно уточнение — код выше является чистым с точки зрения ФП. В нем нет
-побочных эффектов, например обращения к диску. Такая функция может быть вызвана
-параллельно для многих документов.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page6" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 7 из 111</span>
+        <span class="page_number ">Страница 7 из 112</span>
         
         <a href="/page8" class="next">&rarr;</a>
         

@@ -106,6 +106,284 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-012-pg/">Postgres №12</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-23T00:00:00+00:00">
+        Jan 23, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Дополнение <a href="/tip-011-pg/">вчерашней заметки</a> насчет запросов в базу. Смотреть
+запросы, которые выполняются во время тестов – это хорошо, можно поймать много
+кривых вещей. Но есть еще одна техника: считать запросы и проверять их
+количество. Этим вы защищаете код от ситуации, когда небольшое изменение
+накинуло +20 запросов. В ORM подобные вещи случаются часто. В основном они
+вызваны проблемой 1 + N, о которой будет следующий совет.</p>
+
+<p>Фреймворки-гиганты предлагают встроенный метод подсчета запросов. Например, в
+Django, если тестовый класс унаследован от <code class="language-plaintext highlighter-rouge">TransactionTestCase</code>, доступен метод
+<code class="language-plaintext highlighter-rouge">assertNumQueries</code>. В целом подобный тест выглядит так:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">TestSomeFunc</span><span class="p">(</span><span class="n">TestCase</span><span class="p">):</span>
+    <span class="n">dеf</span> <span class="n">test_func</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="p">.</span><span class="n">assertNumQueries</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="n">using</span><span class="o">=</span><span class="s">"db1"</span><span class="p">):</span>
+            <span class="n">some_func</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>Если кто-то поправит логику, число запросов изменится, и тест не пройдет.</p>
+
+<p>Если запросов много (10 и больше), посмотрите лог и добавьте комментарий с
+распределением запросов. Так логика будет понятна хотя бы в общих чертах:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># 1 auth
+# 2 permission check
+# 4 fetch data
+# 2 update data
+# 2 send notifications
+</span></code></pre></div></div>
+
+<p>В одном проекте выяснилось: удаление сущности порождало 400 с лишним
+запросов. Разумеется, почти все они удалялись поштучно, потому что разработчики
+не дружили с БД.</p>
+
+<p>Для Django написаны в том числе сторонние сборщики запросов, их легко
+нагуглить. Полагаю, то же самое есть в Руби, Spring Boot и прочих
+комбайнах. Подсчет легко сделать в Кложе: достаточно динамической переменной и
+макроса.</p>
+
+<p>Не обязательно считать запросы во всех апишках: скажем, для <code class="language-plaintext highlighter-rouge">get-by-id</code> подсчет
+избыточен. Но удаление сущностей, сложные перемещения из одной таблицы в другую
+– очень желательно. Все для этого есть, просто воспользуйтесь.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-011-pg/">Postgres №11</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-23T00:00:00+00:00">
+        Jan 23, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Если вы работаете с базой, то должны видеть все запросы, которые в нее идут. Это
+абсолютно обязательное условие. В особой степени оно касается ORM. Когда я делаю
+ревью, и в коде используются абстракции над базой, то всегда спрашиваю: какие
+запросы производит этот код? При этом ожидаю не гадание, а лог терминала,
+приложенный PR.</p>
+
+<p>Увидеть запросы можно следующим образом. Если Postgres запущен в Докере,
+передайте в <code class="language-plaintext highlighter-rouge">command</code> ключ <code class="language-plaintext highlighter-rouge">-E</code>:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">services</span><span class="pi">:</span>
+  <span class="na">postgres</span><span class="pi">:</span>
+<span class="err"> </span><span class="na">image</span><span class="pi">:</span> <span class="s">postgres:17</span>
+ <span class="na">command</span><span class="pi">:</span> <span class="s">-E</span>
+</code></pre></div></div>
+
+<p>Если это ванильный Postgres, включите логирование всех запросов опцией:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>log_statement = 'all'
+</code></pre></div></div>
+
+<p>После этого лог отслеживают командой <code class="language-plaintext highlighter-rouge">tail</code>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">tail</span> <span class="nt">-f</span> <span class="s1">'/var/log/postgresql.log'</span>
+</code></pre></div></div>
+
+<p>Расположение лога зависит от операционной системы и менеджера пакетов.</p>
+
+<p>Третий способ — настроить логирование в приложении. Скажем, в Джанго все
+операции с базой идут в логгер <code class="language-plaintext highlighter-rouge">django.db.backends</code>. Нужно выставить ему уровень
+<code class="language-plaintext highlighter-rouge">INFO</code> и направить в консоль.</p>
+
+<p>Минус такого логирования в том, что оно учитывает только свои запросы. Если
+кто-то ходит в базу минуя ORM, этих запросов вы не увидите.</p>
+
+<p>С другой стороны, мы перекладываем бремя логирования с базы на приложение. База
+одна, и если логировать каждый запрос, это замедлит ее. А поскольку узлов
+приложения много, на них это не скажется.</p>
+
+<p>Вместе с запросами полезно логировать время их выполнения. Заведите дашбоард,
+который находит топ-100 медленных запросов. Раз в месяц заводите задачу на
+оптимизацию.</p>
+
+<p>Расширение <code class="language-plaintext highlighter-rouge">pg_stat_statements</code> (доступно из коробки) ведет статистику запросов:
+число вызовов, среднее, минимальное и максимальное времена, размер переданных
+строк и так далее. Очень помогает на проде.</p>
+
+<p>Если вы не видите, какие запросы идут в базу, разработка подобна блужданию в
+темноте.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-010-pg/">Postgres №10</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-16T00:00:00+00:00">
+        Jan 16, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Прелесть рекурсивных запросов в том, что их источником может быть что угодно –
+не обязательно таблица. В примере ниже мы рассмотрим, как обойти вложенный
+JSON-документ.</p>
+
+<p>Проблема в следующем. В базе лежит огромный JSON с каталогом услуг. Его схема
+примерно такая:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DOC = {
+ "id": ID,
+ "code": CODE,
+ "children": [DOC]
+}
+</code></pre></div></div>
+
+<p>Головной элемент содержит некоторые поля и <code class="language-plaintext highlighter-rouge">children</code>, в которых список
+элементов. У каждого элемента свои <code class="language-plaintext highlighter-rouge">children</code> и так далее. Вложенность
+значительна: иная ветка достигает 30 элементов.</p>
+
+<p>Уж не знаю, почему документ хранят в таком виде. Подозреваю, что это дамп
+какого-то виджета для редактирования дерева. Разработчик поленился разложить его
+на плоские записи и собрать обратно, поэтому он хранится как есть. Разумеется,
+услуги часто нужны в плоском виде. Разработчики вынимают JSON из базы и обходят
+в приложении.</p>
+
+<p>Есть, однако, простой способ привести JSON к плоскому виду – рекурсивный запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">prepare</span> <span class="n">flatten</span> <span class="k">as</span>
+<span class="k">with</span> <span class="k">recursive</span> <span class="n">step</span> <span class="k">as</span> <span class="p">(</span>
+    <span class="k">select</span>
+        <span class="n">jt</span><span class="p">.</span><span class="o">*</span><span class="p">,</span>
+        <span class="mi">0</span> <span class="k">as</span> <span class="k">level</span>
+    <span class="k">from</span>
+        <span class="n">json_table</span><span class="p">(</span><span class="err">$</span><span class="mi">1</span><span class="p">::</span><span class="n">jsonb</span><span class="p">,</span> <span class="s1">'$'</span> <span class="n">columns</span><span class="p">(</span>
+            <span class="n">id</span> <span class="n">int4</span> <span class="n">path</span> <span class="s1">'$.id'</span><span class="p">,</span>
+            <span class="n">code</span> <span class="nb">text</span> <span class="n">path</span> <span class="s1">'$.code'</span><span class="p">,</span>
+            <span class="n">children</span> <span class="n">jsonb</span> <span class="n">path</span> <span class="s1">'$.children'</span>
+    <span class="p">))</span> <span class="k">as</span> <span class="n">jt</span>
+    <span class="k">UNION</span> <span class="k">ALL</span>
+    <span class="k">select</span>
+        <span class="n">jt</span><span class="p">.</span><span class="o">*</span><span class="p">,</span>
+        <span class="n">step</span><span class="p">.</span><span class="k">level</span> <span class="o">+</span> <span class="mi">1</span> <span class="k">as</span> <span class="k">level</span>
+    <span class="k">from</span>
+        <span class="n">step</span><span class="p">,</span>
+        <span class="n">json_table</span><span class="p">(</span><span class="n">step</span><span class="p">.</span><span class="n">children</span><span class="p">,</span> <span class="s1">'$[*]'</span> <span class="n">columns</span><span class="p">(</span>
+            <span class="n">id</span> <span class="n">int4</span> <span class="n">path</span> <span class="s1">'$.id'</span><span class="p">,</span>
+            <span class="n">code</span> <span class="nb">text</span> <span class="n">path</span> <span class="s1">'$.code'</span><span class="p">,</span>
+            <span class="n">children</span> <span class="n">jsonb</span> <span class="n">path</span> <span class="s1">'$.children'</span>
+    <span class="p">))</span> <span class="k">as</span> <span class="n">jt</span><span class="p">)</span>
+<span class="k">select</span> <span class="n">id</span><span class="p">,</span> <span class="n">code</span><span class="p">,</span> <span class="k">level</span> <span class="k">from</span> <span class="n">step</span>
+<span class="k">order</span> <span class="k">by</span> <span class="k">level</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Первая часть производит строку с полями <code class="language-plaintext highlighter-rouge">id</code>, <code class="language-plaintext highlighter-rouge">code</code> и <code class="language-plaintext highlighter-rouge">children</code>. В нем –
+JSON-массив вложенных элементов. Рекурсивная часть берет каждый элемент и делает
+то же самое: расщепляет его на <code class="language-plaintext highlighter-rouge">id</code>, <code class="language-plaintext highlighter-rouge">code</code> и другие элементы. Все это
+колбасится, пока вложенные элементы не исчерпаются. А теперь – пример:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">execute</span> <span class="n">flatten</span><span class="p">(</span><span class="err">$${</span>
+    <span class="nv">"id"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product A"</span><span class="p">,</span>
+    <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+        <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product B"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+            <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product E"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+                <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">6</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product F"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[]</span><span class="err">}</span>
+            <span class="p">]</span><span class="err">}</span>
+        <span class="p">]</span><span class="err">}</span><span class="p">,</span>
+        <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product C"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+            <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">7</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product F"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+                <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product G"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[]</span><span class="err">}</span>
+            <span class="p">]</span><span class="err">}</span>
+
+        <span class="p">]</span><span class="err">}</span><span class="p">,</span>
+        <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product D"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+            <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product E"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
+                <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">9</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product H"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[]</span><span class="err">}</span>
+            <span class="p">]</span><span class="err">}</span>
+        <span class="p">]</span><span class="err">}</span>
+<span class="p">]</span><span class="err">}$$</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Результат:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────┬───────────┬───────┐
+│ id │   code    │ level │
+├────┼───────────┼───────┤
+│  1 │ Product A │     0 │
+│  2 │ Product B │     1 │
+│  3 │ Product C │     1 │
+│  4 │ Product D │     1 │
+│  5 │ Product E │     2 │
+│  7 │ Product F │     2 │
+│  5 │ Product E │     2 │
+│  6 │ Product F │     3 │
+│  8 │ Product G │     3 │
+│  9 │ Product H │     3 │
+└────┴───────────┴───────┘
+</code></pre></div></div>
+
+<p>Такой обход очень полезен. Быстро выяснилось, что плоские продукты нужны
+аналитикам, которые не владеют Кложей или другим ЯП, чтобы их распутать. Я
+написал им запрос, и они чуть не заплакали от счастья. Во-вторых, продукты
+изменяются редко, поэтому из запроса легко сделать материализованную вьюху и
+обновлять ее каждый день. Для аналитиков это обычная таблица, которую можно
+джойнить в запросах.</p>
+
+<p>Еще одно уточнение — код выше является чистым с точки зрения ФП. В нем нет
+побочных эффектов, например обращения к диску. Такая функция может быть вызвана
+параллельно для многих документов.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-009-pg/">Postgres №9</a>
             </h2>
 
@@ -620,150 +898,13 @@ Postgres все способы извлечь неделю являются ISO:
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-002-pg/">Postgres №2</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-15T00:00:00+00:00">
-        Jan 15, 2026
-    </time>
-
-    <a href="/tag/yyyy/" rel="tag">yyyy</a>, <a href="/tag/time/" rel="tag">time</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Новый год, подарки, “запах мандарин”…, а это значит, пришла пора сделать вот
-что. Откройте свои проекты и убедитесь, что для форматирования дат используете
-<code class="language-plaintext highlighter-rouge">yyyy-MM-dd</code>, а не <code class="language-plaintext highlighter-rouge">YYYY-MM-dd</code>. Буквы года должны быть маленькими!</p>
-
-<p>YYYY возвращает week-based year, а yyyy – обычный календарный. Прелесть в том,
-стреляет на границе годов. Примеры:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(format-date (LocalDate/now) "YYYY-MM-dd")
-"2026-12-30"
-
-(format-date (LocalDate/now) "yyyy-MM-dd")
-"2025-12-30"
-</code></pre></div></div>
-
-<p>Если этого не учесть – мой случай – то за день до нового года файлы уедут в
-папку с 2026 годом. С чем вас и поздравляю.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-001-pg/">Postgres №1</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-15T00:00:00+00:00">
-        Jan 15, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Следите за тем, какие индексы используются, а какие нет. Для этого время от
-времени проверяйте представление <code class="language-plaintext highlighter-rouge">pg_stat_user_indexes</code>. Оно накапливает случаи
-обращения к индексу. Сохраняются имя схемы, таблицы, индекса, дата последнего
-обращения, общее число обращений, число прочитанных элементов, число прочитанных
-строк. Пример:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">pg_stat_user_indexes</span>
-<span class="k">where</span> <span class="n">relname</span> <span class="o">=</span> <span class="s1">'users'</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">last_idx_scan</span> <span class="k">desc</span> <span class="n">nulls</span> <span class="k">last</span>
-</code></pre></div></div>
-
-<p>Удалите индексы с малым показателем <code class="language-plaintext highlighter-rouge">idx_scan</code>. Сделайте такую проверку
-регулярной, например раз в месяц.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/ui-gap/">Щели в интерфейсе</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2025-12-31T00:00:00+00:00">
-        Dec 31, 2025
-    </time>
-
-    <a href="/tag/ui/" rel="tag">ui</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p><img src="/assets/static/aws/ui-gap/1.jpeg" /></p>
-
-<p>Если вы дизайните интерфейс, помните о следующем правиле: в интерфейсе не должно
-быть щелей. Всякие панели, сайдбары, палитры должны быть прижаты плотно. Между
-не должно быть зазора.</p>
-
-<p>У зазоров две проблемы: первая – интерфейс занимает больше места. Если уж
-хочется отступа, добавь его внутри прямоугольника. Хотя и этот прием спорный:
-отступы – бич современности. Из-за пухлых кнопок и сайдбаров ничего не
-помещается на экран.</p>
-
-<p>Вторая беда щелей в том, что они “сквозят”. Так я называю эффект, когда
-перематываешь контент, и сквозь щель что-то мелькает. Через три пикселя ты все
-равно ничего не разглядишь, но мельтешение отвлекает.</p>
-
-<p>Кажется, в каком-то обновлении Фигмы сделали боковые панели, парящие в
-воздухе. Это было так плохо, что их вернули на место. Скриншота я не сохранил.</p>
-
-<p>А вот другой пример. Обновил Телеграм на телефоне, и пожалуйста – дизайнер решил
-поиграться с жидким стеклом. Нижний бар стал пилюлей, которая висит в воздухе.</p>
-
-<p>Что в ней плохого? Хотя бы то, что теперь она занимает больше места. Щель снизу
-бесполезна: ты же не будешь читать сообщение сквозь нее? (Хотя технически это
-возможно – настолько она большая.) Нормальный человек промотает вверх.</p>
-
-<p>Какая-то загадка: почему новый интерфейс требует на один-два сантиметра больше?
-Откуда это? Я не понимаю.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page7" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 8 из 111</span>
+        <span class="page_number ">Страница 8 из 112</span>
         
         <a href="/page9" class="next">&rarr;</a>
         
