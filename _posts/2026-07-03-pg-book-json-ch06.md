@@ -8,7 +8,7 @@ telegram_id:
 
 {% include pg-json-book-chapters.md %}
 
-{% include toc.html id="pg-book-json-ch05" %}
+{% include toc.html id="pg-book-json-ch06" %}
 
 *В этой главе мы продолжим работу с JSON: познакомимся с языком JSON Path и его
 реализацией в Postgres. Рассмотрим виды JSON-путей, их функции и операторы, а
