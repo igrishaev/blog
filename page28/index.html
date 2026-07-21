@@ -106,6 +106,243 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/env-trap/">О переменных среды</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-11-22T00:00:00+00:00">
+        Nov 22, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/environment/" rel="tag">environment</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Про переменные среды нужно знать две вещи. Первая — если не было значения по
+умолчанию, функция должна бросить исключение, где написано, какой именно
+переменной не нашлось. Вторая — нельзя читать переменные посреди
+программы. Нужно сделать это один раз на старте. Эти два правила улучшают код на
+порядок.</p>
+
+<p>Теперь подробнее. Как правило, если переменная среды не установлена, то попытка
+ее прочесть вернет пустую строку или <code class="language-plaintext highlighter-rouge">null</code>. Это неправильно. Должно выскочить
+исключение с примерно таким текстом:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>System.getenv("DB_PASSWORD") =&gt;
+RuntimeException "env variable DB_PASSWORD is not set"
+</code></pre></div></div>
+
+<p>Если вместо исключения будет <code class="language-plaintext highlighter-rouge">null</code>, то он провалится в дальнейшие вычисления,
+например, в формирование урла или бакета. Постоянно вижу такое в коде:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>host = "api." + getenv("ENV_PREFIX") + ".acme.com"
+</code></pre></div></div>
+
+<p>Если <code class="language-plaintext highlighter-rouge">ENV_PREFIX</code> не задан, то получится <code class="language-plaintext highlighter-rouge">api.null.acme.com</code>. Из-за этого
+HTTP-клиент пойдет на левый хост и кинет непонятное исключение. То же самое с
+бакетом в S3: Амазон скажет, мол, нет такого бакета, а вы будете рвать волосы.</p>
+
+<p>Простой фикс — написать свою функцию, которая бросит исключение. Потом заменить
+все коробочные getenv на ваш. Пример:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(dеfn env!
+  ([varname]
+   (or (System/getenv varname)
+       (throw (new RuntimeError ...))))
+  ([varname dеfault]
+   (or (System/getenv varname)
+       dеfault)))
+</code></pre></div></div>
+
+<p>Исключение не кидается, если передан дефолт.</p>
+
+<p>Второе. Чтение переменной среды — это грязная операция. Формально никакого IO не
+происходит, потому что переменные уже в памяти программы. Но это сторонняя
+зависимость, которую ваш код не контролирует. По факту чтение переменной не
+отличается от чтения файла. Нет файла — программа сломается; нет переменной —
+тоже.</p>
+
+<p>Поэтому, если уж вы связались с переменными среды, читайте их на старте в
+какую-то мапку. Передавайте эту мапку в функции, чтобы они были чистыми. Это
+легко тестировать: подал на вход то, это, пятое-десятое. А когда код завязан на
+getenv, с ним невозможно работать.</p>
+
+<p>Приходилось работать в проекте, который писали одни чудики. Они прочитали The
+Twelve-Factor App и особенно прониклись пунктом насчет переменных
+среды. Результат можно описать одним словом: пи…ц. Представьте проект на 600
+файлов, где на каждый чих читается переменная среды, да к тому же приводится к
+нужному типу. На старте ничего не проверяется: запустил код без переменной —
+узнал об этом в продакшене. Какой-то чел добавил глобальный кэш переменных и
+целый ворох связанных с ним проблем.</p>
+
+<p>Чудики вынесли настройки в переменные среды, чтобы быть свободными от
+конфигурации. Так им сказали в The Twelve-Factor App. А потом написали ENV-файлы
+на три экрана. Было несколько ENV-файлов, которые загружались в особом порядке,
+переопределяя значения друг друга. Например, сначала базовый энв, потом энв
+текущего окружения (тест, прод, стейджинг), потому энв текущей машины. Удачной
+отладки.</p>
+
+<p>Из этого вывод: много чего можно прочитать в интернете, но если нет своей
+головы, оно не поможет. Нужно делать так, чтобы было удобно, а не как написано в
+The Twelve-Factor App или на Хакер-Ньюз.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/best-lang/">Лучший язык</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-11-22T00:00:00+00:00">
+        Nov 22, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/best/" rel="tag">best</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>По мотивам обсуждений во внутреннем чатике, вот вам мысль.</p>
+
+<p>Лучший язык для решения задачи — тот, который знаешь лучше всего. Если это Питон
+— пиши на Питоне. Если лучше всего знаешь Джаву — пиши на Джаве. Если это JS или
+PHP, то что ж… пиши на них.</p>
+
+<p>Когда вам говорят, что C++ лучше подходит для игр, а R для статистики, не нужно
+вестись на эту удочку. Язык-то задаче подходит, а вы подходите языку?</p>
+
+<p>Даже если взять “подходящий” язык, который вы плохо знаете, результат будет
+хуже, чем с “неподходящим”, но знакомым языком. Под “знаете” имеются в виду не
+основы синтаксиса и курсы, а пять лет опыта и больше.</p>
+
+<p>Простыми словами, если с Питоном вы 10 лет, а на плюсах писали дай бог в
+универе, то умножение матриц на Питоне будет медленней, но понятней и проще в
+поддержке.</p>
+
+<p>Игры, кстати, хорошо пишутся на C-шарпе в том же Юнити. Полно печатных плат,
+которые выполняют быдлокод на Питоне и JS. Если вы знаете Лисп как бог, то не
+составит труда написать мини-язык, который собирается в машкоды — так писали
+серию игр Crash Bandicoot. В случае с Питоном почти все либы написаны на Си, а
+Питон — это клей, чтобы их вызвать.</p>
+
+<p>Поэтому нужно оценивать не язык, а себя. Пишите на том, что знаете лучше
+всего. А языки подучивайте в фоне, рассматривая их как инструменты.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/ai-glitch/">AI и новички</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-11-22T00:00:00+00:00">
+        Nov 22, 2024
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/ai/" rel="tag">ai</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В Кложурной слаке в канале для офтопа пошла речь о языковых моделях. Приведу
+хорошую цитату оттуда:</p>
+
+<blockquote>
+  <p>Library suggestions seems to be one of the areas they’re very weak: they
+hallucinate a lot about namespaces and functions so the suggested code looks
+feasible but won’t run, and it actually leads to beginners then raising issues
+against the suggested library that “gpt suggested this code but it doesn’t
+work as expected”</p>
+</blockquote>
+
+<p>Прямо в точку. У меня было несколько раз, когда человек копировал выхлоп из GPT
+и жаловался, что он не работает. На первый взгляд код правильный, а потом
+смотришь: здесь нет двоеточия, здесь левый символ, здесь ссылка на неизвестный
+неймспейс. Между кодом — повествовательный стиль изложения: вы можете сделать
+то, можете это.</p>
+
+<p>Досадно, что каждый раз человек сливается. Начинаешь объяснять, что не так, а в
+ответ — тишина. Видимо, человек рассчитывал, что GPT прав, ошибка на моей
+стороне и сейчас я быстро поправлю. Но оказывается не так, нужно думать,
+разбираться и вообще — все сложно.</p>
+
+<p>Не советую новичкам пользоваться языковыми моделями для кода. Они как волшебное
+зеркало — что-то показывают, но откуда оно, какая гарантия и кто несет
+ответственность — неизвестно. В точности противоположно тому, что нужно на
+старте.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/ai-everywhere/">Всюду AI</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2024-11-22T00:00:00+00:00">
+        Nov 22, 2024
+    </time>
+
+    <a href="/tag/ai/" rel="tag">ai</a>, <a href="/tag/life/" rel="tag">life</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Наиболее раздражающий тренд сегодня — это когда каждая программа подсовывает
+AI. Открываешь гугло-док, а сверху плашка: попробуй Gemini at no
+cost. Открываешь Feedly — а там AI-анализатор твоих фидов. Открываешь Хром — а
+там AI-алгоритм для группировки вкладок.</p>
+
+<p>Все это в выпадашках, выпадашках, выпадашках. Даже если закрыл, покажут через
+два дня опять.</p>
+
+<p>Когда-нибудь AI-истерия, конечно, пройдет. Просто иной раз думаешь — почему я
+опять должен пережидать очередной вирусняк? Ждать, пока программы отпустит от
+блокчейна, BLM, прайда и прочего? Я ведь не просил, оно само пришло.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/ring-jdk-adapter/">Ring JDK Adapter</a>
             </h2>
 
@@ -644,616 +881,6 @@ Software Foundation, некоммерческая организация, у к�
 зачем насильно глушить цвета? Кто просил?</p>
 
 <p>Коррекция нужна, но слишком часто я замечаю обратное.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/android-mem-3/">Память у Андроида (3)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-11-12T00:00:00+00:00">
-        Nov 12, 2024
-    </time>
-
-    <a href="/tag/android/" rel="tag">android</a>, <a href="/tag/memory/" rel="tag">memory</a>, <a href="/tag/storage/" rel="tag">storage</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>И еще про Андроид. Я не хотел, но сама жизнь вынуждает.</p>
-
-<p>Этим утром обратилась женщина, друг семьи. Классика: телефон — Андроид, 32 гига,
-забит под ноль фотками и видео всяких утренников. Вацап раздулся до 8
-гигов. Женщина жила в таком режиме годами, телефон как-то шевелился. Но вот
-приплыли: Вацап устарел, просит обновить. Женщина не понимает, что от нее хотят.</p>
-
-<p>Нажимаю “скачать”, Вацап перекидывает в Google Play. А там плашка: в целях
-безопасности подтвердите аккаунт, запрашивает пароль к гугло-почте. Разумеется,
-женщина не знает не то что пароль, а что такое гугло-аккаунт в принципе. Судя по
-всему, этот аккаунт ей создали в отделении связи, где она покупала телефон.</p>
-
-<p>Сразу вопрос: какие именно “цели безопасности” преследует Гугл? В чем проблема
-обновить приложение? Это же всем на пользу: Гуглу, производителю, пользователю.</p>
-
-<p>Пытаюсь подобрать пароль по фамилии и году рождения — Гугл не знает этой
-почты. Возможно, удалил из-за неактивности. Пытаюсь создать новый акк — не
-принимает российский номер.</p>
-
-<p>Ладно, качаю APK с сайта Вацапа. Разрешаю установку из сторонних
-источников. Тыкаю на APK — он немного тупит, потом говорит, что не смог. Никаких
-деталей, ошибок, все молчком. Я думал минут десять, ребутнул телефон и
-догадался: бедняге не хватает места. А сказать об этом нельзя? Удалил левые
-приложения, какой-то утренник — и APK поставился.</p>
-
-<p>Женщина видит Вацап и чуть не плачет от радости. У нее там родительский чат,
-секции внуков, подруги детства, соседи, ТСЖ, работа, клиенты. Предлагает деньги,
-еле отговорил. Представьте, что потеряли доступ к почте, на которой сидели 10
-лет — вот так себя чувствовала она.</p>
-
-<p>Я смотрю на это и не понимаю: почему нельзя сделать так, чтобы человек просто
-пользовался телефоном? Почему его нужно носить Ване-программисту, чтобы он
-работал? Почему нельзя продумать сценарии, чтобы избежать таких ситуаций? Опять
-пользователи не те попались?</p>
-
-<p>Я не настаиваю насчет компьютеров: они явно не для людей. Это техника для
-обученного персонала. Но телефон, блин, это же повседневная вещь. Нам же
-показывали в презентациях: тыкаешь пальчиком, и оно все само. А на практике
-совсем не так. Неужели нам врали?</p>
-
-<p>Какой-то сплошной гиговский бред, и ничего больше.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/en/pg-version-1.18/">PG2 release 0.1.18</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-11-01T00:00:00+00:00">
-        Nov 1, 2024
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/sql/" rel="tag">sql</a>, <a href="/tag/clojure/" rel="tag">clojure</a>, <a href="/tag/postgres/" rel="tag">postgres</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    
-<p><a href="https://github.com/igrishaev/pg2">PG2 version 0.1.18</a> is available (it’s a client for Postgres). This
-release brings two major features:</p>
-
-<ul>
-  <li>built-in pgvector extension support;</li>
-  <li>better type mapping between Postgres and Clojure.</li>
-</ul>
-
-<h2 id="pgvector-support">PGVector Support</h2>
-
-<p>Pgvector is a <a href="https://github.com/pgvector/pgvector">well known extension</a> for PostgreSQL. It provides a
-fast and robust vector type which is quite useful for heavy
-computations. Pgvector also provides a sparse version of a vector to save space.</p>
-
-<p>This section covers how to use types provided by the extension with PG2.</p>
-
-<h3 id="vector">Vector</h3>
-
-<p>First, install <code class="language-plaintext highlighter-rouge">pgvector</code> as the official readme file prescribes. Now that you
-have it installed, try a simple table with the <code class="language-plaintext highlighter-rouge">vector</code> column:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
-  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="p">{</span><span class="n">...</span><span class="p">}))</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create temp table test (id int, items vector)"</span><span class="p">)</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test values (1, '[1,2,3]')"</span><span class="p">)</span><span class="w">
-</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test values (2, '[1,2,3,4,5]')"</span><span class="p">)</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from test order by id"</span><span class="p">)</span><span class="w">
-
-</span><span class="c1">;; [{:id 1, :items "[1,2,3]"} {:id 2, :items "[1,2,3,4,5]"}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>It works, but we got the result unparsed: the <code class="language-plaintext highlighter-rouge">:items</code> field in each row is a
-string. This is because, to take a custom type into account when encoding and
-decoding data, you need to specify something. Namely, pass the <code class="language-plaintext highlighter-rouge">:with-pgvector?</code>
-flag to the config map as follows:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
-  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
-   </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
-   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:database</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:with-pgvector?</span><span class="w"> </span><span class="n">true</span><span class="p">})</span><span class="w">
-
-</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">conn</span><span class="w">
-  </span><span class="p">(</span><span class="nf">jdbc/get-connection</span><span class="w"> </span><span class="n">config</span><span class="p">))</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Now the strings are parsed into a Clojure vector of <code class="language-plaintext highlighter-rouge">double</code> values:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from test order by id"</span><span class="p">)</span><span class="w">
-
-</span><span class="p">[{</span><span class="no">:id</span><span class="w"> </span><span class="mi">1</span><span class="n">,</span><span class="w"> </span><span class="no">:items</span><span class="w"> </span><span class="p">[</span><span class="mf">1.0</span><span class="w"> </span><span class="mf">2.0</span><span class="w"> </span><span class="mf">3.0</span><span class="p">]}</span><span class="w">
- </span><span class="p">{</span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="no">:items</span><span class="w"> </span><span class="p">[</span><span class="mf">1.0</span><span class="w"> </span><span class="mf">2.0</span><span class="w"> </span><span class="mf">3.0</span><span class="w"> </span><span class="mf">4.0</span><span class="w"> </span><span class="mf">5.0</span><span class="p">]}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>To insert a vector, pass it as a Clojure vector as well:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test values ($1, $2)"</span><span class="w">
-            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="mi">5</span><span class="p">]]})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>It can be also a lazy collection of numbers produced by a <code class="language-plaintext highlighter-rouge">map</code> call:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test values ($1, $2)"</span><span class="w">
-            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">4</span><span class="w"> </span><span class="p">(</span><span class="nb">map</span><span class="w"> </span><span class="nb">inc</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="mi">5</span><span class="p">])]})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">vector</code> column above doesn’t have an explicit size. Thus, vectors of any
-size can be stored in that column. You can limit the size by providing it in
-parentheses:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/query</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create temp table test2 (id int, items vector(5))"</span><span class="p">)</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Now if you pass a vector of a different size, you’ll get an error response from
-the database:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test2 values (1, '[1,2,3]')"</span><span class="p">)</span><span class="w">
-
-</span><span class="c1">;; Server error response: {severity=ERROR, code=22000, file=vector.c, line=77,</span><span class="w">
-</span><span class="c1">;; function=CheckExpectedDim, message=expected 5 dimensions, not 3,</span><span class="w">
-</span><span class="c1">;; verbosity=ERROR}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">vector</code> type supports both text and binary modes of PostgreSQL wire
-protocol.</p>
-
-<h3 id="sparse-vector">Sparse Vector</h3>
-
-<p>The <code class="language-plaintext highlighter-rouge">pgvector</code> extension provides a special <code class="language-plaintext highlighter-rouge">sparsevec</code> type to store vectors
-where only certain elements are filled. All the rest elements are considered as
-zero. For example, you have a vector of 1000 items where the 3rd item is 42.001,
-and 10th item is 99.123. Storing it as a native vector of 1000 double numbers is
-inefficient. It can be written as follows which takes much less:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{3:42.001,10:99.123}/1000
-</code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">sparsevec</code> Postgres type acts exactly like this: internally, it’s a sort of
-a map that stores the size (1000) and the <code class="language-plaintext highlighter-rouge">{index -&gt; value}</code> mapping. An
-important note is that <strong>indexes are counted from one, not zero</strong> (see the
-README.md file of the extension for details).</p>
-
-<p>PG2 provides a special wrapper for a sparse vector. A brief demo:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"create temp table test3 (id int, v sparsevec)"</span><span class="p">)</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test3 values (1, '{2:42.00001,7:99.00009}/9')"</span><span class="p">)</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from test3"</span><span class="p">)</span><span class="w">
-
-</span><span class="c1">;; [{:v &lt;SparseVector {2:42.00001,7:99.00009}/9&gt;, :id 1}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">v</code> field above is an instance of the <code class="language-plaintext highlighter-rouge">org.pg.type.SparseVector</code>
-class. Let’s look at it closer:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">;; put it into a separate variable</span><span class="w">
-</span><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">-sv</span><span class="w">
-  </span><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from test3"</span><span class="p">)</span><span class="w">
-      </span><span class="nb">first</span><span class="w">
-      </span><span class="no">:v</span><span class="p">))</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">type</span><span class="w"> </span><span class="n">-sv</span><span class="p">)</span><span class="w">
-
-</span><span class="n">org.pg.type.SparseVector</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">-sv</code> value has a number of interesting traits. To turn in into a native
-Clojure map, just <code class="language-plaintext highlighter-rouge">deref</code> it:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">@</span><span class="n">-sv</span><span class="w">
-
-</span><span class="p">{</span><span class="no">:nnz</span><span class="w"> </span><span class="mi">2</span><span class="n">,</span><span class="w"> </span><span class="no">:index</span><span class="w"> </span><span class="p">{</span><span class="mi">1</span><span class="w"> </span><span class="mf">42.00001</span><span class="n">,</span><span class="w"> </span><span class="mi">6</span><span class="w"> </span><span class="mf">99.00009</span><span class="p">}</span><span class="n">,</span><span class="w"> </span><span class="no">:dim</span><span class="w"> </span><span class="mi">9</span><span class="p">}</span><span class="w">
-</span></code></pre></div></div>
-
-<p>It mimics the <code class="language-plaintext highlighter-rouge">nth</code> access as the standard Clojure vector does:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">nth</span><span class="w"> </span><span class="n">-sv</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="c1">;; 0.0</span><span class="w">
-</span><span class="p">(</span><span class="nb">nth</span><span class="w"> </span><span class="n">-sv</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="c1">;; 42.00001</span><span class="w">
-</span><span class="p">(</span><span class="nb">nth</span><span class="w"> </span><span class="n">-sv</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="c1">;; 0.0</span><span class="w">
-</span></code></pre></div></div>
-
-<p>To turn in into a native vector, just pass it into the <code class="language-plaintext highlighter-rouge">vec</code> function:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">vec</span><span class="w"> </span><span class="n">-sv</span><span class="p">)</span><span class="w">
-
-</span><span class="p">[</span><span class="mf">0.0</span><span class="w"> </span><span class="mf">42.00001</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="mf">99.00009</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="mf">0.0</span><span class="p">]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>There are several ways you can insert a sparse vector into the database. First,
-pass an ordinary vector:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test3 values ($1, $2)"</span><span class="w">
-            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="w"> </span><span class="p">[</span><span class="mi">5</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">6</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="mi">0</span><span class="p">]]})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Internally, zero values get eliminated, and the vector is transformed into a
-<code class="language-plaintext highlighter-rouge">SparseVector</code> instance. Now read it back:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"select * from test3 where id = 2"</span><span class="p">)</span><span class="w">
-
-</span><span class="p">[{</span><span class="no">:v</span><span class="w"> </span><span class="n">&lt;SparseVector</span><span class="w"> </span><span class="p">{</span><span class="mi">1</span><span class="no">:5.0,2:2.0,3:6.0,5:2.0,6:5.0</span><span class="p">}</span><span class="n">/8&gt;,</span><span class="w"> </span><span class="no">:id</span><span class="w"> </span><span class="mi">2</span><span class="p">}]</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The second way is to pass a <code class="language-plaintext highlighter-rouge">SparseVector</code> instance produced by the
-<code class="language-plaintext highlighter-rouge">pg.type/-&gt;sparse-vector</code> function. It accepts the size of the vector and a
-mapping of <code class="language-plaintext highlighter-rouge">{index =&gt; value}</code>:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">require</span><span class="w"> </span><span class="o">'</span><span class="p">[</span><span class="n">pg.type</span><span class="w"> </span><span class="no">:as</span><span class="w"> </span><span class="n">t</span><span class="p">])</span><span class="w">
-
-</span><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test3 values ($1, $2)"</span><span class="w">
-            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="p">(</span><span class="nf">t/-&gt;sparse-vector</span><span class="w"> </span><span class="mi">9</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="w"> </span><span class="mf">523.23423</span><span class="w">
-                                              </span><span class="mi">7</span><span class="w"> </span><span class="mf">623.52346</span><span class="p">})]})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Finally, you can pass a string representation of a sparse vector:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">pg/execute</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="s">"insert into test3 values ($1, $2)"</span><span class="w">
-            </span><span class="p">{</span><span class="no">:params</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="w"> </span><span class="s">"{1:5.0,2:2.0,3:6.0,5:2.0,6:5.0}/8"</span><span class="p">]})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Like the <code class="language-plaintext highlighter-rouge">vector</code> type, <code class="language-plaintext highlighter-rouge">sparsevec</code> can be also limited to a certain size:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="p">...</span> <span class="p">(</span><span class="n">id</span> <span class="nb">int</span><span class="p">,</span> <span class="n">items</span> <span class="n">sparsevec</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
-</code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">sparsevec</code> type supports both binary and text Postgres wire protocol.</p>
-
-<h3 id="custom-schemas">Custom Schemas</h3>
-
-<p>The text above assumes you have the <code class="language-plaintext highlighter-rouge">pgvector</code> extension installed globally
-meaning it is hosted in the <code class="language-plaintext highlighter-rouge">public</code> schema. Sometimes though, extensions are
-setup per schema. For example only a schema named <code class="language-plaintext highlighter-rouge">sales</code> has access to the
-<code class="language-plaintext highlighter-rouge">pgvector</code> extension but nobody else.</p>
-
-<p>If it’s your case and you installed <code class="language-plaintext highlighter-rouge">pgvector</code> into a certain schema, the
-standard <code class="language-plaintext highlighter-rouge">:with-pgvector?</code> flag won’t work. By default, PG2 scans the <code class="language-plaintext highlighter-rouge">pg_types</code>
-table for the <code class="language-plaintext highlighter-rouge">public.vector</code> and <code class="language-plaintext highlighter-rouge">public.sparsevec</code> types. Since the schema
-name is not <code class="language-plaintext highlighter-rouge">public</code> but <code class="language-plaintext highlighter-rouge">sales</code>, you need to specify it by passing a special
-option called <code class="language-plaintext highlighter-rouge">:type-map</code>. It’s a map where keys are fully qualified type names
-(either a keyword or a string), and values are predefined instances of the
-<code class="language-plaintext highlighter-rouge">IProcessor</code> interface:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
-  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
-   </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
-   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:database</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:type-map</span><span class="w"> </span><span class="p">{</span><span class="s">"sales.vector"</span><span class="w"> </span><span class="n">t/vector</span><span class="w">
-              </span><span class="s">"sales.sparsevec"</span><span class="w"> </span><span class="n">t/sparsevec</span><span class="p">}})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>You can rely on keywords as well:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
-  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
-   </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
-   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:database</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:type-map</span><span class="w"> </span><span class="p">{</span><span class="no">:sales/vector</span><span class="w"> </span><span class="n">t/vector</span><span class="w">
-              </span><span class="no">:sales/sparsevec</span><span class="w"> </span><span class="n">t/sparsevec</span><span class="p">}})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>The <code class="language-plaintext highlighter-rouge">t</code> alias references the <code class="language-plaintext highlighter-rouge">pg.type</code> namespace.</p>
-
-<p>Now if you install the extension into the <code class="language-plaintext highlighter-rouge">statistics</code> schema as well, add it
-into the map:</p>
-
-<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">def</span><span class="w"> </span><span class="n">config</span><span class="w">
-  </span><span class="p">{</span><span class="no">:host</span><span class="w"> </span><span class="s">"127.0.0.1"</span><span class="w">
-   </span><span class="no">:port</span><span class="w"> </span><span class="mi">5432</span><span class="w">
-   </span><span class="no">:user</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:password</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:database</span><span class="w"> </span><span class="s">"test"</span><span class="w">
-   </span><span class="no">:type-map</span><span class="w"> </span><span class="p">{</span><span class="no">:sales/vector</span><span class="w"> </span><span class="n">t/vector</span><span class="w">
-              </span><span class="no">:sales/sparsevec</span><span class="w"> </span><span class="n">t/sparsevec</span><span class="w">
-              </span><span class="no">:statistics/vector</span><span class="w"> </span><span class="n">t/vector</span><span class="w">
-              </span><span class="no">:statistics/sparsevec</span><span class="w"> </span><span class="n">t/sparsevec</span><span class="p">}})</span><span class="w">
-</span></code></pre></div></div>
-
-<p>Should you make a mistake in a fully qualified type name, it will be ignored,
-and you’ll get value from the database unparsed. The actual value depends on the
-binary encoding and decoding options of a connection. By default, it uses text
-protocol so you’ll get a string like “[1, 2, 3]”. For binary encoding and
-decoding, you’ll get a byte array that holds raw Postgres payload.</p>
-
-<h2 id="custom-type-processors">Custom Type Processors</h2>
-
-<p>PG2 version 0.1.18 has the entire type system refactored. It introduces a
-conception of type processors which allows to connect Postgres types with
-Java/Clojure ones with ease.</p>
-
-<p>When reading data from Postgres, the client knows only the OID of a type of a
-column. This OID is just an integer number points to a certain type. The default
-builtin types are hard-coded in Postgres, and thus their OIDs are known in
-advance.</p>
-
-<p>Say, it’s for sure that the <code class="language-plaintext highlighter-rouge">int4</code> type has OID 23, and <code class="language-plaintext highlighter-rouge">text</code> has
-OID 25. That’s true for any Postgres installation. Any Postgres client has a
-kind of a hash map or a Enum class with these OIDs.</p>
-
-<p>Things get worse when you define custom types. These might be either enums or
-complex types defined by extensions: <code class="language-plaintext highlighter-rouge">pgvector</code>, <code class="language-plaintext highlighter-rouge">postgis</code> and so on. You cannot
-guess OIDs of types any longer because they are generated in runtime. Their
-actual values depend on a specific machine. On prod, the <code class="language-plaintext highlighter-rouge">public.vector</code> type
-has OID 10541, on pre-prod it’s 9621, and in Docker you’ll get 1523.</p>
-
-<p>Moreover, a type name is unique only across a schema that’s holding it. You can
-easily have two different enum types called <code class="language-plaintext highlighter-rouge">status</code> defined in various
-schemas. Thus, relying on a type name is not a good option unless it’s fully
-qualified.</p>
-
-<p>To deal with all said above, a new conception of type mapping was introduced.</p>
-
-<p>First, if a certain OID is builtin (meaning it exists the list of predefined
-OIDs), it gets processed as before.</p>
-
-<p>When you connect to a database, you can pass a mapping like <code class="language-plaintext highlighter-rouge">{schema.typename =&gt;
-Processor}</code>. When pg2 has established a connection, it executes an internal
-query to discover type mapping. Namely, it reads the <code class="language-plaintext highlighter-rouge">pg_type</code> table to get OIDs
-that have provided schemas and type name. The query looks like this:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
-    <span class="n">pg_type</span><span class="p">.</span><span class="n">oid</span><span class="p">,</span> <span class="n">pg_namespace</span><span class="p">.</span><span class="n">nspname</span> <span class="o">||</span> <span class="s1">'.'</span> <span class="o">||</span> <span class="n">pg_type</span><span class="p">.</span><span class="n">typname</span> <span class="k">as</span> <span class="k">type</span>
-<span class="k">from</span>
-    <span class="n">pg_type</span><span class="p">,</span> <span class="n">pg_namespace</span>
-<span class="k">where</span>
-    <span class="n">pg_type</span><span class="p">.</span><span class="n">typnamespace</span> <span class="o">=</span> <span class="n">pg_namespace</span><span class="p">.</span><span class="n">oid</span>
-    <span class="k">and</span> <span class="n">pg_namespace</span><span class="p">.</span><span class="n">nspname</span> <span class="o">||</span> <span class="s1">'.'</span> <span class="o">||</span> <span class="n">pg_type</span><span class="p">.</span><span class="n">typname</span> <span class="k">in</span> <span class="p">(</span>
-        <span class="s1">'schema1.type1'</span><span class="p">,</span>
-        <span class="s1">'schema2.type2'</span><span class="p">,</span>
-        <span class="p">...</span>
-    <span class="p">);</span>
-</code></pre></div></div>
-
-<p>It returns pairs of OID and the full type name:</p>
-
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>121512 | schema1.type1
- 21234 | schema2.type2
-</code></pre></div></div>
-
-<p>Now PG2 knows that the OID 121512 specifies <code class="language-plaintext highlighter-rouge">schema1.type1</code> but nothing else.</p>
-
-<p>Finally, from the map <code class="language-plaintext highlighter-rouge">{schema.typename =&gt; Processor}</code> you submitted before, PG2
-builds a map <code class="language-plaintext highlighter-rouge">{OID =&gt; Processor}</code>. If the OID is not a default one, it checks
-this map trying to find a processor object.</p>
-
-<p>A processor object is an instance of the <code class="language-plaintext highlighter-rouge">org.pg.processor.IProcessor</code>
-interface, or, if more precisely, an abstract <code class="language-plaintext highlighter-rouge">AProcessor</code> which is partially
-implemented. It has four methods:</p>
-
-<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">ByteBuffer</span> <span class="nf">encodeBin</span><span class="o">(</span><span class="nc">Object</span> <span class="n">value</span><span class="o">,</span>  <span class="nc">CodecParams</span> <span class="n">codecParams</span><span class="o">);</span>
-    <span class="nc">String</span> <span class="nf">encodeTxt</span><span class="o">(</span><span class="nc">Object</span> <span class="n">value</span><span class="o">,</span>  <span class="nc">CodecParams</span> <span class="n">codecParams</span><span class="o">);</span>
-    <span class="nc">Object</span> <span class="nf">decodeBin</span><span class="o">(</span><span class="nc">ByteBuffer</span> <span class="n">bb</span><span class="o">,</span> <span class="nc">CodecParams</span> <span class="n">codecParams</span><span class="o">);</span>
-    <span class="nc">Object</span> <span class="nf">decodeTxt</span><span class="o">(</span><span class="nc">String</span> <span class="n">text</span><span class="o">,</span>   <span class="nc">CodecParams</span> <span class="n">codecParams</span><span class="o">);</span>
-</code></pre></div></div>
-
-<p>Depending on whether you’re decoding (reading) the data or encoding them
-(e.g. passing parameters), and the current format (text or binary), a
-corresponding method is called. By extending all four methods, you can handle
-any type you want.</p>
-
-<p>At the moment, there are about 25 processors implementing standard types:
-<code class="language-plaintext highlighter-rouge">int2</code>, <code class="language-plaintext highlighter-rouge">int4</code>, <code class="language-plaintext highlighter-rouge">text</code>, <code class="language-plaintext highlighter-rouge">float4</code>, and so on. Find them in the
-<code class="language-plaintext highlighter-rouge">pg-core/src/java/org/pg/processor</code> directory. There is also a couple of
-processors for the <code class="language-plaintext highlighter-rouge">pgvector</code> extension in the <code class="language-plaintext highlighter-rouge">pgvector</code> subdirectory.</p>
-
-<p>The next step is to implement processors for the <code class="language-plaintext highlighter-rouge">postgis</code> extension.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/android-mem-2/">Память у Андроида (2)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-11-01T00:00:00+00:00">
-        Nov 1, 2024
-    </time>
-
-    <a href="/tag/android/" rel="tag">android</a>, <a href="/tag/memory/" rel="tag">memory</a>, <a href="/tag/storage/" rel="tag">storage</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Продолжение <a href="/android-mem-1/">прошлой заметки</a> про Андроид.</p>
-
-<p>На мой взгляд, 90 процентов всех телефонов страдают от нехватки места. Сценарий
-один и тот же: человек покупает телефон и фотографирует каждый угол. Еще
-он ставит три мессенджера, и в каждом ему присылают прикольные видосы и
-гифки. Проходит полгода, и места не остается.</p>
-
-<p>Человек запускает менеджер очистки, но это сплошное издевательство. Менеджер
-говорит: у тебя занято 20 гигов фотками и видео, удаляй сам. А так я могу
-очистить временные файлы на сумму 30 мегабайтов.</p>
-
-<p>Я проходил это десять раз, не меньше. Покупаешь телефон маме, жене, детям,
-родственникам — и через полгода они приходят к тебе с вопросом “закончилось
-место”. Ты скидываешь фотки на комп, и на год тебя оставляют в покое.</p>
-
-<p>Я понимаю, проблему с местом было трудно предсказать, когда Андроид только
-вышел. Но на третий-четвертый год это стало очевидно: места никогда не хватает,
-аппетиты пользователей растут, ровно и как возможности приложений.</p>
-
-<p>Принято считать, что за местом должен следить пользователь: регулярно смотреть
-статистику, удалять файлы, настраивать кеши в мессенджерах. Да, некоторые это
-делают. Но как должны справляться с этим обычные люди? Скажем, чтобы настроить
-кеш в Телеграме, нужно нажать многоточие, потом гайку, потом смотаться до Data &amp;
-Storage, и там выставить опции. Вы считаете, ваша мама это сделает? А потом то
-же самое в Вацапе и Вайбере?</p>
-
-<p>Когда я на это жалуюсь, мне говорят — что ты хотел? Тут ничего не поделаешь. А
-на самом деле поделать можно много чего.</p>
-
-<p>Заботу о диске должна брать на себя операционная система. Во-первых, если
-свободного места меньше 70%, то старые фотки уменьшаются в
-разрешении. Современные телефоны производят джипеги по 3-7 магабайтов — такие
-фотографии можно печатать в натуральный рост. Это, мягко говоря, избыточно для
-экрана размером с ладонь. Когда места перестает хватать, старые фотки сжимаются
-до 700 килобайт, освобождая от 2.5 до 5 магабайтов. Сто фоток — полгига.</p>
-
-<p>Разумеется, этот процесс должен действовать тонко, а именно: брать самые
-неиспользуемые фотки; пропускать те, которые отмеченные лайком или которые
-пользователь часто открывает. Это не подойдет свадебным фотографом, но и
-организация фото у таких людей выстроена не так, как у обывателей.</p>
-
-<p>То же самое с видео: если сейчас ночь, и заряд батареи выше порога, то берется
-старое видео и перегоняется в низкое разрешение. Как и в случае с джипегами, на
-экране размером в ладонь никто не заметит разницы, а это дает 200-300 мегов с
-каждого ролика.</p>
-
-<p>Насчет кешей и разбухающих приложений. Ожидать, что человек откроет каждое
-приложение и все настроит — идиотизм. Когда системе не хватает места, она
-рассылает приложениям системный вызов а-ля “срочно удали кеши”. Можно добавить
-параметр — уровень критичности. Если он зеленый, то можно ничего не удалять,
-если желтый — удалить все данные, кроме последнего месяца, если красный — то
-все.</p>
-
-<p>Вы скажете, что никто не будет этого делать. А между прочим, это в интересах
-самих приложений. Потому что если на телефоне 2% свободного места, то
-пользоваться условным Телеграмом невозможно. А если каждое приложение освободит
-по 200-400 мегабайтов, то в сумме будет пара гигов, и телефон худо-бедно
-заработает.</p>
-
-<p>Наконец, самое важное — старые данные можно удалять без спроса пользователя. Да,
-вот так просто взять и удалить. Объяснение этому простое: представьте, что
-человек собрался в компании и хочет снять видео. А места нет. И у нас выбор:
-либо сказать, что места нет и заставить чистить файлы самому, либо удалить
-фотографии пятилетней давности, которые человек ни разу не открывал. Что лучше?</p>
-
-<p>В большинстве случаев — второе, потому что человеку интересно то, что происходит
-сейчас. Ему важно записать видео именно пока он в компании, а не удалять файлы,
-пока остальные веселятся. Интерес к фото и видео можно представить как правую
-половину гауссианы: она резко спадает во времени, и нет беды в том, чтобы
-подчищать старье за пользователя.</p>
-
-<p>Если хотите, аналогия. Современные телефоны работают как резервуар: сначала он
-наполняется, а если вливать больше, то польется мимо. Это неправильно: телефон
-должен быть как проточный бассейн с входом и выходом. Когда в него вливается
-сверх меры, то с другой стороны выливается.</p>
-
-<p>По такому принципу телефон может работать годами, не вынося владельцу мозг
-нехваткой места.</p>
-
-<p>Допускаю, что есть программы, которые умеют что-то подобное, но это сторонние
-программы, их нужно ставить, покупать, разбираться с ними. Нет из коробки — нет
-как такового. А еще телефон, который вместо двух лет прослужил бы пять, мягко
-говоря, не согласуется с бизнес-моделью всяких Гуглов, Ксяоми и прочих.</p>
-
-<p>Хочу лишь показать — многие вещи можно переосмыслить, и технически они
-возможны. Дело в бизнесе и отношении к ним.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/android-mem-1/">Память у Андроида (1)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2024-11-01T00:00:00+00:00">
-        Nov 1, 2024
-    </time>
-
-    <a href="/tag/android/" rel="tag">android</a>, <a href="/tag/memory/" rel="tag">memory</a>, <a href="/tag/storage/" rel="tag">storage</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В Андроидах — я имею в виду телефоны — мне не нравится одна вещь, которая там с
-рождения. Это вечная борьба с тем, кто и куда пишет: во внутреннюю память или на
-сд-карту.</p>
-
-<p>Правило большого пальца: телефон всегда пишет не туда. А если сегодня туда, то
-через месяц все слетит. Можно купить огромную SD-карту, чтобы не засорять
-память, но телефон будет упорно писать в память, игнорируя карту.</p>
-
-<p>Еще есть настройка, куда по умолчанию ставить приложения. Это тоже важно, потому
-что телеграмы-хромы раздуваются до пяти гигов.</p>
-
-<p>Разумеется, в Андроиде нет централизованной настройки, что и куда писать. Нужно
-открыть камеру, многоточие, гайки и там выбрать SD-карту. Приложения
-настраиваются отдельно — то ли в Google Play, то ли еще где. Перенос приложений
-между памятью и картой — это кровавая боль. Нельзя выделить и перенести сразу
-десять приложений. Нужно вручную останавливать каждое и переносить.</p>
-
-<p>Пишу это, потому что наболело. Жена пожаловалась, что телефон Xiaomi тормозит. В
-нем 32 гига памяти, и дополнительно я вставил карту на 32 гига. Везде указал
-приоритет записи на карту. И что вы думаете? Каким-то образом настройки слетели,
-и память оказалась забита видео и фотками под ноль. На карте 20 гиг свободного
-места, а телефон едва ворочается. Открывает менеджер диска, запускает
-сканирование и говорит: могу освободить аж 30 мегабайтов за счет каких-то там
-темповых файлов.</p>
-
-<p>Просто какая-то дичь. Что мешает переместить фотки на SD-карту в фоне?
-Пользователь ничего не заметит. У нас везде ИИ, всякие модели, предсказание фраз
-и покупок — и блин, телефон не может перетащить фотки. Он будет тормозить,
-тупить, но ни в коем случае не решит проблему.</p>
-
-<p>Это беда каждого Андроида: за пять тысяч рублей, за пятьдесят, за сто
-пятьдесят. Она была пятнадцать лет назад, когда я купил первый смарт на втором
-Андроиде. Она есть сейчас, она будет еще через пятнадцать лет.</p>
-
-<p>Я согласен, что иметь память и съемную карту удобно в техническом плане. Но на
-практике это напоминает Линукс: вы <strong>можете</strong> настроить что угодно, и поэтому
-<strong>всегда будете</strong> настраивать все, что угодно.</p>
-
-<p><a href="/android-mem-2/">Продолжение</a></p>
 
                 
             </div>
