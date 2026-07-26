@@ -135,9 +135,9 @@ sudo apt install postgresql-contrib-17 postgresql-plpython3-17 -y
 
 Теперь проверьте установку, выполнив:
 
-~~~sql
+~~~bash
 python3 --version
-Python 3.13.9
+# Python 3.13.9
 ~~~
 
 Убедитесь, что версия равна 3.13 с точностью до двух старших компонент, например
