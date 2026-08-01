@@ -106,6 +106,293 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-029-pg/">Postgres №29</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-21T00:00:00+00:00">
+        Mar 21, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Когда речь заходит о бизнес-логике в базе, большинство людей теряют
+лицо. Начинаются крики, словно им намерены причинить увечье. А между тем логика
+в базе – хорошая вещь, нужно лишь правильно к ней подойти.</p>
+
+<p>Возьмем за аксиому следующее: никто не учит базы данных. Все учат Питоны-Джавы,
+почему-то забывая: если работаете с базой, нужно знать ее тоже. Однако все
+делается на ORM, а база – черный ящик. Редкий разработчик интересуется, какие
+запросы в нее идут. Еще реже – попадают ли запросы в индекс, каков план и так
+далее.</p>
+
+<p>Прикладной программист мыслит объектами. Когда он пишет на Питоне, в его
+распоряжении строки, числа и их комбинации – объекты. На ORM он выдает примерно
+такой код:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">user</span> <span class="o">=</span> <span class="n">User</span><span class="p">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">user</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+  <span class="k">return</span> <span class="bp">None</span>
+
+<span class="n">profiles</span> <span class="o">=</span> <span class="n">Profile</span><span class="p">.</span><span class="n">get_by_ref</span><span class="p">(</span><span class="s">'user_id'</span><span class="p">,</span> <span class="n">user</span><span class="p">.</span><span class="nb">id</span><span class="p">)</span>
+<span class="n">profile</span> <span class="o">=</span> <span class="n">profile</span><span class="p">.</span><span class="n">first</span><span class="p">()</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="n">profile</span><span class="p">:</span>
+  <span class="k">return</span> <span class="bp">None</span>
+</code></pre></div></div>
+
+<p>Если вынудить программиста перенести этот код в базу, он напишет что-то такое:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">function</span> <span class="n">get_user_by_id</span><span class="p">(</span><span class="n">id</span> <span class="nb">integer</span><span class="p">)</span>
+<span class="k">returns</span> <span class="k">user</span>
+<span class="k">return</span> <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span> <span class="k">where</span> <span class="o">?</span> <span class="o">=</span> <span class="n">id</span>
+
+<span class="k">create</span> <span class="k">function</span> <span class="n">get_profiles_by_user_id</span><span class="p">(</span><span class="n">user_id</span> <span class="nb">integer</span><span class="p">)</span>
+<span class="k">returns</span> <span class="n">profile</span>
+<span class="k">return</span> <span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">profiles</span> <span class="k">where</span> <span class="o">?</span> <span class="o">=</span> <span class="n">user_id</span> <span class="k">limit</span> <span class="mi">1</span>
+</code></pre></div></div>
+
+<p>Далее та же петрушка: получить кортеж пользователя, проверить на NULL; получить
+профиль, проверить на NULL; далее что-то сделать. Это калька с императивного
+языка, и в SQL она выглядит уродливо. SQL предназначен для другого; он
+недостаточно выразителен для императивных нужд, поэтому писать на нем в таком
+стиле – сущее издевательство.</p>
+
+<p>Решение простое: пишите на SQL реляционно! Это язык для операций над отношениями
+(таблицами): проекция, объединение, соединение, полу- и анти-соединения и другие
+их виды. В SQL единица операции – не строка или число, а таблица. Бизнес-логика
+на SQL сводится к тому, что есть наборы данных и нужно выполнить операции над
+ними. Например, соединить два набора, что-то отсечь, пересечь с другим набором,
+дополнить третьим, записать результат в таблицу. Дубликаты записей либо
+обновить, либо игнорировать.</p>
+
+<p>Все это прекрасно ложится на SQL, и в прошлых советах были примеры. Напишите
+подобное на ORM – и кода станет больше, не говоря уж о том, что не будет
+малейшего понимания, что происходит с базой.</p>
+
+<p>Говорят: логика в базе уродлива. Увы, когда я вижу, как соединяют данные в
+приложении (бесконечные экраны кода) вместо запроса на три строчки, то понимаю —
+вон он, уродливый код.</p>
+
+<p>Разумеется, иногда один и тот же код повторяется, и его выносят в
+функции. Например, в фирме особые требования к форматированию денег. Чтобы не
+копировать одно и тоже, пишут чистую функцию:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">function</span> <span class="n">format_mln_eur</span><span class="p">(</span><span class="n">cents</span> <span class="nb">int</span><span class="p">)</span>
+<span class="k">returns</span> <span class="nb">text</span>
+<span class="k">immutable</span> <span class="k">strict</span> <span class="n">parallel</span> <span class="n">safe</span>
+<span class="k">return</span> <span class="p">...</span>
+</code></pre></div></div>
+
+<p>Далее вызывают ее в запросах. Такой подход в порядке вещей, потому что он
+предотвращает копирование кода.</p>
+
+<p>Другой пример – в финансах временной интервал хранится как четверка чисел: число
+лет, месяцев, недель и дней. Пишется функция <code class="language-plaintext highlighter-rouge">tenor_to_interval</code>, которая
+приводит четверку к типу <code class="language-plaintext highlighter-rouge">interval</code> и наоборот:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">create</span><span class="w"> </span><span class="n">function</span><span class="w"> </span><span class="n">tenor_to_interval</span><span class="p">(</span><span class="nf">y</span><span class="w"> </span><span class="n">int,</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">int,</span><span class="w"> </span><span class="n">w</span><span class="w"> </span><span class="n">int,</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="nb">int</span><span class="p">)</span><span class="w">
+</span><span class="n">returns</span><span class="w"> </span><span class="n">interval</span><span class="w">
+</span><span class="n">immutable</span><span class="w"> </span><span class="n">strict</span><span class="w"> </span><span class="n">parallel</span><span class="w"> </span><span class="n">safe</span><span class="w">
+</span><span class="n">return</span><span class="w"> </span><span class="n">...</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Но не нужно заворачивать в функции CRUD-операции! Именно тут кроется ошибка
+питонистов и джавистов. SQL – декларативный язык, и все операции носят
+описательный характер. Если писать процедуру на каждый чих, вы загоните себя в
+яму. В базе мыслят и программируют реляционно – то есть оперируют отношениями, а
+не строками и числами. Императивный подход оставьте за дверью, будьте так добры.</p>
+
+<p>Как развить реляционное мышление? Точно также, как и во всем другом: заниматься
+им.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-028-pg/">Postgres №28</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-21T00:00:00+00:00">
+        Mar 21, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Продолжение <a href="/tip-027-pg/">прошлого поста</a>. Тезис: выбирайте данные, только если
+нужно передать их третьей стороне, например фронтенду. Для промежуточных
+вычислений это чаще всего не требуется. Достаточно сказать базе: обнови такие-то
+поля согласно такой-то логике, и она все сделает сама.</p>
+
+<p>Обновление силами SQL особенно хорошо на больших данных. Не нужно гонять тысячи
+строк по сети. По компьютерным меркам сеть медленная, потому что это череда
+системных вызовов на обеих сторонах. Сеть требует сериализации данных. Даже в
+надежных сетях пакеты теряются, требуется повторная отправка и подтверждение.</p>
+
+<p>Не нужно писать код на языке приложения. Код на условном Питоне или Джаве всегда
+длиннее и многословнее, чем на SQL. Нет кода – нет проблем.</p>
+
+<p>Покажу, как управлять данными в базе без приложения. Для начала сделаем две
+таблицы: пользователи и профили:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">users</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">name</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+    <span class="n">points</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span> <span class="k">default</span> <span class="mi">0</span>
+<span class="p">);</span>
+
+<span class="k">create</span> <span class="k">table</span> <span class="n">profiles</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">user_id</span> <span class="nb">integer</span> <span class="k">not</span> <span class="k">null</span><span class="p">,</span>
+    <span class="n">avatar</span> <span class="nb">text</span> <span class="k">null</span><span class="p">,</span>
+    <span class="n">del_requested</span> <span class="nb">boolean</span> <span class="k">null</span> <span class="k">default</span> <span class="k">false</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Кроме имени, в пользователе записано число баллов. Профиль ссылается на
+пользователя, и в нем два поля: аватарка (может быть пустой) и запрос на
+удаление (по умолчанию ложь). Вставим много записей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">users</span>
+<span class="k">select</span>
+    <span class="n">x</span><span class="p">,</span>
+    <span class="n">format</span><span class="p">(</span><span class="s1">'user_%s'</span><span class="p">,</span> <span class="n">x</span><span class="p">),</span>
+    <span class="n">round</span><span class="p">(</span><span class="n">random</span><span class="p">()</span> <span class="o">*</span> <span class="mi">100000</span><span class="p">)</span>
+<span class="k">from</span>
+    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+
+<span class="k">insert</span> <span class="k">into</span> <span class="n">profiles</span>
+<span class="k">select</span>
+    <span class="n">x</span><span class="p">,</span>
+    <span class="n">x</span><span class="p">,</span>
+    <span class="k">null</span>
+    <span class="k">false</span>
+<span class="k">from</span>
+    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10000</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Оператор INSERT принимает SELECT, который порождает данные. Не нужно генерить их
+на Питоне и передавать по сети, все происходит внутри базы.</p>
+
+<p>Первая задача – поместить в отдельную таблицу топ-100 пользователей. Это
+делается запросом:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">drop</span> <span class="k">table</span> <span class="n">if</span> <span class="k">exists</span> <span class="n">users_top_100</span><span class="p">;</span>
+
+<span class="k">create</span> <span class="k">table</span> <span class="n">users_top_100</span> <span class="k">as</span>
+<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">users</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">points</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
+
+<span class="k">table</span> <span class="n">users_top_100</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌──────┬───────────┬────────┐
+│  id  │   name    │ points │
+├──────┼───────────┼────────┤
+│ 6637 │ user_6637 │  99996 │
+│ 8909 │ user_8909 │  99994 │
+│ 9040 │ user_9040 │  99979 │
+│ 2631 │ user_2631 │  99978 │
+│ 7240 │ user_7240 │  99961 │
+│  972 │ user_972  │  99958 │
+│ 8698 │ user_8698 │  99924 │
+│ 3850 │ user_3850 │  99914 │
+│  382 │ user_382  │  99892 │
+│ 2841 │ user_2841 │  99877 │
+│ 2607 │ user_2607 │  99870 │
+│ 5207 │ user_5207 │  99858 │
+</code></pre></div></div>
+
+<p>В приложении мы бы сначала прочитали данные, создали таблицу и записали данные в
+нее. Все это можно поручить базе. Таблица может быть временной для каких-то
+расчетов. Конечно, не следует создавать их в апишках, которые должны работать
+быстро. Но для других задач временные таблицы очень даже полезны.</p>
+
+<p>Другой пример. Фирма проводит акцию: загрузи аватар и получи тысячу
+баллов. Предположим, некоторые пользователи добавили аватарку:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">profiles</span>
+<span class="k">set</span> <span class="n">avatar</span> <span class="o">=</span> <span class="n">format</span><span class="p">(</span><span class="s1">'htts://path/to/file_%s'</span><span class="p">,</span> <span class="n">id</span><span class="p">)</span>
+<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">500</span> <span class="k">and</span> <span class="mi">600</span><span class="p">;</span>
+<span class="c1">-- UPDATE 101</span>
+</code></pre></div></div>
+
+<p>Вот как накинуть баллы тем, у кого она есть:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">users</span> <span class="n">u</span>
+<span class="k">set</span> <span class="n">points</span> <span class="o">=</span> <span class="n">points</span> <span class="o">+</span> <span class="mi">1000</span>
+<span class="k">from</span> <span class="n">profiles</span> <span class="n">p</span>
+<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span>
+<span class="k">and</span> <span class="n">p</span><span class="p">.</span><span class="n">avatar</span> <span class="k">is</span> <span class="k">not</span> <span class="k">null</span><span class="p">;</span>
+<span class="c1">-- UPDATE 101</span>
+</code></pre></div></div>
+
+<p>Оператор UPDATE поддерживает FROM с произвольным запросом, таблицей и так
+далее. В условии проверяют совпадение строк по ключам. Обновятся только те
+пользователи, профили которых с аватаркой.</p>
+
+<p>Третья задача: некоторые пользователи отметили в профиле значок “удалите меня”:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">update</span> <span class="n">profiles</span>
+<span class="k">set</span> <span class="n">del_requested</span> <span class="o">=</span> <span class="k">true</span>
+<span class="k">where</span> <span class="n">id</span> <span class="k">between</span> <span class="mi">666</span> <span class="k">and</span> <span class="mi">999</span><span class="p">;</span>
+<span class="c1">-- UPDATE 334</span>
+</code></pre></div></div>
+
+<p>Вот как удалить такие профили и их пользователей одним запросом:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">with</span> <span class="n">del_profiles</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span>
+    <span class="k">delete</span> <span class="k">from</span> <span class="n">profiles</span>
+    <span class="k">where</span> <span class="n">del_requested</span>
+    <span class="n">returning</span> <span class="n">user_id</span>
+<span class="p">)</span>
+<span class="k">delete</span> <span class="k">from</span> <span class="n">users</span> <span class="n">u</span>
+<span class="k">using</span> <span class="n">del_profiles</span> <span class="n">del</span>
+<span class="k">where</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">del</span><span class="p">.</span><span class="n">user_id</span><span class="p">;</span>
+<span class="c1">-- DELETE 334</span>
+</code></pre></div></div>
+
+<p>Во всех случаях мы ничего не передавали клиенту.</p>
+
+<p>Вставки могут быть с реакцией на конфликт (выражение <code class="language-plaintext highlighter-rouge">ON CONFLICT</code>). Есть
+команда MERGE, которая делит два набора данных на категории: только слева,
+пересечение, только справа. Для каждой категории можно задать реакцию:
+пропустить, удалить, записать куда-то и так далее.</p>
+
+<p>Управлять данными при помощи SQL – это настоящий праздник. Нет зависимости от
+приложения и рантайма. База делает все сама: работает производительный код на
+Си, многократно проверенный и отлаженный. Не отбирайте у базы ее работу. Она
+сделает все лучше вас, достаточно базовых навыков SQL.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-027-pg/">Postgres №27</a>
             </h2>
 
@@ -988,165 +1275,13 @@ scan), просто не в случайном порядке (как запис
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-019-pg/">Postgres №19</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-31T00:00:00+00:00">
-        Jan 31, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Чтобы узнать план запроса, предварите его командой <code class="language-plaintext highlighter-rouge">EXPLAIN</code>:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>explain select * from applications;
-
-Seq Scan on applications
-  (cost=0.00..359524.33 rows=965633 width=1745)
-</code></pre></div></div>
-
-<p>Эта команда НЕ выполнит запрос, а только вернет его план и приблизительные
-оценки.</p>
-
-<p>План представляет дерево узлов; вложенность определяется пробелами слева. План
-читают от вложенных узлов к корню. Графические программы вроде PGAdmin
-показывают его в виде графа. У каждого узла как минимум три характеристики:
-стоимость (cost), число записей (rows) и средняя длина строки (width).</p>
-
-<p>Стоимость (cost) – это условные попугаи, в которых измеряется каждая операция. С
-помощью глобальных настроек можно задать свою стоимость некоторым операциям, но
-обычно это ни к чему. Кроме того, стоимость можно задать функциям при их
-объявлении.</p>
-
-<p>Число записей (rows) – ожидаемое число записей, которые произведет узел. Для них
-рассчитана средняя длина в байтах. Эти числа берутся из статистики и могут быть
-неточны.</p>
-
-<p>Стоимость выражается двумя цифрами: X..Y. Первая цифра – столько усилий уйдет на
-то, чтобы произвести первую запись. Вторая – последнюю, то есть все остальное.</p>
-
-<p>Зачем две цифры? Дело в том, что даже когда запрос производит много записей,
-важно знать, сколько усилий требует предварительная работа. Например, у обхода
-большой таблицы первый кост маленький, а второй – большой. Это нормально, потому
-что записи передаются следующему узлу без задержки. Если же добавить
-группировку, то следующий узел не получит данные, пока не выполнится
-группировка. Из-за этого первый кост будет большим. В идеале нужно держать его
-маленьким, чтобы клиент сразу начал получать строки.</p>
-
-<p>У команды explain много параметров, чтобы собрать дополнительные метрики
-узлов. Например, время в секундах, число прочитанных страниц, попадание в
-буферный кэш. Самый важный параметр называется <code class="language-plaintext highlighter-rouge">ANALYZE</code>. С ним запрос будет
-выполнен, и метрики будут реальными, а не оценочными.</p>
-
-<p>Модуль <code class="language-plaintext highlighter-rouge">auto_explain</code> автоматически логирует план запросов, которые выполнялись
-дольше порога, например одной секунды. Иногда его включают на проде.</p>
-
-<p>Читать план тяжело, этот навык приходит с годами. Вы должны точно понимать,
-какую информацию ищете и почему ее там нет. В простом случае вас интересует,
-использовался ли индекс. Вы запускаете explain analyze и смотрите, был ли узел с
-типом “index scan”.</p>
-
-<p>Узел “index only scan” означает, что данные получены из индекса без обращения к
-таблице. Это самый жир, лучше которого ничего не бывает. Узел “bitmap index
-scan” означает построение битовой карты, где каждый бит — номер блока. Такой
-обход используется для совмещения нескольких индексов, и он тоже хорош.</p>
-
-<p>Узел “full seq scan” означает полный обход таблицы. Это нормально, если таблица
-мала или нужна ее большая часть. Если вы рассчитывали на индекс, это повод
-пересмотреть его.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-018-pg/">Postgres №18</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-31T00:00:00+00:00">
-        Jan 31, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Когда Postgres выполняет запрос, он строит план. Это сложная задача: сперва
-нужно распрасить запрос, построить дерево, проверить синтаксис. Затем строится
-логический план: здесь некоторые шаги разбиваются на подшаги, а другие,
-наоборот, группируются в один. На последнем этапе выводится физический план: в
-какую таблицу пойти, брать индекс или нет, в каком порядке выполнить джоины.</p>
-
-<p>Парсинг запроса протекает достаточно быстро, потому что это чистая
-функция. Физический план, наоборот, дорогой. Вспомним: для того, чтобы
-определить, использовать индекс или нет, Postgres должен проверить, сколько в
-среднем строк в таблице; если она маленькая, проще сделать full scan. Далее
-нужно проверить, не является ли значение частым (с низкой селективностью). При
-анализе джоинов число комбинаций растет факториалом, поэтому Postgres применяет
-разные эвристики.</p>
-
-<p>Подготовленное выражение – это запрос, который прошел этапы выше, и для него
-построен план. Далее его можно выполнить с разными параметрами, и (в идеале)
-план будет переиспользоваться. В идеале – потому что даже когда подготовленное
-выражение готово, оно не гарантирует применения плана. Если параметров нет,
-Postgres использует план. Если выражение вызывается с разными параметрами,
-Postgres ведет хеш-таблицу: параметры -&gt; план -&gt; время. Для одинаковых
-параметров план будет один и тот же. Накопив пять вызовов с разными параметрами,
-Postgres наконец-то определится с планом (с минимальным временем), и далее он
-используется всегда.</p>
-
-<p>Некоторые клиенты к Postgres ведут свой кэш вида SQL -&gt;
-preparedStatement. Каждый раз когда выполняется запрос, клиент ищет айди
-подготовленного выражения во внутреннем кэше. Если он есть, вызывается команда
-“выполни выражение foobar с такими-то параметрами” (аналог execute). Если
-Postgres ругнулся, что такого выражения нет, эта ошибка перехватывается, и
-посылается команда “тогда подготовь этот SQL и назначь ему имя foobar”. Далее
-все повторяется.</p>
-
-<p>Подготовленные выражения живут в рамках одного соединения с БД. Это особенно
-важно для пула соединений: когда мы выполняем запросы, то заимствуем подключение
-из пула, и они могут быть разными. Клиент учитывает это: кэш подготовленных
-выражений ведется в разрезе подключения. По мере ротации подключений
-подготовленные выражения распространяются по ним.</p>
-
-<p>Пожалуй, в этом совете нечего взять на заметку, разве что подумать, сколько
-работы делают клиентские библиотеки помимо основных обязанностей. Заодно это
-плавный переход к теме планов и их анализа.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page8" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 9 из 114</span>
+        <span class="page_number ">Страница 9 из 115</span>
         
         <a href="/page10" class="next">&rarr;</a>
         

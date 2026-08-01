@@ -106,6 +106,158 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-019-pg/">Postgres №19</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-31T00:00:00+00:00">
+        Jan 31, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Чтобы узнать план запроса, предварите его командой <code class="language-plaintext highlighter-rouge">EXPLAIN</code>:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>explain select * from applications;
+
+Seq Scan on applications
+  (cost=0.00..359524.33 rows=965633 width=1745)
+</code></pre></div></div>
+
+<p>Эта команда НЕ выполнит запрос, а только вернет его план и приблизительные
+оценки.</p>
+
+<p>План представляет дерево узлов; вложенность определяется пробелами слева. План
+читают от вложенных узлов к корню. Графические программы вроде PGAdmin
+показывают его в виде графа. У каждого узла как минимум три характеристики:
+стоимость (cost), число записей (rows) и средняя длина строки (width).</p>
+
+<p>Стоимость (cost) – это условные попугаи, в которых измеряется каждая операция. С
+помощью глобальных настроек можно задать свою стоимость некоторым операциям, но
+обычно это ни к чему. Кроме того, стоимость можно задать функциям при их
+объявлении.</p>
+
+<p>Число записей (rows) – ожидаемое число записей, которые произведет узел. Для них
+рассчитана средняя длина в байтах. Эти числа берутся из статистики и могут быть
+неточны.</p>
+
+<p>Стоимость выражается двумя цифрами: X..Y. Первая цифра – столько усилий уйдет на
+то, чтобы произвести первую запись. Вторая – последнюю, то есть все остальное.</p>
+
+<p>Зачем две цифры? Дело в том, что даже когда запрос производит много записей,
+важно знать, сколько усилий требует предварительная работа. Например, у обхода
+большой таблицы первый кост маленький, а второй – большой. Это нормально, потому
+что записи передаются следующему узлу без задержки. Если же добавить
+группировку, то следующий узел не получит данные, пока не выполнится
+группировка. Из-за этого первый кост будет большим. В идеале нужно держать его
+маленьким, чтобы клиент сразу начал получать строки.</p>
+
+<p>У команды explain много параметров, чтобы собрать дополнительные метрики
+узлов. Например, время в секундах, число прочитанных страниц, попадание в
+буферный кэш. Самый важный параметр называется <code class="language-plaintext highlighter-rouge">ANALYZE</code>. С ним запрос будет
+выполнен, и метрики будут реальными, а не оценочными.</p>
+
+<p>Модуль <code class="language-plaintext highlighter-rouge">auto_explain</code> автоматически логирует план запросов, которые выполнялись
+дольше порога, например одной секунды. Иногда его включают на проде.</p>
+
+<p>Читать план тяжело, этот навык приходит с годами. Вы должны точно понимать,
+какую информацию ищете и почему ее там нет. В простом случае вас интересует,
+использовался ли индекс. Вы запускаете explain analyze и смотрите, был ли узел с
+типом “index scan”.</p>
+
+<p>Узел “index only scan” означает, что данные получены из индекса без обращения к
+таблице. Это самый жир, лучше которого ничего не бывает. Узел “bitmap index
+scan” означает построение битовой карты, где каждый бит — номер блока. Такой
+обход используется для совмещения нескольких индексов, и он тоже хорош.</p>
+
+<p>Узел “full seq scan” означает полный обход таблицы. Это нормально, если таблица
+мала или нужна ее большая часть. Если вы рассчитывали на индекс, это повод
+пересмотреть его.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
+                <a class="post-link" href="/tip-018-pg/">Postgres №18</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-31T00:00:00+00:00">
+        Jan 31, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Когда Postgres выполняет запрос, он строит план. Это сложная задача: сперва
+нужно распрасить запрос, построить дерево, проверить синтаксис. Затем строится
+логический план: здесь некоторые шаги разбиваются на подшаги, а другие,
+наоборот, группируются в один. На последнем этапе выводится физический план: в
+какую таблицу пойти, брать индекс или нет, в каком порядке выполнить джоины.</p>
+
+<p>Парсинг запроса протекает достаточно быстро, потому что это чистая
+функция. Физический план, наоборот, дорогой. Вспомним: для того, чтобы
+определить, использовать индекс или нет, Postgres должен проверить, сколько в
+среднем строк в таблице; если она маленькая, проще сделать full scan. Далее
+нужно проверить, не является ли значение частым (с низкой селективностью). При
+анализе джоинов число комбинаций растет факториалом, поэтому Postgres применяет
+разные эвристики.</p>
+
+<p>Подготовленное выражение – это запрос, который прошел этапы выше, и для него
+построен план. Далее его можно выполнить с разными параметрами, и (в идеале)
+план будет переиспользоваться. В идеале – потому что даже когда подготовленное
+выражение готово, оно не гарантирует применения плана. Если параметров нет,
+Postgres использует план. Если выражение вызывается с разными параметрами,
+Postgres ведет хеш-таблицу: параметры -&gt; план -&gt; время. Для одинаковых
+параметров план будет один и тот же. Накопив пять вызовов с разными параметрами,
+Postgres наконец-то определится с планом (с минимальным временем), и далее он
+используется всегда.</p>
+
+<p>Некоторые клиенты к Postgres ведут свой кэш вида SQL -&gt;
+preparedStatement. Каждый раз когда выполняется запрос, клиент ищет айди
+подготовленного выражения во внутреннем кэше. Если он есть, вызывается команда
+“выполни выражение foobar с такими-то параметрами” (аналог execute). Если
+Postgres ругнулся, что такого выражения нет, эта ошибка перехватывается, и
+посылается команда “тогда подготовь этот SQL и назначь ему имя foobar”. Далее
+все повторяется.</p>
+
+<p>Подготовленные выражения живут в рамках одного соединения с БД. Это особенно
+важно для пула соединений: когда мы выполняем запросы, то заимствуем подключение
+из пула, и они могут быть разными. Клиент учитывает это: кэш подготовленных
+выражений ведется в разрезе подключения. По мере ротации подключений
+подготовленные выражения распространяются по ним.</p>
+
+<p>Пожалуй, в этом совете нечего взять на заметку, разве что подумать, сколько
+работы делают клиентские библиотеки помимо основных обязанностей. Заодно это
+плавный переход к теме планов и их анализа.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-017-pg/">Postgres №17</a>
             </h2>
 
@@ -903,293 +1055,13 @@ Django, если тестовый класс унаследован от <code c
 
         </li>
         
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-010-pg/">Postgres №10</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-16T00:00:00+00:00">
-        Jan 16, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Прелесть рекурсивных запросов в том, что их источником может быть что угодно –
-не обязательно таблица. В примере ниже мы рассмотрим, как обойти вложенный
-JSON-документ.</p>
-
-<p>Проблема в следующем. В базе лежит огромный JSON с каталогом услуг. Его схема
-примерно такая:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DOC = {
- "id": ID,
- "code": CODE,
- "children": [DOC]
-}
-</code></pre></div></div>
-
-<p>Головной элемент содержит некоторые поля и <code class="language-plaintext highlighter-rouge">children</code>, в которых список
-элементов. У каждого элемента свои <code class="language-plaintext highlighter-rouge">children</code> и так далее. Вложенность
-значительна: иная ветка достигает 30 элементов.</p>
-
-<p>Уж не знаю, почему документ хранят в таком виде. Подозреваю, что это дамп
-какого-то виджета для редактирования дерева. Разработчик поленился разложить его
-на плоские записи и собрать обратно, поэтому он хранится как есть. Разумеется,
-услуги часто нужны в плоском виде. Разработчики вынимают JSON из базы и обходят
-в приложении.</p>
-
-<p>Есть, однако, простой способ привести JSON к плоскому виду – рекурсивный запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">prepare</span> <span class="n">flatten</span> <span class="k">as</span>
-<span class="k">with</span> <span class="k">recursive</span> <span class="n">step</span> <span class="k">as</span> <span class="p">(</span>
-    <span class="k">select</span>
-        <span class="n">jt</span><span class="p">.</span><span class="o">*</span><span class="p">,</span>
-        <span class="mi">0</span> <span class="k">as</span> <span class="k">level</span>
-    <span class="k">from</span>
-        <span class="n">json_table</span><span class="p">(</span><span class="err">$</span><span class="mi">1</span><span class="p">::</span><span class="n">jsonb</span><span class="p">,</span> <span class="s1">'$'</span> <span class="n">columns</span><span class="p">(</span>
-            <span class="n">id</span> <span class="n">int4</span> <span class="n">path</span> <span class="s1">'$.id'</span><span class="p">,</span>
-            <span class="n">code</span> <span class="nb">text</span> <span class="n">path</span> <span class="s1">'$.code'</span><span class="p">,</span>
-            <span class="n">children</span> <span class="n">jsonb</span> <span class="n">path</span> <span class="s1">'$.children'</span>
-    <span class="p">))</span> <span class="k">as</span> <span class="n">jt</span>
-    <span class="k">UNION</span> <span class="k">ALL</span>
-    <span class="k">select</span>
-        <span class="n">jt</span><span class="p">.</span><span class="o">*</span><span class="p">,</span>
-        <span class="n">step</span><span class="p">.</span><span class="k">level</span> <span class="o">+</span> <span class="mi">1</span> <span class="k">as</span> <span class="k">level</span>
-    <span class="k">from</span>
-        <span class="n">step</span><span class="p">,</span>
-        <span class="n">json_table</span><span class="p">(</span><span class="n">step</span><span class="p">.</span><span class="n">children</span><span class="p">,</span> <span class="s1">'$[*]'</span> <span class="n">columns</span><span class="p">(</span>
-            <span class="n">id</span> <span class="n">int4</span> <span class="n">path</span> <span class="s1">'$.id'</span><span class="p">,</span>
-            <span class="n">code</span> <span class="nb">text</span> <span class="n">path</span> <span class="s1">'$.code'</span><span class="p">,</span>
-            <span class="n">children</span> <span class="n">jsonb</span> <span class="n">path</span> <span class="s1">'$.children'</span>
-    <span class="p">))</span> <span class="k">as</span> <span class="n">jt</span><span class="p">)</span>
-<span class="k">select</span> <span class="n">id</span><span class="p">,</span> <span class="n">code</span><span class="p">,</span> <span class="k">level</span> <span class="k">from</span> <span class="n">step</span>
-<span class="k">order</span> <span class="k">by</span> <span class="k">level</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Первая часть производит строку с полями <code class="language-plaintext highlighter-rouge">id</code>, <code class="language-plaintext highlighter-rouge">code</code> и <code class="language-plaintext highlighter-rouge">children</code>. В нем –
-JSON-массив вложенных элементов. Рекурсивная часть берет каждый элемент и делает
-то же самое: расщепляет его на <code class="language-plaintext highlighter-rouge">id</code>, <code class="language-plaintext highlighter-rouge">code</code> и другие элементы. Все это
-колбасится, пока вложенные элементы не исчерпаются. А теперь – пример:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">execute</span> <span class="n">flatten</span><span class="p">(</span><span class="err">$${</span>
-    <span class="nv">"id"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
-    <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product A"</span><span class="p">,</span>
-    <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-        <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product B"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-            <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product E"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-                <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">6</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product F"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[]</span><span class="err">}</span>
-            <span class="p">]</span><span class="err">}</span>
-        <span class="p">]</span><span class="err">}</span><span class="p">,</span>
-        <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product C"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-            <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">7</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product F"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-                <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product G"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[]</span><span class="err">}</span>
-            <span class="p">]</span><span class="err">}</span>
-
-        <span class="p">]</span><span class="err">}</span><span class="p">,</span>
-        <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product D"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-            <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product E"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[</span>
-                <span class="err">{</span><span class="nv">"id"</span><span class="p">:</span> <span class="mi">9</span><span class="p">,</span> <span class="nv">"code"</span><span class="p">:</span> <span class="nv">"Product H"</span><span class="p">,</span> <span class="nv">"children"</span><span class="p">:</span> <span class="p">[]</span><span class="err">}</span>
-            <span class="p">]</span><span class="err">}</span>
-        <span class="p">]</span><span class="err">}</span>
-<span class="p">]</span><span class="err">}$$</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Результат:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────┬───────────┬───────┐
-│ id │   code    │ level │
-├────┼───────────┼───────┤
-│  1 │ Product A │     0 │
-│  2 │ Product B │     1 │
-│  3 │ Product C │     1 │
-│  4 │ Product D │     1 │
-│  5 │ Product E │     2 │
-│  7 │ Product F │     2 │
-│  5 │ Product E │     2 │
-│  6 │ Product F │     3 │
-│  8 │ Product G │     3 │
-│  9 │ Product H │     3 │
-└────┴───────────┴───────┘
-</code></pre></div></div>
-
-<p>Такой обход очень полезен. Быстро выяснилось, что плоские продукты нужны
-аналитикам, которые не владеют Кложей или другим ЯП, чтобы их распутать. Я
-написал им запрос, и они чуть не заплакали от счастья. Во-вторых, продукты
-изменяются редко, поэтому из запроса легко сделать материализованную вьюху и
-обновлять ее каждый день. Для аналитиков это обычная таблица, которую можно
-джойнить в запросах.</p>
-
-<p>Еще одно уточнение — код выше является чистым с точки зрения ФП. В нем нет
-побочных эффектов, например обращения к диску. Такая функция может быть вызвана
-параллельно для многих документов.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-009-pg/">Postgres №9</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-16T00:00:00+00:00">
-        Jan 16, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В комментарии к прошлой заметке прислали ссылку на Кирилла Макевнина. <a href="https://t.me/orgprog/74">Он
-пишет</a> о хранении деревьев в базе, и первый абзац
-такой:</p>
-
-<blockquote>
-  <p>Обычно, для хранения деревьев в базе в таблицу добавляется поле parent_id. Это
-дубовое решение, которое работает хорошо в небольшом количестве
-ситуаций. Кому-то даже может хватить, но есть запросы, на которых такая схема
-не работает. Например если нам понадобится извлечь ветку этого дерева. В таком
-случае понадобится рекурсивно выполнять запрос с parent_id где для каждого
-нового запроса parent_id становится id записи из предыдущего запроса. Кто-то
-пытается решать эту задачу прямо в коде, создавая очень не эффективное
-решение, кто-то с помощью возможностей базы данных, что сильно привязывает к
-ней, плюс, страдает интеграция с ORM.</p>
-</blockquote>
-
-<p>На мой взгляд, это неверно. Подход с <code class="language-plaintext highlighter-rouge">parent_id</code> – не дубовое решение, а вполне
-даже рабочее. Просто мне кажется, на момент написания заметки Кирилл не знал о
-рекурсивных запросах в Postgres (под рекурсивными запросами он имеет в виду
-запросы в цикле из приложения, и это конечно же плохо).</p>
-
-<p>Приведу минимальный пример с деревом в базе. Предположим, мы храним вот такое
-дерево:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─────────────────────────────┐
-│            ┌───┐            │
-│       ┌────│ A │────┐       │
-│       ▼    └───┘    ▼       │
-│     ┌───┐         ┌───┐     │
-│   ┌─│ B │─┐     ┌─│ C │─┐   │
-│   ▼ └───┘ ▼     ▼ └───┘ ▼   │
-│ ┌───┐   ┌───┐ ┌───┐   ┌───┐ │
-│ │ D │   │ E │ │ F │   │ G │ │
-│ └───┘   └───┘ └───┘   └───┘ │
-└─────────────────────────────┘
-</code></pre></div></div>
-
-<p>Запишем его в базу:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">tree</span><span class="p">(</span>
-    <span class="n">id</span> <span class="nb">text</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-    <span class="n">parent_id</span> <span class="nb">text</span> <span class="k">null</span>
-<span class="p">);</span>
-
-<span class="k">insert</span> <span class="k">into</span> <span class="n">tree</span> <span class="k">values</span>
-    <span class="p">(</span><span class="s1">'a'</span><span class="p">,</span> <span class="k">null</span><span class="p">),</span>
-    <span class="p">(</span><span class="s1">'b'</span><span class="p">,</span> <span class="s1">'a'</span><span class="p">),</span>
-    <span class="p">(</span><span class="s1">'c'</span><span class="p">,</span> <span class="s1">'a'</span><span class="p">),</span>
-    <span class="p">(</span><span class="s1">'d'</span><span class="p">,</span> <span class="s1">'b'</span><span class="p">),</span>
-    <span class="p">(</span><span class="s1">'e'</span><span class="p">,</span> <span class="s1">'b'</span><span class="p">),</span>
-    <span class="p">(</span><span class="s1">'f'</span><span class="p">,</span> <span class="s1">'c'</span><span class="p">),</span>
-    <span class="p">(</span><span class="s1">'g'</span><span class="p">,</span> <span class="s1">'c'</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Напишем запрос, чтобы выгрести поддерево, зная вершину:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">prepare</span> <span class="n">get_branch</span> <span class="k">as</span>
-<span class="k">with</span> <span class="k">recursive</span> <span class="n">sub</span> <span class="k">as</span> <span class="p">(</span>
-    <span class="k">select</span> <span class="n">tree</span><span class="p">.</span><span class="o">*</span><span class="p">,</span> <span class="mi">0</span> <span class="k">as</span> <span class="k">level</span> <span class="k">from</span> <span class="n">tree</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="err">$</span><span class="mi">1</span>
-    <span class="k">UNION</span> <span class="k">ALL</span>
-    <span class="k">select</span> <span class="n">tree</span><span class="p">.</span><span class="o">*</span><span class="p">,</span> <span class="n">sub</span><span class="p">.</span><span class="k">level</span> <span class="o">+</span> <span class="mi">1</span>
-        <span class="k">from</span> <span class="n">tree</span><span class="p">,</span> <span class="n">sub</span>
-    <span class="k">where</span> <span class="n">tree</span><span class="p">.</span><span class="n">parent_id</span> <span class="o">=</span> <span class="n">sub</span><span class="p">.</span><span class="n">id</span>
-<span class="p">)</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">sub</span> <span class="k">order</span> <span class="k">by</span> <span class="k">level</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Проверка:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>execute get_branch('b');
-┌────┬───────────┬───────┐
-│ id │ parent_id │ level │
-├────┼───────────┼───────┤
-│ b  │ a         │     0 │
-│ d  │ b         │     1 │
-│ e  │ b         │     1 │
-└────┴───────────┴───────┘
-</code></pre></div></div>
-
-<p>Второй запрос, чтобы найти путь к вершине:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">prepare</span> <span class="n">get_path</span> <span class="k">as</span>
-<span class="k">with</span> <span class="k">recursive</span> <span class="n">sub</span> <span class="k">as</span> <span class="p">(</span>
-    <span class="k">select</span> <span class="n">tree</span><span class="p">.</span><span class="o">*</span><span class="p">,</span> <span class="mi">0</span> <span class="k">as</span> <span class="k">level</span> <span class="k">from</span> <span class="n">tree</span> <span class="k">where</span> <span class="n">id</span> <span class="o">=</span> <span class="err">$</span><span class="mi">1</span>
-    <span class="k">union</span> <span class="k">all</span>
-    <span class="k">select</span> <span class="n">tree</span><span class="p">.</span><span class="o">*</span><span class="p">,</span> <span class="n">sub</span><span class="p">.</span><span class="k">level</span> <span class="o">-</span> <span class="mi">1</span>
-        <span class="k">from</span> <span class="n">tree</span><span class="p">,</span> <span class="n">sub</span>
-    <span class="k">where</span> <span class="n">tree</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">sub</span><span class="p">.</span><span class="n">parent_id</span>
-<span class="p">)</span>
-<span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">sub</span> <span class="k">order</span> <span class="k">by</span> <span class="k">level</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Проверка:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>execute get_path('f');
-┌────┬───────────┬───────┐
-│ id │ parent_id │ level │
-├────┼───────────┼───────┤
-│ a  │ &lt;null&gt;    │    -2 │
-│ c  │ a         │    -1 │
-│ f  │ c         │     0 │
-└────┴───────────┴───────┘
-</code></pre></div></div>
-
-<p>Как видим, в обоих случаях был один запрос, циклы не понадобились, база все
-сделала сама. Напоминаю, что with recursive позволяет собрать вершины вглубь и
-вширь, находить циклы и многое другое.</p>
-
-<p>Материализованные пути, о которых пишет Кирилл, тоже бывают полезны. Скажем,
-если у вас система файлов и папок (виртуальное файловое хранилище), то иной раз
-это даже лучше, чем <code class="language-plaintext highlighter-rouge">parent_id</code>, потому что позволяет эффективно искать по
-префиксу. Но есть и недостатки: если каждый узел – UUID, путь становится
-огромным. Кроме того, если нужно переместить поддерево, то в случае с
-<code class="language-plaintext highlighter-rouge">parent_id</code> достаточно переключить ссылку, а materialized path требует пересчета
-всех путей поддерева.</p>
-
-<p>Ну а отказывать себе в мощных средствах только потому, что с ними не дружит
-ORM… это примерно как рушить свою жизнь из-за непутевого друга.</p>
-
-                
-            </div>
-
-        </li>
-        
     </ul>
 
     <h4>
         
         <a href="/page9" class="previous">&larr;</a>
         
-        <span class="page_number ">Страница 10 из 114</span>
+        <span class="page_number ">Страница 10 из 115</span>
         
         <a href="/page11" class="next">&rarr;</a>
         
