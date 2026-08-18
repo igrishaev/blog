@@ -106,6 +106,81 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-011-pg/">Postgres №11</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-23T00:00:00+00:00">
+        Jan 23, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Если вы работаете с базой, то должны видеть все запросы, которые в нее идут. Это
+абсолютно обязательное условие. В особой степени оно касается ORM. Когда я делаю
+ревью, и в коде используются абстракции над базой, то всегда спрашиваю: какие
+запросы производит этот код? При этом ожидаю не гадание, а лог терминала,
+приложенный PR.</p>
+
+<p>Увидеть запросы можно следующим образом. Если Postgres запущен в Докере,
+передайте в <code class="language-plaintext highlighter-rouge">command</code> ключ <code class="language-plaintext highlighter-rouge">-E</code>:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">services</span><span class="pi">:</span>
+  <span class="na">postgres</span><span class="pi">:</span>
+<span class="err"> </span><span class="na">image</span><span class="pi">:</span> <span class="s">postgres:17</span>
+ <span class="na">command</span><span class="pi">:</span> <span class="s">-E</span>
+</code></pre></div></div>
+
+<p>Если это ванильный Postgres, включите логирование всех запросов опцией:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>log_statement = 'all'
+</code></pre></div></div>
+
+<p>После этого лог отслеживают командой <code class="language-plaintext highlighter-rouge">tail</code>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">tail</span> <span class="nt">-f</span> <span class="s1">'/var/log/postgresql.log'</span>
+</code></pre></div></div>
+
+<p>Расположение лога зависит от операционной системы и менеджера пакетов.</p>
+
+<p>Третий способ — настроить логирование в приложении. Скажем, в Джанго все
+операции с базой идут в логгер <code class="language-plaintext highlighter-rouge">django.db.backends</code>. Нужно выставить ему уровень
+<code class="language-plaintext highlighter-rouge">INFO</code> и направить в консоль.</p>
+
+<p>Минус такого логирования в том, что оно учитывает только свои запросы. Если
+кто-то ходит в базу минуя ORM, этих запросов вы не увидите.</p>
+
+<p>С другой стороны, мы перекладываем бремя логирования с базы на приложение. База
+одна, и если логировать каждый запрос, это замедлит ее. А поскольку узлов
+приложения много, на них это не скажется.</p>
+
+<p>Вместе с запросами полезно логировать время их выполнения. Заведите дашбоард,
+который находит топ-100 медленных запросов. Раз в месяц заводите задачу на
+оптимизацию.</p>
+
+<p>Расширение <code class="language-plaintext highlighter-rouge">pg_stat_statements</code> (доступно из коробки) ведет статистику запросов:
+число вызовов, среднее, минимальное и максимальное времена, размер переданных
+строк и так далее. Очень помогает на проде.</p>
+
+<p>Если вы не видите, какие запросы идут в базу, разработка подобна блужданию в
+темноте.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-010-pg/">Postgres №10</a>
             </h2>
 
@@ -792,46 +867,6 @@ Postgres все способы извлечь неделю являются ISO:
 
 <p>Если этого не учесть – мой случай – то за день до нового года файлы уедут в
 папку с 2026 годом. С чем вас и поздравляю.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-001-pg/">Postgres №1</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-15T00:00:00+00:00">
-        Jan 15, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Следите за тем, какие индексы используются, а какие нет. Для этого время от
-времени проверяйте представление <code class="language-plaintext highlighter-rouge">pg_stat_user_indexes</code>. Оно накапливает случаи
-обращения к индексу. Сохраняются имя схемы, таблицы, индекса, дата последнего
-обращения, общее число обращений, число прочитанных элементов, число прочитанных
-строк. Пример:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">pg_stat_user_indexes</span>
-<span class="k">where</span> <span class="n">relname</span> <span class="o">=</span> <span class="s1">'users'</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">last_idx_scan</span> <span class="k">desc</span> <span class="n">nulls</span> <span class="k">last</span>
-</code></pre></div></div>
-
-<p>Удалите индексы с малым показателем <code class="language-plaintext highlighter-rouge">idx_scan</code>. Сделайте такую проверку
-регулярной, например раз в месяц.</p>
 
                 
             </div>

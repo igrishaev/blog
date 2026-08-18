@@ -106,6 +106,80 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-037-pg/">Postgres №37</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-07T00:00:00+00:00">
+        Apr 7, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p><a href="/tip-036-pg/">Совет №36</a> оканчивался фразой:</p>
+
+<blockquote>
+  <p>Мне известны для случая, когда от внешних ключей отказываются добровольно.</p>
+</blockquote>
+
+<p>О них и поговорим.</p>
+
+<p>Первый случай, когда ослабление ключей допустимо – это GDPR и схожие
+требования. Например, пользователь оставил заявку на удаление учетки и связанных
+данных. Удалять их в лоб долго и трудно: пользователь – это центральная
+сущность, на которую завязано все. Каскадный DELETE, во-первых, крайне
+медленный, а во-вторых, может задеть данные, которые нужно оставить.</p>
+
+<p>Кроме пользователя, бывают и другие сущности, которые нужно экстренно удалить,
+но мешают внешние связи. В этом случае сперва удаляют внешние ключи при помощи
+<code class="language-plaintext highlighter-rouge">drop constraint</code>. Например, ниже удаляется внешний ключ <code class="language-plaintext highlighter-rouge">user_id</code> в профилях:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">alter</span> <span class="k">table</span> <span class="n">profiles</span> <span class="k">drop</span> <span class="k">constraint</span> <span class="n">fk_user_id</span>
+</code></pre></div></div>
+
+<p>Далее удаляется целевая сущность — пользователь. В дальнейших запросах
+используется внутреннее соединение, чтобы отсечь записи, которые ссылаются в
+никуда. Например, если мы выбрали профили по особому критерию, то пользователи
+цепляются не LEFT, а обычным JOIN. Это гарантирует, что в выборке не будет
+“висюков”:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">profiles</span> <span class="n">p</span>
+<span class="k">where</span> <span class="n">p</span><span class="p">.</span><span class="n">open_to_work</span>
+<span class="k">join</span> <span class="n">users</span> <span class="n">u</span> <span class="k">on</span> <span class="n">p</span><span class="p">.</span><span class="n">user_id</span> <span class="o">=</span> <span class="n">u</span><span class="p">.</span><span class="n">id</span>
+</code></pre></div></div>
+
+<p>Позже “висюки” подчищаются запросом по расписанию. Заметим, что внутренний JOIN
+в целом работает лучше, чем левый и правый аналоги. Он быстрее и отсекает больше
+данных. Как правило, LEFT JOIN означает, что в базе что-то не так.</p>
+
+<p>Сказанное выше звучит костыльно, но увы — это жизнь. Так было в одном стартапе:
+он выходил на очередной раунд инвестирования, и сказали: по такому-то закону
+нужно удалить учетку пользователя по запросу в короткое время. Таких
+пользователей было немного, буквально пять или шесть, но обилие внешних ссылок
+все усложняло. Получалось огромное дерево таблиц, которое нужно было очистить в
+особом порядке. Руководители стартапа не хотели тратить время и деньги на такую
+ерунду. Поэтому внешние ключи удалили и снесли записи обычным DELETE. Схема базы
+пострадала, зато с задачей справились быстро.</p>
+
+<p>Внешние ключи нужны – без них легко испортить данные. Но в редких случаях
+выгодно их ослабить – только никому об этом не говорить.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-036-pg/">Postgres №36</a>
             </h2>
 
@@ -670,7 +744,7 @@ dev-барахло.</p>
   <li><a href="/pg-book-json-ch06/">Язык путей JSONPath</a></li>
   <li><a href="/pg-book-json-ch07/">Отчеты, функции, расписание</a></li>
   <li><a href="/pg-book-json-ch08">Функции на языке Python</a></li>
-  <li>Версионирование и архивация документов</li>
+  <li><a href="/pg-book-json-ch09/">Версии и патчи</a></li>
   <li>Релевантный поиск</li>
 </ol>
 
@@ -1207,97 +1281,6 @@ from
 ситуативно. Нужно знать контекст и условия задачи. Но одно можно сказать точно:
 объединить данные проще, чем разделить. “Design is about keeping things apart”
 (c).</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-030-pg/">Postgres №30</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-03-21T00:00:00+00:00">
-        Mar 21, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В <a href="/tip-029-pg/">прошлом совете</a> упоминались чистые функции в базе. Разумеется,
-их нужно тестировать. Для Постгреса написаны свои тестовые фреймворки, но ими
-пользуются при разработке расширений. Обычные функции тестируют в приложении:
-вызывают функцию и проверяют, что она вернула.</p>
-
-<p>Например, в базе есть функция для форматирования центов:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">or</span> <span class="k">replace</span> <span class="k">function</span> <span class="n">format_cents</span><span class="p">(</span><span class="n">cents</span> <span class="nb">integer</span><span class="p">)</span>
-<span class="k">returns</span> <span class="nb">text</span>
-<span class="k">immutable</span> <span class="k">strict</span> <span class="n">parallel</span> <span class="n">safe</span> <span class="k">language</span> <span class="k">sql</span>
-<span class="k">return</span> <span class="n">to_char</span><span class="p">(</span><span class="n">cents</span><span class="p">,</span> <span class="s1">'999.999'</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Тест посылает такой запрос:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
- <span class="n">x</span><span class="p">,</span>
- <span class="n">format_cents</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">as</span> <span class="k">result</span>
-<span class="k">from</span> <span class="p">(</span><span class="k">values</span>
- <span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">999</span><span class="p">),</span> <span class="p">(</span><span class="k">null</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">42</span><span class="p">))</span> <span class="k">as</span> <span class="n">vals</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Читаем результат и проверяем, что он следующий:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────────┬──────────┐
-│   x    │  result  │
-├────────┼──────────┤
-│      1 │    1.000 │
-│    999 │  999.000 │
-│ &lt;null&gt; │ &lt;null&gt;   │
-│      0 │     .000 │
-│    -42 │  -42.000 │
-└────────┴──────────┘
-</code></pre></div></div>
-
-<p>Вот и все. Если кто-то поправит функцию, тест упадет.</p>
-
-<p>Сложную логику тестируют точно так же. Достаточно нескольких шагов:</p>
-
-<ul>
-  <li>положить нужные данные в базу;</li>
-  <li>запустить целевую функцию;</li>
-  <li>проверить, что данные изменились должным образом;</li>
-  <li>почистить за собой.</li>
-</ul>
-
-<p>Функция удобна тем, что данные не нужно готовить. Передал — получил. База
-фактически не участвует. А для сложной логики нужно готовить данные.</p>
-
-<p>К счастью, для этого есть фикстуры — функции, которые выполняются до или после
-теста, причем в разрезе всего набора или отдельного теста. Поэтому пишутся
-фикстуры, которые поднимают базу, накатывают тестовые данные, а в конце делают
-<code class="language-plaintext highlighter-rouge">TRUNCATE</code> по всем таблицам.</p>
-
-<p>Базу обычно запускают в Докере, потому что в нем многое можно задать из коробки
-(базу, пользователя, пароль, начальные .sql файлы и другое). Кто не любит Докер,
-пусть ставит локальный Постгрес — он есть везде.</p>
-
-<p>На этом месте начинаются вопли: мол, тесты-то не юнит-, а интеграционные! Ну и
-что? Юнит-тесты нужны, но порой их недостаточно. Когда сетевые вызовы закрыты
-моками, легко оказаться в мире Оруэлла: дважды два равно пяти. Тесты пробегают,
-прод падает.</p>
-
-<p>Так что если у вас Постгрес — тестируйте, как приложение ходит в Постгрес.</p>
 
                 
             </div>

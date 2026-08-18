@@ -106,6 +106,97 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-030-pg/">Postgres №30</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-03-21T00:00:00+00:00">
+        Mar 21, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В <a href="/tip-029-pg/">прошлом совете</a> упоминались чистые функции в базе. Разумеется,
+их нужно тестировать. Для Постгреса написаны свои тестовые фреймворки, но ими
+пользуются при разработке расширений. Обычные функции тестируют в приложении:
+вызывают функцию и проверяют, что она вернула.</p>
+
+<p>Например, в базе есть функция для форматирования центов:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">or</span> <span class="k">replace</span> <span class="k">function</span> <span class="n">format_cents</span><span class="p">(</span><span class="n">cents</span> <span class="nb">integer</span><span class="p">)</span>
+<span class="k">returns</span> <span class="nb">text</span>
+<span class="k">immutable</span> <span class="k">strict</span> <span class="n">parallel</span> <span class="n">safe</span> <span class="k">language</span> <span class="k">sql</span>
+<span class="k">return</span> <span class="n">to_char</span><span class="p">(</span><span class="n">cents</span><span class="p">,</span> <span class="s1">'999.999'</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Тест посылает такой запрос:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
+ <span class="n">x</span><span class="p">,</span>
+ <span class="n">format_cents</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">as</span> <span class="k">result</span>
+<span class="k">from</span> <span class="p">(</span><span class="k">values</span>
+ <span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">999</span><span class="p">),</span> <span class="p">(</span><span class="k">null</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">42</span><span class="p">))</span> <span class="k">as</span> <span class="n">vals</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Читаем результат и проверяем, что он следующий:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────────┬──────────┐
+│   x    │  result  │
+├────────┼──────────┤
+│      1 │    1.000 │
+│    999 │  999.000 │
+│ &lt;null&gt; │ &lt;null&gt;   │
+│      0 │     .000 │
+│    -42 │  -42.000 │
+└────────┴──────────┘
+</code></pre></div></div>
+
+<p>Вот и все. Если кто-то поправит функцию, тест упадет.</p>
+
+<p>Сложную логику тестируют точно так же. Достаточно нескольких шагов:</p>
+
+<ul>
+  <li>положить нужные данные в базу;</li>
+  <li>запустить целевую функцию;</li>
+  <li>проверить, что данные изменились должным образом;</li>
+  <li>почистить за собой.</li>
+</ul>
+
+<p>Функция удобна тем, что данные не нужно готовить. Передал — получил. База
+фактически не участвует. А для сложной логики нужно готовить данные.</p>
+
+<p>К счастью, для этого есть фикстуры — функции, которые выполняются до или после
+теста, причем в разрезе всего набора или отдельного теста. Поэтому пишутся
+фикстуры, которые поднимают базу, накатывают тестовые данные, а в конце делают
+<code class="language-plaintext highlighter-rouge">TRUNCATE</code> по всем таблицам.</p>
+
+<p>Базу обычно запускают в Докере, потому что в нем многое можно задать из коробки
+(базу, пользователя, пароль, начальные .sql файлы и другое). Кто не любит Докер,
+пусть ставит локальный Постгрес — он есть везде.</p>
+
+<p>На этом месте начинаются вопли: мол, тесты-то не юнит-, а интеграционные! Ну и
+что? Юнит-тесты нужны, но порой их недостаточно. Когда сетевые вызовы закрыты
+моками, легко оказаться в мире Оруэлла: дважды два равно пяти. Тесты пробегают,
+прод падает.</p>
+
+<p>Так что если у вас Постгрес — тестируйте, как приложение ходит в Постгрес.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-029-pg/">Postgres №29</a>
             </h2>
 
@@ -1185,90 +1276,6 @@ drop table students</code>, и данные не пропадут.</p>
 (метрика execute возрастет).</p>
 
 <p>Согласен: все это напоминает шаманство, но иногда приходится так делать.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-020-pg/">Postgres №20</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-31T00:00:00+00:00">
-        Jan 31, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В прошлый раз мы говорили вот о чем. Когда мы изучаем план запроса, то смотрим,
-было ли попадание в индекс. Однако бывает подвох: индекс был, да не тот.</p>
-
-<p>Скажем, есть запрос: показать топ-100 активных заказов по убыванию
-даты. Пожалуйста:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span>
-<span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
-<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span>
-<span class="k">limit</span> <span class="mi">100</span>
-</code></pre></div></div>
-
-<p>Для поля status создан индекс <code class="language-plaintext highlighter-rouge">idx_orders_status</code>, для <code class="language-plaintext highlighter-rouge">created_at</code> —
-<code class="language-plaintext highlighter-rouge">idx_orders_created_at</code> (по убыванию).</p>
-
-<p>Смотрим <code class="language-plaintext highlighter-rouge">EXPLAIN</code>, а там примерно такое:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>limit: 100
-  filter scan condition: status = 'active'
-    index scan idx_orders_created_at: desc
-</code></pre></div></div>
-
-<p>Разработчик смотрит: index scan был? Был. Вот и ладушки.</p>
-
-<p>На самом деле произошло вот что. Вместо того, чтобы взять только активные заказы
-и отсортировать их, Postgres сделал обратное. Он пошел по всей таблице (full
-scan), просто не в случайном порядке (как записи лежат на диске), а согласно
-индексу. При этом записи были отобраны вручную: для каждой из них выполнялась
-проверка status = ‘active’. Фактически это был full scan, только в другом
-порядке.</p>
-
-<p>В идеале нам нужен другой план:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>limit: 100
-  in-memory sort, key: created_at (desc)
-    index scan idx_orders_status condition: status = 'active'
-</code></pre></div></div>
-
-<p>Этот план читают так. Сначала Postgres выбирает активные заказы по
-индексу. Ожидается, что в таблице много завершенных заказов, поэтому у активных
-будет высокая селективность. Далее эти заказы сортируются в памяти по created_at
-(уже без всякого индекса) и берутся первые сто.</p>
-
-<p>Почему был первый план, а не второй? Во-первых, индекса на <code class="language-plaintext highlighter-rouge">status</code> может не
-быть. Если он есть, у значения active низкая селективность: доля активных
-заказов высокая. Может быть, настало время обновить статистику командой
-<code class="language-plaintext highlighter-rouge">analyze</code>, и значение <code class="language-plaintext highlighter-rouge">active</code> уйдет из массива частых значений, которые нельзя
-брать в индекс. Наконец, можно признать, что тут ничего не поделаешь и мы
-согласы жить с первым планом, а не вторым. Возможны и другие варианты, их
-смотрят по ситуации.</p>
-
-<p>Общий принцип такой. Часто фильтры и сортировка тянут одеяло на себя. Postgres
-должен решить, что выгоднее: отсортировать по индексу и пройтись вручную или
-наоборот: сначала отсечь по индексу и отсортировать в памяти. Второй вариант
-предпочтительней: когда выборка мала, любая операция над ней дешева: сортировка,
-группировка и так далее. Стремитесь к тому, чтобы <code class="language-plaintext highlighter-rouge">WHERE</code> отсекал как можно
-больше записей, и только потом вступали в действие другие операции.</p>
 
                 
             </div>

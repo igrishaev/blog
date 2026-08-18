@@ -106,6 +106,90 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-020-pg/">Postgres №20</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-01-31T00:00:00+00:00">
+        Jan 31, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>В прошлый раз мы говорили вот о чем. Когда мы изучаем план запроса, то смотрим,
+было ли попадание в индекс. Однако бывает подвох: индекс был, да не тот.</p>
+
+<p>Скажем, есть запрос: показать топ-100 активных заказов по убыванию
+даты. Пожалуйста:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">orders</span>
+<span class="k">where</span> <span class="n">status</span> <span class="o">=</span> <span class="s1">'active'</span>
+<span class="k">order</span> <span class="k">by</span> <span class="n">created_at</span> <span class="k">desc</span>
+<span class="k">limit</span> <span class="mi">100</span>
+</code></pre></div></div>
+
+<p>Для поля status создан индекс <code class="language-plaintext highlighter-rouge">idx_orders_status</code>, для <code class="language-plaintext highlighter-rouge">created_at</code> —
+<code class="language-plaintext highlighter-rouge">idx_orders_created_at</code> (по убыванию).</p>
+
+<p>Смотрим <code class="language-plaintext highlighter-rouge">EXPLAIN</code>, а там примерно такое:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>limit: 100
+  filter scan condition: status = 'active'
+    index scan idx_orders_created_at: desc
+</code></pre></div></div>
+
+<p>Разработчик смотрит: index scan был? Был. Вот и ладушки.</p>
+
+<p>На самом деле произошло вот что. Вместо того, чтобы взять только активные заказы
+и отсортировать их, Postgres сделал обратное. Он пошел по всей таблице (full
+scan), просто не в случайном порядке (как записи лежат на диске), а согласно
+индексу. При этом записи были отобраны вручную: для каждой из них выполнялась
+проверка status = ‘active’. Фактически это был full scan, только в другом
+порядке.</p>
+
+<p>В идеале нам нужен другой план:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>limit: 100
+  in-memory sort, key: created_at (desc)
+    index scan idx_orders_status condition: status = 'active'
+</code></pre></div></div>
+
+<p>Этот план читают так. Сначала Postgres выбирает активные заказы по
+индексу. Ожидается, что в таблице много завершенных заказов, поэтому у активных
+будет высокая селективность. Далее эти заказы сортируются в памяти по created_at
+(уже без всякого индекса) и берутся первые сто.</p>
+
+<p>Почему был первый план, а не второй? Во-первых, индекса на <code class="language-plaintext highlighter-rouge">status</code> может не
+быть. Если он есть, у значения active низкая селективность: доля активных
+заказов высокая. Может быть, настало время обновить статистику командой
+<code class="language-plaintext highlighter-rouge">analyze</code>, и значение <code class="language-plaintext highlighter-rouge">active</code> уйдет из массива частых значений, которые нельзя
+брать в индекс. Наконец, можно признать, что тут ничего не поделаешь и мы
+согласы жить с первым планом, а не вторым. Возможны и другие варианты, их
+смотрят по ситуации.</p>
+
+<p>Общий принцип такой. Часто фильтры и сортировка тянут одеяло на себя. Postgres
+должен решить, что выгоднее: отсортировать по индексу и пройтись вручную или
+наоборот: сначала отсечь по индексу и отсортировать в памяти. Второй вариант
+предпочтительней: когда выборка мала, любая операция над ней дешева: сортировка,
+группировка и так далее. Стремитесь к тому, чтобы <code class="language-plaintext highlighter-rouge">WHERE</code> отсекал как можно
+больше записей, и только потом вступали в действие другие операции.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-019-pg/">Postgres №19</a>
             </h2>
 
@@ -514,7 +598,7 @@ Postgres читает сразу много блоков, а не по одно�
   <li><a href="/pg-book-json-ch06/">Язык путей JSONPath</a></li>
   <li><a href="/pg-book-json-ch07/">Отчеты, функции, расписание</a></li>
   <li><a href="/pg-book-json-ch08">Функции на языке Python</a></li>
-  <li>Версионирование и архивация документов</li>
+  <li><a href="/pg-book-json-ch09/">Версии и патчи</a></li>
   <li>Релевантный поиск</li>
 </ol>
 
@@ -974,81 +1058,6 @@ Django, если тестовый класс унаследован от <code c
 <p>Не обязательно считать запросы во всех апишках: скажем, для <code class="language-plaintext highlighter-rouge">get-by-id</code> подсчет
 избыточен. Но удаление сущностей, сложные перемещения из одной таблицы в другую
 – очень желательно. Все для этого есть, просто воспользуйтесь.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-011-pg/">Postgres №11</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-01-23T00:00:00+00:00">
-        Jan 23, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Если вы работаете с базой, то должны видеть все запросы, которые в нее идут. Это
-абсолютно обязательное условие. В особой степени оно касается ORM. Когда я делаю
-ревью, и в коде используются абстракции над базой, то всегда спрашиваю: какие
-запросы производит этот код? При этом ожидаю не гадание, а лог терминала,
-приложенный PR.</p>
-
-<p>Увидеть запросы можно следующим образом. Если Postgres запущен в Докере,
-передайте в <code class="language-plaintext highlighter-rouge">command</code> ключ <code class="language-plaintext highlighter-rouge">-E</code>:</p>
-
-<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">services</span><span class="pi">:</span>
-  <span class="na">postgres</span><span class="pi">:</span>
-<span class="err"> </span><span class="na">image</span><span class="pi">:</span> <span class="s">postgres:17</span>
- <span class="na">command</span><span class="pi">:</span> <span class="s">-E</span>
-</code></pre></div></div>
-
-<p>Если это ванильный Postgres, включите логирование всех запросов опцией:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>log_statement = 'all'
-</code></pre></div></div>
-
-<p>После этого лог отслеживают командой <code class="language-plaintext highlighter-rouge">tail</code>:</p>
-
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">tail</span> <span class="nt">-f</span> <span class="s1">'/var/log/postgresql.log'</span>
-</code></pre></div></div>
-
-<p>Расположение лога зависит от операционной системы и менеджера пакетов.</p>
-
-<p>Третий способ — настроить логирование в приложении. Скажем, в Джанго все
-операции с базой идут в логгер <code class="language-plaintext highlighter-rouge">django.db.backends</code>. Нужно выставить ему уровень
-<code class="language-plaintext highlighter-rouge">INFO</code> и направить в консоль.</p>
-
-<p>Минус такого логирования в том, что оно учитывает только свои запросы. Если
-кто-то ходит в базу минуя ORM, этих запросов вы не увидите.</p>
-
-<p>С другой стороны, мы перекладываем бремя логирования с базы на приложение. База
-одна, и если логировать каждый запрос, это замедлит ее. А поскольку узлов
-приложения много, на них это не скажется.</p>
-
-<p>Вместе с запросами полезно логировать время их выполнения. Заведите дашбоард,
-который находит топ-100 медленных запросов. Раз в месяц заводите задачу на
-оптимизацию.</p>
-
-<p>Расширение <code class="language-plaintext highlighter-rouge">pg_stat_statements</code> (доступно из коробки) ведет статистику запросов:
-число вызовов, среднее, минимальное и максимальное времена, размер переданных
-строк и так далее. Очень помогает на проде.</p>
-
-<p>Если вы не видите, какие запросы идут в базу, разработка подобна блужданию в
-темноте.</p>
 
                 
             </div>
