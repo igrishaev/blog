@@ -158,6 +158,9 @@
   <li><a href="#патчи-в-базе-данных" id="toc-item-pg-book-json-ch09-патчи-в-базе-данных">Патчи в базе данных</a></li>
   <li><a href="#версии-с-патчами" id="toc-item-pg-book-json-ch09-версии-с-патчами">Версии с патчами</a></li>
   <li><a href="#прием-патчей-от-клиента" id="toc-item-pg-book-json-ch09-прием-патчей-от-клиента">Прием патчей от клиента</a></li>
+  <li><a href="#коротко-об-event-sourcing" id="toc-item-pg-book-json-ch09-коротко-об-event-sourcing">Коротко об event-sourcing</a></li>
+  <li><a href="#сбор-агрегатов-из-событий" id="toc-item-pg-book-json-ch09-сбор-агрегатов-из-событий">Сбор агрегатов из событий</a></li>
+  <li><a href="#махинации-с-патчами" id="toc-item-pg-book-json-ch09-махинации-с-патчами">Махинации с патчами</a></li>
   <li><a href="#бесконфликтное-редактирование" id="toc-item-pg-book-json-ch09-бесконфликтное-редактирование">Бесконфликтное редактирование</a></li>
   <li><a href="#решение-конфликтов" id="toc-item-pg-book-json-ch09-решение-конфликтов">Решение конфликтов</a></li>
   <li><a href="#технические-детали" id="toc-item-pg-book-json-ch09-технические-детали">Технические детали</a></li>
@@ -1608,6 +1611,341 @@ jsonb</code> и избавиться от вызовов <code class="language-p
 описывает. На этом преимущества патчей не заканчиваются: в следующем параграфе
 мы рассмотрим еще одну технику.</p>
 
+<h2 id="коротко-об-event-sourcing">Коротко об event-sourcing</h2>
+
+<p>Event-sourcing – это подход, когда хранятся не только данные, и но и события,
+которые эти данные формируют. При этом сущность можно пересобрать, применив
+события в том же порядке. Последнее особенно важно: события хранятся не просто
+для истории, они равноценны данным. Сушности, построенные из событий, по-другому
+называют агрегатами. Говорят, что агрегат равен сумме его событий.</p>
+
+<p>Когда сущность строится из событий, это дает интересные возможности. В любой
+момент ее можно “переиграть” – собрать с нуля. Если ограничить события датой
+(например, не позже 2026 года), то получим версию документа в прошлом. В редких
+случаях событие можно удалить и собрать агрегат без него. События полезны в
+отладке и по-своему заменяют логи.</p>
+
+<p>Не путайте event-sourcing с версионированием. Хоть мы и рассматриваем их в одной
+главе, это не одно и то же. Версии хранят полноценные документы, а события
+описывают отдельные изменения. Версия самодостаточна, а событию требуются вся
+цепочка. Рассматривайте версии как бекапы, а события – как миграции отдельных
+документов.</p>
+
+<p>Версии и события не противоречат, а дополняют друг друга. В проекте, где работал
+автор, использовались оба подхода для разных нужд. Система событий позволяла в
+любой момент собрать агрегат заново. Этим пользовались, когда определенное
+событие признавали ошибочным. Версии были необходимы, потому что от них
+отталкивались некоторые операции, и вычислять версию через события было долго.</p>
+
+<p>Простым примером event-sourcing служит история банковского счета. Когда клиент
+вносит деньги на счет, мы не просто увеличиваем баланс. Пополнение счета
+записывается в таблицу операций и хранится вместе с другими фактами пополнения,
+снятия, переводов, комиссий и других. Таким образом баланс – это сумма всех
+операций. Баланс материализуют (хранят в отдельном поле), потому что
+рассчитывать его каждый раз дорого. Однако важно понимать, что совокупность
+событий важнее результата. Если отдельную операцию признали ошибочной или
+незаконной, баланс пересчитают.</p>
+
+<p>Еще одно уточнение касается слова “сумма”. Под ним мы имеем в виду результат
+применения операций. Какие именно действия выполняет событие – зависит от его
+типа. В случае с банковским счетом баланс нельзя вычислить арифметически, потому
+что иные события включают процент на остаток или конвертацию валют.</p>
+
+<p>В прошлом параграфе мы научились хранить патч для каждого изменения. Легко
+заметить, что получился своего рода event-sourcing. Действительно: если взять
+исходный документ и применить к нему серию патчей, получим текущий (последний)
+документ. Если результаты отличаются, то имеет место нарушение: либо события
+теряются, либо кто-то исправил документ в обход нашей системы.</p>
+
+<h2 id="сбор-агрегатов-из-событий">Сбор агрегатов из событий</h2>
+
+<p>Рассмотрим, как применить набор патчей к исходному документу. У нас уже
+достаточный опыт работы с jsonpatch, поэтому приведем минимальные примеры. Если
+<code class="language-plaintext highlighter-rouge">doc</code> – начальный документ, а <code class="language-plaintext highlighter-rouge">patches</code> – список патчей, код выглядит так:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">jsonpatch</span>
+
+<span class="n">doc</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="n">patches</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">[{</span><span class="s">"op"</span><span class="p">:</span> <span class="s">"add"</span><span class="p">,</span> <span class="s">"path"</span><span class="p">:</span> <span class="s">"/a"</span><span class="p">,</span> <span class="s">"value"</span><span class="p">:</span> <span class="mi">1</span><span class="p">}],</span>
+    <span class="p">[{</span><span class="s">"op"</span><span class="p">:</span> <span class="s">"add"</span><span class="p">,</span> <span class="s">"path"</span><span class="p">:</span> <span class="s">"/b"</span><span class="p">,</span> <span class="s">"value"</span><span class="p">:</span> <span class="mi">2</span><span class="p">}],</span>
+<span class="p">]</span>
+
+<span class="k">for</span> <span class="n">patch</span> <span class="ow">in</span> <span class="n">patches</span><span class="p">:</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">jsonpatch</span><span class="p">.</span><span class="n">JsonPatch</span><span class="p">(</span><span class="n">patch</span><span class="p">)</span>
+    <span class="n">doc</span> <span class="o">=</span> <span class="n">p</span><span class="p">.</span><span class="nb">apply</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>
+<span class="c1"># {'a': 1, 'b': 2}
+</span></code></pre></div></div>
+
+<p>Программисты, знакомые с функциональным программированием, заметят, что это
+свертка, известная также как <code class="language-plaintext highlighter-rouge">fold</code> или <code class="language-plaintext highlighter-rouge">reduce</code>. Чтобы выполнить свертку,
+достаточно функции приращения – такой, что принимает аккумулятор и очередной
+элемент и возвращает новый аккумулятор. Перепишем код в виде свертки:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">jsonpatch</span>
+<span class="kn">from</span> <span class="nn">functools</span> <span class="kn">import</span> <span class="nb">reduce</span>
+
+<span class="k">def</span> <span class="nf">step_fn</span><span class="p">(</span><span class="n">acc</span><span class="p">,</span> <span class="n">patch</span><span class="p">):</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">jsonpatch</span><span class="p">.</span><span class="n">JsonPatch</span><span class="p">(</span><span class="n">patch</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">p</span><span class="p">.</span><span class="nb">apply</span><span class="p">(</span><span class="n">acc</span><span class="p">)</span>
+
+<span class="n">doc</span> <span class="o">=</span> <span class="nb">reduce</span><span class="p">(</span><span class="n">step_fn</span><span class="p">,</span> <span class="n">patches</span><span class="p">,</span> <span class="p">{})</span>
+
+<span class="k">print</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>
+<span class="c1"># {'a': 1, 'b': 2}
+</span></code></pre></div></div>
+
+<p>Мы не случайно упомянули свертку. Дело в том, что агрегатные функции Postgres
+строятся на том же принципе: им необходим начальный элемент и функция
+приращения. Зная это, мы напишем агрегатную функцию, которая, если передать ей
+столбец патчей, применит их один за другим. С ее помощью мы получим документ
+одним запросом к таблице событий.</p>
+
+<p>Объявим агрегатную функцию <code class="language-plaintext highlighter-rouge">json_patch_agg</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">aggregate</span> <span class="n">json_patch_agg</span> <span class="p">(</span><span class="n">jsonb</span><span class="p">)</span> <span class="p">(</span>
+    <span class="n">sfunc</span> <span class="o">=</span> <span class="n">py_apply_patch</span><span class="p">,</span>
+    <span class="k">stype</span> <span class="o">=</span> <span class="n">jsonb</span><span class="p">,</span>
+    <span class="n">initcond</span> <span class="o">=</span> <span class="s1">'{}'</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>Из многих параметров мы указали три:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">sfunc</code> (state function): функция приращения. Принимает два параметра, где
+первый – аккумулятор, который накапливает значение. Второй аргумент функции –
+очередное значение колонки. Функция возвращает новый аккумулятор.</li>
+  <li><code class="language-plaintext highlighter-rouge">stype</code>: тип, с которым работает агрегатная функция. В нашем случае это <code class="language-plaintext highlighter-rouge">jsonb</code>.</li>
+  <li><code class="language-plaintext highlighter-rouge">initcond</code>: начальный (пустой) элемент. Используется в качестве аккумулятора
+при первом вызове функции приращения.</li>
+</ul>
+
+<p>Напомним, что функцию приращения мы уже объявляли – это <code class="language-plaintext highlighter-rouge">py_apply_patch</code>. Она
+принимает документ, патч и возвращает новый документ. Приведем ее здесь для
+контекста:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">or</span> <span class="k">replace</span> <span class="k">function</span> <span class="n">py_apply_patch</span><span class="p">(</span><span class="n">doc</span> <span class="n">jsonb</span><span class="p">,</span> <span class="n">patch</span> <span class="n">jsonb</span><span class="p">)</span>
+<span class="k">returns</span> <span class="n">jsonb</span>
+<span class="k">transform</span> <span class="k">for</span> <span class="k">type</span> <span class="n">jsonb</span>
+<span class="k">language</span> <span class="n">plpython3u</span> <span class="k">immutable</span> <span class="k">strict</span> <span class="k">as</span> <span class="err">$$</span>
+    <span class="n">import</span> <span class="n">jsonpatch</span>
+    <span class="n">patch_obj</span> <span class="o">=</span> <span class="n">jsonpatch</span><span class="p">.</span><span class="n">JsonPatch</span><span class="p">(</span><span class="n">patch</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">patch_obj</span><span class="p">.</span><span class="n">apply</span><span class="p">(</span><span class="n">doc</span><span class="p">)</span>
+<span class="err">$$</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Представим теперь, что некоторая таблица хранит список патчей (событий),
+упорядоченных по времени или счетчику. Вот как выглядит запрос с агрегацией
+патчей:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
+    <span class="n">json_patch_agg</span><span class="p">(</span><span class="n">patch</span><span class="p">)</span> <span class="k">as</span> <span class="n">doc</span>
+<span class="k">from</span> <span class="p">(</span><span class="k">values</span>
+    <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s1">'[{"op": "add", "path": "/a", "value": 1}]'</span><span class="p">::</span><span class="n">jsonb</span><span class="p">),</span>
+    <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s1">'[{"op": "add", "path": "/b", "value": 2}]'</span><span class="p">::</span><span class="n">jsonb</span><span class="p">),</span>
+    <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="s1">'[{"op": "replace", "path": "/a", "value": 3}]'</span><span class="p">::</span><span class="n">jsonb</span><span class="p">)</span>
+<span class="p">)</span> <span class="k">as</span> <span class="n">vals</span><span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">patch</span><span class="p">);</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─[ RECORD 1 ]───────────┐
+│ doc │ {"a": 3, "b": 2} │
+└─────┴──────────────────┘
+</code></pre></div></div>
+
+<p>Конечно, подобный запрос дорог в плане вычислений. Однако с ним мы получим
+документ мгновенно: не понадобится приложение, его настройка и
+запуск. Достаточно минимального клиента к базе вроде psql или PGAdmin.</p>
+
+<h2 id="махинации-с-патчами">Махинации с патчами</h2>
+
+<p>Чем дольше вы работаете с JSON Patch, тем больше откроете трюков и техник. В
+этом параграфе мы расскажем о двух из них.</p>
+
+<p>Несколько патчей можно свести к одному, банально объединих их. Действительно:
+если патч <code class="language-plaintext highlighter-rouge">p1</code> содержит операции <code class="language-plaintext highlighter-rouge">o1</code>, <code class="language-plaintext highlighter-rouge">o2</code> и <code class="language-plaintext highlighter-rouge">o3</code>, а <code class="language-plaintext highlighter-rouge">p2</code> – <code class="language-plaintext highlighter-rouge">o4</code>, <code class="language-plaintext highlighter-rouge">o5</code> и <code class="language-plaintext highlighter-rouge">o6</code>,
+то легко получить патч <code class="language-plaintext highlighter-rouge">p3</code> с операциями <code class="language-plaintext highlighter-rouge">o1</code> – <code class="language-plaintext highlighter-rouge">o6</code>, и они применятся в том же
+порядке. Напомним, что в Python списки объединяются оператором <code class="language-plaintext highlighter-rouge">+</code> (плюс), а в
+Postgres – <code class="language-plaintext highlighter-rouge">||</code> (палочки). Полученный патч называют супер- или пакетным патчем.</p>
+
+<p>В примере ниже оба патча применяются как один, при этом порядок сохраняется: в
+итоговом списке числа идут в верной последовательности. Дефис на конце пути
+<code class="language-plaintext highlighter-rouge">"/nums/-"</code> означает несуществующий элемент списка – его конец, куда и
+добавляются числа.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">p1</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s">"op"</span><span class="p">:</span> <span class="s">"add"</span><span class="p">,</span> <span class="s">"path"</span><span class="p">:</span> <span class="s">"/nums/-"</span><span class="p">,</span> <span class="s">"value"</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+    <span class="p">{</span><span class="s">"op"</span><span class="p">:</span> <span class="s">"add"</span><span class="p">,</span> <span class="s">"path"</span><span class="p">:</span> <span class="s">"/nums/-"</span><span class="p">,</span> <span class="s">"value"</span><span class="p">:</span> <span class="mi">2</span><span class="p">},</span>
+    <span class="p">{</span><span class="s">"op"</span><span class="p">:</span> <span class="s">"add"</span><span class="p">,</span> <span class="s">"path"</span><span class="p">:</span> <span class="s">"/nums/-"</span><span class="p">,</span> <span class="s">"value"</span><span class="p">:</span> <span class="mi">3</span><span class="p">},</span>
+<span class="p">]</span>
+
+<span class="n">p2</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s">"op"</span><span class="p">:</span> <span class="s">"add"</span><span class="p">,</span> <span class="s">"path"</span><span class="p">:</span> <span class="s">"/nums/-"</span><span class="p">,</span> <span class="s">"value"</span><span class="p">:</span> <span class="mi">4</span><span class="p">},</span>
+    <span class="p">{</span><span class="s">"op"</span><span class="p">:</span> <span class="s">"add"</span><span class="p">,</span> <span class="s">"path"</span><span class="p">:</span> <span class="s">"/nums/-"</span><span class="p">,</span> <span class="s">"value"</span><span class="p">:</span> <span class="mi">5</span><span class="p">},</span>
+    <span class="p">{</span><span class="s">"op"</span><span class="p">:</span> <span class="s">"add"</span><span class="p">,</span> <span class="s">"path"</span><span class="p">:</span> <span class="s">"/nums/-"</span><span class="p">,</span> <span class="s">"value"</span><span class="p">:</span> <span class="mi">6</span><span class="p">},</span>
+<span class="p">]</span>
+
+<span class="n">doc</span> <span class="o">=</span> <span class="p">{</span><span class="s">"nums"</span><span class="p">:</span> <span class="p">[]}</span>
+
+<span class="k">print</span><span class="p">(</span><span class="n">jsonpatch</span><span class="p">.</span><span class="n">JsonPatch</span><span class="p">(</span><span class="n">p1</span> <span class="o">+</span> <span class="n">p2</span><span class="p">).</span><span class="nb">apply</span><span class="p">(</span><span class="n">doc</span><span class="p">))</span>
+<span class="c1"># {'nums': [1, 2, 3, 4, 5, 6]}
+</span></code></pre></div></div>
+
+<p>Перенесемся в Postgres. Предположим, имеется таблица событий с колонкой
+patch. Как получить пакетный патч всех событий? Для этого напишем агрегатную
+функцию, которая объединяет jsonb-массивы в один:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">aggregate</span> <span class="n">jsonb_concat_agg</span> <span class="p">(</span><span class="n">jsonb</span><span class="p">)</span> <span class="p">(</span>
+    <span class="n">sfunc</span> <span class="o">=</span> <span class="n">jsonb_concat</span><span class="p">,</span>
+    <span class="k">stype</span> <span class="o">=</span> <span class="n">jsonb</span><span class="p">,</span>
+    <span class="n">initcond</span> <span class="o">=</span> <span class="s1">'[]'</span>
+<span class="p">);</span>
+</code></pre></div></div>
+
+<p>В результате агрегации получим единый патч:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span>
+    <span class="n">jsonb_pretty</span><span class="p">(</span><span class="n">jsonb_concat_agg</span><span class="p">(</span><span class="n">patch</span><span class="p">))</span> <span class="k">as</span> <span class="n">doc</span>
+<span class="k">from</span> <span class="p">(</span><span class="k">values</span>
+    <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s1">'[{"op": "add", "path": "/a", "value": 1}]'</span><span class="p">::</span><span class="n">jsonb</span><span class="p">),</span>
+    <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s1">'[{"op": "add", "path": "/b", "value": 2}]'</span><span class="p">::</span><span class="n">jsonb</span><span class="p">),</span>
+    <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="s1">'[{"op": "add", "path": "/c", "value": 3}]'</span><span class="p">::</span><span class="n">jsonb</span><span class="p">)</span>
+<span class="p">)</span> <span class="k">as</span> <span class="n">vals</span><span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">patch</span><span class="p">);</span>
+</code></pre></div></div>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌─[ RECORD 1 ]────────────────┐
+│ doc │ [                    ↵│
+│     │     {                ↵│
+│     │         "op": "add", ↵│
+│     │         "path": "/a",↵│
+│     │         "value": 1   ↵│
+│     │     },               ↵│
+│     │     {                ↵│
+│     │         "op": "add", ↵│
+│     │         "path": "/b",↵│
+│     │         "value": 2   ↵│
+│     │     },               ↵│
+│     │     {                ↵│
+│     │         "op": "add", ↵│
+│     │         "path": "/c",↵│
+│     │         "value": 3   ↵│
+│     │     }                ↵│
+│     │ ]                     │
+└─────┴───────────────────────┘
+</code></pre></div></div>
+
+<p>По умолчанию JSON Patch предлагает шесть типов операций: <code class="language-plaintext highlighter-rouge">add</code>, <code class="language-plaintext highlighter-rouge">replace</code> и
+другие. Однажды вы обнаружите, что для комфортной работы их не
+хватает. Например, чтобы описать пополнение счета, необходима операция
+приращения (increase):</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="nl">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"inc"</span><span class="p">,</span><span class="w"> </span><span class="nl">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/amount"</span><span class="p">,</span><span class="w"> </span><span class="nl">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Использование <code class="language-plaintext highlighter-rouge">replace</code> для этой цели будет ошибкой. Если до операции на счету
+было 1000 рублей и клиент добавил 500, патч с <code class="language-plaintext highlighter-rouge">replace</code> выглядит так:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[{</span><span class="nl">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"replace"</span><span class="p">,</span><span class="w"> </span><span class="nl">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/amount"</span><span class="p">,</span><span class="w"> </span><span class="nl">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">1500</span><span class="p">}]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Нарушается важный принцип: событие не должно знать о состоянии документа, потому
+что иначе его нельзя удалить без последствий. Например, если клиент внес 200 и
+300 рублей подряд, события выглядят как в примере ниже:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="w">
+    </span><span class="p">{</span><span class="nl">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"replace"</span><span class="p">,</span><span class="w"> </span><span class="nl">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/amount"</span><span class="p">,</span><span class="w"> </span><span class="nl">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">1200</span><span class="p">},</span><span class="w">
+    </span><span class="p">{</span><span class="nl">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"replace"</span><span class="p">,</span><span class="w"> </span><span class="nl">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/amount"</span><span class="p">,</span><span class="w"> </span><span class="nl">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">1500</span><span class="p">}</span><span class="w">
+</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Если удалить первое событие (200 рублей), то после второго на счету снова
+окажется окажется 1500 рублей, что неверно. Предположим теперь, что события
+созданы при помощи операции inc:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">[</span><span class="w">
+    </span><span class="p">{</span><span class="nl">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"inc"</span><span class="p">,</span><span class="w"> </span><span class="nl">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/amount"</span><span class="p">,</span><span class="w"> </span><span class="nl">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">},</span><span class="w">
+    </span><span class="p">{</span><span class="nl">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"inc"</span><span class="p">,</span><span class="w"> </span><span class="nl">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/amount"</span><span class="p">,</span><span class="w"> </span><span class="nl">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">300</span><span class="p">}</span><span class="w">
+</span><span class="p">]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>С ней ошибки не произойдет: если удалить первое событие, то после второго на
+счету окажется 1300 рублей. Кроме того, обе операции коммутативны (дают
+одинаковый результат в разном порядке), что снижает риски, связанные с
+очередностью сообщений.</p>
+
+<p>Библиотеку jsonpatch легко расширить. Встроенные операции унаследованы от класса
+<code class="language-plaintext highlighter-rouge">PatchOperation</code> и содержатся в приватном словаре. Расширение сводится к двум
+шагам:</p>
+
+<ul>
+  <li>на базе <code class="language-plaintext highlighter-rouge">PatchOperation</code> определить класс с частным методом <code class="language-plaintext highlighter-rouge">apply</code>;</li>
+  <li>добавить его в словарь операций.</li>
+</ul>
+
+<p>Опишем класс операции:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">jsonpatch</span> <span class="kn">import</span> <span class="n">JsonPatch</span><span class="p">,</span> <span class="n">PatchOperation</span>
+
+<span class="k">class</span> <span class="nc">IncrementOperation</span><span class="p">(</span><span class="n">PatchOperation</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="nf">apply</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+        <span class="n">subobj</span><span class="p">,</span> <span class="n">part</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">pointer</span><span class="p">.</span><span class="n">to_last</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">subobj</span><span class="p">[</span><span class="n">part</span><span class="p">]</span>
+        <span class="k">except</span> <span class="p">(</span><span class="nb">KeyError</span><span class="p">,</span> <span class="nb">IndexError</span><span class="p">):</span>
+            <span class="k">raise</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="nb">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s">"Value is not a number: </span><span class="si">{</span><span class="n">val</span><span class="si">}</span><span class="s">"</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="bp">self</span><span class="p">.</span><span class="n">operation</span><span class="p">[</span><span class="s">"value"</span><span class="p">]</span>
+        <span class="k">except</span> <span class="nb">KeyError</span> <span class="k">as</span> <span class="n">ex</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">InvalidJsonPatch</span><span class="p">(</span><span class="s">"The operation does not contain a 'value' member"</span><span class="p">)</span>
+
+        <span class="n">subobj</span><span class="p">[</span><span class="n">part</span><span class="p">]</span> <span class="o">+=</span> <span class="n">value</span>
+        <span class="k">return</span> <span class="n">obj</span>
+</code></pre></div></div>
+
+<p>Большую часть метода <code class="language-plaintext highlighter-rouge">apply</code> занимают проверки и внятные сообщения об
+ошибках. Регистрация несколько неуклюжа: поле <code class="language-plaintext highlighter-rouge">JsonPatch.operations</code> –
+неизменяемый словарь, так что мы замещаем его новым.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">ops</span> <span class="o">=</span> <span class="n">JsonPatch</span><span class="p">.</span><span class="n">operations</span> <span class="o">|</span> <span class="p">{</span>
+    <span class="s">'inc'</span><span class="p">:</span> <span class="n">IncrementOperation</span>
+<span class="p">}</span>
+
+<span class="n">JsonPatch</span><span class="p">.</span><span class="n">operations</span> <span class="o">=</span> <span class="n">ops</span>
+</code></pre></div></div>
+
+<p>Опробуем новую операцию в действии:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">doc</span> <span class="o">=</span> <span class="p">{</span><span class="s">"amount"</span><span class="p">:</span> <span class="mi">1000</span><span class="p">}</span>
+
+<span class="n">p</span> <span class="o">=</span> <span class="n">JsonPatch</span><span class="p">([</span>
+    <span class="p">{</span><span class="s">"op"</span><span class="p">:</span> <span class="s">"inc"</span><span class="p">,</span> <span class="s">"path"</span><span class="p">:</span> <span class="s">"/amount"</span><span class="p">,</span> <span class="s">"value"</span><span class="p">:</span> <span class="mi">200</span><span class="p">},</span>
+    <span class="p">{</span><span class="s">"op"</span><span class="p">:</span> <span class="s">"add"</span><span class="p">,</span> <span class="s">"path"</span><span class="p">:</span> <span class="s">"/foo"</span><span class="p">,</span> <span class="s">"value"</span><span class="p">:</span> <span class="s">"a"</span><span class="p">},</span>
+    <span class="p">{</span><span class="s">"op"</span><span class="p">:</span> <span class="s">"inc"</span><span class="p">,</span> <span class="s">"path"</span><span class="p">:</span> <span class="s">"/amount"</span><span class="p">,</span> <span class="s">"value"</span><span class="p">:</span> <span class="mi">300</span><span class="p">},</span>
+    <span class="p">{</span><span class="s">"op"</span><span class="p">:</span> <span class="s">"add"</span><span class="p">,</span> <span class="s">"path"</span><span class="p">:</span> <span class="s">"/bar"</span><span class="p">,</span> <span class="s">"value"</span><span class="p">:</span> <span class="s">"b"</span><span class="p">},</span>
+<span class="p">])</span>
+
+<span class="k">print</span><span class="p">(</span><span class="n">p</span><span class="p">.</span><span class="nb">apply</span><span class="p">(</span><span class="n">doc</span><span class="p">))</span>
+<span class="c1"># {'amount': 1500, 'foo': 'a', 'bar': 'b'}
+</span></code></pre></div></div>
+
+<p>По аналогии пишутся другие операции: это классы и регистрация под уникальным
+именем. Схожим образом расширяются библиотеки для Java или JavaScript.</p>
+
+<p>Чтобы инкремент был доступен в Postgres, скопируйте файл <code class="language-plaintext highlighter-rouge">json_patch_ops.py</code> на
+сервер. Он должен быть в директории, которую Python просматривает при загрузке
+модулей. Простое решение в том, чтобы скопировать файл в директорию
+<code class="language-plaintext highlighter-rouge">site-packages</code> или указать к нему путь в переменной <code class="language-plaintext highlighter-rouge">PYTHONPATH</code>. Более
+грамотный подход – оформить код в пакет и устанавливать при помощи
+<code class="language-plaintext highlighter-rouge">pip3</code>. Рассмотрите вариант, чтобы вашу работу включили в официальную
+библиотеку, например в виде расширения.</p>
+
 <h2 id="бесконфликтное-редактирование">Бесконфликтное редактирование</h2>
 
 <p>Концепция патчей решает и другие проблемы, связанные с документами. Одна из них
@@ -2113,10 +2451,10 @@ amount. Назовем эту ревизию <code class="language-plaintext hig
     </div>
 
     <input required name="path" type="hidden" value="/pg-book-json-ch09/">
-    <input required name="captcha" type="hidden" value="7 &#215; 5">
+    <input required name="captcha" type="hidden" value="9 &#215; 5">
 
     <div class="block">
-        <span class="comment-form-label"><small>7 &#215; 5 = </small></span>
+        <span class="comment-form-label"><small>9 &#215; 5 = </small></span>
         <input required id="comment-form-solution" name="solution" type="text">
     </div>
 
