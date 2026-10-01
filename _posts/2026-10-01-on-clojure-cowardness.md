@@ -106,7 +106,7 @@ standard `(assert ...)` form might help in the middle of a function to interrupt
 execution when you know it makes no sense to go on with a weird value.
 
 Keen mind that `:pre`, `:post`, and `assert` forms rely on the global `*assert*`
-variable. It’s a good practice to assertions a lot but wipe them off on
+variable. It’s a good practice to rely on assertions a lot but wipe them off on
 production as they slow down the code. When baking an uberjar, set
 `clojure.core/*assert*` to false. If it’s ClojureScript with a shadow compiler,
 pass `{:elide-asserts true}` into the `:compiler-options` map for a production
