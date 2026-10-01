@@ -106,6 +106,127 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/tip-039-pg/">Postgres №39</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-04-09T00:00:00+00:00">
+        Apr 9, 2026
+    </time>
+
+    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Поговорим про пулы и проблемы соединений.</p>
+
+<p>При всех достоинствах Постгреса нужно знать его недостатки. Один из них
+следующий: Постгрес плохо справляется с большим числом подключений. Это следует
+из того, как устроена его серверная часть.</p>
+
+<p>При запуске сервера запускается мастер-процесс. Когда к нему кто-то
+подключается, процесс клонирует себя системным вызовом <code class="language-plaintext highlighter-rouge">fork</code>. Получаются два
+процесса: мастер занимается общими задачами, а второй — слушает и отвечает на
+сообщения клиента. Когда подключается кто-то еще, мастер снова клонирует себя и
+так далее.</p>
+
+<p>Для обмена информацией служит общий участок памяти — shared memory. Такой
+участок можно создать в Unix-подобных системах. Если один процесс что-то изменит
+в этой памяти, друге получат изменения мгновенно.</p>
+
+<p>Разработчики давно обсуждают как уйти от модели “новый процесс на
+соединение”. Предлагаются нативные треды, но когда они будут — я не знаю.</p>
+
+<p>Нужно понимать, что системный вызов <code class="language-plaintext highlighter-rouge">fork</code> — очень дорогой. Он копирует всю
+информацию о процессе, а именно: регистры процессора, стек, номера потоков и
+открытых файлов. Поэтому каждое новое соединение — это вызов <code class="language-plaintext highlighter-rouge">fork</code> и ожидание,
+пока операционная система клонирует процесс.</p>
+
+<p>Даже если предположить, что вместо fork Постгрес использует треды, помните:
+запуск нового потока — это тоже системный вызов и конкуренция за время
+планировщика. А кроме того, частые сетевые подключения — это тоже системные
+вызовы.</p>
+
+<p>Настройка, которая определяет максимальное число соединений, называется
+<code class="language-plaintext highlighter-rouge">max_connections</code>. Увидеть ее можно командой <code class="language-plaintext highlighter-rouge">SHOW</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SHOW</span> <span class="n">max_connections</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>У себя я вижу число 100. Это весьма адекватная цифра: число соединений не должно
+превышать нескольких десятков и уж тем более — сотен. Ситуация, когда вам не
+хватает 300 соединений, говорит об одном из двух. Либо у вас биллинг
+федерального значения и супер-пупер хайлоад. Либо приложение неправильно
+работает с соединениями: не закрывает их, теряет, удерживает без всякой
+нужды. Гораздо вероятней второе, а не первое.</p>
+
+<p>Соединениями управляют на двух уровнях: сетевом (прокси) и в приложении. Во
+втором случае это пул соединений. Это объект, который имитирует обычное
+соединение, но на самом деле открывает их несколько. Когда мы выполняем запрос,
+пул помечает одно из них занятым и передает сообщения через него. Когда мы
+закрываем соединение, этого не происходит — оно помечается свободным и доступно
+другим потокам приложения.</p>
+
+<p>Самый известный пул в Джаве называется HikariCP (от слова “харакири”). Он очень
+быстрый: разработчики писали, что анализировали байт-код и путем экспериментов
+уменьшили его минимума. В пуле нет блокирующих операций вроде <code class="language-plaintext highlighter-rouge">synchronized</code>:
+все сделано через CAS-примитивы. Написаны свои версии классов <code class="language-plaintext highlighter-rouge">List</code> и подобных,
+которые не проверяют выход за границы — это гарантируется в коде.</p>
+
+<p>У HikariCP множество характеристик и шаблонов поведения. Например, сколько
+соединений открывать на старте; до какого предела расти; если предел достигнут,
+а кому-то нужно соединение, то сколько ждать; как долго клиент может удерживать
+соединение; как определять потерянное соединение, которое взяли и не вернули;
+как проверять, что соединение живое и так далее.</p>
+
+<p>Хорошая практика в том, чтобы использовать пул всегда независимо от типа
+приложения. Этим вы гарантируете минимальную гигиену в работе с базой. Даже если
+у вас одно соединение, пул все равно необходим: он откроет его и будет держать
+открытым. Приложение не будет без конца стучаться в сокет, проходить авторизацию
+и клонировать серверный процесс.</p>
+
+<p>Последнее — частая ошибка ребят, пришедших их PHP. В их мире не принято следить
+за ресурсами. Открыл файл, соединение, сокет и работай с ними, а закрывать на
+надо. Зачем, если скрипт отработает, и все закроется само? В системах, отличных
+от скриптовых, состояние не исчезает. Если открыли соединение, его нужно
+закрыть, но при этом следить, чтобы “открыл-закрыл” это не повторялось
+постоянно.</p>
+
+<p>Пул решает эту проблему — берет на себя заботу об открытии и закрытии. Если
+одного соединения перестанет хватать, это дело настройки: увеличьте предел с 1
+до 2. Стратегия может быть разной, например не открывать при запуске ничего, а
+делать это по требованию. Либо наоборот — открыть столько, сколько указано в
+лимите, чтобы каждый запрос выполнятся с уже открытым соединением.</p>
+
+<p>Сколько выделить соединений пулу — вопрос сложный и решается банальным
+подбором. Начните с адекватной цифры вроде четырех и посмотрите на результат:
+как быстро приложение отвечает на запросы в многопоточном режиме. Собирайте
+метрики пула через JMX или обычные логи. Особенна важна метрика ожидания: как
+долго очередной поток ждет, пока пул выдаст ему соединение.</p>
+
+<p>Другой важный показатель — сколько в пуле свободных соединений. Если их много,
+очевидно вы задрали лимит. Скорее всего, в этом соединении нуждается другой
+экземпляр приложения.</p>
+
+<p>Поэтому — гадать не нужно, все сводится к метрикам.</p>
+
+<p>Это была первая часть темы о пулах и соединениях. В следующих выпусках
+продолжим.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/tip-038-pg/">Postgres №38</a>
             </h2>
 
@@ -1064,233 +1185,6 @@ Postgres. Это битовая маска заданной длины, при �
 <p>Все эти алгоритмы есть в PostGis и других гео-системах. Но знать их полезно, и
 порой они оказываются очень в тему. Однажды я писал свое дерево квадрантов, и
 оно заменило тяжелое решение.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/tip-032-pg/">Postgres №32</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-03-29T00:00:00+00:00">
-        Mar 29, 2026
-    </time>
-
-    <a href="/tag/postgres/" rel="tag">postgres</a>, <a href="/tag/sql/" rel="tag">sql</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>В Postgres индексы бывают разных типов. Самый базовый и нужный называется btree,
-который основан на одноименной структуре данных – дереве B-Tree. Оно состоит из
-распределительных узлов, и на последнем уровне находятся пары вида (значение,
-страница).</p>
-
-<p>Btree поддерживает равенство и сравнение. Это значит, в нем можно искать по
-точному значению и диапазонам, а еще он подходит для сортировки, потому что
-упорядочен.</p>
-
-<p>В случаях, когда нужно частичное сравнение, индекс btree не подходит. Вместо
-него используют Gin или Gist (отдавая предпочтение первому). Эти индексы сложнее
-и в целом медленнее btree. Поэтому пока возможно, используйте btree.</p>
-
-<p>Есть, однако, лазейка, чтобы использовать btree для частичного сравнения. Если
-применить его к строке с особой опцией, можно искать по началу строки оператором
-<code class="language-plaintext highlighter-rouge">(i)like</code> и регулярным выражением.</p>
-
-<p>Предположим, в таблице <code class="language-plaintext highlighter-rouge">demo</code> хранятся пути к файлам:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">demo</span><span class="p">(</span>
-    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-    <span class="n">path</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span>
-<span class="p">);</span>
-</code></pre></div></div>
-
-<p>Сгенерируем миллион файлов. Пути начинаются с года, месяца, дня и часа. Даты
-разнообразны в рамках десяти лет:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">demo</span>
-<span class="k">select</span>
-    <span class="n">x</span><span class="p">,</span>
-    <span class="n">format</span><span class="p">(</span><span class="s1">'%s/%s/picture.jpeg'</span><span class="p">,</span> <span class="n">to_char</span><span class="p">((</span><span class="n">now</span><span class="p">()</span> <span class="o">-</span> <span class="n">interval</span> <span class="s1">'10 years'</span> <span class="o">*</span>  <span class="n">random</span><span class="p">()),</span> <span class="s1">'yyyy/MM/DD/HH'</span><span class="p">),</span> <span class="n">gen_random_uuid</span><span class="p">())</span>
-<span class="k">from</span>
-    <span class="n">generate_series</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">999999</span><span class="p">)</span> <span class="k">as</span> <span class="n">seq</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Навесим индекс на путь. Опция <code class="language-plaintext highlighter-rouge">text_pattern_ops</code> нужна, чтобы зафиксировать
-локаль. С ней сравнение строк не зависит от текущей локали:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">path_btree</span> <span class="k">on</span> <span class="n">demo</span>
-<span class="k">using</span> <span class="n">btree</span>
-<span class="p">(</span><span class="n">path</span> <span class="n">text_pattern_ops</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Выберем файлы за октябрь 2023 года:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">demo</span>
-<span class="k">where</span> <span class="n">path</span> <span class="k">like</span> <span class="s1">'2023/10/12%'</span>
-<span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Справа от like стоит шаблон, а не простой текст. Символ % означает любые
-символы. Вот что вернет запрос:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────────┬─────────────────────────────────────────┐
-│   id   │                path                     │
-├────────┼─────────────────────────────────────────┤
-│ 213875 │ 2023/10/12/01/00ec...af263/picture.jpeg │
-│ 670319 │ 2023/10/12/01/04e2...67afd/picture.jpeg │
-│  34516 │ 2023/10/12/01/063a...ebddc/picture.jpeg │
-│ 122843 │ 2023/10/12/01/3237...6ffd7/picture.jpeg │
-│ 227530 │ 2023/10/12/01/5a48...c4ec0/picture.jpeg │
-│ 141900 │ 2023/10/12/01/6a78...da021/picture.jpeg │
-│ 663626 │ 2023/10/12/01/9d6d...84da7/picture.jpeg │
-│ 154138 │ 2023/10/12/01/a02e...5570c/picture.jpeg │
-│  37955 │ 2023/10/12/01/a465...47a7a/picture.jpeg │
-│ 864446 │ 2023/10/12/01/ae47...943d9/picture.jpeg │
-│ 196849 │ 2023/10/12/01/cd15...25874/picture.jpeg │
-</code></pre></div></div>
-
-<p>Но гораздо интересней план:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>explain analyze
-select * from demo
-where path like '2023/10/12%'
-limit 100;
-
-│ Limit  (cost=0.55..8.57 rows=100 width=68)
-│ (actual time=0.054..0.364 rows=100 loops=1)
-│   -&gt;  Index Scan using path_btree on demo
-│       (cost=0.55..8.57 rows=100 width=68)
-│         Index Cond: ((path ~&gt;=~ '2023/10/12'::text)
-│                  AND (path ~&lt;~ '2023/10/13'::text))
-│         Filter: (path ~~ '2023/10/12%'::text)
-│ Planning Time: 0.375 ms
-│ Execution Time: 0.400 ms
-└────────────────────────────────────────────────────
-</code></pre></div></div>
-
-<p>Видим, что Postgres поступает хитро: заключает путь в диапазон 2023/10/12 и
-2023/10/13. Цифра 3 на конце получилась как следующий символ за 2.</p>
-
-<p>Попадаем в индекс, стоимость копеечная.</p>
-
-<p>Если поставить в начало шаблона <code class="language-plaintext highlighter-rouge">%</code>, индекс не сработает. Другими словами, с
-таким подходом нельзя искать пути по вхождению.</p>
-
-<p>Индекс и оператор <code class="language-plaintext highlighter-rouge">like</code> позволяют срезать пути по лидирующей строке. При этом
-не обязательно с точностью до папки. Например, шаблон может быть таким:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>2025/10/23/%cat%.jpeg
-</code></pre></div></div>
-
-<p>Так мы получим все фотографии в папке 2025/10/23/… со словом <code class="language-plaintext highlighter-rouge">cat</code> в названии
-и расширением <code class="language-plaintext highlighter-rouge">jpeg</code>. Кроме шаблонов <code class="language-plaintext highlighter-rouge">like</code>, индекс поддерживает регулярки, и с
-ними критерий поиска можно описать точнее.</p>
-
-<p>Чем больше лидирующих символов мы задали, тем быстрее будет поиск.</p>
-
-<p>Еще один трюк: что если нужно искать с конца строки? Например, имеется таблица
-товаров с серийными номерами:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">demo2</span><span class="p">(</span>
-    <span class="n">id</span> <span class="nb">integer</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
-    <span class="n">serial_number</span> <span class="nb">text</span> <span class="k">not</span> <span class="k">null</span>
-<span class="p">);</span>
-</code></pre></div></div>
-
-<p>Вставим миллион серийных номеров:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>insert into demo2
-select
-    x,
-    to_char(random() * 1000000000000, '0000-0000-0000')
-from
-    generate_series(1, 999999) as seq(x);
-
-┌────────┬─────────────────┐
-│   id   │  serial_number  │
-├────────┼─────────────────┤
-│      1 │  7084-1644-4953 │
-│      2 │  2694-3476-5136 │
-│      3 │  3274-5880-3765 │
-│      4 │  9346-6945-3461 │
-│      5 │  3352-3981-1479 │
-│      6 │  7103-7860-4732 │
-│      7 │  2634-9208-2518 │
-│      8 │  1485-3601-0146 │
-│      9 │  8068-5128-1222 │
-│     10 │  5832-3252-5642 │
-</code></pre></div></div>
-
-<p>Сотрудники ищут продукцию по последним числам серийного номера. Чтобы сработал
-индекс btree, сделаем функциональный индекс на выражение
-<code class="language-plaintext highlighter-rouge">reverse(serial_number)</code>. В результате в индексе будут храниться перевернутые
-номера:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">index</span> <span class="n">path_btree_rev</span> <span class="k">on</span> <span class="n">demo2</span>
-<span class="k">using</span> <span class="n">btree</span>
-<span class="p">(</span><span class="n">reverse</span><span class="p">(</span><span class="n">serial_number</span><span class="p">)</span> <span class="n">text_pattern_ops</span><span class="p">);</span>
-</code></pre></div></div>
-
-<p>Чтобы искать по ним, выражение поиска тоже нужно перевернуть. Давайте найдем все
-номера, которые заканчиваются на -0500:</p>
-
-<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">demo2</span>
-<span class="k">where</span> <span class="n">reverse</span><span class="p">(</span><span class="n">serial_number</span><span class="p">)</span> <span class="k">like</span> <span class="n">reverse</span><span class="p">(</span><span class="s1">'%-0500'</span><span class="p">)</span>
-<span class="k">limit</span> <span class="mi">100</span><span class="p">;</span>
-</code></pre></div></div>
-
-<p>Результат:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>┌────────┬─────────────────┐
-│   id   │  serial_number  │
-├────────┼─────────────────┤
-│ 237074 │  5088-3410-0500 │
-│ 231067 │  0411-7020-0500 │
-│ 728812 │  3489-6520-0500 │
-│ 618494 │  3972-6720-0500 │
-│ 486950 │  4871-5330-0500 │
-│ 634762 │  8038-7440-0500 │
-│ 733815 │  8856-2250-0500 │
-│ 451464 │  3640-0450-0500 │
-│ 868649 │  7289-2270-0500 │
-│ 485383 │  7016-0370-0500 │
-│ 782061 │  4076-8080-0500 │
-│ 234715 │  4279-2180-0500 │
-│  36948 │  9033-7280-0500 │
-│ 460010 │  5881-8090-0500 │
-</code></pre></div></div>
-
-<p>Самое интересное – план:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>│ Limit  (cost=0.42..8.45 rows=100 width=16) (actual
-│   -&gt;  Index Scan using path_btree_rev on demo2  (co
-│         Index Cond: ((reverse(serial_number) ~&gt;=~ '
-│         Filter: (reverse(serial_number) ~~ '0050-%'
-│ Planning Time: 0.286 ms
-│ Execution Time: 1.088 ms
-└────────────────────────────────────────────────────
-</code></pre></div></div>
-
-<p>Работает!</p>
-
-<p>Повторю, что <code class="language-plaintext highlighter-rouge">btree</code> и <code class="language-plaintext highlighter-rouge">text_pattern_ops</code> работают только для начала
-строки. Если нужен поиск посередине, обратитесь к расширению <code class="language-plaintext highlighter-rouge">pg_tgrm</code>
-(триграммы). Этот индекс, однако, требует Gin.</p>
-
-<p>У <code class="language-plaintext highlighter-rouge">text_pattern_ops</code> есть еще один полезный сценарий, но о нем – в следующий
-раз.</p>
 
                 
             </div>

@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>On cowardness in Clojure code</title>
+  <meta name="description" content="Imagine you have a function accepting a value and doing something with it:">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/custom.css">
+  <link rel="canonical" href="https://grishaev.me/on-clojure-cowardness/">
+  <link rel="alternate" type="application/rss+xml" title="Ivan Grishaev's blog" href="https://grishaev.me/feed.xml">
+
+  <link rel="shortcut icon" type="image/x-icon" href="/assets/static/favicons/favicon.ico">
+
+  <script type="text/javascript" src="/assets/typo.js"></script>
+
+</head>
+
+
+  <body>
+    <header class="site-header">
+
+    <div class="wrapper flex-container">
+
+        <div>
+            <a href="/">
+                <img id="avatar" src="/assets/static/avatar.jpg" alt="Ivan Grishaev">
+            </a>
+        </div>
+
+        <div class="flex-container-vert" style="margin-left: 15px; width: 80%">
+
+            <div class="flex-container full-width">
+                <p style="margin-bottom: 5px"><a href="/">Ivan Grishaev's blog</a></p>
+                <div class="flex-huge"></div>
+                <div >
+<form id="search-form"
+      target="_blank"
+      style="display: inline"
+      method="get"
+      action="https://www.google.com/search">
+
+    <input name="sitesearch"
+           value="grishaev.me"
+           type="hidden">
+
+    <input type="text"
+           required="required"
+           name="q"
+           placeholder="Google search..."
+           autocomplete="off">
+
+    <button style="border: none; background-color: transparent; cursor: pointer;"
+            type="submit">&#x1f50d;</button>
+
+</form>
+</div>
+            </div>
+
+            <p><small>Writing on programming, education, books and negotiations.
+</small></p>
+
+            <div class="flex-container">
+                <a class="menu-item" href="/">Home</a>
+                <a class="menu-item" href="/about/">About</a>
+                <a class="menu-item" href="/open-source/">Open Source</a>
+                <a class="menu-item" href="/bookshelf/">Bookshelf</a>
+                <a class="menu-item" href="/feed.xml">RSS</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor" href="/tag/clojure/">Clojure</a>
+                <a class="menu-item minor" href="/tag/postgres/">Postgres</a>
+                <a class="menu-item minor" href="/tag/emacs/">Emacs</a>
+                <a class="menu-item minor" href="/tag/python/">Python</a>
+                <a class="menu-item minor" href="/tag/programming/">Programming</a>
+                <a class="menu-item minor" href="/interview/">Interview</a>
+                <a class="menu-item minor" href="/video/">Video</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod/">Книга «Clojure на производстве»</a>
+            </div>
+
+            <div class="flex-container">
+                <a class="menu-item minor hl" href="/clojure-in-prod-2/">Книга «Clojure на производстве», второй том</a>
+            </div>
+
+        </div>
+    </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+
+    <h1 class="post-title" itemprop="name headline">On cowardness in Clojure code</h1>
+
+    
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-10-01T00:00:00+00:00">
+        Oct 1, 2026
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/clojure/" rel="tag">clojure</a>
+
+</div>
+
+
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Imagine you have a function accepting a value and doing something with it:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">double-number</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="n">x</span><span class="w">
+    </span><span class="p">(</span><span class="nb">*</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="mi">2</span><span class="p">)))</span><span class="w">
+
+</span><span class="c1">;; or</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">get-user</span><span class="w"> </span><span class="p">[</span><span class="n">id</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="n">id</span><span class="w">
+    </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">*db*</span><span class="w"> </span><span class="p">[</span><span class="s">"select..."</span><span class="w"> </span><span class="n">id</span><span class="p">])))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>A common pattern which comes all the time is to wrap the entire body with a
+<code class="language-plaintext highlighter-rouge">(when id ...)</code> form. You don’t want to process nil values so it’s safer to
+protect yourself against NPEs. Without <code class="language-plaintext highlighter-rouge">(when ...)</code>, a nil value can ruin the
+entire pipeline, cause a null pointer error, trigger DB queries in vain and so
+on. These all sound reasonable, yet I’ve got my own term to describe such a kind
+of code: “coward style”.</p>
+
+<p>A person who is wrapping the whole function with <code class="language-plaintext highlighter-rouge">(when)</code> isn’t getting one
+thing. <strong>If a function had been given nil, it should have never been called
+instead</strong>. Clojure provides a number of macros to call a function conditionally
+depending on arguments, for example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">some-&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">get-user-id</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">get-user</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Should <code class="language-plaintext highlighter-rouge">(get-user-id)</code> return nil, the <code class="language-plaintext highlighter-rouge">(get-user nil)</code> form never gets
+called. The same applies to <code class="language-plaintext highlighter-rouge">(cond-&gt;)</code> and other macros that build an execution
+form conditionally.</p>
+
+<p>In other words: a function must not check its input parameters for nils. But
+those people who call this function must.</p>
+
+<p>Now let me explain the “coward style” I mentioned before. It’s when people write
+like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">double-number</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="n">x</span><span class="w">
+    </span><span class="p">(</span><span class="nb">*</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="mi">2</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>I don’t know what this code tells you, but to me, it’s clearly this: <em>“Guys, I
+don’t want any problems. I don’t want any exceptions to be raised. If you supply
+me with a number, I’ll double it but won’t do anything if you pass nil. I cannot
+process it but won’t argue on you. Let’s keep it all quiet. Deal?”</em></p>
+
+<p>This is a speech of a typical coward: I don’t want problems. I don’t want stack
+traces. I don’t want alerts and investigations. Let’s be quiet. The job is
+half-way done in fact as the function works partially. It won’t tell you when
+something is not quite right.</p>
+
+<p>I’ve seen plenty of computation chains like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">some-param</span><span class="w">
+    </span><span class="p">(</span><span class="nf">parse-param</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">pre-process-param</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">get-use-id</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">get-user-by-id</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">send-user-somewhere</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now imagine that <strong>every</strong> function starts with <code class="language-plaintext highlighter-rouge">(when ...)</code>, and the final
+function crashes with NPE. It will be quite challenging to find who is
+guilty. These functions are real cowards: nobody wants to take blame. <em>“I got
+nil → I returned nil. Not my business. I washed my hands”.</em></p>
+
+<p>Thus, stop writing functions starting with <code class="language-plaintext highlighter-rouge">(when ...)</code>. If a function silently
+swallows a nil value doing nothing, sooner or later you’ll pay for that. Or your
+teammates will.</p>
+
+<p>There is still a way though to protect yourself against nils which I like a
+lot. Use built-in pre- and post conditions:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">double-number</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pre</span><span class="w"> </span><span class="p">[(</span><span class="nf">number?</span><span class="w"> </span><span class="n">x</span><span class="p">)]}</span><span class="w">
+  </span><span class="p">(</span><span class="nb">*</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="mi">2</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now if you pass nil, you’ll get a clear error</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">double-number</span><span class="w"> </span><span class="n">nil</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; Execution error (AssertionError) at … (REPL:211).</span><span class="w">
+</span><span class="c1">;; Assert failed: (number? x)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Preconditions help a lot with guessing types. Above, they clearly say <code class="language-plaintext highlighter-rouge">x</code> must
+be a number and nothing else. In addition to <code class="language-plaintext highlighter-rouge">:pre</code> and <code class="language-plaintext highlighter-rouge">:post</code> forms, the
+standard <code class="language-plaintext highlighter-rouge">(assert ...)</code> form might help in the middle of a function to interrupt
+execution when you know it makes no sense to go on with a weird value.</p>
+
+<p>Keen mind that <code class="language-plaintext highlighter-rouge">:pre</code>, <code class="language-plaintext highlighter-rouge">:post</code>, and <code class="language-plaintext highlighter-rouge">assert</code> forms rely on the global <code class="language-plaintext highlighter-rouge">*assert*</code>
+variable. It’s a good practice to assertions a lot but wipe them off on
+production as they slow down the code. When baking an uberjar, set
+<code class="language-plaintext highlighter-rouge">clojure.core/*assert*</code> to false. If it’s ClojureScript with a shadow compiler,
+pass <code class="language-plaintext highlighter-rouge">{:elide-asserts true}</code> into the <code class="language-plaintext highlighter-rouge">:compiler-options</code> map for a production
+release.</p>
+
+<p>I agree that pre/post and assertions take lines of code, and sometimes they make
+code a bit noisy. But they will save you hours of debugging. Don’t be a coward
+whose main goal is to avoid exceptions. Don’t hide weird things. Be simple and
+explicit, and let your code express these two qualities.</p>
+
+    
+<div class="prev-next">
+
+    <div class="prev-next-left">
+    
+        <p><small><a href="/pg-book-json-ch10/">&larr; Глава 10. Релевантный поиск</a></small></p>
+    
+    </div>
+
+    <div class="prev-next-mid">
+    </div>
+
+    <div class="prev-next-right">
+    
+    </div>
+
+</div>
+
+  </div>
+
+</article>
+
+<center>
+    <p>
+        <small>Нашли ошибку? Выделите мышкой и нажмите Ctrl/&#8984;+Enter</small>
+    </p>
+</center>
+
+
+
+
+
+<center>
+    
+    Комментариев пока нет
+    
+    
+</center>
+
+
+
+
+
+
+
+
+
+<form id="comment-form" method="POST" action="https://functions.yandexcloud.net/d4ehfuf08fjfjr59ivnf">
+
+    <div class="block">
+        <p class="comment-form-label"><small>Your name</small></p>
+        <input required id="comment-form-author" name="author" type="text">
+    </div>
+
+    <div class="block">
+        <p class="comment-form-label"><small>Comment (markdown syntax)</small></p>
+        <textarea required id="comment-form-comment" name="comment"></textarea>
+    </div>
+
+    <input required name="path" type="hidden" value="/on-clojure-cowardness/">
+    <input required name="captcha" type="hidden" value="3 &#215; 5">
+
+    <div class="block">
+        <span class="comment-form-label"><small>3 &#215; 5 = </small></span>
+        <input required id="comment-form-solution" name="solution" type="text">
+    </div>
+
+    <div class="block">
+        <button id="comment-form-send" type="submit">Send</button>
+    </div>
+
+</form>
+
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Ivan Grishaev's blog</li>
+          <li><a href="mailto:ivan@grishaev.me">ivan@grishaev.me</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+            <li><a href="https://github.com/igrishaev">GitHub</a></li>
+            <li><a href="https://t.me/igrishaev_blog">Telegram</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Writing on programming, education, books and negotiations.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

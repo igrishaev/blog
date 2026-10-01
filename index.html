@@ -106,6 +106,137 @@
         <li>
 
             <h2>
+                <a class="post-link" href="/on-clojure-cowardness/">On cowardness in Clojure code</a>
+            </h2>
+
+            
+<div class="post-meta">
+
+    <time class="post-time"
+          datetime="2026-10-01T00:00:00+00:00">
+        Oct 1, 2026
+    </time>
+
+    <a href="/tag/programming/" rel="tag">programming</a>, <a href="/tag/clojure/" rel="tag">clojure</a>
+
+</div>
+
+
+            <div class="entry">
+                
+                    <p>Imagine you have a function accepting a value and doing something with it:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">double-number</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="n">x</span><span class="w">
+    </span><span class="p">(</span><span class="nb">*</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="mi">2</span><span class="p">)))</span><span class="w">
+
+</span><span class="c1">;; or</span><span class="w">
+
+</span><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">get-user</span><span class="w"> </span><span class="p">[</span><span class="n">id</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="n">id</span><span class="w">
+    </span><span class="p">(</span><span class="nf">jdbc/execute!</span><span class="w"> </span><span class="n">*db*</span><span class="w"> </span><span class="p">[</span><span class="s">"select..."</span><span class="w"> </span><span class="n">id</span><span class="p">])))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>A common pattern which comes all the time is to wrap the entire body with a
+<code class="language-plaintext highlighter-rouge">(when id ...)</code> form. You don’t want to process nil values so it’s safer to
+protect yourself against NPEs. Without <code class="language-plaintext highlighter-rouge">(when ...)</code>, a nil value can ruin the
+entire pipeline, cause a null pointer error, trigger DB queries in vain and so
+on. These all sound reasonable, yet I’ve got my own term to describe such a kind
+of code: “coward style”.</p>
+
+<p>A person who is wrapping the whole function with <code class="language-plaintext highlighter-rouge">(when)</code> isn’t getting one
+thing. <strong>If a function had been given nil, it should have never been called
+instead</strong>. Clojure provides a number of macros to call a function conditionally
+depending on arguments, for example:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">some-&gt;</span><span class="w"> </span><span class="p">(</span><span class="nf">get-user-id</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nf">get-user</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Should <code class="language-plaintext highlighter-rouge">(get-user-id)</code> return nil, the <code class="language-plaintext highlighter-rouge">(get-user nil)</code> form never gets
+called. The same applies to <code class="language-plaintext highlighter-rouge">(cond-&gt;)</code> and other macros that build an execution
+form conditionally.</p>
+
+<p>In other words: a function must not check its input parameters for nils. But
+those people who call this function must.</p>
+
+<p>Now let me explain the “coward style” I mentioned before. It’s when people write
+like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">double-number</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w">
+  </span><span class="p">(</span><span class="nb">when</span><span class="w"> </span><span class="n">x</span><span class="w">
+    </span><span class="p">(</span><span class="nb">*</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="mi">2</span><span class="p">)))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>I don’t know what this code tells you, but to me, it’s clearly this: <em>“Guys, I
+don’t want any problems. I don’t want any exceptions to be raised. If you supply
+me with a number, I’ll double it but won’t do anything if you pass nil. I cannot
+process it but won’t argue on you. Let’s keep it all quiet. Deal?”</em></p>
+
+<p>This is a speech of a typical coward: I don’t want problems. I don’t want stack
+traces. I don’t want alerts and investigations. Let’s be quiet. The job is
+half-way done in fact as the function works partially. It won’t tell you when
+something is not quite right.</p>
+
+<p>I’ve seen plenty of computation chains like this:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nb">-&gt;</span><span class="w"> </span><span class="n">some-param</span><span class="w">
+    </span><span class="p">(</span><span class="nf">parse-param</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">pre-process-param</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">get-use-id</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">get-user-by-id</span><span class="p">)</span><span class="w">
+    </span><span class="p">(</span><span class="nf">send-user-somewhere</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now imagine that <strong>every</strong> function starts with <code class="language-plaintext highlighter-rouge">(when ...)</code>, and the final
+function crashes with NPE. It will be quite challenging to find who is
+guilty. These functions are real cowards: nobody wants to take blame. <em>“I got
+nil → I returned nil. Not my business. I washed my hands”.</em></p>
+
+<p>Thus, stop writing functions starting with <code class="language-plaintext highlighter-rouge">(when ...)</code>. If a function silently
+swallows a nil value doing nothing, sooner or later you’ll pay for that. Or your
+teammates will.</p>
+
+<p>There is still a way though to protect yourself against nils which I like a
+lot. Use built-in pre- and post conditions:</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">defn</span><span class="w"> </span><span class="n">double-number</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w">
+  </span><span class="p">{</span><span class="no">:pre</span><span class="w"> </span><span class="p">[(</span><span class="nf">number?</span><span class="w"> </span><span class="n">x</span><span class="p">)]}</span><span class="w">
+  </span><span class="p">(</span><span class="nb">*</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="mi">2</span><span class="p">))</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Now if you pass nil, you’ll get a clear error</p>
+
+<div class="language-clojure highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="nf">double-number</span><span class="w"> </span><span class="n">nil</span><span class="p">)</span><span class="w">
+
+</span><span class="c1">;; Execution error (AssertionError) at … (REPL:211).</span><span class="w">
+</span><span class="c1">;; Assert failed: (number? x)</span><span class="w">
+</span></code></pre></div></div>
+
+<p>Preconditions help a lot with guessing types. Above, they clearly say <code class="language-plaintext highlighter-rouge">x</code> must
+be a number and nothing else. In addition to <code class="language-plaintext highlighter-rouge">:pre</code> and <code class="language-plaintext highlighter-rouge">:post</code> forms, the
+standard <code class="language-plaintext highlighter-rouge">(assert ...)</code> form might help in the middle of a function to interrupt
+execution when you know it makes no sense to go on with a weird value.</p>
+
+<p>Keen mind that <code class="language-plaintext highlighter-rouge">:pre</code>, <code class="language-plaintext highlighter-rouge">:post</code>, and <code class="language-plaintext highlighter-rouge">assert</code> forms rely on the global <code class="language-plaintext highlighter-rouge">*assert*</code>
+variable. It’s a good practice to assertions a lot but wipe them off on
+production as they slow down the code. When baking an uberjar, set
+<code class="language-plaintext highlighter-rouge">clojure.core/*assert*</code> to false. If it’s ClojureScript with a shadow compiler,
+pass <code class="language-plaintext highlighter-rouge">{:elide-asserts true}</code> into the <code class="language-plaintext highlighter-rouge">:compiler-options</code> map for a production
+release.</p>
+
+<p>I agree that pre/post and assertions take lines of code, and sometimes they make
+code a bit noisy. But they will save you hours of debugging. Don’t be a coward
+whose main goal is to avoid exceptions. Don’t hide weird things. Be simple and
+explicit, and let your code express these two qualities.</p>
+
+                
+            </div>
+
+        </li>
+        
+        <li>
+
+            <h2>
                 <a class="post-link" href="/pg-book-json-ch10/">Глава 10. Релевантный поиск</a>
             </h2>
 
@@ -770,106 +901,6 @@ move a eax ; поместить ПО АДРЕСУ a значение eax
 
 <p>Повторюсь: кому-то сказанное покажется банальным, но я считаю, о присваивании
 говорят мало – а тема очень интересная и сложная.</p>
-
-                
-            </div>
-
-        </li>
-        
-        <li>
-
-            <h2>
-                <a class="post-link" href="/assignment-1/">О присваивании (1)</a>
-            </h2>
-
-            
-<div class="post-meta">
-
-    <time class="post-time"
-          datetime="2026-07-31T00:00:00+00:00">
-        Jul 31, 2026
-    </time>
-
-    <a href="/tag/programming/" rel="tag">programming</a>
-
-</div>
-
-
-            <div class="entry">
-                
-                    <p>Предположим, у нас следующий код:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>x += 5
-</code></pre></div></div>
-
-<p>Если спросить программиста, как он устроен, то скорее всего, ответ будет таким:
-это то же самое, что</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>x = x + 5
-</code></pre></div></div>
-
-<p>Во-первых, это не верно, а во-вторых, такой ответ все равно ничего не объясняет.</p>
-
-<p>Ошибка кроется в следующем. Если предположить, что <code class="language-plaintext highlighter-rouge">x += 5</code> означает <code class="language-plaintext highlighter-rouge">x = x + 5</code>, то
-из этого можно сделать вывод: любое выражение <code class="language-plaintext highlighter-rouge">&lt;whatever&gt; += 5</code> под капотом
-становится</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;whatever&gt; = &lt;whatever&gt; + 5
-</code></pre></div></div>
-
-<p>Представим теперь, что есть массив <code class="language-plaintext highlighter-rouge">m</code>, и нужно увеличить его элемент на
-пять. Индекс этого элемента дает функция <code class="language-plaintext highlighter-rouge">f</code> без параметров. Таким образом, я
-запишу:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>m[f()] += 5
-</code></pre></div></div>
-
-<p>Если следовать ошибочному предположению выше, это выражение становится таким:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>m[f()] = m[f()] + 5
-</code></pre></div></div>
-
-<p>Видим, что функция <code class="language-plaintext highlighter-rouge">f()</code> вызывается дважды: сначала справа, чтобы посчитать
-значение, затем слева, чтобы присвоить его. Предположим теперь, функция <code class="language-plaintext highlighter-rouge">f()</code>
-возвращает индекс случайно: в первый раз 2, а во второй — 7. Итоговое выражение
-станет таким:</p>
-
-<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>m[7] = m[2] + 5
-</code></pre></div></div>
-
-<p>что совершенно неправильно. Так что тезис о том, что <code class="language-plaintext highlighter-rouge">x += 5</code> равносильно <code class="language-plaintext highlighter-rouge">x =
-x + 5</code> — ошибочный.</p>
-
-<p>Если рассмотреть выражение <code class="language-plaintext highlighter-rouge">x = x + 5</code> внимательней, станет ясно: у символа <code class="language-plaintext highlighter-rouge">x</code>
-в зависимости от положения слева или справа равенства разная семантика. Справа
-он используется для того, чтобы получить значение, а слева — адрес, по которому
-нужно его записать.</p>
-
-<p>В стандартах языков Си и Си++ для этого служат термины <code class="language-plaintext highlighter-rouge">lvalue</code> и <code class="language-plaintext highlighter-rouge">rvalue</code>, что
-переводится как “лево-“ и “праводопустимые значения”. Так, на месте <code class="language-plaintext highlighter-rouge">lvalue</code>
-(слева от равенства) может быть любое выражение, от <strong>которого можно взять
-адрес</strong>. У правого выражения требования другие, и взятие адреса не
-требуется. Именно поэтому запись <code class="language-plaintext highlighter-rouge">x = 5</code> верная: от <code class="language-plaintext highlighter-rouge">x</code> можно взять адрес. По
-той же причине <code class="language-plaintext highlighter-rouge">5 = x</code> не пройдет компиляцию: от литерала 5 взять адрес нельзя.</p>
-
-<p>Даже если упростить выражение до предела и оставить <code class="language-plaintext highlighter-rouge">x = x</code>, у обоих иксов будет
-разная семантика. Тот, что слева означает адрес, а справа — значение.</p>
-
-<p>Имея все это в виду, посмотрим, что происходит с выражением <code class="language-plaintext highlighter-rouge">m[f()] += 5</code>. Его
-левая часть вычисляется, чтобы получить адрес, куда позже поместится
-результат. Если бы мы написали просто <code class="language-plaintext highlighter-rouge">x += 5</code>, то адрес x вычислять не надо —
-компилятор уже его знает. Однако для <code class="language-plaintext highlighter-rouge">m[f()]</code> понадобится вычислить <code class="language-plaintext highlighter-rouge">f()</code> и за
-счет адресной арифметики получить конечный адрес.</p>
-
-<p>Далее: значение из этого адреса помещается в отдельный регистр для вычислений,
-например <code class="language-plaintext highlighter-rouge">EAX</code>. К этому регистру добавляется пятерка командой <code class="language-plaintext highlighter-rouge">ADD EAX 5</code>
-(добавить что-то к ячейке памяти нельзя, только к регистру). После этого
-значение из <code class="language-plaintext highlighter-rouge">EAX</code> перемещается в тот адрес, что был вычислен в левом
-выражении. Функция <code class="language-plaintext highlighter-rouge">f()</code>, таким образом, была вычислена один раз.</p>
-
-<p>Вывод таков, что даже если выражение записывается кратко, оно занимает несколько
-(порой много) машинных команд. Может, кому-то это очевидно, но не мешает лишний
-раз проговорить.</p>
 
                 
             </div>
