@@ -2483,7 +2483,7 @@ where doc ? '__migrate__';
 
 ~~~sql
 select id from applications
-where doc ?& '{application_id,status,amounts}'
+where not doc ?& '{application_id,status,amounts}'
 limit 10;
 ~~~
 
